@@ -1,0 +1,19 @@
+{"id":"preamble","type":"preamble","mode":"both","note":"magic 4e 6e 50 14, three reserved zero bytes, protocol version 1","value":[1],"hex":"4e6e501400000001"}
+{"id":"frame.ping","type":"frame","mode":"both","note":"no length, no body","value":[1],"hex":"01"}
+{"id":"frame.disconnect-graceful","type":"frame","mode":"both","value":[21],"hex":"15"}
+{"id":"frame.disconnect-protocol-error","type":"frame","mode":"both","value":[22],"hex":"16"}
+{"id":"frame.disconnect-unassigned","type":"frame","mode":"both","note":"an unassigned code in 20-38 is still a disconnect","value":[26],"hex":"1a"}
+{"id":"frame.disconnect-stalled","type":"frame","mode":"both","value":[37],"hex":"25"}
+{"id":"frame.client-greeting","type":"frame","mode":"both","note":"type, uint16 little-endian body length, body","value":[100,["v1",300,-5,"AQI=",4194304,32]],"hex":"64120096a27631cd012cfbc4020102ce0040000020"}
+{"id":"frame.server-greeting","type":"frame","mode":"both","value":[105,[1,4294967296,65536,128,30000]],"hex":"6915009501cf0000000100000000ce00010000cc80cd7530"}
+{"id":"frame.invocation","type":"frame","mode":"both","value":[110,[7,300,0,"kgWheA=="]],"hex":"6e0a009407cd012c009205a178"}
+{"id":"frame.invocation-cancellation","type":"frame","mode":"both","value":[111,[1000]],"hex":"6f040091cd03e8"}
+{"id":"frame.invocation-result","type":"frame","mode":"both","value":[112,[3,1,"zQPo"]],"hex":"700600930301cd03e8"}
+{"id":"frame.message-start","type":"frame","mode":"both","value":[113,[5,0,110,70000]],"hex":"7109009405006ece00011170"}
+{"id":"frame.message-abort","type":"frame","mode":"both","value":[115,[5,0,2]],"hex":"73040093050002"}
+{"id":"frame.invocation-credit","type":"frame","mode":"both","value":[116,[4]],"hex":"7402009104"}
+{"id":"frame.pipe-state","type":"frame","mode":"both","value":[120,[513,2,262144]],"hex":"780a0093cd020102ce00040000"}
+{"id":"frame.pipe-write","type":"frame","mode":"both","note":"post-header: client pipe id, server pipe id; the body is raw bytes","value":[50,1,2,"AQID"],"hex":"3203000102010203"}
+{"id":"frame.pipe-write.empty","type":"frame","mode":"both","value":[50,1,2,""],"hex":"3200000102"}
+{"id":"frame.pipe-window-update","type":"frame","mode":"both","note":"body: the credit, uint32 little-endian","value":[51,1,2,262144],"hex":"330400010200000400"}
+{"id":"frame.message-chunk","type":"frame","mode":"both","note":"post-header: invocation id (uint16 little-endian), kind","value":[114,5,0,"AQID"],"hex":"720300050000010203"}

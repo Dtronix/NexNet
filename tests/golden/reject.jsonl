@@ -1,0 +1,105 @@
+{"id":"u8.reject.256","type":"byte","mode":"reject","error":"range","hex":"cd0100"}
+{"id":"u8.reject.m1","type":"byte","mode":"reject","error":"range","hex":"ff"}
+{"id":"i8.reject.128","type":"sbyte","mode":"reject","error":"range","hex":"cc80"}
+{"id":"i8.reject.m129","type":"sbyte","mode":"reject","error":"range","hex":"d1ff7f"}
+{"id":"i16.reject.32768","type":"short","mode":"reject","error":"range","hex":"cd8000"}
+{"id":"u16.reject.65536","type":"ushort","mode":"reject","error":"range","hex":"ce00010000"}
+{"id":"u16.reject.m1","type":"ushort","mode":"reject","error":"range","hex":"ff"}
+{"id":"i32.reject.2147483648","type":"int","mode":"reject","error":"range","hex":"ce80000000"}
+{"id":"i32.reject.m2147483649","type":"int","mode":"reject","error":"range","hex":"d3ffffffff7fffffff"}
+{"id":"u32.reject.m1","type":"uint","mode":"reject","error":"range","hex":"ff"}
+{"id":"u32.reject.4294967296","type":"uint","mode":"reject","error":"range","hex":"cf0000000100000000"}
+{"id":"i64.reject.9223372036854775808","type":"long","mode":"reject","error":"range","note":"uint64 above Long.MAX_VALUE","hex":"cf8000000000000000"}
+{"id":"u64.reject.m1","type":"ulong","mode":"reject","error":"range","hex":"ff"}
+{"id":"u64.reject.m1.from-d3","type":"ulong","mode":"reject","error":"range","hex":"d3ffffffffffffffff"}
+{"id":"i32.reject.float","type":"int","mode":"reject","error":"type","note":"integers are never read from floats","hex":"ca3f800000"}
+{"id":"i32.reject.string","type":"int","mode":"reject","error":"type","hex":"a131"}
+{"id":"i32.reject.nil","type":"int","mode":"reject","error":"type","note":"nil is not a value of a non-nullable type","hex":"c0"}
+{"id":"i32.reject.bool","type":"int","mode":"reject","error":"type","hex":"c3"}
+{"id":"i32.reject.empty","type":"int","mode":"reject","error":"truncated","hex":""}
+{"id":"i32.reject.truncated","type":"int","mode":"reject","error":"truncated","hex":"cd01"}
+{"id":"i32.reject.trailing","type":"int","mode":"reject","error":"trailing","note":"bytes after the value","hex":"0100"}
+{"id":"i32.reject.c1","type":"int","mode":"reject","error":"reserved","note":"0xc1 is never used","hex":"c1"}
+{"id":"bool.reject.int","type":"bool","mode":"reject","error":"type","hex":"01"}
+{"id":"char.reject.65536","type":"char","mode":"reject","error":"range","hex":"ce00010000"}
+{"id":"char.reject.m1","type":"char","mode":"reject","error":"range","hex":"ff"}
+{"id":"f32.reject.nil","type":"float","mode":"reject","error":"type","hex":"c0"}
+{"id":"f64.reject.string","type":"double","mode":"reject","error":"type","hex":"a131"}
+{"id":"f64.reject.truncated","type":"double","mode":"reject","error":"truncated","hex":"cb3ff8"}
+{"id":"str.reject.utf8-lone-ff","type":"string","mode":"reject","error":"utf8","note":"0xff never appears in UTF-8","hex":"a1ff"}
+{"id":"str.reject.utf8-lone-continuation","type":"string","mode":"reject","error":"utf8","note":"a continuation byte without a lead byte","hex":"a3618062"}
+{"id":"str.reject.utf8-truncated-3","type":"string","mode":"reject","error":"utf8","note":"a 3-byte sequence cut short","hex":"a2e282"}
+{"id":"str.reject.utf8-overlong","type":"string","mode":"reject","error":"utf8","note":"an overlong encoding of '/'","hex":"a2c0af"}
+{"id":"str.reject.utf8-surrogate","type":"string","mode":"reject","error":"utf8","note":"an encoded UTF-16 surrogate (U+D800)","hex":"a3eda080"}
+{"id":"str.reject.utf8-above-max","type":"string","mode":"reject","error":"utf8","note":"above U+10FFFF","hex":"a4f4908080"}
+{"id":"str.reject.int","type":"string","mode":"reject","error":"type","hex":"01"}
+{"id":"str.reject.bin","type":"string","mode":"reject","error":"type","note":"bin is not a string","hex":"c40161"}
+{"id":"str.reject.length","type":"string","mode":"reject","error":"length","note":"the length runs past the input","hex":"a5616263"}
+{"id":"str.reject.str32-length","type":"string","mode":"reject","error":"length","hex":"dbffffffff61"}
+{"id":"bin.reject.array","type":"byte[]","mode":"reject","error":"type","hex":"93010203"}
+{"id":"bin.reject.length","type":"byte[]","mode":"reject","error":"length","hex":"c40501"}
+{"id":"bin.reject.bin32-length","type":"byte[]","mode":"reject","error":"length","note":"the length is checked before anything is allocated","hex":"c67fffffff"}
+{"id":"datetime.reject.unspecified-above-max","type":"DateTime","mode":"reject","error":"value","hex":"cf2bca2875f4374000"}
+{"id":"datetime.reject.utc-above-max","type":"DateTime","mode":"reject","error":"value","hex":"cf6bca2875f4374000"}
+{"id":"datetime.reject.string","type":"DateTime","mode":"reject","error":"type","hex":"a3323032"}
+{"id":"datetimeoffset.reject.offset-841","type":"DateTimeOffset","mode":"reject","error":"value","note":"offsets are -840 to 840 minutes","hex":"9200cd0349"}
+{"id":"datetimeoffset.reject.local-below-min","type":"DateTimeOffset","mode":"reject","error":"value","note":"UtcTicks + offset must be within 0 to MaxTicks","hex":"9200d0c4"}
+{"id":"datetimeoffset.reject.count","type":"DateTimeOffset","mode":"reject","error":"count","hex":"9100"}
+{"id":"dateonly.reject.above-max","type":"DateOnly","mode":"reject","error":"value","hex":"ce0037b9db"}
+{"id":"dateonly.reject.m1","type":"DateOnly","mode":"reject","error":"value","hex":"ff"}
+{"id":"timeonly.reject.one-day","type":"TimeOnly","mode":"reject","error":"value","hex":"cf000000c92a69c000"}
+{"id":"timeonly.reject.m1","type":"TimeOnly","mode":"reject","error":"value","hex":"ff"}
+{"id":"guid.reject.15-bytes","type":"Guid","mode":"reject","error":"size","hex":"c40f000000000000000000000000000000"}
+{"id":"guid.reject.17-bytes","type":"Guid","mode":"reject","error":"size","hex":"c4110000000000000000000000000000000000"}
+{"id":"decimal.reject.scale-29","type":"decimal","mode":"reject","error":"value","note":"scales are 0 to 28","hex":"c41001000000000000000000000000001d00"}
+{"id":"decimal.reject.reserved-bit","type":"decimal","mode":"reject","error":"value","note":"flags bits 0-15 and 24-30 are 0","hex":"c41001000000000000000000000001000000"}
+{"id":"decimal.reject.15-bytes","type":"decimal","mode":"reject","error":"size","hex":"c40f000000000000000000000000000000"}
+{"id":"biginteger.reject.nil","type":"BigInteger","mode":"reject","error":"type","hex":"c0"}
+{"id":"version.reject.text","type":"Version","mode":"reject","error":"value","hex":"a178"}
+{"id":"version.reject.one-part","type":"Version","mode":"reject","error":"value","note":"a Version has 2 to 4 parts","hex":"a131"}
+{"id":"seq.reject.element-type","type":"string[]","mode":"reject","error":"type","hex":"9101"}
+{"id":"seq.reject.map","type":"string[]","mode":"reject","error":"type","hex":"80"}
+{"id":"seq.reject.count-length","type":"List<string>","mode":"reject","error":"length","note":"the count is checked against the remaining bytes first","hex":"dd7fffffff"}
+{"id":"seq.reject.truncated","type":"List<string>","mode":"reject","error":"truncated","hex":"92a161"}
+{"id":"map.reject.array","type":"Dictionary<string,int>","mode":"reject","error":"type","hex":"92a16101"}
+{"id":"map.reject.count-length","type":"Dictionary<string,int>","mode":"reject","error":"length","hex":"df7fffffff"}
+{"id":"tuple.reject.short","type":"(int,string,double)","mode":"reject","error":"count","hex":"9201a161"}
+{"id":"tuple.reject.long","type":"(int,string,double)","mode":"reject","error":"count","hex":"9401a161cb3ff800000000000000"}
+{"id":"limit.reject.elements","type":"List<string>","mode":"reject","options":{"maxElements":3},"error":"elements","note":"4 elements with maxElements 3","hex":"94a161a162a163a164"}
+{"id":"limit.reject.elements-map","type":"Dictionary<string,int>","mode":"reject","options":{"maxElements":3},"error":"elements","note":"map entries count their key and their value: 2 entries are 4 elements","hex":"82a16101a16202"}
+{"id":"limit.reject.elements-cumulative","type":"Dictionary<string,List<int[]>>","mode":"reject","options":{"maxElements":3},"error":"elements","note":"elements are counted over the whole value: one entry (2) holding a list of 2","hex":"81a16192d44e04d44e04"}
+{"id":"ext78.reject.kind-mismatch","type":"int[]","mode":"reject","error":"type","note":"int64 elements for an int32 array","hex":"c7094e060100000000000000"}
+{"id":"ext78.reject.partial-element","type":"int[]","mode":"reject","error":"size","note":"the data after the kind byte is not a multiple of 4","hex":"c7044e04010203"}
+{"id":"ext78.reject.no-kind","type":"int[]","mode":"reject","error":"size","note":"no kind byte","hex":"c7004e"}
+{"id":"ext78.reject.ext-type","type":"int[]","mode":"reject","error":"type","note":"ext type 77","hex":"c7054d0401000000"}
+{"id":"ext78.reject.element-array","type":"int[]","mode":"reject","error":"type","note":"element-wise arrays are not read as ext 78","hex":"920102"}
+{"id":"ext78.reject.length","type":"int[]","mode":"reject","error":"length","hex":"c7404e04"}
+{"id":"object.reject.map","type":"InteropItem","mode":"reject","error":"type","hex":"81a16101"}
+{"id":"object.reject.member-type","type":"InteropItem","mode":"reject","error":"type","hex":"92a161a161"}
+{"id":"object.reject.struct-nil","type":"InteropStruct","mode":"reject","error":"type","note":"a struct is never nil","hex":"c0"}
+{"id":"limit.reject.depth","type":"InteropNested","mode":"reject","options":{"maxDepth":3},"error":"depth","note":"4 nested objects with maxDepth 3","hex":"95c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c0c0"}
+{"id":"limit.reject.depth-default","type":"InteropNested","mode":"reject","error":"depth","note":"65 nested objects: the default maxDepth is 64","hex":"95c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c095c0c0c0c0c0"}
+{"id":"object.reject.nested-arrays","type":"InteropNested","mode":"reject","error":"type","note":"arrays where a string is expected, 15 deep","hex":"919191919191919191919191919191c0"}
+{"id":"enum.reject.range","type":"InteropFlags","mode":"reject","error":"range","note":"65536 is outside the ushort underlying type","hex":"ce00010000"}
+{"id":"enum.reject.string","type":"InteropEnum","mode":"reject","error":"type","note":"enums are never names on the wire","hex":"a3416e79"}
+{"id":"union.reject.unknown-tag","type":"InteropShape","mode":"reject","error":"value","note":"no case has tag 5","hex":"920590"}
+{"id":"union.reject.tag-range","type":"InteropShape","mode":"reject","error":"range","note":"tags are uint16","hex":"92ce0001000090"}
+{"id":"union.reject.count-1","type":"InteropShape","mode":"reject","error":"count","hex":"9100"}
+{"id":"union.reject.count-3","type":"InteropShape","mode":"reject","error":"count","hex":"930091cb3ff0000000000000c0"}
+{"id":"union.reject.tag-type","type":"InteropShape","mode":"reject","error":"type","hex":"92a13091cb3ff0000000000000"}
+{"id":"limit.reject.depth-union","type":"List<InteropShape>","mode":"reject","options":{"maxDepth":2},"error":"depth","note":"3 levels with maxDepth 2","hex":"91920091cb3ff0000000000000"}
+{"id":"msg.reject.client-greeting.count-5","type":"ClientGreeting","mode":"reject","error":"count","note":"message bodies have their exact element count","hex":"95a27631cd012cfbc400ce00400000"}
+{"id":"msg.reject.client-greeting.trailing","type":"ClientGreeting","mode":"reject","error":"trailing","hex":"96a27631cd012cfbc400ce004000002000"}
+{"id":"msg.reject.client-greeting.token-length","type":"ClientGreeting","mode":"reject","error":"length","note":"the bin length is checked before the token is read","hex":"96c00000c67fffffff"}
+{"id":"msg.reject.server-greeting.count-3","type":"ServerGreeting","mode":"reject","error":"count","note":"fewer than four fields","hex":"93010203"}
+{"id":"msg.reject.server-greeting.c1","type":"ServerGreeting","mode":"reject","error":"reserved","hex":"92c101"}
+{"id":"msg.reject.invocation.truncated-arguments","type":"Invocation","mode":"reject","error":"truncated","hex":"940102009205"}
+{"id":"msg.reject.invocation.count-3","type":"Invocation","mode":"reject","error":"count","hex":"93010200"}
+{"id":"msg.reject.result.count-1","type":"InvocationResult","mode":"reject","error":"count","hex":"9103"}
+{"id":"msg.reject.result.count-4","type":"InvocationResult","mode":"reject","error":"count","hex":"940301c0c0"}
+{"id":"msg.reject.cancellation.65536","type":"InvocationCancellation","mode":"reject","error":"range","note":"invocation ids are uint16","hex":"91ce00010000"}
+{"id":"msg.reject.cancellation.m1","type":"InvocationCancellation","mode":"reject","error":"range","hex":"91ff"}
+{"id":"msg.reject.cancellation.count-0","type":"InvocationCancellation","mode":"reject","error":"count","hex":"90"}
+{"id":"msg.reject.pipe-state.count-2","type":"DuplexPipeUpdateState","mode":"reject","error":"count","hex":"92cd020102"}
+{"id":"msg.reject.error-detail.count-2","type":"RemoteErrorDetail","mode":"reject","error":"count","hex":"92c0c0"}
+{"id":"msg.reject.error-detail.type-too-long","type":"RemoteErrorDetail","mode":"reject","error":"value","note":"the type is at most 256 chars","hex":"93c0da01016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161c0"}
