@@ -354,6 +354,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             .callbackExecutor(callbackExecutor)
             .timers(timers)
             .logger(logger)
+            .owner(this)
             .build();
         // Invocations (K07): attached before the session starts, so nothing the server sends is unhandled.
         InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)

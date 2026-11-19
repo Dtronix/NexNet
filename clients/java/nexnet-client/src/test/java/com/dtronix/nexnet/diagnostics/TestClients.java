@@ -86,6 +86,12 @@ public final class TestClients {
         return NexusClient.create(config, HANDSHAKE, new TestNexus(), TestProxy::new, server);
     }
 
+    /** A new, unconnected TCP client over a custom connector. */
+    public static NexusClient<TestProxy> client(Transport.Connector connector) {
+        return NexusClient.create(ClientConfig.tcp("h", 1).build(), HANDSHAKE, new TestNexus(), TestProxy::new,
+            connector);
+    }
+
     /** Waits up to 5 s for a condition. */
     public static void waitFor(BooleanSupplier condition) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5_000;

@@ -2,6 +2,9 @@ package com.dtronix.nexnet.pipes;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
+import com.dtronix.nexnet.NexusTimeSpan;
+import com.dtronix.nexnet.diagnostics.NexusPartialItemSnapshot;
+import com.dtronix.nexnet.diagnostics.NexusPipeSnapshot;
 import com.dtronix.nexnet.session.ControlSource;
 import com.dtronix.nexnet.session.Frame;
 import com.dtronix.nexnet.session.MessageTypes;
@@ -78,6 +81,14 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     private long consumedSinceGrant;
     private long extraOutstanding;
     private long lastDataNanos;
+    /** Whether data ever arrived, and when it last did (lastDataNanos also restarts for the progress timeout). */
+    private boolean dataArrived;
+    private long lastArrivalNanos;
+    /** Length of a channel item that has partly arrived, prefix included; 0 when none (set by the channel reader). */
+    private long partialItemLength;
+    /** When the writer started waiting for send credit; meaningful while creditWaiting. */
+    private boolean creditWaiting;
+    private long creditWaitSince;
     private long pendingGrant;
     private boolean controlQueued;
     private boolean inputComplete;
@@ -348,6 +359,8 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
                 buffered += length;
                 PipeCounters.BUFFERED_BYTES.addAndGet(length);
                 lastDataNanos = manager.nanoTime();
+                lastArrivalNanos = lastDataNanos;
+                dataArrived = true;
                 wakeLocked(after);
             }
         }
@@ -376,6 +389,7 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
         synchronized (lock) {
             if ((remote & PipeWire.REFUSED) != 0) {
                 if (state == 0 && initiating) {
+                    after.add(() -> manager.recordRefusal(false));
                     refused = true;
                     sentClose = true;
                     receivedClose = true;
@@ -717,6 +731,68 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
         }
     }
 
+    /** Records the length of a channel item that has partly arrived, or 0 once there is none. */
+    void setPartialItem(long length) {
+        synchronized (lock) {
+            partialItemLength = length;
+        }
+    }
+
+    /** The pipe's state (C# {@code NexusPipeSnapshot}). */
+    NexusPipeSnapshot snapshot(long nowNanos) {
+        synchronized (lock) {
+            long waitingBytes = 0;
+            if (creditWaiting) {
+                for (WriteOp op : writes) {
+                    waitingBytes += op.data.length - op.position;
+                }
+            }
+            boolean closing = sentClose && !receivedClose && !sessionClosed;
+            int currentId = id;
+            return new NexusPipeSnapshot(
+                currentId != 0 ? currentId : localId,
+                (state & PipeWire.READY) != 0,
+                inputComplete && buffered == 0,
+                outputClosed || outputCompleteSent || sentClose || sessionClosed,
+                closing ? since(nowNanos, closingSince) : null,
+                window,
+                credit,
+                buffered,
+                consumedSinceGrant,
+                extraOutstanding,
+                dataArrived ? since(nowNanos, lastArrivalNanos) : null,
+                partialItemLength > 0 && !inputComplete
+                    ? new NexusPartialItemSnapshot(partialItemLength, Math.min(partialItemLength, buffered)) : null,
+                sendCredit,
+                creditWaiting ? since(nowNanos, creditWaitSince) : null,
+                waitingBytes);
+        }
+    }
+
+    private static NexusTimeSpan since(long nowNanos, long thenNanos) {
+        return NexusTimeSpan.ofMillis(Math.max(0, nowNanos - thenNanos) / 1_000_000);
+    }
+
+    /**
+     * Starts or ends the writer's wait for send credit: it waits while writes are queued and there is no credit. The
+     * wait's length goes to {@code nexnet.pipe.credit_wait} when it ends.
+     */
+    private void updateCreditWaitLocked(List<Runnable> after) {
+        boolean waiting = !writes.isEmpty() && sendCredit <= 0;
+        if (waiting == creditWaiting) {
+            return;
+        }
+        long now = manager.nanoTime();
+        if (waiting) {
+            creditWaiting = true;
+            creditWaitSince = now;
+            return;
+        }
+        creditWaiting = false;
+        double seconds = Math.max(0, now - creditWaitSince) / 1_000_000_000.0;
+        after.add(() -> manager.recordCreditWait(seconds));
+    }
+
     /** Bytes buffered and not yet read; for tests. */
     long bufferedBytes() {
         synchronized (lock) {
@@ -734,6 +810,11 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     // ------------------------------------------------------------------ helpers (lock held)
 
     private void pumpLocked(List<Runnable> after) {
+        pumpWritesLocked(after);
+        updateCreditWaitLocked(after);
+    }
+
+    private void pumpWritesLocked(List<Runnable> after) {
         if ((state & PipeWire.READY) == 0 || id == 0 || sessionClosed) {
             return;
         }
@@ -774,6 +855,7 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
             WriteOp op = writes.poll();
             after.add(() -> op.future.completeExceptionally(error));
         }
+        updateCreditWaitLocked(after);
     }
 
     private void clearInputLocked(List<Runnable> after) {

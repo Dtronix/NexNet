@@ -13,7 +13,8 @@ import org.jspecify.annotations.Nullable;
  * Live state of one session, read when {@link Diagnostics#snapshot} was called. Mirrors the C#
  * {@code NexusSessionSnapshot}: the same fields, in the same order, camelCased. Durations are {@link NexusTimeSpan}s.
  *
- * <p>A value this runtime does not track yet is null; see each accessor. The values are read one at a time, so they
+ * <p>{@link Diagnostics#snapshot} sets every value the C# snapshot has; a nullable value is null only where C#'s is
+ * (see each accessor) or for a session without an invocation runtime. The values are read one at a time, so they
  * are not an atomic picture. A snapshot exposes internal state (IDs, sizes, timings): do not serve it to
  * unauthenticated callers.
  */
@@ -57,18 +58,18 @@ public final class NexusSessionSnapshot {
      *                     the handshake
      * @param state the connection state
      * @param isEstablished true once the handshake completed
-     * @param connected the time since the transport connected, or null when not tracked
-     * @param sinceLastReceived the time since a frame was last received, or null when not tracked
-     * @param sinceLastSent the time since data was last written, or null when nothing was or it is not tracked
-     * @param flushInProgress how long the flush in progress has run, or null when none runs or it is not tracked
-     * @param budget the session budget, or null when not tracked
-     * @param invocations the invocations in both directions, or null when not tracked
+     * @param connected the time since the transport connected
+     * @param sinceLastReceived the time since a frame was last received
+     * @param sinceLastSent the time since data was last written, or null when nothing was
+     * @param flushInProgress how long the flush in progress has run, or null when none runs
+     * @param budget the session budget
+     * @param invocations the invocations in both directions
      * @param pipes the pipes holding a receive window
      * @param largeMessages the arguments and results larger than one frame in transfer
-     * @param framesSent the frames written, or null when not tracked
-     * @param bytesSent the bytes written, or null when not tracked
-     * @param framesReceived the frames read, or null when not tracked
-     * @param bytesReceived the bytes read, or null when not tracked
+     * @param framesSent the frames written
+     * @param bytesSent the bytes written
+     * @param framesReceived the frames read
+     * @param bytesReceived the bytes read
      */
     public NexusSessionSnapshot(long id, boolean isServer, String transport, @Nullable String endpoint, @Nullable Boolean isSecure, @Nullable NexusTimeSpan pingInterval, ConnectionState state, boolean isEstablished, @Nullable NexusTimeSpan connected, @Nullable NexusTimeSpan sinceLastReceived, @Nullable NexusTimeSpan sinceLastSent, @Nullable NexusTimeSpan flushInProgress, @Nullable NexusBudgetSnapshot budget, @Nullable NexusInvocationSnapshot invocations, List<NexusPipeSnapshot> pipes, List<NexusLargeMessageSnapshot> largeMessages, @Nullable Long framesSent, @Nullable Long bytesSent, @Nullable Long framesReceived, @Nullable Long bytesReceived) {
         this.id = id;
@@ -167,7 +168,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The time since the transport connected, or null when not tracked.
+     * The time since the transport connected.
      *
      * @return the value
      */
@@ -176,7 +177,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The time since a frame was last received, or null when not tracked.
+     * The time since a frame was last received.
      *
      * @return the value
      */
@@ -185,7 +186,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The time since data was last written, or null when nothing was or it is not tracked.
+     * The time since data was last written, or null when nothing was.
      *
      * @return the value
      */
@@ -194,7 +195,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * How long the flush in progress has run, or null when none runs or it is not tracked.
+     * How long the flush in progress has run, or null when none runs.
      *
      * @return the value
      */
@@ -203,7 +204,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The session budget, or null when not tracked.
+     * The session budget.
      *
      * @return the value
      */
@@ -212,7 +213,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The invocations in both directions, or null when not tracked.
+     * The invocations in both directions.
      *
      * @return the value
      */
@@ -239,7 +240,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The frames written, or null when not tracked.
+     * The frames written.
      *
      * @return the value
      */
@@ -248,7 +249,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The bytes written, or null when not tracked.
+     * The bytes written.
      *
      * @return the value
      */
@@ -257,7 +258,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The frames read, or null when not tracked.
+     * The frames read.
      *
      * @return the value
      */
@@ -266,7 +267,7 @@ public final class NexusSessionSnapshot {
     }
 
     /**
-     * The bytes read, or null when not tracked.
+     * The bytes read.
      *
      * @return the value
      */

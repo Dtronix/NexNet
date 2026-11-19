@@ -7,13 +7,21 @@ import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.NexusException;
 import com.dtronix.nexnet.NexusMessageTooLargeException;
 import com.dtronix.nexnet.NexusRemoteInvocationException;
+import com.dtronix.nexnet.NexusTimeSpan;
 import com.dtronix.nexnet.NexusUnauthorizedException;
 import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.collections.NexusListClient;
+import com.dtronix.nexnet.diagnostics.NexusBudgetSnapshot;
+import com.dtronix.nexnet.diagnostics.NexusDirection;
+import com.dtronix.nexnet.diagnostics.NexusInvocationSnapshot;
+import com.dtronix.nexnet.diagnostics.NexusLargeMessageKind;
+import com.dtronix.nexnet.diagnostics.NexusLargeMessageSnapshot;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
+import com.dtronix.nexnet.metrics.MetricTags;
+import com.dtronix.nexnet.metrics.NexusInstruments;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.pipes.PipeManager;
@@ -36,8 +44,10 @@ import com.dtronix.nexnet.spi.PipeArgumentWriter;
 import com.dtronix.nexnet.spi.ProxyInvoker;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,7 +102,19 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     /** A large message this side is sending. */
     private static final class OutgoingStream {
+        final int id;
+        final int kind;
+        final int length;
         volatile boolean aborted;
+        volatile long sent;
+        volatile long lastProgress;
+
+        OutgoingStream(int id, int kind, int length, long now) {
+            this.id = id;
+            this.kind = kind;
+            this.length = length;
+            this.lastProgress = now;
+        }
     }
 
     /** How a stream this side was sending ended. */
@@ -101,10 +123,14 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     /** One pool of execution slots and its queue. */
     private static final class Pool {
         final ArrayDeque<InboundInvocation> queue = new ArrayDeque<>();
+        final int slots;
+        final Map<String, String> tags;
         int free;
 
-        Pool(int slots) {
+        Pool(int slots, boolean separate) {
+            this.slots = slots;
             this.free = slots;
+            this.tags = Collections.singletonMap(MetricTags.INVOCATION_POOL, separate ? "separate" : "normal");
         }
     }
 
@@ -156,8 +182,8 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         budget.tryReserve(Math.min((long) advertised * QUEUE_RESERVATION_PER_CREDIT,
             Math.max(0, options.sessionBudget() - session.options().maxMessageSize())));
         this.inboundCredits = new AtomicInteger(advertised);
-        this.normalPool = new Pool(options.maxConcurrentInvocations());
-        this.separatePool = new Pool(options.maxSeparatePoolInvocations());
+        this.normalPool = new Pool(options.maxConcurrentInvocations(), false);
+        this.separatePool = new Pool(options.maxSeparatePoolInvocations(), true);
         this.receiver = new LargeMessageReceiver(new ReceiverOwner(), budget, session.options().maxMessageSize(),
             session::nanoTime);
         // Progress (specification section 9): a large message whose data stops arriving ends the session (Stalled).
@@ -330,6 +356,145 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         synchronized (lock) {
             return normalPool.queue.size() + separatePool.queue.size() + running.size();
         }
+    }
+
+    // ------------------------------------------------------------------ diagnostics (snapshots and metrics)
+
+    /**
+     * The session budget as a snapshot.
+     *
+     * @return the snapshot
+     */
+    public NexusBudgetSnapshot budgetSnapshot() {
+        return new NexusBudgetSnapshot(budget.limit(), budget.reserved());
+    }
+
+    /**
+     * The invocations in both directions (C# {@code NexusInvocationSnapshot}).
+     *
+     * @param nowNanos the session clock ({@link NexusSession#nanoTime()})
+     * @return the snapshot
+     */
+    public NexusInvocationSnapshot snapshot(long nowNanos) {
+        int queued;
+        int executing;
+        int separateQueued;
+        int separateExecuting;
+        NexusTimeSpan oldest;
+        NexusTimeSpan separateOldest;
+        int awaiting;
+        synchronized (lock) {
+            queued = normalPool.queue.size();
+            executing = executingLocked(normalPool);
+            separateQueued = separatePool.queue.size();
+            separateExecuting = executingLocked(separatePool);
+            oldest = oldestWaitLocked(normalPool, nowNanos);
+            separateOldest = oldestWaitLocked(separatePool, nowNanos);
+            awaiting = outstanding.size();
+        }
+        return new NexusInvocationSnapshot(queued, executing, normalPool.slots, Math.max(0, inboundCredits.get()),
+            gate.available(), gate.waiting(), awaiting, 0, oldest, separateQueued, separateExecuting,
+            separatePool.slots, separateOldest);
+    }
+
+    /**
+     * Invocations received and waiting for an execution slot of one pool.
+     *
+     * @param separate true for the separate pool
+     * @return the count
+     */
+    public int queued(boolean separate) {
+        synchronized (lock) {
+            return (separate ? separatePool : normalPool).queue.size();
+        }
+    }
+
+    /**
+     * Invocations holding an execution slot of one pool.
+     *
+     * @param separate true for the separate pool
+     * @return the count
+     */
+    public int executing(boolean separate) {
+        synchronized (lock) {
+            return executingLocked(separate ? separatePool : normalPool);
+        }
+    }
+
+    /**
+     * Calls waiting for the server to return invocation credit.
+     *
+     * @return the count
+     */
+    public int creditWaits() {
+        return gate.waiting();
+    }
+
+    /**
+     * Large arguments and results being received.
+     *
+     * @return the count
+     */
+    public int largeMessagesInbound() {
+        return receiver.count();
+    }
+
+    /**
+     * Large arguments and results being sent.
+     *
+     * @return the count
+     */
+    public int largeMessagesOutbound() {
+        synchronized (lock) {
+            return outgoingStreams.size();
+        }
+    }
+
+    /**
+     * The arguments and results larger than one frame in transfer, received ones first.
+     *
+     * @param nowNanos the session clock ({@link NexusSession#nanoTime()})
+     * @return the snapshots
+     */
+    public List<NexusLargeMessageSnapshot> largeMessageSnapshots(long nowNanos) {
+        List<NexusLargeMessageSnapshot> result = new ArrayList<>();
+        receiver.addSnapshots(result, nowNanos);
+        List<OutgoingStream> sending;
+        synchronized (lock) {
+            sending = new ArrayList<>(outgoingStreams.values());
+        }
+        for (OutgoingStream stream : sending) {
+            result.add(new NexusLargeMessageSnapshot(NexusDirection.OUTBOUND,
+                stream.kind == KIND_ARGUMENT ? NexusLargeMessageKind.ARGUMENT : NexusLargeMessageKind.RESULT,
+                stream.id, stream.length, stream.sent, since(nowNanos, stream.lastProgress), false));
+        }
+        return result;
+    }
+
+    private static int executingLocked(Pool pool) {
+        return Math.max(0, pool.slots - pool.free);
+    }
+
+    private static @Nullable NexusTimeSpan oldestWaitLocked(Pool pool, long nowNanos) {
+        InboundInvocation head = pool.queue.peek();
+        return head == null ? null : since(nowNanos, head.queuedNanos);
+    }
+
+    /** The time from {@code thenNanos} to {@code nowNanos}, in whole milliseconds as C# reports it. */
+    static NexusTimeSpan since(long nowNanos, long thenNanos) {
+        return NexusTimeSpan.ofMillis(Math.max(0, nowNanos - thenNanos) / 1_000_000);
+    }
+
+    /** Records {@code nexnet.large_message.aborts}. */
+    void recordLargeMessageAbort(boolean inbound, int reason) {
+        if (!session.hasMetricsSinks()) {
+            return;
+        }
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put(MetricTags.DIRECTION, inbound ? "inbound" : "outbound");
+        tags.put(MetricTags.ABORT_REASON, reason == ABORT_BUSY ? "busy" : reason == ABORT_TOO_LARGE ? "too_large"
+            : "cancelled");
+        session.recordMetric(NexusInstruments.LARGE_MESSAGE_ABORTS, 1, Collections.unmodifiableMap(tags));
     }
 
     // ------------------------------------------------------------------ outbound
@@ -663,7 +828,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
      */
     private void stream(int id, int kind, int innerType, byte[] body, Condition canceled, StreamCallback callback) {
         int key = id | (kind << 16);
-        OutgoingStream stream = new OutgoingStream();
+        OutgoingStream stream = new OutgoingStream(id, kind, body.length, session.nanoTime());
         synchronized (lock) {
             outgoingStreams.put(key, stream);
         }
@@ -717,12 +882,15 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
                 return StreamEnd.REFUSED;
             }
             if (canceled.test()) {
+                recordLargeMessageAbort(false, ABORT_CANCELLED);
                 session.send(abortFrame(id, kind, ABORT_CANCELLED));
                 return StreamEnd.CANCELED;
             }
             int count = Math.min(body.length - offset, Frame.MAX_BODY_LENGTH);
             previous = session.send(Frame.of(MessageTypes.MESSAGE_CHUNK, id | (kind << 16), body, offset, count));
             offset += count;
+            stream.sent = offset;
+            stream.lastProgress = session.nanoTime();
         }
     }
 
@@ -805,6 +973,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             InboundInvocation invocation = new InboundInvocation(this, id, methodId, flags, body, argumentsOffset,
                 argumentsLength, reserved, separate, sessionCancellation);
             Pool pool = separate ? separatePool : normalPool;
+            invocation.queuedNanos = session.nanoTime();
             synchronized (lock) {
                 if (closed) {
                     return;
@@ -843,7 +1012,13 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         if (start == null) {
             return;
         }
+        boolean metered = session.hasMetricsSinks();
+        long now = metered ? session.nanoTime() : 0;
         for (InboundInvocation invocation : start) {
+            if (metered) {
+                session.recordMetric(NexusInstruments.INVOCATION_QUEUE_WAIT,
+                    Math.max(0, now - invocation.queuedNanos) / 1_000_000_000.0, pool.tags);
+            }
             // Dequeued for execution: the server may queue another (specification section 8).
             returnInvocationCredit();
             NexusExecutors.execute(invocationExecutor, () -> run(invocation));
@@ -1217,9 +1392,13 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         }
         if (reason == ABORT_CANCELLED || reason == ABORT_ACK) {
             // From the sender of a stream this side is receiving.
+            if (reason == ABORT_CANCELLED) {
+                recordLargeMessageAbort(true, reason);
+            }
             receiver.onAbort(id, kind, reason);
             return;
         }
+        recordLargeMessageAbort(false, reason);
         // From the receiver of a stream this side is sending: stop it (the stream answers with Ack).
         int key = id | (kind << 16);
         OutboundCall<?> call = null;
@@ -1363,6 +1542,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
         @Override
         public void sendAbort(int invocationId, int kind, int reason) {
+            recordLargeMessageAbort(true, reason);
             session.controlSender().requestAbort(invocationId, kind, reason);
         }
 

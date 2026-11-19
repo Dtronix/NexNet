@@ -154,11 +154,15 @@ final class ChannelReaderImpl<T> implements NexusChannelReader<T> {
         } catch (MsgPackException | NexusMessageTooLargeException e) {
             failed = true;
             examined = new byte[0];
+            pipe.setPartialItem(0);
+            manager.recordReset(e instanceof NexusMessageTooLargeException);
             pipe.reset();
             CompletableFuture<List<T>> error = new CompletableFuture<>();
             error.completeExceptionally(e);
             return error;
         }
+        // Diagnostics: the item that has partly arrived, if any (its start is at the head of the pipe's buffer).
+        pipe.setPartialItem(pendingItemLength);
         if (position > 0) {
             pipe.consume(position);
             examined = Arrays.copyOfRange(examined, position, examined.length);
