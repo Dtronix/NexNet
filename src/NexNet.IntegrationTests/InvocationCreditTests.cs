@@ -23,10 +23,12 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sent = ArrivedInvocations(serverConfig, 3);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueEvent = async _ =>
         {
             Interlocked.Increment(ref received);
+            running.TrySetResult();
             await release.Task;
             return 1;
         });
@@ -35,10 +37,12 @@ internal class InvocationCreditTests : BaseTests
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var calls = Enumerable.Range(0, 4).Select(_ => client.Proxy.ServerTaskValue().AsTask()).ToArray();
+        // The tap sees frames as they arrive, before the session starts running them: wait for both.
         await sent.Timeout(T(1));
+        await running.Task.Timeout(T(1));
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
-        await Assert.That(received).IsEqualTo(1);
+        await Assert.That(Volatile.Read(ref received)).IsEqualTo(1);
         await WaitForState(client, ConnectionState.Connected);
 
         release.SetResult();
