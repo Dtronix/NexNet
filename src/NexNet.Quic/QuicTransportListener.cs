@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Threading;
@@ -11,7 +12,7 @@ using NexNet.Transports;
 
 namespace NexNet.Quic;
 
-internal class QuicTransportListener : IPendingTransportListener
+internal class QuicTransportListener : IPendingTransportListener, IBoundTransportListener
 {
     private readonly QuicServerConfig _config;
     private readonly QuicListener _listener;
@@ -20,7 +21,12 @@ internal class QuicTransportListener : IPendingTransportListener
     {
         _config = config;
         _listener = listener;
+        // The UDP end point msquic bound; a configured port 0 resolves to the picked port here.
+        BoundEndPoint = listener.LocalEndPoint;
     }
+
+    /// <inheritdoc />
+    public EndPoint? BoundEndPoint { get; }
 
     public ValueTask CloseAsync(bool linger)
     {

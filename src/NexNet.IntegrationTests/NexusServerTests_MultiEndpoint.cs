@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Quic;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -143,6 +144,43 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             Assert.That(server.GetSnapshot().Endpoints[0].Address, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 0).ToString()),
                 "A stopped endpoint reports its configured address.");
         }
+    }
+
+    [Test]
+    public async Task BoundEndPoint_QuicPortZero_ReportsPickedPortClientsConnectTo()
+    {
+        if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
+            Assert.Ignore("QUIC (msquic) is not available on this platform.");
+
+        var multi = CreateMultiEndpointServer(null,
+            (_, config) =>
+            {
+                if (config is QuicServerConfig quic)
+                    quic.EndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+            },
+            Type.Tcp, Type.Quic);
+        var server = multi.Server;
+        var name = multi.Configs[Type.Quic].TransportName;
+        Assert.That(server.Endpoints.Single(e => e.Name == name).BoundEndPoint, Is.Null, "Nothing is bound before start.");
+
+        await server.StartAsync().Timeout(1);
+
+        var bound = server.Endpoints.Single(e => e.Name == name).BoundEndPoint as IPEndPoint;
+        Assert.That(bound, Is.Not.Null, "QUIC: no bound end point.");
+        Assert.That(bound!.Port, Is.Not.Zero, "QUIC: port 0 was not resolved.");
+        Assert.That(bound.Address, Is.EqualTo(IPAddress.Loopback));
+        Assert.That(server.GetSnapshot().Endpoints.Single(e => e.Name == name).Address, Is.EqualTo(bound.ToString()));
+
+        var clientConfig = (QuicClientConfig)multi.CreateClientConfig(Type.Quic);
+        clientConfig.EndPoint = bound;
+        var (client, _) = CreateClient(clientConfig);
+        await client.ConnectAsync().Timeout(5);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected), "QUIC client did not connect to the picked port.");
+
+        await server.StopAsync().Timeout(2);
+        Assert.That(server.Endpoints.Single(e => e.Name == name).BoundEndPoint, Is.Null, "Stop clears the bound end point.");
+        Assert.That(server.GetSnapshot().Endpoints.Single(e => e.Name == name).Address,
+            Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 0).ToString()), "A stopped endpoint reports its configured address.");
     }
 
     [Test]
