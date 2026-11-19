@@ -9,6 +9,7 @@ using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.Collections;
 using NexNet.Invocation;
+using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
@@ -18,14 +19,14 @@ namespace NexNet.InteropServer;
 
 /// <summary>
 /// One <see cref="NexusServer{TServerNexus,TClientProxy}"/> exposing every <see cref="InteropEndpointKind"/> at once:
-/// TCP (primary), TLS, UDS, and HttpSocket and WebSocket over HTTP and HTTPS through its
-/// <see cref="InteropServerHost"/>. Created by <see cref="InteropServerHost.StartAsync{TServerNexus,TClientProxy}"/>
+/// TCP (primary), TLS, UDS, QUIC (where msquic is available), and HttpSocket and WebSocket over HTTP and HTTPS through
+/// its <see cref="InteropServerHost"/>. Created by <see cref="InteropServerHost.StartAsync{TServerNexus,TClientProxy}"/>
 /// or <see cref="InteropServerHost.AddServerAsync{TServerNexus,TClientProxy}"/>.
 /// </summary>
 /// <remarks>
 /// NexNet does not report the port a TCP listener bound, so the TCP and TLS listeners do not bind port 0: the first
 /// start picks free ports and retries with new ones while a port turns out to be taken. Restarts keep the ports.
-/// Kestrel binds port 0.
+/// Kestrel and the QUIC listener bind port 0; QUIC keeps the port it was given on restarts.
 /// </remarks>
 public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable, IInteropServerLifetime
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
@@ -120,6 +121,24 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
             [InteropEndpointKind.WebSocketTls] = webSocketTls,
         };
 
+        // QUIC is C#-only (no other client language implements it) and needs msquic; without it the server has no
+        // QUIC endpoint and matrix rows over QUIC are skipped.
+        if (InteropEndpointKinds.IsQuicSupported)
+        {
+            configs[InteropEndpointKind.Quic] = new QuicServerConfig
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, 0),
+                SslServerAuthenticationOptions = new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = host.ServerCertificate,
+                    ClientCertificateRequired = false,
+                    AllowRenegotiation = false,
+                    EnabledSslProtocols = SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                },
+            };
+        }
+
         var tokenValidator = options.TokenValidator;
         foreach (var (kind, config) in configs)
         {
@@ -147,6 +166,8 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
 
         Server.AddListener(configs[InteropEndpointKind.TcpTls], InteropEndpointKind.TcpTls.GetEndpointName());
         Server.AddListener(configs[InteropEndpointKind.Uds], InteropEndpointKind.Uds.GetEndpointName());
+        if (configs.TryGetValue(InteropEndpointKind.Quic, out var quic))
+            Server.AddListener(quic, InteropEndpointKind.Quic.GetEndpointName());
     }
 
     /// <summary>
@@ -201,6 +222,16 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
         if (!_portsAssigned)
         {
             _portsAssigned = true;
+            IPEndPoint? quicEndPoint = null;
+            if (_configs.TryGetValue(InteropEndpointKind.Quic, out var quicConfig))
+            {
+                // Bound on port 0: keep the picked port for restarts.
+                var quicName = InteropEndpointKind.Quic.GetEndpointName();
+                quicEndPoint = Server.Endpoints.Single(e => e.Name == quicName).BoundEndPoint as IPEndPoint
+                               ?? throw new InvalidOperationException("The QUIC listener reported no bound end point.");
+                ((QuicServerConfig)quicConfig).EndPoint = quicEndPoint;
+            }
+
             Endpoints = new InteropEndpoints(
                 (IPEndPoint)tcp.EndPoint,
                 (IPEndPoint)tls.EndPoint,
@@ -208,7 +239,8 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
                 AspUri(Host.HttpBaseUri, InteropEndpointKind.HttpSocket, "http"),
                 AspUri(Host.HttpsBaseUri, InteropEndpointKind.HttpSocketTls, "https"),
                 AspUri(Host.HttpBaseUri, InteropEndpointKind.WebSocket, "ws"),
-                AspUri(Host.HttpsBaseUri, InteropEndpointKind.WebSocketTls, "wss"));
+                AspUri(Host.HttpsBaseUri, InteropEndpointKind.WebSocketTls, "wss"),
+                quicEndPoint);
         }
     }
 
@@ -238,6 +270,7 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     /// Creates a C# client configuration that connects to <paramref name="kind"/>. TLS endpoints are validated
     /// against <paramref name="trustedRoot"/> (default: the F08 test CA) with host name verification.
     /// </summary>
+    /// <exception cref="NotSupportedException">The server has no endpoint of <paramref name="kind"/> (QUIC without msquic).</exception>
     /// <param name="kind">The endpoint to connect to.</param>
     /// <param name="trustedRoot">The only root CA the client trusts; null for the test CA.</param>
     public ClientConfig CreateClientConfig(InteropEndpointKind kind, X509Certificate2? trustedRoot = null)
@@ -275,6 +308,13 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
             {
                 Url = Endpoints.WebSocketTls,
                 SslClientAuthenticationOptions = Tls(null),
+            },
+            InteropEndpointKind.Quic => new QuicClientConfig
+            {
+                EndPoint = Endpoints.Quic ?? throw new NotSupportedException(
+                    "The server has no QUIC endpoint: " + (kind.GetUnsupportedReason() ?? "it was not added.")),
+                // msquic needs a DNS server name (SNI) for the handshake.
+                SslClientAuthenticationOptions = Tls("localhost"),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };

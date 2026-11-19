@@ -26,6 +26,13 @@ public enum ClientTransport
 
     /// <summary>WebSocket over HTTPS (<c>wss://</c>).</summary>
     WebSocketTls,
+
+    /// <summary>
+    /// QUIC (NexNet.Quic). C#-only: no other client language implements it, so ported tests usually add it through
+    /// <see cref="ClientMatrixAttribute.CSharpTransports"/>. Needs msquic in the test process; rows are skipped visibly
+    /// without it.
+    /// </summary>
+    Quic,
 }
 
 /// <summary>Conversions and properties of <see cref="ClientTransport"/> values.</summary>
@@ -102,12 +109,14 @@ public static class ClientTransports
         ClientTransport.HttpSocketTls => InteropEndpointKind.HttpSocketTls,
         ClientTransport.WebSocket => InteropEndpointKind.WebSocket,
         ClientTransport.WebSocketTls => InteropEndpointKind.WebSocketTls,
+        ClientTransport.Quic => InteropEndpointKind.Quic,
         _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
     };
 
-    /// <summary>True when the transport is encrypted (TLS, HTTPS, WSS).</summary>
+    /// <summary>True when the transport is encrypted (TLS, HTTPS, WSS, QUIC).</summary>
     public static bool IsSecure(this ClientTransport transport)
-        => transport is ClientTransport.TcpTls or ClientTransport.HttpSocketTls or ClientTransport.WebSocketTls;
+        => transport is ClientTransport.TcpTls or ClientTransport.HttpSocketTls or ClientTransport.WebSocketTls
+            or ClientTransport.Quic;
 
     /// <summary>The capability a client needs for <paramref name="transport"/>, or <see cref="ClientCapabilities.None"/>.</summary>
     public static ClientCapabilities RequiredCapability(this ClientTransport transport) => transport switch
@@ -115,6 +124,7 @@ public static class ClientTransports
         ClientTransport.Tcp or ClientTransport.TcpTls => ClientCapabilities.Tcp,
         ClientTransport.Uds => ClientCapabilities.Uds,
         ClientTransport.HttpSocket or ClientTransport.HttpSocketTls => ClientCapabilities.HttpSocket,
+        ClientTransport.Quic => ClientCapabilities.Quic,
         _ => ClientCapabilities.None,
     };
 }
@@ -153,7 +163,7 @@ public enum ClientCapabilities
     /// <summary>Connects over a Unix domain socket.</summary>
     Uds = 1 << 7,
 
-    /// <summary>Connects over QUIC. Reserved: the interop server has no QUIC endpoint yet.</summary>
+    /// <summary>Connects over QUIC (<see cref="ClientTransport.Quic"/>). Only the C# client has it.</summary>
     Quic = 1 << 8,
 
     /// <summary>Runs its timers on a test clock (<see cref="IClientUnderTest.AdvanceTimeAsync"/>).</summary>

@@ -62,14 +62,17 @@ public static class ClientLanguages
 
     private static readonly ClientTransport[] BrowserTransports = [ClientTransport.WebSocket, ClientTransport.WebSocketTls];
 
+    // QUIC is C#-only (msquic); Node and Java implement every other transport (Java: no UDS, D4).
+    private static readonly ClientTransport[] NodeTransports = ClientTransports.All.Where(t => t != ClientTransport.Quic).ToArray();
+
     private static readonly ConcurrentDictionary<string, ClientLanguageInfo> Languages = new(StringComparer.Ordinal)
     {
-        [CSharp] = new(CSharp, ClientTransports.All, Everything),
-        [Node] = new(Node, ClientTransports.All, Everything),
+        [CSharp] = new(CSharp, ClientTransports.All, Everything | ClientCapabilities.Quic),
+        [Node] = new(Node, NodeTransports, Everything),
         [BrowserChromium] = new(BrowserChromium, BrowserTransports, Browser),
         [BrowserFirefox] = new(BrowserFirefox, BrowserTransports, Browser),
         [BrowserWebKit] = new(BrowserWebKit, BrowserTransports, Browser),
-        [Java] = new(Java, ClientTransports.All.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~ClientCapabilities.Uds),
+        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~ClientCapabilities.Uds),
     };
 
     /// <summary>

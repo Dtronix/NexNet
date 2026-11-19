@@ -28,8 +28,8 @@ namespace NexNet.IntegrationTests.Pipes;
 /// done, which the test waits for with <see cref="WaitForReportAsync"/>.
 /// </para>
 /// <para>
-/// The QUIC rows of the C# suite run on WebSocketTls: the interop server has no QUIC endpoint and no other client
-/// language has QUIC.
+/// The C# suite's QUIC rows are kept as C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16): no
+/// other client language has QUIC.
 /// </para>
 /// </remarks>
 internal abstract class PipeMatrixTests(LanguageHostPool hosts) : BaseTests
@@ -204,7 +204,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
         "no host handler can write to a pipe the server opened or report what the client's pipe saw (follow-up card)";
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReceivesFullFrames(ClientTarget target)
     {
         // 4 MiB in maximum-size frames: exceeds the transport's receive pause threshold, the pipe's high watermark
@@ -227,7 +227,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(ClientTarget target)
     {
         const int iterations = 21;
@@ -249,7 +249,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(ClientTarget target)
     {
         const int length = 1024 * 32;
@@ -275,7 +275,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderReceivesData(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -293,7 +293,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterSendsData(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -311,7 +311,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -331,7 +331,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponCompleteAsync(ClientTarget target)
     {
         RequireInProc(target, NoPipeHandler);
@@ -365,7 +365,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderCompletesUponDisconnection(ClientTarget target)
     {
         RequireInProc(target, NoPipeHandler);
@@ -390,7 +390,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponDisconnection(ClientTarget target)
     {
         RequireInProc(target, NoPipeHandler);
@@ -419,7 +419,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderCompletesUponWriterCompletion(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -439,7 +439,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponWriterCompletion(ClientTarget target)
     {
         RequireInProc(target, NoPipeHandler);
@@ -470,7 +470,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -490,7 +490,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -512,7 +512,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeNotifiesWhenReady(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -527,17 +527,17 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task Client_PipeReadyCancelsOnDisconnection(ClientTarget target)
         => PipeCancelsOnDisconnection(target, pipe => pipe.WhenReadyAsync());
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task Client_PipeCompleteCancelsOnDisconnection(ClientTarget target)
         => PipeCancelsOnDisconnection(target, pipe => pipe.WhenCompletedAsync());
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeNotifiesWhenComplete(ClientTarget target)
     {
         var completedInvocation = false;
@@ -560,7 +560,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(ClientTarget target)
     {
         // C#-runtime specific: only a C# test can hand the client a pipe object of another nexus.
@@ -579,7 +579,7 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_ThrowsWhenPassingUsedPipe(ClientTarget target)
     {
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = (_, _) => ValueTask.CompletedTask);

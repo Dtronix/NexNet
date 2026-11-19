@@ -21,11 +21,12 @@ public sealed class ClientSpec
 
     /// <summary>
     /// Where to connect, as <see cref="InteropEndpoints.GetAddress"/> writes it: <c>tcp://host:port</c>,
-    /// <c>tls://host:port</c>, <c>uds:</c> followed by the socket path, or the <c>http(s)://</c> / <c>ws(s)://</c> URL.
+    /// <c>tls://host:port</c>, <c>uds:</c> followed by the socket path, the <c>http(s)://</c> / <c>ws(s)://</c> URL, or
+    /// <c>quic://host:port</c>.
     /// </summary>
     public string Address { get; set; } = "";
 
-    /// <summary>TLS server name for TLS over TCP; null uses <c>localhost</c>. HTTP transports use the URL host.</summary>
+    /// <summary>TLS server name for TLS over TCP and QUIC; null uses <c>localhost</c>. HTTP transports use the URL host.</summary>
     public string? TlsServerName { get; set; }
 
     /// <summary>PEM of the only root CA the client trusts (<see cref="ClientCapabilities.CustomCa"/>); null for the system store.</summary>

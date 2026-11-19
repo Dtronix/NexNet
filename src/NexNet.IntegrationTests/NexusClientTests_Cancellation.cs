@@ -132,14 +132,14 @@ internal abstract class CancellationMatrixTests(LanguageHostPool hosts) : BaseTe
 
 /// <summary>Cancellation of invocations the client under test makes.</summary>
 /// <remarks>
-/// The QUIC rows of the C# suite run on WebSocketTls: the interop server has no QUIC endpoint and no other client
-/// language has QUIC.
+/// The C# suite's QUIC rows are kept as C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16): no
+/// other client language has QUIC.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : CancellationMatrixTests(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(ClientTarget target)
         => ClientSendsCancellationOnTimeout(
             target,
@@ -147,7 +147,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : Cancellat
             proxy => proxy.ServerTaskWithCancellation(RemoteCancel.After(100)));
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(ClientTarget target)
         => ClientSendsCancellationOnTimeout(
             target,
@@ -155,7 +155,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : Cancellat
             proxy => proxy.ServerTaskWithValueAndCancellation(1234, RemoteCancel.After(100)));
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(ClientTarget target)
         => ClientSendsCancellationOnTimeout(
             target,
@@ -167,7 +167,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : Cancellat
             async proxy => await proxy.ServerTaskValueWithCancellation(RemoteCancel.After(100)));
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(ClientTarget target)
         => ClientSendsCancellationOnTimeout(
             target,
@@ -179,7 +179,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : Cancellat
             async proxy => await proxy.ServerTaskValueWithValueAndCancellation(1234, RemoteCancel.After(100)));
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientDoesNotSendCancellationAfterCompletion(ClientTarget target)
     {
         var cancellations = 0;

@@ -45,8 +45,9 @@ public class ClientMatrixTests
         await Assert.That(Of("browser-chromium")).IsEquivalentTo(
             new[] { ClientTransport.WebSocket, ClientTransport.WebSocketTls }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
         await Assert.That(Of("java")).DoesNotContain(ClientTransport.Uds);
-        await Assert.That(Of("java").Length).IsEqualTo(ClientTransports.All.Count - 1);
-        await Assert.That(rows.All(r => r.SkipReason == null)).IsTrue();
+        await Assert.That(Of("java")).DoesNotContain(ClientTransport.Quic);
+        await Assert.That(Of("java").Length).IsEqualTo(ClientTransports.All.Count - 2);
+        await Assert.That(rows.Where(r => r.Transport != ClientTransport.Quic).All(r => r.SkipReason == null)).IsTrue();
     }
 
     [Test]
@@ -79,9 +80,9 @@ public class ClientMatrixTests
     [Test]
     public async Task TransportOverride_UnknownTransport_Throws()
     {
-        var error = await Assert.That(() => ClientTransports.Select(ClientLanguages.Get("csharp"), "Tcp,Quic"))
+        var error = await Assert.That(() => ClientTransports.Select(ClientLanguages.Get("csharp"), "Tcp,Smoke"))
             .ThrowsExactly<ArgumentException>();
-        await Assert.That(error!.Message).Contains("Quic").And.Contains(ClientTransports.EnvironmentVariable);
+        await Assert.That(error!.Message).Contains("Smoke").And.Contains(ClientTransports.EnvironmentVariable);
         await Assert.That(() => ClientTransports.Select(ClientLanguages.Get("csharp"), "2")).ThrowsExactly<ArgumentException>();
     }
 
@@ -158,6 +159,52 @@ public class ClientMatrixTests
         var properties = TestContext.Current!.Metadata.TestDetails.CustomProperties;
         await Assert.That(properties[ClientMatrixAttribute.LanguageProperty]).IsEquivalentTo(new[] { target.Language });
         await Assert.That(properties[ClientMatrixAttribute.TransportProperty]).IsEquivalentTo(new[] { target.Transport.ToString() });
+    }
+
+    [Test]
+    public async Task CSharpTransports_AddCSharpRowsOnly()
+    {
+        var rows = new ClientMatrixAttribute
+        {
+            Languages = ["csharp", "node", "java"],
+            Transports = [ClientTransport.Tcp, ClientTransport.WebSocketTls],
+            CSharpTransports = [ClientTransport.Quic, ClientTransport.Tcp],
+        }.GetTargets();
+
+        await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[] { "csharp/Tcp", "csharp/WebSocketTls", "csharp/Quic", "node/Tcp", "node/WebSocketTls", "java/Tcp", "java/WebSocketTls" },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task CSharpTransports_AddToTheEnvironmentTransports()
+    {
+        var rows = new ClientMatrixAttribute { Languages = ["csharp"], CSharpTransports = [ClientTransport.Quic] }.GetTargets(" tcp ");
+        await Assert.That(rows).IsEquivalentTo(
+            new[] { ClientTarget.CSharp(ClientTransport.Tcp), ClientTarget.CSharp(ClientTransport.Quic) },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+    }
+
+    [Test]
+    public async Task Quic_IsCSharpOnly_AndSkippedWithoutMsQuic()
+    {
+        var rows = new ClientMatrixAttribute
+        {
+            Languages = ["csharp", "node", "java", "browser-chromium"],
+            Transports = [ClientTransport.Quic],
+        }.GetTargets();
+
+        string? Reason(string language) => rows.Single(r => r.Language == language).SkipReason;
+
+        if (NexNet.InteropServer.InteropEndpointKinds.IsQuicSupported)
+            await Assert.That(Reason("csharp")).IsNull();
+        else
+            await Assert.That(Reason("csharp")).Contains("msquic");
+        await Assert.That(Reason("node")).Contains("no Quic transport");
+        await Assert.That(Reason("java")).Contains("no Quic transport");
+        await Assert.That(Reason("browser-chromium")).Contains("no Quic transport");
+        await Assert.That(ClientTransport.Quic.IsSecure()).IsTrue();
+        await Assert.That(ClientTransport.Quic.RequiredCapability()).IsEqualTo(ClientCapabilities.Quic);
     }
 
     [Test]

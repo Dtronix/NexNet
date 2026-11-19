@@ -18,7 +18,7 @@ namespace NexNet.IntegrationTests;
 /// <see cref="Harness.CreateClientAsync{TClientNexus, TServerProxy}"/>.
 /// </summary>
 /// <remarks>
-/// The QUIC rows of the C# suite run on WebSocketTls: the client matrix has no QUIC transport yet (H16).
+/// The QUIC rows of the C# suite are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
@@ -65,7 +65,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CurrentServerProxy_ConnectsToServerSuccessfully(ClientTarget target)
     {
         var (serverConfig, created) = await CreateAsync<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy, VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(target);
@@ -76,7 +76,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CurrentServerProxy_InvokesCurrentAndOlderMethodVersions(ClientTarget target)
     {
         var runTaskNewV2 = Signal();
@@ -120,7 +120,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CurrentServerProxy_ConnectToOlderServerFails(ClientTarget target)
     {
         var (_, created) = await CreateAsync<VersionedServerNexusV1_1, VersionedServerNexusV1_1.ClientProxy, VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(target);
@@ -131,7 +131,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OlderServerProxy_ConnectsToServerSuccessfully(ClientTarget target)
     {
         var (serverConfig, created) = await CreateAsync<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy, VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(target);
@@ -142,7 +142,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OlderServerProxy_InvokesCurrentAndOlderMethodVersions(ClientTarget target)
     {
         var runTaskV1_1 = Signal();
@@ -178,7 +178,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OlderServerProxy_ConnectToOlderServerSucceeds(ClientTarget target)
     {
         var (_, created) = await CreateAsync<VersionedServerNexusV1_1, VersionedServerNexusV1_1.ClientProxy, VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(target);
@@ -189,7 +189,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OlderServerProxy_ConnectToOldestServerFails(ClientTarget target)
     {
         var (_, created) = await CreateAsync<VersionedServerNexusV1, VersionedServerNexusV1.ClientProxy, VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(target);
@@ -200,7 +200,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OldestServerProxy_ConnectsToServerSuccessfully(ClientTarget target)
     {
         var (serverConfig, created) = await CreateAsync<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy, VersionedClientNexusV1, VersionedClientNexusV1.ServerProxy>(target);
@@ -211,7 +211,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OldestServerProxy_InvokesCurrentAndOlderMethodVersions(ClientTarget target)
     {
         var verifyVersionV1 = Signal();
@@ -232,7 +232,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CurrentServerProxy_ConnectToOldestServerFails(ClientTarget target)
     {
         var (_, created) = await CreateAsync<VersionedServerNexusV1, VersionedServerNexusV1.ClientProxy, VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(target);
@@ -243,7 +243,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OldestServerProxy_ConnectToOldestServerFails(ClientTarget target)
     {
         // Despite its name, the oldest client connects to the oldest server.
