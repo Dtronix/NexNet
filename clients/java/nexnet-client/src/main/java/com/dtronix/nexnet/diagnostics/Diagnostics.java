@@ -4,13 +4,17 @@ import com.dtronix.nexnet.NexusTimeSpan;
 import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.invocation.InvocationCounters;
+import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.metrics.MetricTags;
 import com.dtronix.nexnet.metrics.MetricsCounters;
+import com.dtronix.nexnet.pipes.PipeCounters;
+import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.pool.PoolCounters;
 import com.dtronix.nexnet.reconnect.ReconnectCounters;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.session.SessionCounters;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.Nullable;
 
@@ -30,7 +34,7 @@ public final class Diagnostics {
      * @return the counters
      */
     public static NexusCounters counters() {
-        int pipes = 0;
+        int pipes = PipeCounters.openPipes();
         int timers = SessionCounters.activeTimers() + ReconnectCounters.pendingDelays() + PoolCounters.healthChecks();
         int subscriptions = MetricsCounters.subscriptions();
         for (CounterSource source : SOURCES) {
@@ -74,12 +78,9 @@ public final class Diagnostics {
     }
 
     /**
-     * A snapshot of the client's current session (C# {@code NexusClient.GetSnapshot()}).
-     *
-     * <p>This runtime does not track every value yet: the transport counters, the timings (other than the ping
-     * interval), the budget and the
-     * invocation queues are null, and the pipe and large-message lists are empty, until the session and invocation
-     * layers expose them.
+     * A snapshot of the client's current session (C# {@code NexusClient.GetSnapshot()}). Every value the C# client
+     * reports is set; only those C# leaves null are null ({@code endpoint} on a client, and a wait or time that has
+     * not started).
      *
      * @param client the client
      * @return the snapshot, or null when the client has no session
@@ -89,6 +90,14 @@ public final class Diagnostics {
         if (session == null) {
             return null;
         }
+        long now = session.nanoTime();
+        InvocationRuntime runtime = session.messageHandler() instanceof InvocationRuntime
+            ? (InvocationRuntime) session.messageHandler() : null;
+        PipeManager pipes = runtime == null ? null : runtime.pipes();
+        List<NexusPipeSnapshot> pipeSnapshots = pipes == null
+            ? Collections.<NexusPipeSnapshot>emptyList() : pipes.snapshots(now);
+        List<NexusLargeMessageSnapshot> largeMessages = runtime == null
+            ? Collections.<NexusLargeMessageSnapshot>emptyList() : runtime.largeMessageSnapshots(now);
         return new NexusSessionSnapshot(
             session.id(),
             false,
@@ -97,18 +106,23 @@ public final class Diagnostics {
             client.isSecure(),
             session.pingIntervalMillis() > 0 ? NexusTimeSpan.ofMillis(session.pingIntervalMillis()) : null,
             client.state(),
-            session.isConnected(),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            Collections.emptyList(),
-            Collections.emptyList(),
-            null,
-            null,
-            null,
-            null);
+            session.isEstablished(),
+            since(now, session.connectedNanos()),
+            since(now, session.lastReceivedNanos()),
+            session.hasSent() ? since(now, session.lastSentNanos()) : null,
+            session.isFlushing() ? since(now, session.flushStartedNanos()) : null,
+            runtime == null ? null : runtime.budgetSnapshot(),
+            runtime == null ? null : runtime.snapshot(now),
+            pipeSnapshots,
+            largeMessages,
+            session.framesSent(),
+            session.bytesSent(),
+            session.framesReceived(),
+            session.bytesReceived());
+    }
+
+    /** The time between two session clock readings, in whole milliseconds as C# reports it. */
+    private static NexusTimeSpan since(long nowNanos, long thenNanos) {
+        return NexusTimeSpan.ofMillis(Math.max(0, nowNanos - thenNanos) / 1_000_000);
     }
 }
