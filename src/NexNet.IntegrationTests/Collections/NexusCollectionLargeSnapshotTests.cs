@@ -1,5 +1,6 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Pipes.Broadcast;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -50,6 +51,70 @@ internal class NexusCollectionLargeSnapshotTests : NexusCollectionBaseTests
         // Changes after the snapshot still arrive.
         await Assert.That(await list.AddAsync(-1).Timeout(5)).IsTrue();
         await Assert.That(list.Count).IsEqualTo(count + 1);
+    }
+
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
+    public async Task LargeRelayedSnapshot_SlowClient_ReceivesEveryItem(Type type)
+    {
+        // A relay serves its clients the snapshot with the same backpressure as a server list (F27).
+        const int count = 100_000;
+
+        CurrentUdsPath = null;
+        CurrentTcpPort = null;
+        var parent = CreateServer(CreateServerConfig(type), _ => { });
+        await using var clientPool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            new NexusClientPoolConfig(CreateClientConfig(type)));
+
+        CurrentUdsPath = null;
+        CurrentTcpPort = null;
+        var relayServer = CreateServer(CreateServerConfig(type), _ => { }, configureCollections: nexus =>
+            nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        var (client, _) = CreateClient(CreateClientConfig(type));
+
+        await parent.StartAsync().Timeout(TestTimeouts.Connect);
+        var sourceList = (NexusListServer<int>)parent.ContextProvider.Rent().Collections.IntListBi;
+        sourceList.TestResetTo(Enumerable.Range(0, count));
+
+        await relayServer.StartAsync().Timeout(TestTimeouts.Connect);
+        var serverRelay = relayServer.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(30);
+        await Assert.That(serverRelay.Count).IsEqualTo(count);
+
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var list = client.Proxy.IntListRelay;
+        var broadcaster = (NexusBroadcastClient<INexusCollectionListMessage>)(object)list;
+
+        // Throttle the client: it reads its snapshot far slower than the relay can write it.
+        var processed = 0;
+        broadcaster.ProcessTestHook = _ =>
+        {
+            if (Interlocked.Increment(ref processed) % 25 == 0)
+                Thread.Sleep(1);
+        };
+
+        try
+        {
+            await Assert.That(await list.EnableAsync().Timeout(30)).IsTrue();
+        }
+        finally
+        {
+            broadcaster.ProcessTestHook = null;
+        }
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+            await Assert.That(list.Count).IsEqualTo(count);
+            await Assert.That(list.SequenceEqual(Enumerable.Range(0, count))).IsTrue();
+        }
+
+        // Changes relayed after the snapshot still arrive.
+        using var addWait = list.WaitForEvent(NexusCollectionChangedAction.Add);
+        await sourceList.AddAsync(-1).Timeout(5);
+        await addWait.Wait();
+        await Assert.That(list.Count).IsEqualTo(count + 1);
+        await Assert.That(list[count]).IsEqualTo(-1);
     }
 
     [Test]
