@@ -64,6 +64,9 @@ internal static class TargetBundleBuilder
             if (string.Equals(options.Get(TestScaffoldingOption), "true", StringComparison.OrdinalIgnoreCase))
                 emitted = emitted.Concat(language.Emit(ir, options, EmitMode.TestScaffolding));
 
+            // D31: the client runtime, beside the generated code (docs/internals/generator-emitted-runtime.md).
+            emitted = emitted.Concat(language.EmitRuntime(options));
+
             files.AddRange(emitted
                 .Select(f => new GeneratedFile(language.Id + "/" + f.Path, f.Content))
                 .OrderBy(f => f.Path, StringComparer.Ordinal));

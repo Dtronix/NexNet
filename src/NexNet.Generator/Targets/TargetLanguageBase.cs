@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
+using NexNet.Generator.Runtime;
 using NexNet.Generator.Serialization;
 
 namespace NexNet.Generator.Targets;
@@ -41,7 +42,55 @@ internal abstract class TargetLanguageBase : ITargetLanguage
             new EquatableArray<TargetOption>(values.ToArray()));
     }
 
-    public virtual IEnumerable<string> ValidateOptions(TargetOptions options) => Array.Empty<string>();
+    /// <summary>Problems with the options every target has (<c>EmitRuntime</c>); overrides add their own.</summary>
+    public virtual IEnumerable<string> ValidateOptions(TargetOptions options)
+    {
+        var emitRuntime = options.Get(EmbeddedRuntime.EmitRuntimeOption);
+        if (emitRuntime != null && !IsBoolean(emitRuntime))
+            yield return "EmitRuntime of the " + Id + " target must be true or false, not '" + emitRuntime + "'";
+    }
+
+    /// <summary>
+    /// <c>EmitRuntime</c> when set; otherwise true, except for the test scaffolding of the in-repo language hosts
+    /// (<c>EmitTestScaffolding=true</c>), which build against the workspace runtime, and when
+    /// <see cref="RuntimeByDefault"/> says no.
+    /// </summary>
+    public bool EmitsRuntime(TargetOptions options)
+        => EmbeddedRuntime.IsEnabled(
+            options,
+            !string.Equals(options.Get(Bundle.TargetBundleBuilder.TestScaffoldingOption), "true", StringComparison.OrdinalIgnoreCase)
+            && RuntimeByDefault(options));
+
+    /// <summary>The implicit <c>EmitRuntime</c> of a target without test scaffolding.</summary>
+    protected virtual bool RuntimeByDefault(TargetOptions options) => true;
+
+    private readonly object _runtimeGate = new();
+    private (TargetOptions Options, IReadOnlyList<GeneratedFile> Files)? _lastRuntime;
+
+    public IReadOnlyList<GeneratedFile> EmitRuntime(TargetOptions options)
+    {
+        if (!EmitsRuntime(options))
+            return Array.Empty<GeneratedFile>();
+
+        // The runtime depends only on the options; validation and the bundle both ask for it.
+        lock (_runtimeGate)
+        {
+            if (_lastRuntime is { } last && last.Options.Equals(options))
+                return last.Files;
+        }
+
+        var files = EmitRuntimeCore(options).ToArray();
+        lock (_runtimeGate)
+            _lastRuntime = (options, files);
+        return files;
+    }
+
+    /// <summary>The runtime files of an enabled runtime (<see cref="EmitRuntime"/>).</summary>
+    protected abstract IEnumerable<GeneratedFile> EmitRuntimeCore(TargetOptions options);
+
+    /// <summary>True for <c>true</c> or <c>false</c>, in any case.</summary>
+    protected static bool IsBoolean(string value)
+        => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
 
     public abstract IEnumerable<string> ExportFiles(ExportIr export, TargetOptions options);
 

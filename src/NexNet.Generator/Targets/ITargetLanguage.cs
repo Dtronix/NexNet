@@ -74,4 +74,16 @@ internal interface ITargetLanguage
 
     /// <summary>Emits the files of this target for the whole IR. Paths follow <see cref="ExportFiles"/>/<see cref="TypeFiles"/>.</summary>
     IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode);
+
+    /// <summary>
+    /// Whether the target emits its client runtime beside the generated code (option <c>EmitRuntime</c>, D31,
+    /// docs/internals/generator-emitted-runtime.md).
+    /// </summary>
+    bool EmitsRuntime(TargetOptions options);
+
+    /// <summary>
+    /// The client runtime files (D31), paths relative to the target's output directory; empty when
+    /// <see cref="EmitsRuntime"/> is false. Independent of the IR. The bundle adds them to the target's files.
+    /// </summary>
+    IReadOnlyList<GeneratedFile> EmitRuntime(TargetOptions options);
 }

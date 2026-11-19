@@ -1,5 +1,6 @@
 using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
+using NexNet.Generator.Runtime;
 
 namespace NexNet.Generator.Targets.JavaScript;
 
@@ -18,7 +19,19 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     /// <summary>Option: <c>true</c> also emits the test scaffolding (<see cref="EmitMode.TestScaffolding"/>).</summary>
     public const string TestScaffoldingOption = Bundle.TargetBundleBuilder.TestScaffoldingOption;
 
-    private static readonly string[] Options = { ModuleNameOption, TestScaffoldingOption };
+    /// <summary>
+    /// Option: how generated code imports the runtime when <c>ModuleName</c> is not set: <c>package</c> (the default,
+    /// <c>@dtronix/nexnet</c>) or <c>relative</c> (<c>./nexnet-runtime/index.js</c>, the emitted runtime). D31.
+    /// </summary>
+    public const string RuntimeImportOption = "RuntimeImport";
+
+    /// <summary>The runtime folder in the output directory (D31).</summary>
+    public const string RuntimeDirectory = "nexnet-runtime";
+
+    /// <summary>The runtime specifier of <c>RuntimeImport=relative</c>, for files at the top of the output directory.</summary>
+    public const string RelativeRuntimeModule = "./" + RuntimeDirectory + "/index.js";
+
+    private static readonly string[] Options = { ModuleNameOption, TestScaffoldingOption, EmbeddedRuntime.EmitRuntimeOption, RuntimeImportOption };
 
     /// <summary>ECMAScript reserved words (strict mode and modules) and TypeScript type keywords.</summary>
     internal static readonly string[] Keywords =
@@ -62,6 +75,69 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     public override INameMapper Names { get; }
 
     protected override IReadOnlyList<string> OptionNames => Options;
+
+    public override IEnumerable<string> ValidateOptions(TargetOptions options)
+    {
+        foreach (var problem in base.ValidateOptions(options))
+            yield return problem;
+
+        var import = options.Get(RuntimeImportOption);
+        if (import != null && !string.Equals(import, "package", StringComparison.OrdinalIgnoreCase) && !IsRelative(options))
+            yield return "RuntimeImport of the javascript target must be package or relative, not '" + import + "'";
+    }
+
+    /// <summary>A <c>ModuleName</c> names the module the runtime comes from, so the runtime is not emitted by default.</summary>
+    protected override bool RuntimeByDefault(TargetOptions options) => options.Get(ModuleNameOption) == null;
+
+    private static bool IsRelative(TargetOptions options)
+        => string.Equals(options.Get(RuntimeImportOption), "relative", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The module specifier generated code imports the runtime from (for top-level files).</summary>
+    internal static string RuntimeModule(TargetOptions options)
+        => options.Get(ModuleNameOption) ?? (IsRelative(options) ? RelativeRuntimeModule : JsSyntax.DefaultRuntimeModule);
+
+    /// <summary>
+    /// D31: the @dtronix/nexnet sources in <c>nexnet-runtime/</c>, each after the runtime header line, with a
+    /// <c>package.json</c> that has the published conditional exports, and <c>LICENSE</c>.
+    /// </summary>
+    protected override IEnumerable<GeneratedFile> EmitRuntimeCore(TargetOptions options)
+    {
+        var header = EmbeddedRuntime.HeaderLine("//") + "\n";
+        foreach (var source in EmbeddedRuntime.Sources(Id))
+            yield return new GeneratedFile(RuntimeDirectory + "/" + source.Path, header + source.Content);
+
+        yield return new GeneratedFile(RuntimeDirectory + "/LICENSE", EmbeddedRuntime.License);
+        yield return new GeneratedFile(RuntimeDirectory + "/package.json", RuntimePackageJson);
+    }
+
+    /// <summary>The <c>package.json</c> of the emitted runtime: the exports of clients/js/packages/nexnet without types.</summary>
+    internal static string RuntimePackageJson { get; } =
+        "{\n"
+        + "  \"name\": \"@dtronix/nexnet\",\n"
+        + "  \"version\": \"" + EmbeddedRuntime.Version + "\",\n"
+        + "  \"description\": \"NexNet client runtime, written by NexNet.Generator. Do not edit.\",\n"
+        + "  \"license\": \"MIT\",\n"
+        + "  \"private\": true,\n"
+        + "  \"type\": \"module\",\n"
+        + "  \"sideEffects\": false,\n"
+        + "  \"engines\": {\n"
+        + "    \"node\": \">=22\"\n"
+        + "  },\n"
+        + "  \"exports\": {\n"
+        + "    \".\": {\n"
+        + "      \"browser\": \"./browser.js\",\n"
+        + "      \"node\": \"./node.js\",\n"
+        + "      \"default\": \"./index.js\"\n"
+        + "    },\n"
+        + "    \"./node\": {\n"
+        + "      \"node\": \"./node.js\"\n"
+        + "    },\n"
+        + "    \"./diagnostics\": {\n"
+        + "      \"default\": \"./diagnostics.js\"\n"
+        + "    },\n"
+        + "    \"./package.json\": \"./package.json\"\n"
+        + "  }\n"
+        + "}\n";
 
     /// <summary>
     /// The proxy and client nexus base escape names of their runtime base class members with a trailing '_'
@@ -179,10 +255,10 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
             return Array.Empty<GeneratedFile>();
 
         var decls = TargetIrWalker.TargetDecls(ir, Flag).Select(d => d.Decl).ToArray();
-        var context = new JsContext(this, ir, decls, options.Get(ModuleNameOption) ?? JsSyntax.DefaultRuntimeModule);
+        var context = new JsContext(this, ir, decls, RuntimeModule(options));
         var users = JsFormatterEmitter.UserFormatters(ir, decls);
         if (mode == EmitMode.TestScaffolding)
-            return JsScaffoldingEmitter.Emit(context, users);
+            return RelocateRuntimeImports(JsScaffoldingEmitter.Emit(context, users), options);
 
         var files = new List<GeneratedFile>();
         foreach (var decl in decls)
@@ -191,7 +267,27 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         files.AddRange(JsSupportEmitter.Emit(context));
         foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
             files.AddRange(JsProxyEmitter.Emit(context, export, users));
-        return files;
+        return RelocateRuntimeImports(files, options);
+    }
+
+    /// <summary>
+    /// With <c>RuntimeImport=relative</c>, a file in a sub-folder (the test scaffolding) reaches the runtime folder
+    /// through '../' per level.
+    /// </summary>
+    private static IEnumerable<GeneratedFile> RelocateRuntimeImports(IEnumerable<GeneratedFile> files, TargetOptions options)
+    {
+        if (options.Get(ModuleNameOption) != null || !IsRelative(options))
+            return files;
+
+        var top = "'" + RelativeRuntimeModule.Substring(0, RelativeRuntimeModule.Length - "index.js".Length);
+        return files.Select(f =>
+        {
+            var depth = f.Path.Count(c => c == '/');
+            if (depth == 0)
+                return f;
+            var up = "'" + string.Concat(Enumerable.Repeat("../", depth)) + RuntimeDirectory + "/";
+            return f with { Content = f.Content.Replace(top, up) };
+        }).ToArray();
     }
 
     /// <summary>Report §3.5, JS column. Only primitives (boolean, number, bigint, string) compare by value in a Map/Set.</summary>
