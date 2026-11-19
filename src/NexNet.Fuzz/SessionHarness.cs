@@ -26,6 +26,23 @@ public static class SessionHarness
 {
     public static TimeSpan SessionTimeout = TimeSpan.FromSeconds(double.TryParse(Environment.GetEnvironmentVariable("NEXNET_FUZZ_SESSION_TIMEOUT"), out var s) ? s : 5);
 
+    /// <summary>
+    /// How long the session harnesses wait for the server greeting after sending a valid preamble and greeting. The
+    /// server always answers these, so only a stalled machine (a parallel test run, a busy CI runner) waits long;
+    /// a realistic bound rather than a probe deadline. It does not slow the fuzzer: only a connection that never
+    /// completes waits it out. Override with NEXNET_FUZZ_HANDSHAKE_TIMEOUT_MS.
+    /// </summary>
+    public static TimeSpan HandshakeTimeout = TimeSpan.FromMilliseconds(double.TryParse(Environment.GetEnvironmentVariable("NEXNET_FUZZ_HANDSHAKE_TIMEOUT_MS"), out var h) ? h : 10000);
+
+    /// <summary>
+    /// The fuzz servers' idle timeout (<c>ConfigBase.Timeout</c>), read when a server starts. Short, so an input
+    /// that leaves the session quiet ends quickly; checked every quarter of it, so keep
+    /// <see cref="SessionTimeout"/> above 1.25 times this. A process pause this long (a loaded machine) makes the
+    /// server time out a session that did nothing wrong, so test runs raise it. Override with
+    /// NEXNET_FUZZ_IDLE_TIMEOUT_MS.
+    /// </summary>
+    public static TimeSpan IdleTimeout = TimeSpan.FromMilliseconds(double.TryParse(Environment.GetEnvironmentVariable("NEXNET_FUZZ_IDLE_TIMEOUT_MS"), out var i) ? i : 2000);
+
     private static readonly Lazy<FuzzServerHost> Instance = new(() => FuzzServerHost.Start(
         static config => FuzzServerNexus.CreateServer(config, static () => new FuzzServerNexus()).StartAsync(),
         IInvocationMethodHash.GetMethodHash<FuzzServerNexus>(),
@@ -51,8 +68,8 @@ public static class SessionHarness
 
             // Messages before the connection completes are protocol errors; wait so the payload reaches the
             // post-handshake protocol.
-            if (!output.WaitFor(o => o.Greeted, SessionTimeout) || !output.Greeted)
-                throw new TimeoutException("Server did not complete the handshake.");
+            if (!output.WaitFor(o => o.Greeted, HandshakeTimeout) || !output.Greeted)
+                throw new TimeoutException($"Server did not complete the handshake within {HandshakeTimeout.TotalMilliseconds} ms.");
         }
         Write(input, payload);
         input.Complete();

@@ -8,6 +8,20 @@ namespace NexNet.Serialization.Tests;
 /// </summary>
 public class FuzzSmokeTests
 {
+    /// <summary>
+    /// Bounds for a loaded machine. These tests run in parallel, often beside other suites, and the process can
+    /// stall for seconds; the fuzzer's short idle timeout then disconnects a session that did nothing wrong. Only
+    /// the fuzz servers' idle timeout and the waits that only a failing input reaches change; the probe deadlines
+    /// stay as the fuzzer runs them. Runs before the first harness use, which starts the servers.
+    /// </summary>
+    [Before(Class)]
+    public static void UseLoadTolerantBounds()
+    {
+        SessionHarness.IdleTimeout = TimeSpan.FromSeconds(5);
+        // Above 1.25 x the idle timeout, so a session only the idle timeout closes still counts as closed.
+        SessionHarness.SessionTimeout = TimeSpan.FromSeconds(10);
+    }
+
     [Test]
     public async Task AllHarnessesHandleCorpusAndMutations()
     {
