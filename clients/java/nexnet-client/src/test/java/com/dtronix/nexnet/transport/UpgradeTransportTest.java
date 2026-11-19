@@ -20,7 +20,10 @@ import com.dtronix.nexnet.client.TlsOptions;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.ProtocolException;
+import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -267,6 +270,31 @@ class UpgradeTransportTest {
             write(socket.getOutputStream(), "HTTP/1.1 500 Internal Server Error\r\n\r\n");
         });
         assertEquals(TransportError.INTERNAL_ERROR, internal.error());
+    }
+
+    @Test
+    void redirectsAreNotFollowed() throws Exception {
+        for (boolean webSocket : new boolean[] {false, true}) {
+            for (String status : new String[] {"301 Moved Permanently", "302 Found", "307 Temporary Redirect"}) {
+                String what = (webSocket ? "WebSocket " : "HttpSocket ") + status;
+                // Where the redirect points. A client that followed it would connect here.
+                try (ServerSocket target = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+                     TestServer server = TestServer.plain(socket -> {
+                         readHead(socket.getInputStream());
+                         write(socket.getOutputStream(), "HTTP/1.1 " + status + "\r\nLocation: http://127.0.0.1:"
+                             + target.getLocalPort() + "/elsewhere\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                     })) {
+                    String uri = (webSocket ? "ws" : "http") + "://127.0.0.1:" + server.port() + "/nexus";
+                    NexusTransportException e = assertThrows(NexusTransportException.class,
+                        () -> (webSocket ? ws(uri) : http(uri)).close(DisconnectReason.GRACEFUL), what);
+                    assertEquals(TransportError.PROTOCOL_ERROR, e.error(), what);
+                    server.await();
+                    // No second request: nothing connects to the redirect target.
+                    target.setSoTimeout(200);
+                    assertThrows(SocketTimeoutException.class, target::accept, what);
+                }
+            }
+        }
     }
 
     @Test

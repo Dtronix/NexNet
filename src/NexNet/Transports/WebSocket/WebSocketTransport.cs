@@ -138,6 +138,10 @@ internal class WebSocketTransport : ITransport
                 return new TransportException(TransportError.AuthenticationError,
                     $"Websocket connection authentication failed with Http status code: {statusCode}", e);
 
+            case WebSocketException e when (int)statusCode is >= 300 and < 400:
+                return new TransportException(TransportError.ProtocolError,
+                    $"Websocket upgrade failed: the server answered with redirect {(int)statusCode}; redirects are not followed.", e);
+
             case WebSocketException e when statusCode == HttpStatusCode.InternalServerError:
                 return new TransportException(TransportError.InternalError,
                     $"Websocket connection failed with Http status code: {statusCode}", e);

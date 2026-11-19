@@ -171,7 +171,10 @@ final class HttpUpgrade {
         return new Response(code, reason, Collections.unmodifiableMap(headers), rest);
     }
 
-    /** Maps a response other than {@code 101} to the transport failure. */
+    /**
+     * Maps a response other than {@code 101} to the transport failure. A {@code 3xx} is a redirect, which is never
+     * followed (protocol spec 13.6/13.7): it is {@code PROTOCOL_ERROR}, like every status without its own mapping.
+     */
     static NexusTransportException failure(Response response) {
         String message = "The server answered the upgrade with HTTP " + response.status
             + (response.reason.isEmpty() ? "" : " " + truncate(response.reason)) + ".";

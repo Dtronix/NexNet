@@ -1310,10 +1310,17 @@ Any status other than `101` means the upgrade failed. The server checks, in orde
 | `500` | Server error | `InternalError` |
 | other, typically `404` | Path not mapped, the request is not an HttpSocket request, or the NexNet server is not running; the request falls through to the rest of the ASP.NET pipeline | a connect failure (`InternalError` in the C# client) |
 | a `2xx` | Not an upgrade (for example a proxy or another application answering `200`); the body is not a NexNet stream | `ProtocolError` |
+| a `3xx` | A redirect (for example a proxy or a path moved). The client does not follow it | `ProtocolError` |
 
 Clients in other languages must map `401` and `403` to their authentication error, and `500` to their internal
 error. Every client must reject a non-error status other than `101` (a `2xx` included) and never read its body as
 the session stream.
+
+**Redirects are never followed.** A `3xx` answer fails the connect with `ProtocolError` (or the language's
+equivalent), and the client sends no second request, neither to the `Location` nor anywhere else. Following a
+redirect would carry the `Authorization` header and any query-string token to another URL. The C# client turns off
+`AllowAutoRedirect` on its HTTP handler; the Java and JavaScript clients write the upgrade request themselves and
+never follow one.
 
 #### Origin check
 
@@ -1392,6 +1399,11 @@ The server checks, in order:
 | `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
 | `500` | Server error | `InternalError` |
 | other, typically `404` | Path not mapped, not a WebSocket request, or the NexNet server is not running | `ProtocolError` or another error from the WebSocket stack |
+| a `3xx` | A redirect. The client does not follow it | `ProtocolError` |
+
+Redirects are never followed, as in §13.6: a `3xx` fails the connect with `ProtocolError` and no second request is
+made. Browsers already fail a WebSocket handshake that answers with a redirect (the WHATWG WebSocket handshake uses
+redirect mode `error`).
 
 A browser cannot read the status of a failed handshake: it reports a generic error and close code 1006, so it cannot
 tell an authentication failure from any other.

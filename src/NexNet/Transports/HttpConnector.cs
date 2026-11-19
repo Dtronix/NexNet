@@ -23,6 +23,9 @@ internal sealed class HttpConnector : IDisposable
         var handler = new SocketsHttpHandler
         {
             ConnectTimeout = TimeSpan.FromMilliseconds(config.ConnectionTimeout),
+            // Never follow a redirect of the upgrade request: it would carry the Authorization header and any
+            // query token to another URL. A 3xx fails the connect (protocol-specification.md §13.6, §13.7).
+            AllowAutoRedirect = false,
             SslOptions = CreateSslOptions(config.SslClientAuthenticationOptions),
         };
         Invoker = new HttpMessageInvoker(handler, disposeHandler: true);
