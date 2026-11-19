@@ -47,6 +47,7 @@
     <_NexNetJsRuntimeDir>$(_NexNetRepoRoot)clients/js/packages/nexnet/src/</_NexNetJsRuntimeDir>
     <_NexNetJsTypesDir>$(_NexNetRepoRoot)clients/js/packages/nexnet/types/</_NexNetJsTypesDir>
     <_NexNetJavaRuntimeDir>$(_NexNetRepoRoot)clients/java/nexnet-client/src/main/java/</_NexNetJavaRuntimeDir>
+    <_NexNetJavaModulesDir>$(_NexNetRepoRoot)clients/java/</_NexNetJavaModulesDir>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="$(_NexNetJsRuntimeDir)**/*.js" LogicalName="NexNet.Runtime/javascript/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
@@ -54,9 +55,18 @@
     <EmbeddedResource Include="$(_NexNetJsTypesDir)**/*.d.ts" LogicalName="NexNet.Runtime/javascript/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
     <EmbeddedResource Include="$(_NexNetJavaRuntimeDir)**/*.java" LogicalName="NexNet.Runtime/java/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
     <EmbeddedResource Include="$(_NexNetRepoRoot)LICENSE" LogicalName="NexNet.Runtime/LICENSE" WithCulture="false" />
+    <!-- The optional Java modules (K13), emitted only when listed in EmitRuntimeModules (G10). -->
+    <EmbeddedResource Include="$(_NexNetJavaModulesDir)nexnet-client-android/src/main/java/**/*.java" LogicalName="NexNet.Runtime/java-android/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="$(_NexNetJavaModulesDir)nexnet-client-kotlin/src/main/kotlin/**/*.kt" LogicalName="NexNet.Runtime/java-kotlin/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="$(_NexNetJavaModulesDir)nexnet-client-micrometer/src/main/java/**/*.java" LogicalName="NexNet.Runtime/java-micrometer/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="$(_NexNetJavaModulesDir)nexnet-client-okhttp/src/main/java/**/*.java" LogicalName="NexNet.Runtime/java-okhttp/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
   </ItemGroup>
   <Target Name="_NexNetCheckRuntimeSources" BeforeTargets="CoreCompile">
-    <Error Condition="!Exists('$(_NexNetJsRuntimeDir)index.js') or !Exists('$(_NexNetJsTypesDir)index.d.ts') or !Exists('$(_NexNetJavaRuntimeDir)com/dtronix/nexnet/NexusRuntime.java') or !Exists('$(_NexNetRepoRoot)LICENSE')"
+    <Error Condition="!Exists('$(_NexNetJsRuntimeDir)index.js') or !Exists('$(_NexNetJsTypesDir)index.d.ts') or !Exists('$(_NexNetJavaRuntimeDir)com/dtronix/nexnet/NexusRuntime.java') or !Exists('$(_NexNetRepoRoot)LICENSE')
+                      or !Exists('$(_NexNetJavaModulesDir)nexnet-client-android/src/main/java/com/dtronix/nexnet/android/NexusAndroid.java')
+                      or !Exists('$(_NexNetJavaModulesDir)nexnet-client-kotlin/src/main/kotlin/com/dtronix/nexnet/kotlin/NexusCoroutines.kt')
+                      or !Exists('$(_NexNetJavaModulesDir)nexnet-client-micrometer/src/main/java/com/dtronix/nexnet/micrometer/NexusMicrometerBinder.java')
+                      or !Exists('$(_NexNetJavaModulesDir)nexnet-client-okhttp/src/main/java/com/dtronix/nexnet/okhttp/OkHttpWebSocketConnector.java')"
            Text="NexNet.Generator embeds the client runtimes from clients/js and clients/java (D31), which are missing under '$(_NexNetRepoRoot)'." />
   </Target>
 
