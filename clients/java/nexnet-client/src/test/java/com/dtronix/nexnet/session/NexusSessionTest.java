@@ -170,6 +170,77 @@ class NexusSessionTest {
         assertTrue(session.isConnected());
     }
 
+    private NexusSession connectedThrough(StuckTransport stuck, NexusSession.Builder builder) throws Exception {
+        NexusSession session = start(builder);
+        transport.server().readHandshake();
+        transport.server().write(FakeServer.PREAMBLE);
+        transport.server().write(GoldenFrames.get("server-greeting"));
+        session.ready().get(5, TimeUnit.SECONDS);
+        stuck.stick();
+        return session;
+    }
+
+    @Test
+    void aWriteThatNeverCompletesDisconnectsWithStalled() throws Exception {
+        StuckTransport stuck = new StuckTransport(transport);
+        NexusSession session = connectedThrough(stuck, NexusSession.builder(stuck, HANDSHAKE).name("t")
+            .timers(timers).options(SessionOptions.defaults().withDisconnectDelayMillis(0))
+            .pingIntervalMillis(500).progressTimeoutMillis(1_000));
+        CompletableFuture<Void> sent = session.send(Frame.headerOnly(MessageTypes.PING));
+        assertTrue(stuck.awaitBlocked(), "the writer is blocked in the transport");
+
+        // A write running for exactly the progress timeout is not yet a stall.
+        timers.advance(500);
+        timers.advance(500);
+        assertTrue(session.isConnected());
+        assertFalse(sent.isDone());
+
+        timers.advance(500);
+        assertEquals(DisconnectReason.STALLED, closedWith(session));
+        assertEquals(DisconnectReason.STALLED, transport.closed.get(5, TimeUnit.SECONDS));
+        ExecutionException e = assertThrows(ExecutionException.class, () -> sent.get(5, TimeUnit.SECONDS));
+        assertEquals(DisconnectReason.STALLED, assertInstanceOf(SessionClosedException.class, e.getCause()).reason());
+        // The stuck writer cannot send the disconnect byte: the server sees the connection end.
+        transport.server().expectEnd();
+        assertEquals(0, timers.pending());
+    }
+
+    @Test
+    void aWriteStallIsFoundBeforeTheProbesAreAsked() throws Exception {
+        StuckTransport stuck = new StuckTransport(transport);
+        List<String> asked = new CopyOnWriteArrayList<>();
+        NexusSession session = connectedThrough(stuck, NexusSession.builder(stuck, HANDSHAKE).name("t")
+            .timers(timers).options(SessionOptions.defaults().withDisconnectDelayMillis(0))
+            .progressTimeoutMillis(1_000));
+        session.addProgressProbe((now, timeout) -> {
+            asked.add("probe");
+            return "probe stall";
+        });
+        session.send(Frame.headerOnly(MessageTypes.PING));
+        assertTrue(stuck.awaitBlocked());
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED, closedWith(session));
+        assertTrue(asked.isEmpty(), "the write stall disconnected first");
+    }
+
+    @Test
+    void closingWhileTheWriterIsStuckClosesAfterTheProgressTimeout() throws Exception {
+        StuckTransport stuck = new StuckTransport(transport);
+        NexusSession session = connectedThrough(stuck, NexusSession.builder(stuck, HANDSHAKE).name("t")
+            .timers(timers).options(SessionOptions.defaults().withDisconnectDelayMillis(0))
+            .progressTimeoutMillis(1_000));
+        session.send(Frame.headerOnly(MessageTypes.PING));
+        assertTrue(stuck.awaitBlocked());
+
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+        timers.advance(999);
+        assertFalse(closing.isDone(), "the writer still has its chance to send the disconnect byte");
+        timers.advance(1);
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        assertEquals(DisconnectReason.GRACEFUL, transport.closed.get(5, TimeUnit.SECONDS));
+        assertEquals(0, timers.pending());
+    }
+
     @Test
     void anExplicitIntervalIsUsedAsIs() throws Exception {
         List<String> warnings = new CopyOnWriteArrayList<>();
