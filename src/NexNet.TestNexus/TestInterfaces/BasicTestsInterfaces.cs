@@ -174,7 +174,7 @@ public partial class ClientNexus
     }
 }
 
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
 public partial class ServerNexus
 {
     public Action<ServerNexus> ServerVoidEvent;

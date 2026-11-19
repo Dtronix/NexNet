@@ -4,7 +4,8 @@
     Shared test nexuses (H02): the nexus interfaces and classes of the integration tests, and the interop type zoo used by
     the cross-language harness. Test infrastructure; not packaged.
 
-    The interop server nexus opts in to Java and JavaScript (Targets), so the generator writes their clients to
+    The interop server nexuses and the basic ServerNexus (IServerNexus/IClientNexus) opt in to Java and JavaScript
+    (Targets), so the generator writes their clients to
     artifacts/interop/<lang>/generated (gitignored) through the NexNet.Generator props and targets imported below.
   -->
   <Import Project="..\NexNet.Generator\buildTransitive\NexNet.Generator.props" />
