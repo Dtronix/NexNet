@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,6 +14,7 @@ import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.NexusRuntime;
 import com.dtronix.nexnet.Registration;
+import com.dtronix.nexnet.invocation.ClientProxyInvoker;
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.pipes.PipeManager;
@@ -669,6 +671,34 @@ class NexusListClientTest {
         peer.sendState(pipeId, CollectionPeer.COMPLETE, 0);
         assertFalse(await(enabled));
         assertInstanceOf(IllegalStateException.class, failure(ready));
+    }
+
+    // ------------------------------------------------------------------ wiring
+
+    @Test
+    void theInvokersCacheOneListPerCollectionBoundToTheCurrentSession() throws Exception {
+        connect();
+        ClientProxyInvoker invoker = new ClientProxyInvoker(callbacks);
+        NexusList<Long> list = invoker.list(COLLECTION_ID, NexusCollectionMode.BI_DIRECTIONAL, TestFormat.LONG);
+        assertSame(list, invoker.list(COLLECTION_ID, NexusCollectionMode.BI_DIRECTIONAL, TestFormat.LONG));
+        assertInstanceOf(NexusListClient.class, list);
+        assertInstanceOf(IllegalStateException.class, failure(list.enable()), "not attached to a session");
+
+        invoker.attach(runtime);
+        CompletableFuture<Boolean> enabled = list.enable();
+        int pipeId = acceptEnable();
+        peer.sendItems(pipeId, item("reset-start"), item("reset-values-int"), item("reset-complete"));
+        assertTrue(await(enabled));
+        assertEquals(Arrays.asList(1L, 2L, -5L), list);
+        CompletableFuture<Boolean> add = list.addAsync(4L);
+        peer.takeItems(1);
+        peer.sendItems(pipeId, valueItem(CollectionWire.INSERT, 1, 8, 3, 4));
+        assertTrue(await(add));
+
+        NexusList<String> direct = runtime.list(4, NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.STRING);
+        assertSame(direct, runtime.list(4, NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.STRING));
+        assertNotSame(list, runtime.list(COLLECTION_ID, NexusCollectionMode.BI_DIRECTIONAL, TestFormat.LONG));
+        assertSame(NexusCollectionMode.SERVER_TO_CLIENT, ((NexusListClient<String>) direct).mode());
     }
 
     // ------------------------------------------------------------------ the List view
