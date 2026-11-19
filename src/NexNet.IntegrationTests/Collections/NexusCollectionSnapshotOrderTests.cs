@@ -129,7 +129,8 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
 
             var results = await Task.WhenAll(list1.RemoveAtAsync(0), list2.RemoveAtAsync(0)).Timeout(1);
 
-            // Read before anything else runs: the lists must already hold the winning change.
+            // Read before anything else runs. A request that completed with false (a Noop) must already see the
+            // winning change. When both win, the other client's change may still be on its way, so nothing is checked.
             int count1 = list1.Count, count2 = list2.Count, serverCount = serverList.Count;
             if (results.Contains(false))
                 noops++;
@@ -137,8 +138,10 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
             using (Assert.Multiple())
             {
                 await Assert.That(results.Contains(true)).IsTrue().Because($"round {round}: one request wins");
-                await Assert.That(count1).IsEqualTo(serverCount).Because($"round {round}: list 1 behind the server");
-                await Assert.That(count2).IsEqualTo(serverCount).Because($"round {round}: list 2 behind the server");
+                if (!results[0])
+                    await Assert.That(count1).IsEqualTo(serverCount).Because($"round {round}: list 1 got its Noop before the winning change");
+                if (!results[1])
+                    await Assert.That(count2).IsEqualTo(serverCount).Because($"round {round}: list 2 got its Noop before the winning change");
             }
         }
 
