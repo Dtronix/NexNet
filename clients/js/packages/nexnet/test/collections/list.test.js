@@ -321,6 +321,57 @@ describe('reads and change events', () => {
 });
 
 describe('mutations', () => {
+  it('a mutation made during enable waits for the initial state, then goes out with its base version', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    /** @type {NexusList<number>} */
+    const list = proxyOf(h)._collection(COLLECTION_ID, intFormatter, { mode: BiDirectional });
+    const { server, enabling } = await acceptEnable(h, peer, list);
+    const adding = list.add(4);
+    const removing = list.removeAt(0);
+    server.send(start(6, 2), values([1]));
+    await tick();
+    expect(server.requests()).toEqual([]);
+    server.send(values([2]), complete());
+    expect(await enabling).toBe(true);
+    /** @type {Item[]} */
+    const sent = [];
+    await until(() => sent.push(...server.requests()) > 0);
+    expect(sent).toEqual([insert(6, 2, 4)]);
+    server.send(insert(7, 2, 4, true));
+    expect(await adding).toBe(true);
+    await tick();
+    expect(server.requests()).toEqual([remove(7, 0)]);
+    server.send(remove(8, 0, true));
+    expect(await removing).toBe(true);
+    expect(list.toArray()).toEqual([2, 4]);
+    await finish(h);
+  });
+
+  it('a mutation made during enable resolves false when the enable fails; nothing is sent', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    /** @type {NexusList<number>} */
+    const list = proxyOf(h)._collection(COLLECTION_ID, intFormatter, { mode: BiDirectional });
+    const enabling = list.enable();
+    const adding = list.add(4);
+    await until(() => collectionInvocations(h).length === 1);
+    const clientId = /** @type {Uint8Array} */ (collectionInvocations(h)[0].args)[1];
+    peer.sendState(clientId, PipeState.Refused);
+    await expect(enabling).rejects.toBeInstanceOf(NexusBusyError);
+    expect(await adding).toBe(false);
+
+    // The pipe opens but closes before the initial state.
+    const { server, enabling: retry } = await acceptEnable(h, peer, list);
+    const clearing = list.clear();
+    server.send(start(1, 1));
+    server.close();
+    expect(await retry).toBe(false);
+    expect(await clearing).toBe(false);
+    expect(server.requests()).toEqual([]);
+    await finish(h);
+  });
+
   it('send requests with the base version and resolve when the Ack change is applied; nothing is applied locally', async () => {
     const { h, list, server, changes } = await readyList();
     const adding = list.add(4);

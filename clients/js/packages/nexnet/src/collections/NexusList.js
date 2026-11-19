@@ -148,9 +148,10 @@ class EnableRun {
  * - **Reads** (`count`, `get`, `at`, `indexOf`, `contains`, `toArray`, iteration) are local.
  * - **Mutations** (BiDirectional mode only) send one request at a time and resolve with true once the server applied
  *   it, false when the server discarded it (a concurrent change made it obsolete) or the collection closed. The list
- *   changes only when the server's change arrives; there is no optimistic local apply. They reject with a
- *   `NexusError` in ServerToClient and Relay mode and when the list is not ready, and with a `RangeError` for a
- *   negative index.
+ *   changes only when the server's change arrives; there is no optimistic local apply. A mutation made while
+ *   `enable` runs waits for the initial state and is then sent with its version; it resolves with false when the enable
+ *   fails. They reject with a `NexusError` in ServerToClient and Relay mode and when the list is not enabled, and with
+ *   a `RangeError` for a negative index.
  * - A `changed` event (`CustomEvent` with a {@link NexusListChange} `detail`) follows each change.
  *
  * @template T
@@ -555,12 +556,13 @@ export class NexusList extends EventTarget {
       return Promise.reject(new NexusError('The collection is read-only: only a BiDirectional collection accepts changes from a client.'));
     }
     const run = this.#run;
-    if (run === null || run.writer === null || this.#state !== NexusCollectionState.Connected) {
-      return Promise.reject(new NexusError('The collection is not enabled and ready.'));
-    }
-    const writer = run.writer;
+    if (run === null) return Promise.reject(new NexusError('The collection is not enabled.'));
     return run.exclusive(async () => {
-      if (run.stopped) return false;
+      // A request made while the enable runs waits for the initial state, then is built from it (C# OperationLock
+      // and Java K09 behave the same). An enable that fails answers it with false.
+      if (!(await run.synced.promise)) return false;
+      const writer = run.writer;
+      if (run.stopped || writer === null) return false;
       const message = build(run.replica);
       if (message === null) return false;
       const answer = run.replica.beginRequest();
