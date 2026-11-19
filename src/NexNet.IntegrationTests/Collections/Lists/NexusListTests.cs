@@ -1,741 +1,945 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using NexNet.Collections;
+﻿using NexNet.Collections;
+using NexNet.Collections.Lists;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Interop.InProc;
+using NexNet.InteropServer;
 using NexNet.Pipes.Broadcast;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
 
-internal class NexusListTests : NexusCollectionBaseTests
+/// <summary>
+/// Base of the synchronized collection tests on the client matrix (P01f): the client under test is created through
+/// <see cref="Harness"/> for each <see cref="ClientTarget"/> row, the server is the C# <see cref="ServerNexus"/> on a
+/// dedicated interop server, and the client's list is read through <see cref="IRemoteList{T}"/> snapshots.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The QUIC rows of the C# suite run on WebSocketTls: the interop server has no QUIC endpoint and no other client
+/// language has QUIC (H16 restores them).
+/// </para>
+/// <para>
+/// The harness has no list change events yet, so tests about the client's <c>Changed</c> events, and tests of C#-only
+/// list members (<c>IsReadOnly</c>, <c>CopyTo</c>, <c>DisabledTask</c>), drive the C# client directly and skip other
+/// languages visibly (<see cref="RequireInProc"/>).
+/// </para>
+/// </remarks>
+internal abstract class CollectionMatrixTests(LanguageHostPool hosts) : BaseTests
 {
-    [Test]
-    [Transports]
-    public async Task ClientCanAdd(Type type)
+    /// <summary>Skip reason of tests that observe the client's list change events.</summary>
+    protected const string NoListEvents = "the harness has no list change events (list.changed) yet (follow-up card)";
+
+    /// <summary>Skip reason of tests of members only the C# list has.</summary>
+    protected const string CSharpListApi = "tests a member of the C# INexusList API";
+
+    /// <summary>Skip reason of tests that expect an argument exception from a list operation.</summary>
+    protected const string NoArgumentErrorKind = "argument errors of list operations have no ErrorKind (follow-up card)";
+
+    /// <summary>The name of the bidirectional collection most tests use.</summary>
+    protected const string IntListBi = nameof(IServerNexus.IntListBi);
+
+    private readonly TaskCompletionSource<ServerNexus> _connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
+    protected LanguageHostPool Hosts { get; } = hosts;
+
+    /// <summary>
+    /// Starts a dedicated interop server of <see cref="ServerNexus"/>, then creates and connects the client of
+    /// <paramref name="target"/>.
+    /// </summary>
+    protected async Task<CollectionSession> ConnectAsync(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        var result = await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        await Assert.That(result).IsTrue();
-        await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(2).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(3).Timeout(T(1));
-        using (Assert.Multiple())
+        LoggerMode = BasePipeTests.LogMode.OnTestFail;
+        var server = await InteropServerHost.StartAsync<ServerNexus, ServerNexus.ClientProxy>(() =>
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2, 3]);
+            var nexus = new ServerNexus();
+            nexus.OnConnectedEvent = connected =>
+            {
+                _connected.TrySetResult(connected);
+                return ValueTask.CompletedTask;
+            };
+            return nexus;
+        }, new InteropServerOptions { Logger = Logger }).Timeout(T(TestTimeouts.Connect));
+
+        IClientUnderTest? client = null;
+        try
+        {
+            var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+            spec.Logger = Logger;
+            client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+            var nexus = await _connected.Task.Timeout(T(1));
+            return new CollectionSession(server, client, nexus);
+        }
+        catch
+        {
+            if (client != null)
+                await client.DisposeAsync();
+            await server.DisposeAsync();
+            throw;
         }
     }
 
-    [Test]
-    [Transports]
-    public async Task ClientCanInsert(Type type)
+    /// <summary>
+    /// Skips a row of another language: the test drives the C# client directly, through <see cref="InProc"/>, because
+    /// the harness cannot yet express what it checks (<paramref name="reason"/>).
+    /// </summary>
+    protected static void RequireInProc(ClientTarget target, string reason)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        await client.Proxy.IntListBi.InsertAsync(0, 2);
-        await client.Proxy.IntListBi.InsertAsync(1, 3);
-        await client.Proxy.IntListBi.InsertAsync(0, 1);
+        if (target.Language != ClientLanguages.CSharp)
+            Skip.Test("C# client only: " + reason);
+    }
+
+    /// <summary>The C# client of an in-process row (<see cref="RequireInProc"/>).</summary>
+    protected static InProcClientDriver<ClientNexus, ClientNexus.ServerProxy> InProc(IClientUnderTest client)
+        => (InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)client;
+
+    /// <summary>The items the client's list currently holds.</summary>
+    protected static async Task<int[]> ItemsAsync(IRemoteList<int> list)
+        => (await list.SnapshotAsync().AsTask().Timeout(T(1))).ToArray();
+
+    /// <summary>Waits until the client's list holds exactly <paramref name="expected"/>, in order, and returns it.</summary>
+    protected static async Task<int[]> WaitForItemsAsync(IRemoteList<int> list, params int[] expected)
+        => (await list.WaitForAsync(items => items.SequenceEqual(expected), TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)))).ToArray();
+
+    /// <summary>Waits until the client's list holds <paramref name="count"/> items and returns them.</summary>
+    protected static async Task<int[]> WaitForCountAsync(IRemoteList<int> list, int count)
+        => (await list.WaitForAsync(items => items.Count == count, TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)))).ToArray();
+
+    /// <summary>
+    /// Disables the server collection's acknowledgments, so a client operation stays pending after the server applied it.
+    /// </summary>
+    protected static void DoNotSendAck(INexusList<int> serverList)
+        => ((INexusBroadcastServerTestModifier)serverList).DoNotSendAck = true;
+
+    /// <summary>A client and its dedicated server.</summary>
+    protected sealed class CollectionSession(
+        InteropServer<ServerNexus, ServerNexus.ClientProxy> server,
+        IClientUnderTest client,
+        ServerNexus nexus) : IAsyncDisposable
+    {
+        /// <summary>The interop server.</summary>
+        public InteropServer<ServerNexus, ServerNexus.ClientProxy> Server { get; } = server;
+
+        /// <summary>The client under test.</summary>
+        public IClientUnderTest Client { get; } = client;
+
+        /// <summary>The server nexus of the client's session.</summary>
+        public ServerNexus Nexus { get; } = nexus;
+
+        /// <summary>The client's view of <c>IntListBi</c>.</summary>
+        public IRemoteList<int> List => Client.List<int>(IntListBi);
+
+        /// <summary>The server's <c>IntListBi</c>.</summary>
+        public INexusList<int> ServerList => Nexus.IntListBi;
+
+        /// <summary>Disconnects the client when it is still connected, then asserts its leak audit is clean.</summary>
+        public async Task EndAsync()
+        {
+            if (await Client.GetStateAsync() != ConnectionState.Disconnected)
+                await Client.DisconnectAsync().Timeout(T(1));
+
+            var report = await Client.EndTestAuditAsync();
+            await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
+        }
+
+        /// <inheritdoc />
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await Client.DisposeAsync();
+            }
+            finally
+            {
+                await Server.DisposeAsync();
+            }
+        }
+    }
+}
+
+/// <summary>Operations on a bidirectional list from the client under test and from the server.</summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusListTests(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
+{
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanAdd(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(1).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
+        await list.AddAsync(3).Timeout(T(1));
         using (Assert.Multiple())
         {
-            var cList = client.Proxy.IntListBi.ToArray();
-            var sList = serverNexus.IntListBi.ToArray();
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 3]);
+        }
+
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanInsert(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.InsertAsync(0, 2).Timeout(T(1));
+        await list.InsertAsync(1, 3).Timeout(T(1));
+        await list.InsertAsync(0, 1).Timeout(T(1));
+        using (Assert.Multiple())
+        {
+            var cList = await ItemsAsync(list);
+            var sList = s.ServerList.ToArray();
             await Assert.That(cList).IsEquivalentTo(sList);
             await Assert.That(cList).IsEquivalentTo([1, 2, 3]);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ClientCanRemove(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanRemove(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        await client.Proxy.IntListBi.AddAsync(0);
-        await client.Proxy.IntListBi.AddAsync(111);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.RemoveAsync(111);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(0).Timeout(T(1));
+        await list.AddAsync(111).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
+        await list.RemoveAsync(111).Timeout(T(1));
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([0, 2]);
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([0, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ClientCanRemoveAt(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanRemoveAt(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        await client.Proxy.IntListBi.AddAsync(0);
-        await client.Proxy.IntListBi.AddAsync(111);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.RemoveAtAsync(1);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(0).Timeout(T(1));
+        await list.AddAsync(111).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
+        await list.RemoveAtAsync(1).Timeout(T(1));
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([0, 2]);
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([0, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ClientCanMove(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanMove(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        await client.Proxy.IntListBi.AddAsync(0);
-        await client.Proxy.IntListBi.AddAsync(1);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.MoveAsync(0,2);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(0).Timeout(T(1));
+        await list.AddAsync(1).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
+        await list.MoveAsync(0, 2).Timeout(T(1));
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1,2,0]);
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 0], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task ClientCanReplace(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientCanReplace(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        await client.Proxy.IntListBi.AddAsync(0);
-        await client.Proxy.IntListBi.AddAsync(1);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.ReplaceAsync(0,3);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(0).Timeout(T(1));
+        await list.AddAsync(1).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
+        await list.ReplaceAsync(0, 3).Timeout(T(1));
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([3,1,2]);
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([3, 1, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerCanAdd(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanAdd(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
-        
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(1).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(2).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(3).Timeout(T(1));
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.AddAsync(3).Timeout(T(1));
 
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 1, 2, 3);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2, 3]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 3], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerCanInsert(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanInsert(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.InsertAsync(0, 2).Timeout(T(1));
+        await s.ServerList.InsertAsync(1, 3).Timeout(T(1));
+        await s.ServerList.InsertAsync(0, 1).Timeout(T(1));
 
-        await client.Proxy.IntListBi.EnableAsync();
-        await serverNexus.IntListBi.InsertAsync(0, 2);
-        await serverNexus.IntListBi.InsertAsync(1, 3);
-        await serverNexus.IntListBi.InsertAsync(0, 1);
-        
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 1, 2, 3);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2, 3]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 3], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerCanRemove(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanRemove(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.AddAsync(0).Timeout(T(1));
+        await s.ServerList.AddAsync(111).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.RemoveAsync(111).Timeout(T(1));
 
-        await serverNexus.IntListBi.AddAsync(0);
-        await serverNexus.IntListBi.AddAsync(111);
-        await serverNexus.IntListBi.AddAsync(2);
-        await serverNexus.IntListBi.RemoveAsync(111);
-
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 0, 2);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([0, 2]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([0, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerCanRemoveAt(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanRemoveAt(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.AddAsync(0).Timeout(T(1));
+        await s.ServerList.AddAsync(111).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.RemoveAtAsync(1).Timeout(T(1));
 
-        await client.Proxy.IntListBi.EnableAsync();
-        await serverNexus.IntListBi.AddAsync(0);
-        await serverNexus.IntListBi.AddAsync(111);
-        await serverNexus.IntListBi.AddAsync(2);
-        await serverNexus.IntListBi.RemoveAtAsync(1);
-
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 0, 2);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([0, 2]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([0, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerCanMove(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanMove(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Move);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.AddAsync(0).Timeout(T(1));
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.MoveAsync(0, 2).Timeout(T(1));
 
-        await client.Proxy.IntListBi.EnableAsync();
-        await serverNexus.IntListBi.AddAsync(0);
-        await serverNexus.IntListBi.AddAsync(1);
-        await serverNexus.IntListBi.AddAsync(2);
-        await serverNexus.IntListBi.MoveAsync(0,2);
-
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 1, 2, 0);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1,2,0]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 0], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task ServerCanReplace(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerCanReplace(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await s.ServerList.AddAsync(0).Timeout(T(1));
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.ReplaceAsync(0, 3).Timeout(T(1));
 
-        await client.Proxy.IntListBi.EnableAsync();
-        await serverNexus.IntListBi.AddAsync(0);
-        await serverNexus.IntListBi.AddAsync(1);
-        await serverNexus.IntListBi.AddAsync(2);
-        await serverNexus.IntListBi.ReplaceAsync(0,3);
-
-        await eventReg.Wait();
+        // The client applies the server's changes asynchronously.
+        var items = await WaitForItemsAsync(list, 3, 1, 2);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([3,1,2]);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([3, 1, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerSendsInitialValues(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerSendsInitialValues(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.AddAsync(3).Timeout(T(1));
 
-        await serverNexus.IntListBi.AddAsync(1);
-        await serverNexus.IntListBi.AddAsync(2);
-        await serverNexus.IntListBi.AddAsync(3);
-
-        await client.Proxy.IntListBi.EnableAsync();
+        // Enabling completes once the client has the server's snapshot.
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2, 3]);
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(s.ServerList).IsEquivalentTo([1, 2, 3], CollectionOrdering.Matching);
         }
-    }
-    
-    [Test]
-    [Transports]
-    public async Task ServerAddAsync_PropagatesToClientImmediately(Type type)
-    {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
-        
-        await serverNexus.IntListBi.AddAsync(77).Timeout(T(1));
 
-        await eventReg.Wait();
-
-        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([77]);
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ServerRemoveAsync_PropagatesToClientImmediately(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerAddAsync_PropagatesToClientImmediately(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        var removeEventWait = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await s.ServerList.AddAsync(77).Timeout(T(1));
+
+        await Assert.That(await WaitForItemsAsync(list, 77)).IsEquivalentTo([77]);
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerRemoveAsync_PropagatesToClientImmediately(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
         // seed, then remove on server
-        await serverNexus.IntListBi.AddAsync(1).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(2).Timeout(T(1));
-        await serverNexus.IntListBi.RemoveAsync(1).Timeout(T(1));
-        
-        await removeEventWait.Wait();
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.RemoveAsync(1).Timeout(T(1));
 
-        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([2]);
+        await Assert.That(await WaitForItemsAsync(list, 2)).IsEquivalentTo([2]);
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task ServerClearAsync_PropagatesToClientImmediately(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ServerClearAsync_PropagatesToClientImmediately(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        var resetEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await serverNexus.IntListBi.AddAsync(9).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(8).Timeout(T(1));
-        await serverNexus.IntListBi.ClearAsync().Timeout(T(1));
-        await resetEvent.Wait();
+        await s.ServerList.AddAsync(9).Timeout(T(1));
+        await s.ServerList.AddAsync(8).Timeout(T(1));
 
-        await Assert.That(client.Proxy.IntListBi.ToArray()).IsEmpty();
+        // Without the change events, the client must first have the items for the empty list to show the clear.
+        await WaitForItemsAsync(list, 9, 8);
+        await s.ServerList.ClearAsync().Timeout(T(1));
+
+        await Assert.That(await WaitForItemsAsync(list)).IsEmpty();
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task MixedOperations_MaintainConsistency(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task MixedOperations_MaintainConsistency(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        var resetEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
-        var resetEvent2 = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 4);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
         // client side
-        await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(2).Timeout(T(1));
+        await list.AddAsync(1).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
 
         // server side mutation
-        await serverNexus.IntListBi.InsertAsync(1, 99).Timeout(T(1));
-        await resetEvent.Wait();
+        await s.ServerList.InsertAsync(1, 99).Timeout(T(1));
+        await WaitForItemsAsync(list, 1, 99, 2);
 
         // client continues
-        await client.Proxy.IntListBi.RemoveAsync(2).Timeout(T(1));
-        await client.Proxy.IntListBi.InsertAsync(2, 3).Timeout(T(1));
-
-        await resetEvent2.Wait();
+        await list.RemoveAsync(2).Timeout(T(1));
+        await list.InsertAsync(2, 3).Timeout(T(1));
 
         var expected = new[] { 1, 99, 3 };
-        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(expected);
-        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(expected);
-    } 
-    
-    [Test]
-    [Transports]
-    public async Task ClientClearAsync_ReturnsTrueAndClearsList(Type type)
-    {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(10).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(20).Timeout(T(1));
+        await Assert.That(await WaitForItemsAsync(list, expected)).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        await Assert.That(s.ServerList).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        await s.EndAsync();
+    }
 
-        var cleared = await client.Proxy.IntListBi.ClearAsync().Timeout(T(1));
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientClearAsync_ReturnsTrueAndClearsList(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        await list.AddAsync(10).Timeout(T(1));
+        await list.AddAsync(20).Timeout(T(1));
+
+        var cleared = await list.ClearAsync().Timeout(T(1));
         using (Assert.Multiple())
         {
             await Assert.That(cleared).IsTrue();
-            await Assert.That(client.Proxy.IntListBi).IsEmpty();
-            await Assert.That(serverNexus.IntListBi).IsEmpty();
+            await Assert.That(await ItemsAsync(list)).IsEmpty();
+            await Assert.That(s.ServerList).IsEmpty();
         }
-    }
-     
-    
-    [Test]
-    [Transports]
-    public async Task ClientClearAsync_ReturnsTrueWhenAlreadyEmpty(Type type)
-    {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        var first = await client.Proxy.IntListBi.ClearAsync().Timeout(T(1));
-        var second = await client.Proxy.IntListBi.ClearAsync().Timeout(T(1));
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientClearAsync_ReturnsTrueWhenAlreadyEmpty(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        var first = await list.ClearAsync().Timeout(T(1));
+        var second = await list.ClearAsync().Timeout(T(1));
         using (Assert.Multiple())
         {
             await Assert.That(first).IsTrue();
             await Assert.That(second).IsTrue();
-            await Assert.That(client.Proxy.IntListBi).IsEmpty();
+            await Assert.That(await ItemsAsync(list)).IsEmpty();
         }
+
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task ContainsReflectsAddsAndRemoves(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ContainsReflectsAddsAndRemoves(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await client.Proxy.IntListBi.AddAsync(5).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(7).Timeout(T(1));
-        await Assert.That(client.Proxy.IntListBi.Contains(5)).IsTrue();
-        await Assert.That(client.Proxy.IntListBi.Contains(8)).IsFalse();
+        await list.AddAsync(5).Timeout(T(1));
+        await list.AddAsync(7).Timeout(T(1));
+        var items = await ItemsAsync(list);
+        await Assert.That(items.Contains(5)).IsTrue();
+        await Assert.That(items.Contains(8)).IsFalse();
 
-        await client.Proxy.IntListBi.RemoveAsync(5).Timeout(T(1));
-        await Assert.That(client.Proxy.IntListBi.Contains(5)).IsFalse();
+        await list.RemoveAsync(5).Timeout(T(1));
+        await Assert.That((await ItemsAsync(list)).Contains(5)).IsFalse();
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task IndexOf_ReturnsCorrectPositionOrMinusOne(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task IndexOf_ReturnsCorrectPositionOrMinusOne(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await client.Proxy.IntListBi.AddAsync(11).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(22).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(33).Timeout(T(1));
+        await list.AddAsync(11).Timeout(T(1));
+        await list.AddAsync(22).Timeout(T(1));
+        await list.AddAsync(33).Timeout(T(1));
 
+        var items = await ItemsAsync(list);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi.IndexOf(11)).IsEqualTo(0);
-            await Assert.That(client.Proxy.IntListBi.IndexOf(33)).IsEqualTo(2);
-            await Assert.That(client.Proxy.IntListBi.IndexOf(44)).IsEqualTo(-1);
-
+            await Assert.That(Array.IndexOf(items, 11)).IsEqualTo(0);
+            await Assert.That(Array.IndexOf(items, 33)).IsEqualTo(2);
+            await Assert.That(Array.IndexOf(items, 44)).IsEqualTo(-1);
         }
-    }
-    
-    [Test]
-    [Transports]
-    public async Task IsReadOnly_IsFalseOnBidirectional(Type type)
-    {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        await Assert.That(client.Proxy.IntListBi.IsReadOnly).IsFalse();
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task IsReadOnly_IsFalseOnServerToClient(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task IsReadOnly_IsFalseOnBidirectional(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListRelay.EnableAsync().Timeout(T(1));
+        RequireInProc(target, CSharpListApi);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await Assert.That(client.Proxy.IntListRelay.IsReadOnly).IsFalse();
+        await Assert.That(InProc(s.Client).Client.Proxy.IntListBi.IsReadOnly).IsFalse();
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task Count_UpdatesAfterEachOperation(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task IsReadOnly_IsFalseOnServerToClient(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        RequireInProc(target, CSharpListApi);
+        await using var s = await ConnectAsync(target);
+        var relay = InProc(s.Client).Client.Proxy.IntListRelay;
+        await relay.EnableAsync().Timeout(T(1));
 
-        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(0);
-
-        await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(1);
-
-        await client.Proxy.IntListBi.AddAsync(2).Timeout(T(1));
-        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(2);
-
-        await client.Proxy.IntListBi.RemoveAtAsync(0).Timeout(T(1));
-        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(1);
+        await Assert.That(relay.IsReadOnly).IsFalse();
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task Indexer_ReturnsCorrectElement(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task Count_UpdatesAfterEachOperation(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await client.Proxy.IntListBi.AddAsync(100).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(200).Timeout(T(1));
+        await Assert.That((await ItemsAsync(list)).Length).IsEqualTo(0);
 
-        await Assert.That(client.Proxy.IntListBi[0]).IsEqualTo(100);
-        await Assert.That(client.Proxy.IntListBi[1]).IsEqualTo(200);
+        await list.AddAsync(1).Timeout(T(1));
+        await Assert.That((await ItemsAsync(list)).Length).IsEqualTo(1);
+
+        await list.AddAsync(2).Timeout(T(1));
+        await Assert.That((await ItemsAsync(list)).Length).IsEqualTo(2);
+
+        await list.RemoveAtAsync(0).Timeout(T(1));
+        await Assert.That((await ItemsAsync(list)).Length).IsEqualTo(1);
+        await s.EndAsync();
     }
-    
-    [Test]
-    [Transports]
-    public async Task InsertAsync_AtEndIndex_ReturnsTrue(Type type)
-    {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-        var result = await client.Proxy.IntListBi.InsertAsync(1, 2).Timeout(T(1));
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task Indexer_ReturnsCorrectElement(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(100).Timeout(T(1));
+        await list.AddAsync(200).Timeout(T(1));
+
+        var items = await ItemsAsync(list);
+        await Assert.That(items[0]).IsEqualTo(100);
+        await Assert.That(items[1]).IsEqualTo(200);
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task InsertAsync_AtEndIndex_ReturnsTrue(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(1).Timeout(T(1));
+        var result = await list.InsertAsync(1, 2).Timeout(T(1));
 
         using (Assert.Multiple())
         {
             await Assert.That(result).IsTrue();
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([1, 2]);
-
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo([1, 2], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports]
-    public async Task StopsAsyncAwaitProcessOnDisconnect(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task StopsAsyncAwaitProcessOnDisconnect(ClientTarget target)
     {
-        var tcs = new TaskCompletionSource();
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        var internalList = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
-        internalList.DoNotSendAck = true;
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        DoNotSendAck(s.ServerList);
 
-        await Utilities.InvokeAndNotifyAwait(async () =>
-        {
-            await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-            tcs.SetResult();
-        }, () =>
-        {
-            serverNexus.SessionContext.DisconnectAsync();
-        });
+        // The server applies the add and holds back the acknowledgment; disconnecting the session must end the wait.
+        using var serverAdded = s.ServerList.WaitForEvent(NexusCollectionChangedAction.Add);
+        var adding = list.AddAsync(1).AsTask();
+        await serverAdded.Wait();
+        _ = s.Nexus.SessionContext.DisconnectAsync();
 
-        await tcs.Task.Timeout(T(1));
+        await adding.Timeout(T(1));
+        await s.EndAsync();
     }
-    
-    
+
     [Test]
-    [Transports]
-    public async Task StopsAsyncAwaitProcessOnClientSideDisconnect(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task StopsAsyncAwaitProcessOnClientSideDisconnect(ClientTarget target)
     {
-        var tcs = new TaskCompletionSource();
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        var internalList = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
-        internalList.DoNotSendAck = true;
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        DoNotSendAck(s.ServerList);
 
-        await Utilities.InvokeAndNotifyAwait(async () =>
-        {
-            await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-            tcs.SetResult();
-        }, () =>
-        {
-            client.Proxy.IntListBi.DisableAsync();
-        });
+        // The server applies the add and holds back the acknowledgment; disabling the client's list must end the wait.
+        using var serverAdded = s.ServerList.WaitForEvent(NexusCollectionChangedAction.Add);
+        var adding = list.AddAsync(1).AsTask();
+        await serverAdded.Wait();
+        var disabling = list.DisableAsync().AsTask();
 
-        await tcs.Task.Timeout(T(1));
+        await adding.Timeout(T(1));
+        await disabling.Timeout(T(1));
+        await s.EndAsync();
     }
-    
-    
-    [Test]
-    [Transports]
-    public async Task RemoveAsync_NonExistent_ReturnsFalse(Type type)
-    {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        await client.Proxy.IntListBi.AddAsync(7).Timeout(T(1));
-        var removed = await client.Proxy.IntListBi.RemoveAsync(99).Timeout(T(1));
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task RemoveAsync_NonExistent_ReturnsFalse(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(7).Timeout(T(1));
+        var removed = await list.RemoveAsync(99).Timeout(T(1));
 
         using (Assert.Multiple())
         {
             await Assert.That(removed).IsFalse();
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([7]);
-
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo([7]);
         }
-    }
-    
-    [Test]
-    [Transports]
-    public async Task AddAsync_AllowsDuplicatesAndReturnsTrue(Type type)
-    {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        var first = await client.Proxy.IntListBi.AddAsync(42).Timeout(T(1));
-        var second = await client.Proxy.IntListBi.AddAsync(42).Timeout(T(1));
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task AddAsync_AllowsDuplicatesAndReturnsTrue(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        var first = await list.AddAsync(42).Timeout(T(1));
+        var second = await list.AddAsync(42).Timeout(T(1));
 
         using (Assert.Multiple())
         {
             await Assert.That(first).IsTrue();
             await Assert.That(second).IsTrue();
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([42, 42]);
-
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo([42, 42]);
         }
+
+        await s.EndAsync();
     }
-    
+
     [Test]
-    [Transports(Type.Uds)]
-    public async Task InsertAsync_OnEmptyAtZero_ReturnsTrue(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task InsertAsync_OnEmptyAtZero_ReturnsTrue(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        var result = await client.Proxy.IntListBi.InsertAsync(0, 99).Timeout(T(1));
-        
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        var result = await list.InsertAsync(0, 99).Timeout(T(1));
+
         using (Assert.Multiple())
         {
             await Assert.That(result).IsTrue();
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([99]);
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([99]);
-
+            await Assert.That(await ItemsAsync(list)).IsEquivalentTo([99]);
+            await Assert.That(s.ServerList).IsEquivalentTo([99]);
         }
-    }
-    
-    [Test]
-    public async Task CopyTo_CopiesAllElements()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
 
-        await client.Proxy.IntListBi.AddAsync(3).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(6).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(9).Timeout(T(1));
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task CopyTo_CopiesAllElements(ClientTarget target)
+    {
+        RequireInProc(target, CSharpListApi);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(3).Timeout(T(1));
+        await list.AddAsync(6).Timeout(T(1));
+        await list.AddAsync(9).Timeout(T(1));
 
         var array = new int[3];
-        client.Proxy.IntListBi.CopyTo(array, 0);
+        InProc(s.Client).Client.Proxy.IntListBi.CopyTo(array, 0);
 
         await Assert.That(array).IsEquivalentTo([3, 6, 9]);
+        await s.EndAsync();
     }
-    
+
     [Test]
-    public async Task CopyTo_NullArray_ThrowsArgumentNullException()
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task CopyTo_NullArray_ThrowsArgumentNullException(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        RequireInProc(target, CSharpListApi);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
         Assert.ThrowsExactly<ArgumentNullException>(() =>
-            client.Proxy.IntListBi.CopyTo(null!, 0));
+            InProc(s.Client).Client.Proxy.IntListBi.CopyTo(null!, 0));
+        await s.EndAsync();
     }
 
     [Test]
-    public async Task CopyTo_SmallArray_ThrowsArgumentException()
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task CopyTo_SmallArray_ThrowsArgumentException(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        RequireInProc(target, CSharpListApi);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await client.Proxy.IntListBi.AddAsync(1).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(2).Timeout(T(1));
+        await list.AddAsync(1).Timeout(T(1));
+        await list.AddAsync(2).Timeout(T(1));
 
         var tooSmall = new int[1];
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
-            client.Proxy.IntListBi.CopyTo(tooSmall, 0));
-    }
-    
-    [Test]
-    public async Task InsertAsync_NegativeIndex_Throws()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.InsertAsync(-1, 0).Timeout(T(1)));
-    }
-    
-    [Test]
-    public async Task Enumeration_YieldsElementsInOrder()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-
-        await client.Proxy.IntListBi.AddAsync(5).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(10).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(15).Timeout(T(1));
-
-        var list = client.Proxy.IntListBi.ToList();
-        await Assert.That(list).IsEquivalentTo(new[] { 5, 10, 15 }, CollectionOrdering.Matching);
-    }
-    
-    [Test]
-    public async Task ClientDisconnectsAndClearsLocalList()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-
-        await client.Proxy.IntListBi.AddAsync(5).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(10).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(15).Timeout(T(1));
-        await client.Proxy.IntListBi.DisableAsync().Timeout(T(1));
-        
-        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
-    }
-    
-    [Test]
-    public async Task ClientDisconnectsAndReconnects()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-
-        await client.Proxy.IntListBi.AddAsync(5).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(10).Timeout(T(1));
-        await client.Proxy.IntListBi.AddAsync(15).Timeout(T(1));
-        await client.Proxy.IntListBi.DisableAsync().Timeout(T(1));
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-        
-        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([5, 10, 15]);
-    }
-    
-        
-    [Test]
-    public async Task RemoveAttAsync_NegativeIndex_Throws()
-    {
-        var (_, client, _) = await ConnectServerAndClient(Type.Uds);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
-
-        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.RemoveAtAsync(-1).Timeout(T(1)));
+            InProc(s.Client).Client.Proxy.IntListBi.CopyTo(tooSmall, 0));
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports]
-    public async Task ClientEnableAfterServerAdds_NoDuplicateItems(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task InsertAsync_NegativeIndex_Throws(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
+        RequireInProc(target, NoArgumentErrorKind);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => list.InsertAsync(-1, 0).Timeout(T(1)));
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task Enumeration_YieldsElementsInOrder(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(5).Timeout(T(1));
+        await list.AddAsync(10).Timeout(T(1));
+        await list.AddAsync(15).Timeout(T(1));
+
+        await Assert.That(await ItemsAsync(list)).IsEquivalentTo(new[] { 5, 10, 15 }, CollectionOrdering.Matching);
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task ClientDisconnectsAndClearsLocalList(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(5).Timeout(T(1));
+        await list.AddAsync(10).Timeout(T(1));
+        await list.AddAsync(15).Timeout(T(1));
+        await list.DisableAsync().Timeout(T(1));
+
+        await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>());
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task ClientDisconnectsAndReconnects(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await list.AddAsync(5).Timeout(T(1));
+        await list.AddAsync(10).Timeout(T(1));
+        await list.AddAsync(15).Timeout(T(1));
+        await list.DisableAsync().Timeout(T(1));
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await Assert.That(await ItemsAsync(list)).IsEquivalentTo([5, 10, 15], CollectionOrdering.Matching);
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    public async Task RemoveAttAsync_NegativeIndex_Throws(ClientTarget target)
+    {
+        RequireInProc(target, NoArgumentErrorKind);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(() => list.RemoveAtAsync(-1).Timeout(T(1)));
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientEnableAfterServerAdds_NoDuplicateItems(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
 
         // Add items on server BEFORE client enables collection sync.
         // This creates a window where broadcast messages for these adds
         // could overlap with the reset snapshot sent during EnableAsync.
-        await serverNexus.IntListBi.AddAsync(1).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(2).Timeout(T(1));
-        await serverNexus.IntListBi.AddAsync(3).Timeout(T(1));
+        await s.ServerList.AddAsync(1).Timeout(T(1));
+        await s.ServerList.AddAsync(2).Timeout(T(1));
+        await s.ServerList.AddAsync(3).Timeout(T(1));
 
-        await client.Proxy.IntListBi.EnableAsync().Timeout(T(1));
+        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
         // Perform a move to verify the client state has no duplicates.
-        await client.Proxy.IntListBi.MoveAsync(0, 2).Timeout(T(1));
+        await list.MoveAsync(0, 2).Timeout(T(1));
 
+        var items = await ItemsAsync(list);
         using (Assert.Multiple())
         {
-            await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(3);
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(serverNexus.IntListBi);
-            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([2, 3, 1]);
-
+            await Assert.That(items.Length).IsEqualTo(3);
+            await Assert.That(items).IsEquivalentTo(s.ServerList, CollectionOrdering.Matching);
+            await Assert.That(items).IsEquivalentTo([2, 3, 1], CollectionOrdering.Matching);
         }
+
+        await s.EndAsync();
     }
 }
