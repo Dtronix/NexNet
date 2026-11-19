@@ -139,7 +139,7 @@ public class JavaScaffoldingCompileTests
     {
         var ir = JavaScaffoldingTests.Interop.Ir!;
         var export = ir.Exports.Single(e => e.ServerApi.ClrName == "NexNet.TestNexus.Interop.IInteropServerNexus");
-        var text = RunnerTemplate;
+        var text = RunnerTemplate.Replace("\r\n", "\n");
         foreach (var method in export.ClientApi.Methods)
             text = text.Replace("$ID_" + method.Name + ",", method.Id.ToString(CultureInfo.InvariantCulture) + ",");
         text = text.Replace("$EXPORTS", ir.Exports.Count(e => (e.Targets & 1) != 0).ToString(CultureInfo.InvariantCulture));
