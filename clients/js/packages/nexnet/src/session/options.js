@@ -31,7 +31,8 @@ import { systemClock } from './clock.js';
  * @property {number} invocationCredits
  * @property {number} progressTimeout
  * @property {import('../contract/enums.js').RemoteExceptionDetailValue} remoteExceptionDetail
- * @property {import('../contract/codec.js').SerializerOptions} serializerOptions
+ * @property {import('../contract/codec.js').SerializerOptions} serializerOptions The configured options; an unset (or 0)
+ *   `maxElements` is replaced by {@link defaultMaxElements} of `maxMessageSize` (C# `ConfigBase.SerializerOptions`).
  */
 
 /** Ping interval when neither the config nor the server sets one (C# `ClientConfig.DefaultPingInterval`). */
@@ -52,6 +53,32 @@ export function effectivePingInterval(configured, idleTimeoutMs) {
   if (configured !== null) return configured;
   if (idleTimeoutMs === null || idleTimeoutMs <= 0) return DEFAULT_PING_INTERVAL;
   return Math.max(MIN_DERIVED_PING_INTERVAL, Math.floor(idleTimeoutMs / 3));
+}
+
+/** Smallest default `maxElements` (protocol specification §11). */
+export const MIN_DEFAULT_MAX_ELEMENTS = 65_536;
+
+/**
+ * The reader's `maxElements` when the config leaves it unset: `max(65536, maxMessageSize / 16)` (spec §11; C#
+ * `ConfigBase.SerializerOptions`).
+ * @param {number} maxMessageSize
+ * @returns {number}
+ */
+export function defaultMaxElements(maxMessageSize) {
+  return Math.max(MIN_DEFAULT_MAX_ELEMENTS, Math.floor(maxMessageSize / 16));
+}
+
+/**
+ * The serializer options the session's readers use: `configured`, with an unset (undefined, null or 0)
+ * `maxElements` filled in from `maxMessageSize`. As in C#, 0 means "use the default", not "no limit".
+ * @param {import('../contract/codec.js').SerializerOptions | null | undefined} configured
+ * @param {number} maxMessageSize
+ * @returns {import('../contract/codec.js').SerializerOptions}
+ */
+export function sessionSerializerOptions(configured, maxMessageSize) {
+  const options = configured ?? {};
+  if (options.maxElements !== undefined && options.maxElements !== null && options.maxElements !== 0) return options;
+  return Object.freeze({ ...options, maxElements: defaultMaxElements(maxMessageSize) });
 }
 
 const KiB = 1024;
@@ -149,6 +176,7 @@ export function resolveClientOptions(config, supported) {
     throw new TypeError('ClientConfig.authenticate must be a function');
   }
   const trusted = config.serializerOptions?.preset === 'trusted';
+  const maxMessageSize = integer(c, 'maxMessageSize', trusted ? 16 * MiB : 4 * MiB, 64 * KiB, GiB);
 
   const options = {
     kind,
@@ -169,11 +197,11 @@ export function resolveClientOptions(config, supported) {
     sessionBudget: integer(c, 'sessionBudget', trusted ? 64 * MiB : 16 * MiB, 64 * KiB, GiB),
     maxPipes: integer(c, 'maxPipes', 32, 1, 255),
     pipeWindow: integer(c, 'pipeWindow', trusted ? MiB : 256 * KiB, 4 * KiB, GiB),
-    maxMessageSize: integer(c, 'maxMessageSize', trusted ? 16 * MiB : 4 * MiB, 64 * KiB, GiB),
+    maxMessageSize,
     invocationCredits: integer(c, 'invocationCredits', trusted ? 128 : 32, 1, 10_000),
     progressTimeout: integer(c, 'progressTimeout', 30_000, 50, 600_000),
     remoteExceptionDetail: config.remoteExceptionDetail ?? 0,
-    serializerOptions: config.serializerOptions ?? {},
+    serializerOptions: sessionSerializerOptions(config.serializerOptions, maxMessageSize),
   };
 
   // C# ConfigBase.ValidateFlowControl: the budget must hold every pipe window, one large message and the invocation queue.
