@@ -8,6 +8,12 @@ package com.dtronix.nexnet;
  * rejects values beyond 96 bits or with a scale above 28.
  */
 public final class NexusDecimal {
+    /** The largest scale (digits after the decimal point). */
+    public static final int MAX_SCALE = 28;
+
+    private static final int SIGN_BIT = 0x8000_0000;
+    private static final int SCALE_MASK = 0x00FF_0000;
+
     private final int lo;
     private final int mid;
     private final int hi;
@@ -70,23 +76,78 @@ public final class NexusDecimal {
     }
 
     /**
-     * Converts a {@link java.math.BigDecimal}.
+     * Converts a {@link java.math.BigDecimal}, keeping its scale. A negative scale is expanded to 0; trailing zeros are
+     * dropped only when the value would not fit otherwise.
      *
      * @param value the value
      * @return the decimal
      * @throws ArithmeticException when the value needs more than 96 bits or a scale above 28
      */
     public static NexusDecimal fromBigDecimal(java.math.BigDecimal value) {
-        throw new UnsupportedOperationException("not implemented");
+        java.math.BigDecimal d = value;
+        if (d.scale() < 0) {
+            d = d.setScale(0);
+        }
+        if (d.scale() > MAX_SCALE || d.unscaledValue().bitLength() > 96) {
+            // Trailing zeros after the point can be dropped without changing the value.
+            java.math.BigDecimal stripped = d.stripTrailingZeros();
+            if (stripped.scale() < 0) {
+                stripped = stripped.setScale(0);
+            }
+            if (stripped.scale() > MAX_SCALE) {
+                throw new ArithmeticException("The scale " + d.scale() + " is above " + MAX_SCALE + ": " + value);
+            }
+            if (stripped.unscaledValue().bitLength() > 96) {
+                throw new ArithmeticException("The value needs more than 96 bits: " + value);
+            }
+            d = stripped;
+        }
+        java.math.BigInteger unscaled = d.unscaledValue();
+        java.math.BigInteger magnitude = unscaled.abs();
+        int flags = (d.scale() << 16) | (unscaled.signum() < 0 ? SIGN_BIT : 0);
+        return new NexusDecimal(magnitude.intValue(), magnitude.shiftRight(32).intValue(),
+            magnitude.shiftRight(64).intValue(), flags);
     }
 
     /**
-     * Converts to a {@link java.math.BigDecimal}.
+     * True when the flags are valid: a scale of 0 to 28 and no bit set other than the scale and the sign.
+     *
+     * @param flags the flags
+     * @return whether a .NET {@code decimal} accepts them
+     */
+    public static boolean isValidFlags(int flags) {
+        return (flags & ~(SIGN_BIT | SCALE_MASK)) == 0 && ((flags & SCALE_MASK) >>> 16) <= MAX_SCALE;
+    }
+
+    /**
+     * The scale: the number of digits after the decimal point, 0 to 28 for a valid value.
+     *
+     * @return the scale
+     */
+    public int scale() {
+        return (flags & SCALE_MASK) >>> 16;
+    }
+
+    /**
+     * True when the sign bit is set (a negative value, or negative zero).
+     *
+     * @return whether the sign bit is set
+     */
+    public boolean isNegative() {
+        return (flags & SIGN_BIT) != 0;
+    }
+
+    /**
+     * Converts to a {@link java.math.BigDecimal}, keeping the scale ({@code 1.50} stays {@code 1.50}). A negative zero
+     * becomes zero: {@code BigDecimal} has no sign of zero.
      *
      * @return the value
      */
     public java.math.BigDecimal toBigDecimal() {
-        throw new UnsupportedOperationException("not implemented");
+        java.math.BigInteger magnitude = java.math.BigInteger.valueOf(hi & 0xFFFF_FFFFL).shiftLeft(64)
+            .or(java.math.BigInteger.valueOf(mid & 0xFFFF_FFFFL).shiftLeft(32))
+            .or(java.math.BigInteger.valueOf(lo & 0xFFFF_FFFFL));
+        return new java.math.BigDecimal(isNegative() ? magnitude.negate() : magnitude, scale());
     }
 
     @Override
