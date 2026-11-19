@@ -283,6 +283,17 @@ server `INexusList<T>` (protocol specification section 12):
   `config()`, `session()` (the current `NexusSession`, or null), `createPipe()`, `createChannel(formatter)`,
   `close()`. `connect()`/`tryConnect()` on a connected client succeed and do nothing (C# parity); during an attempt
   they fail with `IllegalStateException` (`tryConnect()`: an `EXCEPTION` result).
+- **Clock and session options (C-9).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
+  timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
+  by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and
+  `sessionOptions` sets `maxMessageSize`, `invocationCredits` and the other limits of section 6.5 that
+  `ClientConfig` does not carry. `connector` is `NexusConnector.defaults()` for the built-in transports. A null
+  argument throws `NullPointerException`. The other two overloads pass `SessionTimers.system()` and
+  `SessionOptions.defaults()`; generated factories (section 3.5) keep using them.
+- **A channel over an existing pipe (C-9).** `NexusDuplexChannel.over(pipe, itemFormatter)` (static) is a typed
+  channel over a pipe of `createPipe()` or one received as a method argument, like the C#
+  `INexusDuplexPipe.GetChannel<T>()`. Several channels over one pipe share its bytes and credit, and closing any of
+  them closes the pipe. A pipe the runtime did not create throws `IllegalArgumentException`.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
   `tcpTls(host, port)`. UDS and QUIC are not available on Java (D4). Builder options:
   - `tls(TlsOptions)`;
@@ -526,7 +537,8 @@ s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), on
 
 **`SessionOptions`** holds the limits this client advertises in its greeting and the session timings. They are not
 on `ClientConfig`: `NexusClient` uses `SessionOptions.defaults()`, the C# untrusted defaults (protocol
-specification section 9). The package-private `create` overload that tests use takes others. The options are
+specification section 9). The public `NexusClient.create` overload with a `SessionTimers` and a
+`SessionOptions` (section 4, C-9) takes others. The options are
 immutable; each `withX(value)` returns a copy:
 
 | Option | Default | Range | Meaning |
@@ -794,9 +806,7 @@ The scriptable nexus has no `onInvocationException` hook, so a host cannot honor
 **The JVM interop host** (`clients/java/interop-host`, K12) implements the control protocol
 (`docs/internals/interop-control-protocol.md`) on top of this API. `clients/java/gradlew -p clients/java
 :interop-host:installInteropHost` installs it and writes `artifacts/interop/java/host.json` (the runner launches the JVM
-of `-Pnexnet.testRuntime=11|21` directly with the installed class path). Two test-only classes of the host live in the
-runtime's packages on its class path (a split package of the unnamed module; never shipped):
-`com.dtronix.nexnet.client.InteropClientFactory` (the package-private `NexusClient.create` overload with
-`SessionTimers` and `SessionOptions`: fake time, `maxMessageSize`, `invocationCredits`) and
-`com.dtronix.nexnet.pipes.InteropChannels` (a typed channel over an existing pipe, as the protocol creates a pipe
-before it is used as a channel). Both depend on runtime internals; a public test hook would replace them.
+of `-Pnexnet.testRuntime=11|21` directly with the installed class path). The host uses only public runtime API and
+has no classes in the runtime's packages (C-9): fake time, `maxMessageSize` and `invocationCredits` go through the
+public `NexusClient.create` overload with `SessionTimers` and `SessionOptions`, and a pipe of `pipe.create` that is
+later used as a channel (`channel.writer`/`channel.reader`) goes through `NexusDuplexChannel.over` (section 4).
