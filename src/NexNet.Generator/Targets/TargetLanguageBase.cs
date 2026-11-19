@@ -61,8 +61,8 @@ internal abstract class TargetLanguageBase : ITargetLanguage
         var diagnostics = new List<TargetDiagnostic>();
         var scope = new TypeScope(ir);
 
-        ValidateInterface(export, export.ServerApi, scope, diagnostics);
-        ValidateInterface(export, export.ClientApi, scope, diagnostics);
+        ValidateInterface(export, export.ServerApi, serverApi: true, scope, diagnostics);
+        ValidateInterface(export, export.ClientApi, serverApi: false, scope, diagnostics);
 
         foreach (var decl in TargetIrWalker.OwnedDecls(ir, export, Flag))
             ValidateDecl(export, decl, scope, diagnostics);
@@ -70,7 +70,14 @@ internal abstract class TargetLanguageBase : ITargetLanguage
         return diagnostics;
     }
 
-    private void ValidateInterface(ExportIr export, InterfaceIr api, TypeScope scope, List<TargetDiagnostic> diagnostics)
+    /// <summary>
+    /// The final name of a method or collection accessor of the server API (the proxy) or the client API (the client
+    /// nexus base), given its mapped name. A target whose generated classes rename members that clash with their runtime
+    /// base class overrides this, so NEXNET041 sees the names the emitters write (e.g. Java <c>Invoke</c> → <c>invoke_</c>).
+    /// </summary>
+    protected virtual string EscapeApiMember(bool serverApi, string mapped) => mapped;
+
+    private void ValidateInterface(ExportIr export, InterfaceIr api, bool serverApi, TypeScope scope, List<TargetDiagnostic> diagnostics)
     {
         // NEXNET042: G02 blocks such exports, so this only guards IR built some other way.
         foreach (var group in api.Methods.GroupBy(m => m.Name, StringComparer.Ordinal).Where(g => g.Count() > 1))
@@ -79,8 +86,9 @@ internal abstract class TargetLanguageBase : ITargetLanguage
                 DiagnosticDescriptors.DuplicateMethodName.Id, api.ClrName, group.Key, group.First().Location ?? export.Location));
         }
 
-        var members = api.Methods.Select(m => (Kind: "method", m.Name, Mapped: Names.Method(m.Name), Location: m.Location))
-            .Concat(api.Collections.Select(c => (Kind: "collection", c.Name, Mapped: Names.Property(c.Name), Location: (LocationData?)null)));
+        // Compare the names as the emitters write them, after any escape for a base class member (G08).
+        var members = api.Methods.Select(m => (Kind: "method", m.Name, Mapped: EscapeApiMember(serverApi, Names.Method(m.Name)), Location: m.Location))
+            .Concat(api.Collections.Select(c => (Kind: "collection", c.Name, Mapped: EscapeApiMember(serverApi, Names.Property(c.Name)), Location: (LocationData?)null)));
         ReportCollisions(members.Select(m => (m.Kind + " '" + m.Name + "'", m.Mapped, m.Location ?? export.Location)), "of '" + api.ClrName + "'", diagnostics);
 
         foreach (var method in api.Methods)

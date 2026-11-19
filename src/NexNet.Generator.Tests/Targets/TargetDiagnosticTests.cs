@@ -142,6 +142,34 @@ public class TargetDiagnosticTests
     }
 
     [Test]
+    public async Task NamesEscapedForABaseClassMember_CollideWithTheEscapedName()
+    {
+        // Java escapes ProxyBase.invoke and ClientNexusBase.dispatch with a trailing '_' (K04), so Invoke and Invoke_
+        // would both become invoke_ and fail in javac rather than in the generator (G08).
+        var run = RunBoth(Source(
+            """
+            ValueTask Invoke(int a);
+            ValueTask Invoke_(int a);
+            """,
+            types: "public partial interface IClientNexus { ValueTask Dispatch(int a); ValueTask Dispatch_(int a); }"));
+
+        await Assert.That(run.Messages("NEXNET041")).IsEquivalentTo(new[]
+        {
+            "Name collision (Java): method 'Invoke' and method 'Invoke_' of 'Demo.IServerNexus' both map to 'invoke_'",
+            "Name collision (Java): method 'Dispatch' and method 'Dispatch_' of 'Demo.IClientNexus' both map to 'dispatch_'",
+        });
+    }
+
+    [Test]
+    public async Task NamesEscapedForABaseClassMember_AloneAreNotCollisions()
+    {
+        var run = RunBoth(Source(
+            "ValueTask Invoke(int a);",
+            types: "public partial interface IClientNexus { ValueTask Dispatch(int a); }"));
+        await Assert.That(run.Diagnostics).IsEmpty();
+    }
+
+    [Test]
     public async Task KeywordNamesAreEscaped_NotCollisions()
     {
         var run = RunBoth(Source("ValueTask Default(int @class, int function, int @default);"));

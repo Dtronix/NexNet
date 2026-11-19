@@ -103,6 +103,10 @@ internal sealed class JavaTarget : TargetLanguageBase
     /// <summary>A type mapper that writes generated types fully qualified (<c>com.acme.Item</c>), for code outside the package.</summary>
     internal ITypeMapper QualifiedTypes(string package) => new JavaTypeMapper(this, package + ".");
 
+    /// <summary>The proxy and client nexus base escape names of their runtime base class members.</summary>
+    protected override string EscapeApiMember(bool serverApi, string mapped)
+        => ProxyEmitter.EscapeReserved(mapped, serverApi ? ProxyEmitter.ReservedMembers : ClientNexusEmitter.ReservedMembers);
+
     public override IEnumerable<TargetDiagnostic> Validate(NexusIr ir, ExportIr export, TargetOptions options)
     {
         var diagnostics = base.Validate(ir, export, options).ToList();
