@@ -166,6 +166,7 @@ public final class ChatScaffolding extends ScaffoldingExport<com.acme.chat.ChatS
 package com.acme.chat.scaffolding;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import java.util.concurrent.CompletableFuture;
@@ -176,7 +177,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Every call hands its typed-JSON arguments to the {@link ScriptHost}, which runs the slot's script, and completes
  * with the typed-JSON result converted back. {@code onConnected} and {@code onDisconnected} run their slots without
- * waiting for them. Fire-and-forget methods drop their result and errors.
+ * waiting for them. Fire-and-forget methods drop their result and errors. {@code onInvocationException} asks the
+ * host ({@link ScriptHost#onInvocationException}).
  */
 public final class ChatScriptableNexus extends com.acme.chat.ChatClientNexusBase {
     private final ScriptHost host$;
@@ -240,6 +242,11 @@ public final class ChatScriptableNexus extends com.acme.chat.ChatClientNexusBase
     protected CompletableFuture<Void> onDisconnected() {
         ScriptCall.run(host$, ScriptCall.ON_DISCONNECTED, ScriptCall.args(), CancellationToken.NONE, null, null);
         return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    protected @Nullable NexusRemoteError onInvocationException(Throwable exception, int methodId) {
+        return host$.onInvocationException(exception, methodId);
     }
 }
 // ==== com/acme/chat/scaffolding/Scaffolding.java

@@ -1657,6 +1657,7 @@ public final class TypedCodec<T> {
     private const string ScriptHost = """
 package $PACKAGE$;
 
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 
@@ -1673,6 +1674,19 @@ public interface ScriptHost {
      *     failed future fails the call. Ignored for fire-and-forget methods and lifecycle slots.
      */
     CompletableFuture<@Nullable Object> call(ScriptCall call);
+
+    /**
+     * The scriptable nexus's {@code onInvocationException} hook ({@code ClientSpec.onInvocationException}): the
+     * application error to send for a failed client nexus method in place of the exception's detail, or null (the
+     * default) to send what the configured remote exception detail selects. Runs on a runtime thread.
+     *
+     * @param exception the exception the method's call failed with
+     * @param methodId the id of the method
+     * @return the error for the server, or null
+     */
+    default @Nullable NexusRemoteError onInvocationException(Throwable exception, int methodId) {
+        return null;
+    }
 }
 """;
 
