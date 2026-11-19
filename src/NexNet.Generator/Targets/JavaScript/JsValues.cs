@@ -22,7 +22,7 @@ internal static class JsValues
         switch (type.Kind)
         {
             case TypeRefKind.Prim:
-                return PrimDefault(type.Prim);
+                return type.JsNumber ? "0" : PrimDefault(type.Prim);
 
             case TypeRefKind.Bin:
                 return type.Clr is "Memory" or "ReadOnlyMemory" ? "new Uint8Array(0)" : "null";
@@ -109,7 +109,7 @@ internal static class JsValues
 
             case LiteralKind.Integer:
                 return BigInteger.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer)
-                    ? Integer(integer, prim)
+                    ? target.JsNumber ? SafeInteger(integer, prim) : Integer(integer, prim)
                     : null;
 
             case LiteralKind.Real:
@@ -119,6 +119,14 @@ internal static class JsValues
             default:
                 return null;
         }
+    }
+
+    // A 64-bit integer in the checked-number mapping (D13): a safe integer, non-negative for UInt64; otherwise no literal.
+    private static string? SafeInteger(BigInteger value, PrimKind prim)
+    {
+        const long maxSafe = (1L << 53) - 1;
+        var min = prim == PrimKind.UInt64 ? 0 : -maxSafe;
+        return value >= min && value <= maxSafe ? value.ToString(CultureInfo.InvariantCulture) : null;
     }
 
     private static string? Integer(BigInteger value, PrimKind prim)

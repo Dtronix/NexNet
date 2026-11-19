@@ -561,6 +561,8 @@ internal static class JsFormatterEmitter
             [$rt.uint32Formatter, $rt.uint32ArrayFormatter, Uint32Array, 'int'],
             [$rt.int64Formatter, $rt.int64ArrayFormatter, BigInt64Array, 'int'],
             [$rt.uint64Formatter, $rt.uint64ArrayFormatter, BigUint64Array, 'int'],
+            [$rt.int64NumberFormatter, $rt.int64ArrayFormatter, BigInt64Array, 'number'],
+            [$rt.uint64NumberFormatter, $rt.uint64ArrayFormatter, BigUint64Array, 'number'],
             [$rt.float32Formatter, $rt.float32ArrayFormatter, Float32Array, 'float'],
             [$rt.float64Formatter, $rt.float64ArrayFormatter, Float64Array, 'float'],
             [$rt.halfFormatter, $rt.halfArrayFormatter, Float32Array, 'float'],
@@ -585,6 +587,16 @@ internal static class JsFormatterEmitter
                 }));
                 return;
               }
+              if (kind === 'number') {
+                // 64-bit elements in the checked-number mapping (D13): safe integers, written as the bigint array.
+                formatter.write(w, ArrayType.from(items, (x, i) => {
+                  if (typeof x !== 'number' || !Number.isSafeInteger(x) || (ArrayType === BigUint64Array && x < 0)) {
+                    throw new RangeError('element ' + i + ' (' + String(x) + ') is not a safe integer of the element type');
+                  }
+                  return BigInt(x);
+                }));
+                return;
+              }
               const array = ArrayType.from(items);
               if (kind === 'int') {
                 for (let i = 0; i < items.length; i++) {
@@ -597,6 +609,14 @@ internal static class JsFormatterEmitter
             read(r) {
               const array = formatter.read(r);
               if (array === null) return null;
+              if (kind === 'number') {
+                return Array.from(array, (b) => {
+                  if (b < -9007199254740991n || b > 9007199254740991n) {
+                    throw new $rt.NexusSerializationError('range', 'the integer ' + String(b) + ' is not a safe integer');
+                  }
+                  return Number(b);
+                });
+              }
               return kind === 'char' ? Array.from(array, (c) => String.fromCharCode(c)) : Array.from(array);
             },
           });

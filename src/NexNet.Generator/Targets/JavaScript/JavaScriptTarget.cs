@@ -185,7 +185,7 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
             switch (type.Kind)
             {
                 case TypeRefKind.Prim:
-                    return Prim(type.Prim);
+                    return type.JsNumber ? new TargetType("number", true) : Prim(type.Prim);   // D13 opt-in
                 case TypeRefKind.Bin:
                     return new TargetType("Uint8Array", false);
                 case TypeRefKind.PrimArray:

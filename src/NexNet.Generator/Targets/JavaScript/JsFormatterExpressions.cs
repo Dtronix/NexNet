@@ -68,7 +68,7 @@ internal sealed class JsFormatterExpressions
         switch (type.Kind)
         {
             case TypeRefKind.Prim:
-                return Rt + PrimFormatter(type.Prim);
+                return Rt + (type.JsNumber ? NumberFormatter(type.Prim) : PrimFormatter(type.Prim));
             case TypeRefKind.Bin:
                 return Rt + "binFormatter";
             case TypeRefKind.PrimArray:
@@ -182,6 +182,14 @@ internal sealed class JsFormatterExpressions
         PrimKind.Uri => "uriFormatter",
         PrimKind.Version => "versionFormatter",
         _ => throw new InvalidOperationException("No JavaScript formatter for the primitive " + prim + "."),
+    };
+
+    /// <summary>The runtime formatter of a 64-bit integer in the opt-in checked-number mapping (D13, <c>[NexusJsNumber]</c>).</summary>
+    public static string NumberFormatter(PrimKind prim) => prim switch
+    {
+        PrimKind.Int64 => "int64NumberFormatter",
+        PrimKind.UInt64 => "uint64NumberFormatter",
+        _ => throw new InvalidOperationException("No JavaScript checked-number formatter for the primitive " + prim + "."),
     };
 
     /// <summary>The runtime formatter of an ext 78 primitive array.</summary>
