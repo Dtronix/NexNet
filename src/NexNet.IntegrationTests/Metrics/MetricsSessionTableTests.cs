@@ -6,6 +6,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// The session table behind the observable instruments: slot reuse, shrinking, and retiring sessions a disconnect missed.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsSessionTableTests
 {
     private sealed class FakeSession(MetricsTagSet tags) : IMeteredSession

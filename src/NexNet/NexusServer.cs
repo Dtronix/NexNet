@@ -29,11 +29,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     // ReSharper disable once StaticMemberInGenericType
     private static long _idCounter = 0;
 
-    /// <summary>
-    /// Resets the server ID counter. For testing purposes only.
-    /// </summary>
-    internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
-
     private IServerSessionManager _sessionManager = null!;
     private ITimer? _watchdogTimer;
     private ServerConfig? _config;

@@ -116,6 +116,7 @@ internal class InvocationIdTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task GetNextId_HashSetLookup_IsEfficient()
     {
         // This test verifies that the lookup is O(1) by testing performance

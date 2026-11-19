@@ -2,6 +2,7 @@
 
 namespace NexNet.IntegrationTests.Collections;
 
+[NotInParallel("stress")]
 internal class SnapshotListTests
 {
     [Test]

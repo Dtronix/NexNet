@@ -90,6 +90,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
     /// (200 sessions x 200 ms would take 40 s sequentially).
     /// </summary>
     [Test]
+    [NotInParallel]
     public async Task Stop_With200Sessions_CompletesQuickly()
     {
         const int sessionCount = 200;
@@ -241,8 +242,9 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        // The fault stops the server on its own: wait through Running and the transient Stopping state.
         var sw = Stopwatch.StartNew();
-        while (server.State == NexusServerState.Running && sw.Elapsed < TimeSpan.FromSeconds(5))
+        while (server.State != NexusServerState.Stopped && sw.Elapsed < TimeSpan.FromSeconds(5))
             await Task.Delay(10);
 
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);

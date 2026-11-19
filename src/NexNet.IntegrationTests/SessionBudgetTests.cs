@@ -1,6 +1,7 @@
 using NexNet.Internals;
 
 namespace NexNet.IntegrationTests;
+[NotInParallel("stress")]
 internal class SessionBudgetTests
 {
     [Test]

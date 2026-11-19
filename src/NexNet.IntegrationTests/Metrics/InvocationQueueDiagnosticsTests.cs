@@ -8,6 +8,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Time invocations wait for an execution slot (histogram, snapshot, warning) and time pipe writers wait for credit.
 /// </summary>
+[NotInParallel("stress")]
 internal class InvocationQueueDiagnosticsTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;

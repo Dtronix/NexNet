@@ -7,6 +7,7 @@ namespace NexNet.IntegrationTests.Collections;
 /// The server sends a new client its snapshot before any change, and answers a Noop after the change that made the
 /// request obsolete (protocol specification §12).
 /// </summary>
+[NotInParallel("stress")]
 internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
 {
     [Test]

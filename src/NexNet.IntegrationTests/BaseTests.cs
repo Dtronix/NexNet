@@ -35,6 +35,7 @@ internal abstract class BaseTests
     }
 
     private static int _counter;
+    private DirectoryInfo? _testSocketDirectory;
     private UnixDomainSocketEndPoint? _currentUdsPath;
     private int? _currentTcpPort;
     private int? _currentUdpPort;
@@ -81,7 +82,8 @@ internal abstract class BaseTests
     }
 
     /// <summary>
-    /// Directory for the UDS socket files of every test in the run; deleted after the run.
+    /// Directory for the UDS socket files of the run. Each test gets its own subdirectory (see
+    /// <see cref="NewUdsEndPoint"/>), deleted after the test; the whole directory is deleted after the run.
     /// </summary>
     private static readonly Lazy<DirectoryInfo> SocketDirectory =
         new(() => Directory.CreateTempSubdirectory("socketTests"), LazyThreadSafetyMode.ExecutionAndPublication);
@@ -103,14 +105,12 @@ internal abstract class BaseTests
     }
 
     /// <summary>
-    /// Runs before each test: creates the test's logger and resets the server's session id counter, then calls
-    /// <see cref="SetUp"/>.
+    /// Runs before each test: creates the test's logger, then calls <see cref="SetUp"/>.
     /// </summary>
     [Before(HookType.Test)]
     public void BaseSetUp()
     {
         _logger = new RollingLogger();
-        NexusServer<ServerNexus, ServerNexus.ClientProxy>.ResetIdCounter();
         SetUp();
     }
 
@@ -224,15 +224,49 @@ internal abstract class BaseTests
         {
             // Ignore: the test's own result is what matters here.
         }
+
+        DeleteTestSocketDirectory();
+    }
+
+    /// <summary>
+    /// A new UDS endpoint in this test's own socket directory, which is created on first use and deleted after the
+    /// test, so tests running in parallel never share a socket file.
+    /// </summary>
+    protected UnixDomainSocketEndPoint NewUdsEndPoint()
+    {
+        _testSocketDirectory ??= SocketDirectory.Value.CreateSubdirectory(
+            $"t{Interlocked.Increment(ref _counter)}");
+
+        // Short names: a socket path is limited to about 100 characters.
+        return new UnixDomainSocketEndPoint(Path.Combine(_testSocketDirectory.FullName,
+            $"s{Interlocked.Increment(ref _counter)}"));
+    }
+
+    private void DeleteTestSocketDirectory()
+    {
+        var directory = _testSocketDirectory;
+        _testSocketDirectory = null;
+        if (directory == null)
+            return;
+
+        try
+        {
+            directory.Delete(true);
+        }
+        catch (IOException)
+        {
+            // Best effort: a socket file can still be held open; the run's directory is deleted at the end.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
     {
         if (type == Type.Uds)
         {
-            CurrentUdsPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(SocketDirectory.Value.FullName,
-                    $"socket_{Interlocked.Increment(ref _counter)}"));
+            CurrentUdsPath ??= NewUdsEndPoint();
 
             return new UdsServerConfig() { EndPoint = CurrentUdsPath, Logger = logger };
         }
@@ -324,9 +358,7 @@ internal abstract class BaseTests
     {
         if (type == Type.Uds)
         {
-            CurrentUdsPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(SocketDirectory.Value.FullName,
-                    $"socket_{Interlocked.Increment(ref _counter)}"));
+            CurrentUdsPath ??= NewUdsEndPoint();
 
             return new UdsClientConfig() { EndPoint = CurrentUdsPath, Logger = logger, };
         }
@@ -782,23 +814,15 @@ internal abstract class BaseTests
         return (client, clientNexus);
     }
 
-    protected int FreeTcpPort()
-    {
-        TcpListener l = new TcpListener(IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
+    /// <summary>
+    /// A loopback TCP port no other test in this run has been given; see <see cref="TestPorts"/>.
+    /// </summary>
+    protected static int FreeTcpPort() => TestPorts.Next();
 
-    protected int FreeUdpPort()
-    {
-        IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Loopback, 0);
-        using var udpServer = new UdpClient();
-        udpServer.ExclusiveAddressUse = true;
-        udpServer.Client.Bind(localEndPoint);
-        return ((IPEndPoint)udpServer.Client.LocalEndPoint!).Port;
-    }
+    /// <summary>
+    /// A loopback UDP port no other test in this run has been given; see <see cref="TestPorts"/>.
+    /// </summary>
+    protected static int FreeUdpPort() => TestPorts.Next();
 
     public static async Task AssertThrows<T>(Func<Task> task)
         where T : Exception

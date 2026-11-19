@@ -1,6 +1,7 @@
 ﻿using NexNet.Internals.Collections.Lists;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
+[NotInParallel("stress")]
 public class SnapshotListTests
 {
     [Test]

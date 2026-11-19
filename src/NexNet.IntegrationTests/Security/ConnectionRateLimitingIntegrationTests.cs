@@ -12,6 +12,7 @@ namespace NexNet.IntegrationTests.Security;
 /// <summary>
 /// Integration tests for connection rate limiting across different transport types.
 /// </summary>
+[NotInParallel("stress")]
 internal class ConnectionRateLimitingIntegrationTests : BaseTests
 {
     /// <summary>

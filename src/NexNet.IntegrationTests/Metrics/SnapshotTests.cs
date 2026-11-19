@@ -8,6 +8,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Session and server snapshots.
 /// </summary>
+[NotInParallel("stress")]
 internal class SnapshotTests : BaseTests
 {
     [Test]
