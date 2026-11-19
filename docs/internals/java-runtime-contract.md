@@ -19,7 +19,7 @@ describes the API that generated code compiles against and the rules both sides 
 | Tests | JUnit 5 (5.14.x, which still runs on Java 11). Test JVM: `-Pnexnet.testJava=11` or `21` (default 21); Gradle provisions a missing JDK through the Foojay resolver |
 | Version | Read from `<Version>` in `src/NexNet/NexNet.csproj` (lockstep with NuGet and npm); exposed as `NexusRuntime.VERSION` |
 | Jar | `Automatic-Module-Name: com.dtronix.nexnet`; sources and javadoc jars |
-| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is compile-only |
+| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is a `compileOnlyApi` dependency (K28): it reaches consumers' compile classpath, so generated code and user code that see its `@Nullable` compile without declaring it, but it is not needed at run time |
 
 The convention plugin `nexnet.java-library` (`clients/java/build-logic`) applies all of the above to every library.
 Animal Sniffer is called through the `org.codehaus.mojo:animal-sniffer` library by the `AnimalSnifferCheck` task
