@@ -1,6 +1,5 @@
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -35,12 +34,8 @@ internal class NexusCollectionRefusalTests : BaseTests
         });
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task RefusedConnects_DoNotLeakPipes(Type type)
     {
         var (client, _) = await StartAuthServerClient(type);
@@ -52,14 +47,13 @@ internal class NexusCollectionRefusalTests : BaseTests
         }
 
         // An authorized collection still opens.
-        Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1)).IsTrue();
         await client.Proxy.UnprotectedList.ReadyTask.Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task RefusedConnect_RetrySucceedsOnceAuthorized(Type type)
     {
         var (client, setAuthorized) = await StartAuthServerClient(type);
@@ -70,15 +64,14 @@ internal class NexusCollectionRefusalTests : BaseTests
         await AssertThrows<NexusBusyException>(() => client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(1));
 
         setAuthorized();
-        Assert.That(await client.Proxy.ProtectedList.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await client.Proxy.ProtectedList.EnableAsync().Timeout(1)).IsTrue();
         await client.Proxy.ProtectedList.ReadyTask.Timeout(1);
 
         await client.Proxy.ProtectedList.DisableAsync().Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task EnableDisableCycles_DoNotLeakPipes(Type type)
     {
         var (client, _) = await StartAuthServerClient(type);
@@ -86,10 +79,10 @@ internal class NexusCollectionRefusalTests : BaseTests
         // More cycles than the client has pipe slots: a disabled collection gives its slot back.
         for (var i = 0; i < ClientMaxPipes * 3; i++)
         {
-            Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1), Is.True);
+            await Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1)).IsTrue();
             await client.Proxy.UnprotectedList.DisableAsync().Timeout(1);
         }
 
-        Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1)).IsTrue();
     }
 }

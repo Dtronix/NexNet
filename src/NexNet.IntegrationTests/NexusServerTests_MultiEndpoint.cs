@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Quic;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -10,6 +11,7 @@ using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
+using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 using NexNet.Transports.Uds;
@@ -93,6 +95,86 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         await multi.Server.StopAsync().Timeout(2);
         await Assert.That(multi.Server.GetSnapshot().Endpoints.All(e => e.State == NexusEndpointState.Stopped)).IsTrue();
+    }
+
+    [Test]
+    public async Task BoundEndPoint_PortZero_ReportsPickedPortClientsConnectTo()
+    {
+        var types = new[] { Type.Tcp, Type.TcpTls, Type.Uds };
+        var multi = CreateMultiEndpointServer(null,
+            (_, config) =>
+            {
+                if (config is TcpServerConfig tcp)
+                    tcp.EndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+            },
+            types);
+        var server = multi.Server;
+        await Assert.That(server.Endpoints.All(e => e.BoundEndPoint == null)).IsTrue().Because("Nothing is bound before start.");
+
+        for (var run = 0; run < 2; run++)
+        {
+            await server.StartAsync().Timeout(1);
+
+            var snapshot = server.GetSnapshot();
+            foreach (var type in new[] { Type.Tcp, Type.TcpTls })
+            {
+                var name = multi.Configs[type].TransportName;
+                var bound = server.Endpoints.Single(e => e.Name == name).BoundEndPoint as IPEndPoint;
+                await Assert.That(bound).IsNotNull().Because($"{name}: no bound end point.");
+                await Assert.That(bound!.Port).IsNotZero().Because($"{name}: port 0 was not resolved.");
+                await Assert.That(bound.Address).IsEqualTo(IPAddress.Loopback);
+                await Assert.That(snapshot.Endpoints.Single(e => e.Name == name).Address).IsEqualTo(bound.ToString());
+
+                var clientConfig = (TcpClientConfig)multi.CreateClientConfig(type);
+                clientConfig.EndPoint = bound;
+                var (client, _) = CreateClient(clientConfig);
+                await client.ConnectAsync().Timeout(2);
+                await Assert.That(client.State).IsEqualTo(ConnectionState.Connected).Because($"{name}: client did not connect.");
+            }
+
+            var udsBound = server.Endpoints.Single(e => e.Name == "uds").BoundEndPoint;
+            await Assert.That(udsBound?.ToString()).IsEqualTo(((UdsServerConfig)multi.Configs[Type.Uds]).EndPoint.ToString());
+
+            await server.StopAsync().Timeout(2);
+            await Assert.That(server.Endpoints.All(e => e.BoundEndPoint == null)).IsTrue().Because("Stop clears the bound end points.");
+            await Assert.That(server.GetSnapshot().Endpoints[0].Address).IsEqualTo(new IPEndPoint(IPAddress.Loopback, 0).ToString()).Because("A stopped endpoint reports its configured address.");
+        }
+    }
+
+    [Test]
+    public async Task BoundEndPoint_QuicPortZero_ReportsPickedPortClientsConnectTo()
+    {
+        if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
+            Skip.Test("QUIC (msquic) is not available on this platform.");
+
+        var multi = CreateMultiEndpointServer(null,
+            (_, config) =>
+            {
+                if (config is QuicServerConfig quic)
+                    quic.EndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+            },
+            Type.Tcp, Type.Quic);
+        var server = multi.Server;
+        var name = multi.Configs[Type.Quic].TransportName;
+        await Assert.That(server.Endpoints.Single(e => e.Name == name).BoundEndPoint).IsNull().Because("Nothing is bound before start.");
+
+        await server.StartAsync().Timeout(1);
+
+        var bound = server.Endpoints.Single(e => e.Name == name).BoundEndPoint as IPEndPoint;
+        await Assert.That(bound).IsNotNull().Because("QUIC: no bound end point.");
+        await Assert.That(bound!.Port).IsNotZero().Because("QUIC: port 0 was not resolved.");
+        await Assert.That(bound.Address).IsEqualTo(IPAddress.Loopback);
+        await Assert.That(server.GetSnapshot().Endpoints.Single(e => e.Name == name).Address).IsEqualTo(bound.ToString());
+
+        var clientConfig = (QuicClientConfig)multi.CreateClientConfig(Type.Quic);
+        clientConfig.EndPoint = bound;
+        var (client, _) = CreateClient(clientConfig);
+        await client.ConnectAsync().Timeout(5);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected).Because("QUIC client did not connect to the picked port.");
+
+        await server.StopAsync().Timeout(2);
+        await Assert.That(server.Endpoints.Single(e => e.Name == name).BoundEndPoint).IsNull().Because("Stop clears the bound end point.");
+        await Assert.That(server.GetSnapshot().Endpoints.Single(e => e.Name == name).Address).IsEqualTo(new IPEndPoint(IPAddress.Loopback, 0).ToString()).Because("A stopped endpoint reports its configured address.");
     }
 
     [Test]
@@ -202,11 +284,16 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await ConnectAll(multi);
         await WaitFor(() => { lock (seenLock) return seen.Count == types.Length; }).Timeout(2);
 
+        // Listener endpoints carry the end point they bound.
+        EndPoint? Bound(string name) => multi.Server.Endpoints.Single(e => e.Name == name).BoundEndPoint;
+
         using (Assert.Multiple())
         {
-            await Assert.That(seen["tls"].AtConnect).IsEqualTo(new NexusEndpointInfo("tls", "tls", true, null));
-            await Assert.That(seen["tcp"].AtConnect).IsEqualTo(new NexusEndpointInfo("tcp", "tcp", false, null));
-            await Assert.That(seen["uds"].AtConnect).IsEqualTo(new NexusEndpointInfo("uds", "uds", false, null));
+            await Assert.That(seen["tls"].AtConnect).IsEqualTo(new NexusEndpointInfo("tls", "tls", true, null) { BoundEndPoint = Bound("tls") });
+            await Assert.That(seen["tcp"].AtConnect).IsEqualTo(new NexusEndpointInfo("tcp", "tcp", false, null) { BoundEndPoint = Bound("tcp") });
+            await Assert.That(seen["uds"].AtConnect).IsEqualTo(new NexusEndpointInfo("uds", "uds", false, null) { BoundEndPoint = Bound("uds") });
+            await Assert.That(Bound("tls")).IsNotNull();
+            await Assert.That(Bound("tcp")).IsNotNull();
             await Assert.That(seen["websocket"].AtConnect).IsEqualTo(new NexusEndpointInfo("websocket", "websocket", false, "/websocket-test"));
             await Assert.That(seen["httpsocket"].AtConnect).IsEqualTo(new NexusEndpointInfo("httpsocket", "httpsocket", false, "/httpsocket-test"));
             foreach (var (name, (atAuthenticate, atConnect)) in seen)
@@ -472,6 +559,33 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         var unconfigured = new NexusServer<ServerNexus, ServerNexus.ClientProxy>();
         Assert.ThrowsExactly<InvalidOperationException>(() => unconfigured.AddListener(
             new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "tcp"));
+    }
+
+    [Test]
+    public async Task AddEndpoint_QuicValidationAndAddress()
+    {
+        var multi = CreateMultiEndpointServer(Type.Tcp);
+        var server = multi.Server;
+        var udpPort = FreeUdpPort();
+        var quic = new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, udpPort) };
+        server.AddListener(quic, "quic");
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
+                new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.IPv6Any, udpPort) }, "quic2"));
+
+        // A TCP listener on the same port number is a different socket; another UDP port is free.
+        server.AddListener(new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, udpPort) }, "tcp-same-number");
+        var otherPort = FreeUdpPort();
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, otherPort) }, "quic-other");
+        // Port 0 binds an ephemeral port and never conflicts.
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0) }, "quic-any1");
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0) }, "quic-any2");
+
+        var endpoints = server.GetSnapshot().Endpoints;
+        await Assert.That(endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "quic", "tcp-same-number", "quic-other", "quic-any1", "quic-any2" }, CollectionOrdering.Matching);
+        await Assert.That(endpoints[1].Address).IsEqualTo($"127.0.0.1:{udpPort}");
+        await Assert.That(endpoints[3].Address).IsEqualTo($"127.0.0.1:{otherPort}");
+        await Assert.That(server.Endpoints[1]).IsEqualTo(new NexusEndpointInfo("quic", "quic", true, null));
     }
 
     [Test]

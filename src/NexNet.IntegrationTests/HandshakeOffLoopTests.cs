@@ -9,7 +9,6 @@ using System.Security.Cryptography.X509Certificates;
 using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 #pragma warning disable CA1416
@@ -42,9 +41,8 @@ internal class HandshakeOffLoopTests : BaseTests
             await client.ConnectAsync().Timeout(5);
             sw.Stop();
 
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-            Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)),
-                "Stalled TLS handshakes must not delay the next client.");
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+            await Assert.That(sw.Elapsed).IsLessThan(TimeSpan.FromSeconds(1)).Because("Stalled TLS handshakes must not delay the next client.");
         }
         finally
         {
@@ -92,7 +90,7 @@ internal class HandshakeOffLoopTests : BaseTests
             // A third connection is closed straight away, long before the TLS handshake timeout.
             using var rejected = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             await rejected.ConnectAsync(endPoint).Timeout(1);
-            Assert.That(await ReceiveUntilClosed(rejected).Timeout(1), Is.EqualTo(0));
+            await Assert.That(await ReceiveUntilClosed(rejected).Timeout(1)).IsEqualTo(0);
         }
         finally
         {
@@ -127,7 +125,7 @@ internal class HandshakeOffLoopTests : BaseTests
 
             var (client, _) = CreateClient(CreateClientConfig(Type.TcpTls));
             await client.ConnectAsync().Timeout(5);
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         }
         finally
         {
@@ -139,7 +137,7 @@ internal class HandshakeOffLoopTests : BaseTests
     public async Task Quic_PeerThatOpensNoStream_DoesNotBlockOthers()
     {
         if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
-            Assert.Ignore("QUIC (msquic) is not available on this platform.");
+            Skip.Test("QUIC (msquic) is not available on this platform.");
 
         var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
         serverConfig.HandshakeTimeout = 500;
@@ -161,9 +159,8 @@ internal class HandshakeOffLoopTests : BaseTests
             await client.ConnectAsync().Timeout(5);
             sw.Stop();
 
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-            Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)),
-                "A QUIC peer that opens no stream must not delay the next client.");
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+            await Assert.That(sw.Elapsed).IsLessThan(TimeSpan.FromSeconds(1)).Because("A QUIC peer that opens no stream must not delay the next client.");
 
             // The stream accept is bounded by HandshakeTimeout, which frees the slots.
             await WaitFor(() => server.GetSnapshot().PendingHandshakes == 0, 3,
@@ -180,7 +177,7 @@ internal class HandshakeOffLoopTests : BaseTests
     public async Task Quic_ClientStreamOpenFails_ClosesTheConnection()
     {
         if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
-            Assert.Ignore("QUIC (msquic) is not available on this platform.");
+            Skip.Test("QUIC (msquic) is not available on this platform.");
 
         var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
 
@@ -205,24 +202,23 @@ internal class HandshakeOffLoopTests : BaseTests
         var connectTask = QuicTransport.ConnectAsync(clientConfig, CancellationToken.None).AsTask();
         await using var serverConnection = await listener.AcceptConnectionAsync().AsTask().Timeout(5);
 
-        Assert.That(async () => await connectTask.Timeout(5), Throws.InstanceOf<Exception>(),
-            "Opening the stream should fail when the server grants no streams.");
+        await Assert.ThrowsAsync<Exception>(async () => await connectTask.Timeout(5));
 
         // The client must close its connection once the stream open fails; otherwise the server only notices
         // at its idle timeout (30 s by default).
         var sw = Stopwatch.StartNew();
         var closed = await serverConnection.AcceptInboundStreamAsync().AsTask()
             .ContinueWith(t => t.Exception?.InnerException, TaskScheduler.Default).Timeout(5);
-        Assert.That(closed, Is.InstanceOf<QuicException>(), "The server should see the connection closed.");
-        Assert.That(((QuicException)closed!).QuicError, Is.EqualTo(QuicError.ConnectionAborted));
-        Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+        await Assert.That(closed).IsAssignableTo<QuicException>().Because("The server should see the connection closed.");
+        await Assert.That(((QuicException)closed!).QuicError).IsEqualTo(QuicError.ConnectionAborted);
+        await Assert.That(sw.Elapsed).IsLessThan(TimeSpan.FromSeconds(3));
     }
 
     [Test]
     public async Task Quic_SharedSslOptions_AlpnStaysUnchanged()
     {
         if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
-            Assert.Ignore("QUIC (msquic) is not available on this platform.");
+            Skip.Test("QUIC (msquic) is not available on this platform.");
 
         var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
         var serverOptions = serverConfig.SslServerAuthenticationOptions;
@@ -234,15 +230,13 @@ internal class HandshakeOffLoopTests : BaseTests
         var (client, _) = CreateClient(clientConfig);
         await client.ConnectAsync().Timeout(5);
 
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(serverOptions.ApplicationProtocols, Is.Null,
-            "The QUIC listener must not set its ALPN on the caller's (possibly shared) options.");
-        Assert.That(clientOptions.ApplicationProtocols, Is.Null,
-            "The QUIC client must not set its ALPN on the caller's options.");
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(serverOptions.ApplicationProtocols).IsNull().Because("The QUIC listener must not set its ALPN on the caller's (possibly shared) options.");
+        await Assert.That(clientOptions.ApplicationProtocols).IsNull().Because("The QUIC client must not set its ALPN on the caller's options.");
     }
 
     [Test]
-    public void Quic_ServerOptionsCopy_CopiesEveryPropertyButAlpn()
+    public async Task Quic_ServerOptionsCopy_CopiesEveryPropertyButAlpn()
     {
         var original = new SslServerAuthenticationOptions
         {
@@ -262,13 +256,13 @@ internal class HandshakeOffLoopTests : BaseTests
 
         var copy = QuicHelpers.WithNexNetAlpn(original);
 
-        AssertCopied(original, copy);
-        Assert.That(copy.ApplicationProtocols, Is.EqualTo(new[] { QuicHelpers.Alpn }));
-        Assert.That(original.ApplicationProtocols, Is.EqualTo(new[] { SslApplicationProtocol.Http2 }));
+        await AssertCopied(original, copy);
+        await Assert.That(copy.ApplicationProtocols).IsEquivalentTo(new[] { QuicHelpers.Alpn }, CollectionOrdering.Matching);
+        await Assert.That(original.ApplicationProtocols).IsEquivalentTo(new[] { SslApplicationProtocol.Http2 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void Quic_ClientOptionsCopy_CopiesEveryPropertyButAlpn()
+    public async Task Quic_ClientOptionsCopy_CopiesEveryPropertyButAlpn()
     {
         var original = new SslClientAuthenticationOptions
         {
@@ -288,9 +282,9 @@ internal class HandshakeOffLoopTests : BaseTests
 
         var copy = QuicHelpers.WithNexNetAlpn(original);
 
-        AssertCopied(original, copy);
-        Assert.That(copy.ApplicationProtocols, Is.EqualTo(new[] { QuicHelpers.Alpn }));
-        Assert.That(original.ApplicationProtocols, Is.EqualTo(new[] { SslApplicationProtocol.Http2 }));
+        await AssertCopied(original, copy);
+        await Assert.That(copy.ApplicationProtocols).IsEquivalentTo(new[] { QuicHelpers.Alpn }, CollectionOrdering.Matching);
+        await Assert.That(original.ApplicationProtocols).IsEquivalentTo(new[] { SslApplicationProtocol.Http2 }, CollectionOrdering.Matching);
     }
 
     /// <summary>
@@ -298,7 +292,7 @@ internal class HandshakeOffLoopTests : BaseTests
     /// .NET version adds: a property the copy misses keeps its default and fails here whenever the original's value
     /// differs from it.
     /// </summary>
-    private static void AssertCopied<T>(T original, T copy) where T : class, new()
+    private static async Task AssertCopied<T>(T original, T copy) where T : class, new()
     {
         var defaults = new T();
         var uncovered = new List<string>();
@@ -308,7 +302,8 @@ internal class HandshakeOffLoopTests : BaseTests
                 continue;
 
             var expected = property.GetValue(original);
-            Assert.That(property.GetValue(copy), Is.SameAs(expected).Or.EqualTo(expected), property.Name);
+            var actual = property.GetValue(copy);
+            await Assert.That(ReferenceEquals(actual, expected) || Equals(actual, expected)).IsTrue().Because(property.Name);
 
             // A property this test leaves at its default proves nothing about the copy; list it so a new one is
             // noticed and given a value above.
@@ -322,7 +317,7 @@ internal class HandshakeOffLoopTests : BaseTests
         uncovered.Remove("EncryptionPolicy");
         uncovered.Remove("ServerCertificateContext");
         uncovered.Remove("ClientCertificateContext");
-        Assert.That(uncovered, Is.Empty, "Give these properties a non-default value in the test.");
+        await Assert.That(uncovered).IsEmpty().Because("Give these properties a non-default value in the test.");
     }
 
     private static async Task<QuicConnection> ConnectSilentQuicPeer(IPEndPoint endPoint)
@@ -391,7 +386,7 @@ internal class HandshakeOffLoopTests : BaseTests
         while (!condition())
         {
             if (sw.Elapsed > TimeSpan.FromSeconds(seconds))
-                Assert.Fail(message);
+                Fail.Test(message);
             await Task.Delay(10);
         }
     }
