@@ -109,10 +109,19 @@ class ClientConfigTest {
         assertEquals(50_000, config.connectionTimeoutMillis());
         assertEquals(15_000, config.handshakeTimeoutMillis());
         assertEquals(30_000, config.timeoutMillis());
-        assertEquals(10_000, config.pingIntervalMillis());
+        assertNull(config.pingIntervalMillis());
         assertTrue(config.tls().hostnameVerification());
         assertSame(TlsOptions.defaults(), config.tls());
         assertNull(config.logger());
+    }
+
+    @Test
+    void pingIntervalIsNullableAndPositive() {
+        assertEquals(5_000, ClientConfig.tcp("h", 1).pingIntervalMillis(5_000).build().pingIntervalMillis());
+        assertNull(ClientConfig.tcp("h", 1).pingIntervalMillis(5_000).pingIntervalMillis(null).build()
+            .pingIntervalMillis());
+        assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(0));
+        assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(-5));
     }
 
     @Test

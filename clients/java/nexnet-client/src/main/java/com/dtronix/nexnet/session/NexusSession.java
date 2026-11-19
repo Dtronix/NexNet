@@ -40,6 +40,10 @@ import org.jspecify.annotations.Nullable;
 public final class NexusSession {
     /** The connection preamble: magic {@code NnP\x14}, three reserved zero bytes, protocol version 1. */
     private static final byte[] PREAMBLE = {0x4E, 0x6E, 0x50, 0x14, 0, 0, 0, 1};
+    /** Ping interval when none is configured and the server advertises no idle timeout (C# default). */
+    public static final int DEFAULT_PING_INTERVAL_MILLIS = 10_000;
+    /** Shortest ping interval derived from the server's advertised idle timeout (C# default). */
+    public static final int MIN_DERIVED_PING_INTERVAL_MILLIS = 1_000;
     /** The largest body accepted before the connection completes. */
     public static final int MAX_PRE_AUTH_BODY_LENGTH = 16 * 1024;
     /** The largest authentication token the server accepts. */
@@ -66,7 +70,7 @@ public final class NexusSession {
     private final SessionOptions options;
     private final int handshakeTimeoutMillis;
     private final long timeoutNanos;
-    private final int pingIntervalMillis;
+    private final @Nullable Integer pingIntervalMillis;
     private final Executor callbackExecutor;
     private final SessionTimers timers;
     private final @Nullable NexusLogger logger;
@@ -513,7 +517,7 @@ public final class NexusSession {
             invocationCredits = r.readInt();
             // S04 trailing field; older readers ignore trailing fields, and so does this one beyond it.
             if (count >= 5) {
-                idleTimeoutMillis = r.readLong();
+                idleTimeoutMillis = r.readUInt32();
             }
             for (int i = 5; i < count; i++) {
                 r.skip();
@@ -536,11 +540,12 @@ public final class NexusSession {
         this.peerMaxMessageSize = maxMessageSize;
         this.peerInvocationCredits = invocationCredits;
         this.advertisedIdleTimeoutMillis = idleTimeoutMillis > 0 ? idleTimeoutMillis : -1;
-        long interval = pingIntervalMillis;
-        if (idleTimeoutMillis > 0) {
-            interval = Math.min(interval, Math.max(1, idleTimeoutMillis / 3));
-        }
+        long interval = effectivePingInterval(pingIntervalMillis, idleTimeoutMillis);
         this.effectivePingIntervalMillis = interval;
+        if (pingIntervalMillis != null && idleTimeoutMillis > 0 && interval >= idleTimeoutMillis) {
+            log(NexusLogLevel.WARNING, "The ping interval (" + interval + " ms) is not below the server's idle timeout ("
+                + idleTimeoutMillis + " ms); the server may time the session out between pings.", null);
+        }
         Registration handshakeTimeout;
         synchronized (lock) {
             if (phase != Phase.HANDSHAKING) {
@@ -558,6 +563,26 @@ public final class NexusSession {
         schedulePing();
         log(NexusLogLevel.INFORMATION, "Connected as session " + clientId + ".", null);
         ready.complete(null);
+    }
+
+    /**
+     * The ping interval for a server that advertised {@code advertisedIdleTimeoutMillis}, as C#
+     * {@code ClientConfig.GetEffectivePingInterval} (S04): an explicit interval is used as is; otherwise a third of the
+     * advertised idle timeout, at least {@link #MIN_DERIVED_PING_INTERVAL_MILLIS}; otherwise
+     * {@link #DEFAULT_PING_INTERVAL_MILLIS}.
+     *
+     * @param configured the configured interval, or null to derive it
+     * @param advertisedIdleTimeoutMillis the advertised idle timeout; zero or negative when the server advertised none
+     * @return milliseconds
+     */
+    static long effectivePingInterval(@Nullable Integer configured, long advertisedIdleTimeoutMillis) {
+        if (configured != null) {
+            return configured;
+        }
+        if (advertisedIdleTimeoutMillis <= 0) {
+            return DEFAULT_PING_INTERVAL_MILLIS;
+        }
+        return Math.min(Integer.MAX_VALUE, Math.max(MIN_DERIVED_PING_INTERVAL_MILLIS, advertisedIdleTimeoutMillis / 3));
     }
 
     // ------------------------------------------------------------------ timers
@@ -830,8 +855,8 @@ public final class NexusSession {
     }
 
     /**
-     * The ping interval in use: a third of the advertised idle timeout when the server advertises one (never longer
-     * than the configured interval), otherwise the configured interval.
+     * The ping interval in use: the configured interval when one is set; otherwise a third of the advertised idle
+     * timeout, at least 1000 ms; otherwise 10000 ms when the server advertised none.
      *
      * @return milliseconds, or -1 before the connection completes
      */
@@ -872,7 +897,7 @@ public final class NexusSession {
         private SessionOptions options = SessionOptions.defaults();
         private int handshakeTimeoutMillis = 15_000;
         private int timeoutMillis = 30_000;
-        private int pingIntervalMillis = 10_000;
+        private @Nullable Integer pingIntervalMillis;
         private Executor callbackExecutor = NexusExecutors.shared();
         private SessionTimers timers = SessionTimers.system();
         private @Nullable NexusLogger logger;
@@ -957,12 +982,17 @@ public final class NexusSession {
         }
 
         /**
-         * The configured ping interval, used when the server advertises no idle timeout.
+         * The configured ping interval, used as is. Null (the default) derives it from the server's advertised idle
+         * timeout: a third of it, at least 1000 ms, or 10000 ms when the server advertises none.
          *
-         * @param millis milliseconds
+         * @param millis milliseconds, positive, or null to derive the interval
          * @return this builder
+         * @throws IllegalArgumentException when the value is zero or negative
          */
-        public Builder pingIntervalMillis(int millis) {
+        public Builder pingIntervalMillis(@Nullable Integer millis) {
+            if (millis != null && millis <= 0) {
+                throw new IllegalArgumentException("pingIntervalMillis must be positive: " + millis);
+            }
             this.pingIntervalMillis = millis;
             return this;
         }

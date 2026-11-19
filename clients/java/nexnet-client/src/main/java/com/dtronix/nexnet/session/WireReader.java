@@ -84,6 +84,15 @@ final class WireReader {
         }
     }
 
+    /** Reads a MessagePack integer in the uint32 range, as C# reads a {@code uint}. */
+    long readUInt32() {
+        long v = readLong();
+        if (v < 0 || v > 0xFFFF_FFFFL) {
+            throw new WireFormatException("Integer out of uint32 range: " + v);
+        }
+        return v;
+    }
+
     int readInt() {
         long v = readLong();
         if (v < Integer.MIN_VALUE || v > Integer.MAX_VALUE) {

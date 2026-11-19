@@ -114,9 +114,18 @@ class NexusSessionTest {
         assertEquals(65_526, session.sendMaxMessageSize());
     }
 
+    private NexusSession connectedWithIdle(NexusSession.Builder builder, long idleTimeoutMillis) throws Exception {
+        NexusSession session = start(builder);
+        transport.server().readHandshake();
+        transport.server().write(FakeServer.PREAMBLE);
+        transport.server().write(FakeServer.serverGreetingWithIdle(CLIENT_HASH, 1, idleTimeoutMillis, 0));
+        session.ready().get(5, TimeUnit.SECONDS);
+        return session;
+    }
+
     @Test
     void derivesThePingIntervalFromTheAdvertisedIdleTimeout() throws Exception {
-        NexusSession session = start(builder().pingIntervalMillis(10_000));
+        NexusSession session = start(builder());
         transport.server().readHandshake();
         transport.server().write(FakeServer.PREAMBLE);
         transport.server().write(FakeServer.serverGreetingWithIdle(CLIENT_HASH, 1, 6_000, 2));
@@ -130,13 +139,103 @@ class NexusSessionTest {
     }
 
     @Test
-    void neverPingsLessOftenThanConfigured() throws Exception {
-        NexusSession session = start(builder().pingIntervalMillis(1_000));
+    void anExplicitIntervalIsUsedAsIs() throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        NexusSession session = connectedWithIdle(builder().pingIntervalMillis(1_000).logger(warningsInto(warnings)),
+            60_000);
+        assertEquals(1_000, session.pingIntervalMillis());
+        assertTrue(warnings.isEmpty(), "no warning below the idle timeout");
+    }
+
+    @Test
+    void anExplicitIntervalIsNotCappedButWarnsWhenNotBelowTheIdleTimeout() throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        NexusSession session = connectedWithIdle(builder().pingIntervalMillis(6_000).logger(warningsInto(warnings)),
+            6_000);
+        assertEquals(6_000, session.pingIntervalMillis());
+        assertEquals(1, warnings.size());
+        assertTrue(warnings.get(0).contains("6000 ms"), warnings.get(0));
+
+        timers.advance(5_999);
+        timers.advance(1);
+        assertEquals(MessageTypes.PING, transport.server().readByte());
+    }
+
+    @Test
+    void anExplicitIntervalDoesNotWarnWhenTheServerAdvertisesNone() throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        NexusSession session = connectedWithIdle(builder().pingIntervalMillis(60_000).logger(warningsInto(warnings)),
+            0);
+        assertEquals(-1, session.advertisedIdleTimeoutMillis());
+        assertEquals(60_000, session.pingIntervalMillis());
+        assertTrue(warnings.isEmpty());
+    }
+
+    @Test
+    void theDerivedIntervalIsAtLeastOneSecond() throws Exception {
+        NexusSession session = connectedWithIdle(builder(), 1_500);
+        assertEquals(1_500, session.advertisedIdleTimeoutMillis());
+        assertEquals(1_000, session.pingIntervalMillis());
+    }
+
+    @Test
+    void anAdvertisedZeroFallsBackToTenSeconds() throws Exception {
+        NexusSession session = connectedWithIdle(builder(), 0);
+        assertEquals(-1, session.advertisedIdleTimeoutMillis());
+        assertEquals(10_000, session.pingIntervalMillis());
+    }
+
+    @Test
+    void readsTheIdleTimeoutAsUInt32() throws Exception {
+        NexusSession session = connectedWithIdle(builder(), 0xFFFF_FFFFL);
+        assertEquals(0xFFFF_FFFFL, session.advertisedIdleTimeoutMillis());
+        assertEquals(0xFFFF_FFFFL / 3, session.pingIntervalMillis());
+    }
+
+    @Test
+    void aNegativeIdleTimeoutIsAProtocolError() throws Exception {
+        NexusSession session = start(builder());
         transport.server().readHandshake();
         transport.server().write(FakeServer.PREAMBLE);
-        transport.server().write(FakeServer.serverGreetingWithIdle(CLIENT_HASH, 1, 60_000, 0));
-        session.ready().get(5, TimeUnit.SECONDS);
-        assertEquals(1_000, session.pingIntervalMillis());
+        transport.server().write(FakeServer.serverGreetingWithIdle(CLIENT_HASH, 1, -1, 0));
+        assertEquals(DisconnectReason.PROTOCOL_ERROR, closedWith(session));
+    }
+
+    @Test
+    void anIdleTimeoutAboveUInt32IsAProtocolError() throws Exception {
+        NexusSession session = start(builder());
+        transport.server().readHandshake();
+        transport.server().write(FakeServer.PREAMBLE);
+        transport.server().write(FakeServer.serverGreetingWithIdle(CLIENT_HASH, 1, 0x1_0000_0000L, 0));
+        assertEquals(DisconnectReason.PROTOCOL_ERROR, closedWith(session));
+    }
+
+    @Test
+    void effectivePingIntervalMatchesCSharp() {
+        assertEquals(10_000, NexusSession.effectivePingInterval(null, 0));
+        assertEquals(10_000, NexusSession.effectivePingInterval(null, -1));
+        assertEquals(10_000, NexusSession.effectivePingInterval(null, 30_000));
+        assertEquals(2_000, NexusSession.effectivePingInterval(null, 6_000));
+        assertEquals(1_000, NexusSession.effectivePingInterval(null, 2_999));
+        assertEquals(1_000, NexusSession.effectivePingInterval(null, 1));
+        assertEquals(1_431_655_765, NexusSession.effectivePingInterval(null, 0xFFFF_FFFFL));
+        assertEquals(50_000, NexusSession.effectivePingInterval(50_000, 6_000));
+        assertEquals(1, NexusSession.effectivePingInterval(1, 0));
+    }
+
+    @Test
+    void zeroOrNegativePingIntervalIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> builder().pingIntervalMillis(0));
+        assertThrows(IllegalArgumentException.class, () -> builder().pingIntervalMillis(-1));
+        builder().pingIntervalMillis(null);
+    }
+
+    private static com.dtronix.nexnet.logging.NexusLogger warningsInto(List<String> warnings) {
+        return (level, category, exception, message) -> {
+            if (level == com.dtronix.nexnet.logging.NexusLogLevel.WARNING) {
+                warnings.add(message);
+            }
+        };
     }
 
     @Test
