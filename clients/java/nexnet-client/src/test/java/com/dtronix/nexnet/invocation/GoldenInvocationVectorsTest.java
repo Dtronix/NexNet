@@ -21,9 +21,7 @@ import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.spi.HandshakeDescriptor;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -32,7 +30,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.Timeout;
@@ -59,12 +56,6 @@ class GoldenInvocationVectorsTest {
     static final byte[] SMALL_ARGS = {(byte) 0x91, 0x05};
     /** The invocation id of the InvocationResult reject vectors. */
     static final int REJECT_RESULT_ID = 3;
-    /**
-     * Reject vectors the runtime accepts today, with why. Each is asserted to be still accepted and then reported as
-     * skipped, so fixing the runtime fails the test until the entry is removed.
-     */
-    static final Map<String, String> KNOWN_ACCEPTED = Collections.singletonMap("msg.reject.result.count-4",
-        "InvocationRuntime.onResult skips the fields after the third instead of refusing the body");
 
     @TestFactory
     Stream<DynamicTest> replay() {
@@ -275,12 +266,6 @@ class GoldenInvocationVectorsTest {
         try (Fixture f = new Fixture(32)) {
             CompletableFuture<byte[]> call = f.callWithId(REJECT_RESULT_ID);
             f.peer.send(MessageTypes.INVOCATION_RESULT, v.bytes());
-            String known = KNOWN_ACCEPTED.get(v.id);
-            if (known != null) {
-                call.get(5, TimeUnit.SECONDS);
-                assertFalse(f.session.isClosing(), "still accepted; remove the KNOWN_ACCEPTED entry once refused");
-                Assumptions.abort("known divergence, accepted: " + known);
-            }
             assertEquals(DisconnectReason.PROTOCOL_ERROR, f.closedWith(), "refused");
             assertInstanceOf(CancellationException.class, failure(call), "the call ends with the session");
         }

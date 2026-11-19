@@ -1201,7 +1201,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         try {
             WireIn r = new WireIn(body, 0, body.length);
             int count = r.arrayHeader();
-            if (count < 2) {
+            if (count != 2 && count != 3) {
                 throw protocolError("InvocationResult has " + count + " elements.");
             }
             int id = r.readUnsigned(0xFFFF);
@@ -1211,9 +1211,6 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
                 r.skip();
             }
             int valueLength = r.position() - valueOffset;
-            for (int i = 3; i < count; i++) {
-                r.skip();
-            }
             OutboundCall<?> call;
             synchronized (lock) {
                 call = outstanding.remove(id);
