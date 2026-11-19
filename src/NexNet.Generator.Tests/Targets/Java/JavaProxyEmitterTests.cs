@@ -266,10 +266,10 @@ public class JavaProxyEmitterTests
     }
 
     [Test]
-    public async Task TestScaffoldingModeEmitsNothing()
+    public async Task TestScaffoldingModeEmitsNoClientFiles()
     {
         var files = JavaTarget.Instance.Emit(Chat.Ir!, JavaTestRunner.TargetOptionsFor(JavaFixtures.ChatPackage), EmitMode.TestScaffolding);
-        await Assert.That(files).IsEmpty();
+        await Assert.That(files.Select(f => f.Path).Intersect(Chat.Files.Keys)).IsEmpty();
     }
 
     [Test]

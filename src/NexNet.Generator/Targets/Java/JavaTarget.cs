@@ -7,8 +7,9 @@ namespace NexNet.Generator.Targets.Java;
 /// The Java client target (<c>com.dtronix:nexnet-client</c>, Java 11 / Android API 24). Client emission writes one file
 /// per declared type into the configured package (<see cref="TypeEmitter"/>) and the formatter classes into its
 /// <c>formatters</c> sub-package (<see cref="FormatterEmitter"/>), and per export its handshake constants, server proxy,
-/// client nexus base and client factory (<see cref="ProxyEmitter"/>, <see cref="ClientNexusEmitter"/>); test
-/// scaffolding arrives with K11.
+/// client nexus base and client factory (<see cref="ProxyEmitter"/>, <see cref="ClientNexusEmitter"/>). The test
+/// scaffolding of the cross-language harness (<see cref="EmitMode.TestScaffolding"/>, option <c>EmitTestScaffolding</c>)
+/// goes in its <c>scaffolding</c> sub-package (<see cref="ScaffoldingEmitter"/>).
 /// </summary>
 internal sealed class JavaTarget : TargetLanguageBase
 {
@@ -18,7 +19,10 @@ internal sealed class JavaTarget : TargetLanguageBase
     /// <summary>Option: the Java package of the generated code (required).</summary>
     public const string PackageOption = "Package";
 
-    private static readonly string[] Options = { PackageOption };
+    /// <summary>Option: <c>true</c> also emits the test scaffolding (<see cref="EmitMode.TestScaffolding"/>).</summary>
+    public const string TestScaffoldingOption = Bundle.TargetBundleBuilder.TestScaffoldingOption;
+
+    private static readonly string[] Options = { PackageOption, TestScaffoldingOption };
 
     /// <summary>Java reserved words and literals, plus restricted identifiers that cannot name a type or variable.</summary>
     internal static readonly string[] Keywords =
@@ -130,12 +134,18 @@ internal sealed class JavaTarget : TargetLanguageBase
 
     public override IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode)
     {
-        if (mode != EmitMode.Client)
+        if (mode != EmitMode.Client && mode != EmitMode.TestScaffolding)
             return Array.Empty<GeneratedFile>();
 
         var package = options.Get(PackageOption) ?? throw new InvalidOperationException("The java target requires a package (NEXNET045).");
         var context = new JavaContext(this, ir, package);
         var decls = TargetIrWalker.TargetDecls(ir, Flag).Select(d => d.Decl).ToArray();
+        if (mode == EmitMode.TestScaffolding)
+        {
+            return ir.Exports.Any(e => (e.Targets & (int)Flag) != 0)
+                ? ScaffoldingEmitter.Emit(context, decls, PackagePath(options))
+                : Array.Empty<GeneratedFile>();
+        }
 
         var unionsOfCase = new Dictionary<string, List<UnionDeclIr>>(StringComparer.Ordinal);
         foreach (var union in decls.OfType<UnionDeclIr>())
