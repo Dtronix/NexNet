@@ -47,10 +47,10 @@ public class ProofTests
             var error = await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(async () => await proxy.ThrowWithResult("boom"));
             await Assert.That(error).IsNotNull();
 
-            // Fire and forget, ordered by the barrier.
+            // Fire and forget: the barrier waits for the send; the server records it on its own schedule.
             proxy.Notify("one");
             await client.BarrierAsync();
-            await Assert.That(await proxy.TakeNotifications()).IsEquivalentTo(new[] { "one" });
+            await Assert.That(await proxy.WaitNotificationsAsync(1, TimeSpan.FromSeconds(Wait))).IsEquivalentTo(new[] { "one" });
 
             // Client callbacks run the script: unscripted, then Returns once, then Forward.
             var script = client.Callbacks<InteropClientNexusScript>();

@@ -70,11 +70,11 @@ public class RemoteDriverTests
                 await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await proxy.Delay(10, 3, canceled.Token));
             }
 
-            // Fire and forget, ordered by the barrier.
+            // Fire and forget: the barrier waits for the sends; the server records them on its own schedule.
             proxy.Notify("one");
             proxy.Notify("two");
             await client.BarrierAsync();
-            await Assert.That(await proxy.TakeNotifications()).IsEquivalentTo(new[] { "one", "two" });
+            await Assert.That(await proxy.WaitNotificationsAsync(2, TimeSpan.FromSeconds(Wait))).IsEquivalentTo(new[] { "one", "two" });
 
             var script = client.Callbacks<InteropClientNexusScript>();
             await Assert.That(await proxy.CallClientEchoString("x")).IsNull();
