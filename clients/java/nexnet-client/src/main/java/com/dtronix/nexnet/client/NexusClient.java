@@ -25,6 +25,7 @@ import com.dtronix.nexnet.spi.ClientNexusHooks;
 import com.dtronix.nexnet.spi.HandshakeDescriptor;
 import com.dtronix.nexnet.spi.PipeArgumentWriter;
 import com.dtronix.nexnet.spi.ProxyInvoker;
+import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.transport.Transport;
 import java.io.IOException;
 import java.net.ConnectException;
@@ -133,7 +134,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     public static <TProxy> NexusClient<TProxy> create(ClientConfig config, HandshakeDescriptor handshake,
                                                       ClientNexusBase<TProxy> nexus,
                                                       Function<ProxyInvoker, TProxy> proxyFactory) {
-        return create(config, handshake, nexus, proxyFactory, NexusClient::defaultConnector);
+        return create(config, handshake, nexus, proxyFactory, NexusConnector.defaults());
     }
 
     /**
@@ -175,11 +176,6 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         String[] x = a.split("[.\\-+]");
         String[] y = b.split("[.\\-+]");
         return x.length >= 2 && y.length >= 2 && x[0].equals(y[0]) && x[1].equals(y[1]);
-    }
-
-    private static Transport defaultConnector(ClientConfig config, int timeoutMillis) throws IOException {
-        throw new NexusTransportException(TransportError.INTERNAL_ERROR,
-            "The " + config.transport() + " transport is not available in this runtime version.", null);
     }
 
     // ------------------------------------------------------------------ connecting
