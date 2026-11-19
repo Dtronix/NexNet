@@ -1,163 +1,154 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Messages;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexusClientTests_SendInvocation : BaseTests
+/// <summary>
+/// The invocation frames a client under test sends (P01b): observed on the server as they arrive, so every language
+/// must encode them byte for byte like the C# client.
+/// </summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal partial class NexusClientTests_SendInvocation(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
 {
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerVoid(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerVoid(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.IgnoreReturn,
-            InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 0, // Invocations for void are always 0 as there is no returned value
             MethodId = 0
-        }, client => client.Proxy.ServerVoid());
+        }, p => { p.ServerVoid(); return ValueTask.CompletedTask; });
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerVoidWithParam(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerVoidWithParam(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.IgnoreReturn,
-            InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 0, // Invocations for void are always 0 as there is no returned value
             MethodId = 1
-        }, client => client.Proxy.ServerVoidWithParam(54321));
+        }, p => { p.ServerVoidWithParam(54321); return ValueTask.CompletedTask; });
     }
-    
 
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTask(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTask(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
             InvocationId = 1,
             MethodId = 2
-        }, client => client.Proxy.ServerTask());
+        }, p => p.ServerTask());
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskWithParam(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskWithParam(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 3
-        }, client => client.Proxy.ServerTaskWithParam(54321));
+        }, p => p.ServerTaskWithParam(54321));
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskValue(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskValue(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 4
-        }, client => client.Proxy.ServerTaskValue());
+        }, async p => await p.ServerTaskValue());
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskValueWithParam(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskValueWithParam(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 5
-        }, client => client.Proxy.ServerTaskValueWithParam(54321));
+        }, async p => await p.ServerTaskValueWithParam(54321));
     }
 
-
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskWithCancellation(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskWithCancellation(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 6
-        }, client => client.Proxy.ServerTaskWithCancellation(CancellationToken.None));
+        }, p => p.ServerTaskWithCancellation(CancellationToken.None));
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskWithValueAndCancellation(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskWithValueAndCancellation(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 7
-        }, client => client.Proxy.ServerTaskWithValueAndCancellation(54321, CancellationToken.None));
+        }, p => p.ServerTaskWithValueAndCancellation(54321, CancellationToken.None));
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskValueWithCancellation(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskValueWithCancellation(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 8
-        }, client => client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None));
+        }, async p => await p.ServerTaskValueWithCancellation(CancellationToken.None));
     }
 
-
     [Test]
-    [Transports]
-    public Task ClientSendsInvocationFor_ServerTaskValueWithValueAndCancellation(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    public Task ClientSendsInvocationFor_ServerTaskValueWithValueAndCancellation(ClientTarget target)
     {
-        return InvokeFromClientAndVerifySent(type, new InvocationMessage()
+        return InvokeFromClientAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 9
-        }, client => client.Proxy.ServerTaskValueWithValueAndCancellation(54321, CancellationToken.None));
+        }, async p => await p.ServerTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
 
-    private async Task InvokeFromClientAndVerifySent(Type type, InvocationMessage expectedMessage, Action<NexusClient<ClientNexus, ClientNexus.ServerProxy>> action)
+    private async Task InvokeFromClientAndVerifySent(ClientTarget target, InvocationMessage expectedMessage, Func<Remote_IServerNexus, ValueTask> action)
     {
-        var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, clientNexus) = CreateServerClient(
-            serverConfig,
-            CreateClientConfig(type));
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         // Observed on the server: the invocation frame as it arrives.
-        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        await using var server = await StartServer(configureEndpoint: config => ServerTaps.OnReceive(config, (_, frame) =>
         {
             if (frame.Type != MessageType.Invocation)
                 return;
@@ -173,18 +164,12 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
             CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
             CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
             tcs.TrySetResult();
-        });
+        }));
+        await using var client = await Connect(target, server);
 
-        clientNexus.OnConnectedEvent = (nexus, b) =>
-        {
-            action.Invoke(client);
-            return ValueTask.CompletedTask;
-        };
-
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-
+        await action(Proxy(client)).AsTask().Timeout(T(1));
         await tcs.Task.Timeout(T(1));
+        await client.BarrierAsync().Timeout(T(1));
+        await DisconnectAndAudit(client);
     }
-
 }
