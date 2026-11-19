@@ -1,5 +1,10 @@
 package com.dtronix.nexnet.client;
 
+import com.dtronix.nexnet.transport.TlsTrust;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,6 +19,18 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>By default the platform trust store verifies the server and the host name is verified (Java's
  * {@code SSLSocket} does not verify host names on its own; the runtime sets the endpoint identification algorithm).
+ *
+ * <pre>{@code
+ * TlsOptions tls = TlsOptions.builder()
+ *     .trustCaCertificatesPem(caPem, false)
+ *     .clientCertificatePkcs12(clientPfx, password)
+ *     .build();
+ * }</pre>
+ *
+ * <p>Certificate pins ({@link Builder#pinCertificateSha256}) match a server chain certificate when they equal either
+ * the SHA-256 of the certificate's DER encoding ({@link TlsTrust#certificateSha256}) or the SHA-256 of its DER
+ * SubjectPublicKeyInfo ({@link TlsTrust#spkiSha256}, which survives renewal with the same key). Both forms are
+ * accepted for every pin.
  */
 public final class TlsOptions {
     private static final TlsOptions DEFAULTS = builder().build();
@@ -84,7 +101,9 @@ public final class TlsOptions {
     }
 
     /**
-     * SHA-256 hashes of the DER-encoded certificates the server chain must contain (pinning). Empty for no pinning.
+     * The certificate pins: SHA-256 hashes, each matching a server chain certificate when it equals the SHA-256 of
+     * the certificate's DER encoding or of its DER SubjectPublicKeyInfo. The connection is accepted when any pin
+     * matches any chain certificate. Empty for no pinning.
      *
      * @return copies of the pins
      */
@@ -149,6 +168,55 @@ public final class TlsOptions {
         }
 
         /**
+         * Verifies the server with these CA certificates: a convenience for
+         * {@code trustManager(TlsTrust.fromCaCertificates(...))}.
+         *
+         * @param certificates PEM (one or more {@code BEGIN CERTIFICATE} blocks) or DER
+         * @param includeSystemTrust true to also trust the platform's CAs
+         * @return this builder
+         * @throws GeneralSecurityException when the certificates cannot be parsed or there are none
+         */
+        public Builder trustCaCertificates(byte[] certificates, boolean includeSystemTrust)
+            throws GeneralSecurityException {
+            try {
+                return trustManager(TlsTrust.fromCaCertificates(new ByteArrayInputStream(certificates),
+                    includeSystemTrust));
+            } catch (IOException e) {
+                // A byte array stream does not fail; a parse error is a CertificateException.
+                throw new GeneralSecurityException("The CA certificates cannot be read.", e);
+            }
+        }
+
+        /**
+         * Verifies the server with the CA certificates of a PEM string (one or more {@code BEGIN CERTIFICATE}
+         * blocks).
+         *
+         * @param pem the PEM text
+         * @param includeSystemTrust true to also trust the platform's CAs
+         * @return this builder
+         * @throws GeneralSecurityException when the certificates cannot be parsed or there are none
+         */
+        public Builder trustCaCertificatesPem(String pem, boolean includeSystemTrust)
+            throws GeneralSecurityException {
+            return trustCaCertificates(pem.getBytes(StandardCharsets.US_ASCII), includeSystemTrust);
+        }
+
+        /**
+         * Presents the client certificate and private key of a PKCS#12 ({@code .pfx}/{@code .p12}) store: a
+         * convenience for {@code keyManager(TlsTrust.keyManagerFromPkcs12(...))}.
+         *
+         * @param pkcs12 the PKCS#12 data
+         * @param password the store and key password
+         * @return this builder
+         * @throws GeneralSecurityException when the store cannot be read
+         * @throws IOException when the data is malformed or the password is wrong
+         */
+        public Builder clientCertificatePkcs12(byte[] pkcs12, char[] password)
+            throws GeneralSecurityException, IOException {
+            return keyManager(TlsTrust.keyManagerFromPkcs12(new ByteArrayInputStream(pkcs12), password));
+        }
+
+        /**
          * Presents a client certificate from this key manager.
          *
          * @param keyManager the key manager
@@ -160,7 +228,11 @@ public final class TlsOptions {
         }
 
         /**
-         * Adds a certificate pin: the SHA-256 hash of a DER-encoded certificate the server chain must contain.
+         * Adds a certificate pin. The pin matches a server chain certificate when it equals either the SHA-256 of
+         * the certificate's DER encoding ({@link TlsTrust#certificateSha256}) or the SHA-256 of its DER
+         * SubjectPublicKeyInfo ({@link TlsTrust#spkiSha256}); both forms are accepted. With pins set, the
+         * connection is accepted only when some pin matches some chain certificate, in addition to the trust
+         * manager's verification.
          *
          * @param sha256 the 32-byte hash
          * @return this builder
