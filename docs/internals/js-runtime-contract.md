@@ -162,6 +162,9 @@ once per instance, on the first connect (D7).
 
 The `Transport` interface between the session and the transports: `write(chunks)`, `onData(cb)`, `onClose(cb)`,
 `close(reason)`, `isSecure`, `remoteCertificate`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
+The Node TLS transports (`tcpTls`, `https:` HttpSocket, `wss:` WebSocket) set `remoteCertificate` to the server's
+`X509Certificate` (`node:crypto`); every other transport, the browser WebSocket included, sets it to null. The session
+exposes it as `session.remoteCertificate`; `NexusClient` has no public accessor for it yet.
 
 ### 3.4 Generated-code base classes (`proxy.js`, `nexus.js`)
 
@@ -239,6 +242,78 @@ dropped and those running see `ctx.signal` abort.
 
 `ConnectionState`, `ConnectionResultState`, `DisconnectReason` (wire codes 20–38), `RemoteExceptionDetail`,
 `NexusCollectionState` and `DateTimeKind` are frozen objects with the C# values.
+
+### 3.7 Transport errors and TLS
+
+A transport factory rejects a failed connect with a `NexusTransportError` carrying two extra fields
+(`TransportConnectError` in `src/transport/TransportBase.js`):
+
+- `transportError`: the C# `TransportError` name (protocol spec §13.1): `InternalError`, `ConnectionAborted`,
+  `AddressInUse`, `InvalidAddress`, `ConnectionTimeout`, `Unreachable`, `ConnectionRefused`, `ProtocolError`,
+  `ConnectionReset` or `AuthenticationError`;
+- `status`: the HTTP status of a refused upgrade (HttpSocket and Node WebSocket only); absent otherwise.
+
+`reason` is `DisconnectReason.Authentication` for `AuthenticationError` and `SocketError` for everything else, as in
+the C# client. `connect()` rethrows this error as is; `tryConnect()` returns it as `error` with that
+`disconnectReason`. A connect that exceeds `connectionTimeout` fails with `DisconnectReason.Timeout` instead.
+
+| Failure | `transportError` | `reason` |
+|---|---|---|
+| Node socket error `ECONNREFUSED`, `ENOENT` (UDS path) | `ConnectionRefused` | `SocketError` |
+| `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH` | `Unreachable` | `SocketError` |
+| `ECONNRESET`, `EPIPE` | `ConnectionReset` | `SocketError` |
+| `ECONNABORTED` | `ConnectionAborted` | `SocketError` |
+| `ETIMEDOUT` | `ConnectionTimeout` | `SocketError` |
+| `EADDRINUSE` | `AddressInUse` | `SocketError` |
+| `EADDRNOTAVAIL`, `EINVAL` | `InvalidAddress` | `SocketError` |
+| Any error after the TCP connect and before the TLS handshake completes, or a TLS/certificate error code | `AuthenticationError` | `Authentication` |
+| Upgrade refused with `401` or `403` (HttpSocket, Node WebSocket) | `AuthenticationError`, `status` set | `Authentication` |
+| HttpSocket upgrade refused with any other status, `2xx` included | `InternalError`, `status` set | `SocketError` |
+| Node WebSocket upgrade refused with `5xx` | `InternalError`, `status` set | `SocketError` |
+| Node WebSocket upgrade refused with any other status | `ProtocolError`, `status` set | `SocketError` |
+| `101` with a wrong `Upgrade`/`Connection`/`Sec-WebSocket-Accept`, or a subprotocol or extension selected | `ProtocolError` | `SocketError` |
+| Browser WebSocket: any connect failure (the platform hides the cause and the status) | `InternalError` | `SocketError` |
+| Any other error | `InternalError` | `SocketError` |
+
+After the connection is up, the error a transport ends with is only logged (at `debug`): the session ends with
+`DisconnectReason.SocketError`, or `SocketClosedWhenWriting` when a write failed. The TCP, TLS, UDS and HttpSocket
+transports report the Node socket error, or none for a plain end. The WebSocket transports report `ConnectionAborted`
+for a close other than code 1000 (or a connection lost without a Close frame, 1006) and `ProtocolError` for an RFC 6455
+violation or a text message. A write on an ended transport rejects with `ConnectionAborted`.
+
+**Credentials.** The greeting token (`authenticate`) is the canonical credential for every transport (D15). For the
+HTTP-based transports in Node, extra upgrade headers, an `Authorization` header for example, go in
+`config.webSocket.headers` or `config.httpSocket.headers`; the transport sets its own upgrade headers (`Connection`,
+`Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
+cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook (F06) goes in the URL
+(`wss://host/nexus?token=…`), in Node as well as in browsers.
+
+**TLS options and pinning (Node).** `TlsOptions` follow `tls.connect`. The host name is always verified with
+`tls.checkServerIdentity` (against `servername`, defaulting to the URL or `host` name). A user
+`checkServerIdentity(hostname, certificate)` runs after that check passes; returning an `Error` fails the connect with
+`AuthenticationError`. It is the pinning hook, and it supports both pin forms Java accepts, because `certificate` is
+Node's detailed peer certificate:
+
+- certificate SHA-256: `certificate.fingerprint256` (colon-separated upper-case hex), or the SHA-256 of
+  `certificate.raw` (DER);
+- SPKI SHA-256: the SHA-256 of `certificate.pubkey`, which is the DER `SubjectPublicKeyInfo` (the HPKP
+  `pin-sha256` value when base64-encoded);
+- the issuers are reachable through `certificate.issuerCertificate`, to pin an intermediate or the root.
+
+```js
+import { createHash } from 'node:crypto';
+const pin = 'MZEa+vKvxw+5EI8S4C6W811NN39NrGjkKDakkDBwHdE='; // base64 SHA-256 of the server's SPKI
+const tls = {
+  ca: testCaPem,
+  checkServerIdentity: (host, cert) =>
+    createHash('sha256').update(cert.pubkey).digest('base64') === pin ? undefined : new Error('certificate pin mismatch'),
+};
+```
+
+Node calls the hook only when chain validation succeeded. With `rejectUnauthorized: false` and a certificate that does
+not chain to a trusted CA, it is **not called** and the connect succeeds, so pinning can only narrow CA trust, never
+replace it: pass the issuing CA in `ca` to pin a self-signed or private-CA server. The runtime has no built-in pin list
+yet. Browsers do the TLS themselves and ignore `tls`: no custom CA, client certificate or pinning (capability skips).
 
 ## 4. Handshake descriptor and binding
 
