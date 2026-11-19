@@ -371,8 +371,9 @@ future (`join()`, `get()`) blocks.
 - Pass the main-thread executor as `callbackExecutor` (`ContextCompat.getMainExecutor(context)`) to receive results
   and state changes on the UI thread. Never call `join()`/`get()` or the blocking pipe streams on the main thread.
 - Keep `invocationExecutor` on a background executor unless your client nexus methods only touch the UI.
-- Tie the client to a lifecycle: connect in `onStart` (or a `ViewModel`/service), and `disconnect()` when the app
-  goes to the background, or set a `reconnectionPolicy` so the client recovers after the system drops the network.
+- Tie the client to a lifecycle: connect when the app comes to the foreground and `disconnect()` when it goes to the
+  background, and set a `reconnectionPolicy` so the client recovers after the system drops the network. The optional
+  `nexnet-client-android` module (below) does this with `NexusConnectionKeeper`.
 - R8/ProGuard needs no keep rules: the runtime and the generated code use no reflection.
 
 ## Kotlin
@@ -386,4 +387,20 @@ client.connect().await()
 val history = client.proxy().history(20).await()
 ```
 
-Build with `Nullness=jspecify` to get Kotlin nullable types instead of platform types.
+Build with `Nullness=jspecify` to get Kotlin nullable types instead of platform types. The optional
+`nexnet-client-kotlin` module (below) adds suspend functions with cancellation and `Flow` adapters.
+
+## Optional modules
+
+The repository's Java build (`clients/java`) has four optional modules on top of the core runtime:
+
+| Module | Adds |
+|---|---|
+| `nexnet-client-android` | `NexusAndroid.mainThreadExecutor()` and `NexusAndroid.configure(builder)`, `NexusConnectionKeeper` (connects in the foreground, disconnects in the background, reconnects on network changes), `AndroidNexusLogger` (Logcat), `NexusJavaTime` (`java.time` converters on API 26+) |
+| `nexnet-client-kotlin` | `connectAwait()`, `nexusCall { token -> … }` (coroutine cancellation cancels the call), `states()`, `NexusChannelReader.asFlow()`, `NexusList.changes()` |
+| `nexnet-client-okhttp` | `OkHttpWebSocketConnector`: the WebSocket transport over an `OkHttpClient` (pass it to `ChatClient.create(config, nexus, connector)`) |
+| `nexnet-client-micrometer` | `NexusMicrometerBinder`: the client metrics as Micrometer meters with the C# names |
+
+The generator does not emit these modules yet: it emits only the core runtime. To use one, build with
+`<NexNetJavaEmitRuntime>false</NexNetJavaEmitRuntime>` and take the core runtime and the module from a checkout of
+the repository (Gradle `includeBuild("<repo>/clients/java")`), so the runtime classes exist only once.

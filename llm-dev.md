@@ -27,7 +27,7 @@ src/
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
 clients/
 ├── js/                       # npm workspace: packages/nexnet (@dtronix/nexnet runtime), interop-host-node, interop-host-browser
-└── java/                     # Gradle build: nexnet-client (com.dtronix.nexnet runtime), interop-host, build-logic
+└── java/                     # Gradle build: nexnet-client (com.dtronix.nexnet runtime), optional -android/-kotlin/-okhttp/-micrometer, interop-host, build-logic
 tests/golden/                 # Golden vectors (checked in; format in tests/golden/README.md)
 ```
 

@@ -879,6 +879,10 @@ client.disconnect().join(); client.close();                // close() waits for 
   `BigDecimal`, `DateTime`/… → runtime `NexusDateTime`/… (no `java.time`), `Guid` → `UUID`, collections →
   `List`/`Set`/`Map`, `Stack`/`Queue` → `ArrayDeque`, tuples → `Tuple1..7`; objects: POJO with value `equals`.
 - Android: `callbackExecutor(ContextCompat.getMainExecutor(ctx))`; never `join()` on the main thread; API 24 safe.
+- Optional modules in `clients/java` (not emitted by the generator; use `EmitRuntime=false` + Gradle `includeBuild`):
+  `nexnet-client-android` (`NexusAndroid.mainThreadExecutor()`, `NexusConnectionKeeper`, `AndroidNexusLogger`,
+  `NexusJavaTime`), `-kotlin` (`connectAwait()`, `nexusCall { token -> }`, `asFlow()`, `changes()`), `-okhttp`
+  (`OkHttpWebSocketConnector`), `-micrometer` (`NexusMicrometerBinder`).
 
 Parity exceptions (everything else matches C#): browser = WebSocket only, no headers/client cert/custom CA/pinning/
 `RemoteCertificate` (use the greeting token; ASP `AccessTokenQueryParameter`, `AllowedOrigins`); Java has no UDS;

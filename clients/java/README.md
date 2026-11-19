@@ -29,6 +29,7 @@ are described in [Contributing (Java & JS)](../../docs/articles/contributing-mul
 | Project | Contents |
 |---|---|
 | `nexnet-client` | The runtime: `client`, `transport`, `session`, `invocation`, `pipes`, `collections`, `reconnect`, `pool`, `serialization`, `metrics`, `diagnostics`, `spi` (the API generated code uses) |
+| `nexnet-client-android`, `-kotlin`, `-okhttp`, `-micrometer` | Optional modules (`docs/articles/java-client.md#optional-modules`); the Android module is built only when `ANDROID_HOME` is set |
 | `interop-host` | The JVM language host the C# test harness drives (`docs/internals/interop-control-protocol.md`) |
 | `build-logic` | The `nexnet.java-library` convention plugin (release 11, lint, Animal Sniffer) |
 
