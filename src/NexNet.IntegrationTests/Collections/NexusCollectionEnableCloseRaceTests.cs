@@ -15,6 +15,8 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
     [Transports(Type.Uds, Type.Tcp)]
     public async Task PipeClosedDuringEnable_EnableReturnsFalse_AndFreesThePipe(Type type)
     {
+        // Started first, so the server and client loops inherit it too.
+        var nres = NullReferenceCounter.Start();
         var server = CreateServer(CreateServerConfig(type), null);
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
@@ -30,7 +32,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
             await list.DisconnectedTask.Timeout(5);
         };
 
-        var nres = NullReferenceCounter.Start();
         bool enabled;
         try
         {
@@ -58,6 +59,8 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
     [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerStopsDuringEnable_EnableDoesNotThrowNullReference(Type type)
     {
+        // Started first, so the server and client loops inherit it too.
+        var nres = NullReferenceCounter.Start();
         var server = CreateServer(CreateServerConfig(type), null);
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
@@ -72,7 +75,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
             await list.DisconnectedTask.Timeout(5);
         };
 
-        var nres = NullReferenceCounter.Start();
         Exception? error = null;
         var enabled = false;
         try
