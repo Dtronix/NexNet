@@ -15,6 +15,8 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
     [Transports(Type.Uds, Type.Tcp)]
     public async Task PipeClosedDuringEnable_EnableReturnsFalse_AndFreesThePipe(Type type)
     {
+        // Started first, so the server and client loops inherit it too.
+        var nres = NullReferenceCounter.Start();
         var server = CreateServer(CreateServerConfig(type), null);
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
@@ -22,12 +24,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
 
         var list = client.Proxy.IntListBi;
         var hooked = (NexusBroadcastClient<INexusCollectionListMessage>)(object)list;
-        var nres = 0;
-        EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> onException = (_, e) =>
-        {
-            if (e.Exception is NullReferenceException)
-                Interlocked.Increment(ref nres);
-        };
 
         // The pipe closes and the run's disconnect cleanup finishes before the rest of the enable runs.
         hooked.EnableTestHook = async pipe =>
@@ -36,7 +32,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
             await list.DisconnectedTask.Timeout(5);
         };
 
-        AppDomain.CurrentDomain.FirstChanceException += onException;
         bool enabled;
         try
         {
@@ -44,12 +39,12 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
         }
         finally
         {
-            AppDomain.CurrentDomain.FirstChanceException -= onException;
+            nres.Dispose();
             hooked.EnableTestHook = null;
         }
 
         await Assert.That(enabled).IsFalse();
-        await Assert.That(nres).IsZero();
+        await Assert.That(nres.Count).IsZero();
 
         // The run's reader returns the pipe, so its slot is freed once the server confirmed the close.
         var pipes = client.Session!.PipeManager;
@@ -64,6 +59,8 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
     [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerStopsDuringEnable_EnableDoesNotThrowNullReference(Type type)
     {
+        // Started first, so the server and client loops inherit it too.
+        var nres = NullReferenceCounter.Start();
         var server = CreateServer(CreateServerConfig(type), null);
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
@@ -71,12 +68,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
 
         var list = client.Proxy.IntListBi;
         var hooked = (NexusBroadcastClient<INexusCollectionListMessage>)(object)list;
-        var nres = 0;
-        EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> onException = (_, e) =>
-        {
-            if (e.Exception is NullReferenceException)
-                Interlocked.Increment(ref nres);
-        };
 
         hooked.EnableTestHook = async _ =>
         {
@@ -84,7 +75,6 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
             await list.DisconnectedTask.Timeout(5);
         };
 
-        AppDomain.CurrentDomain.FirstChanceException += onException;
         Exception? error = null;
         var enabled = false;
         try
@@ -97,7 +87,7 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
         }
         finally
         {
-            AppDomain.CurrentDomain.FirstChanceException -= onException;
+            nres.Dispose();
             hooked.EnableTestHook = null;
         }
 
@@ -105,8 +95,42 @@ internal class NexusCollectionEnableCloseRaceTests : BaseTests
         {
             await Assert.That(error).IsNull();
             await Assert.That(enabled).IsFalse();
-            await Assert.That(nres).IsZero();
+            await Assert.That(nres.Count).IsZero();
         }
+    }
+
+    /// <summary>
+    /// Counts the first-chance NullReferenceExceptions raised by the current test's own async flow: the test body and
+    /// the client, server and pipe work it starts, which inherit its execution context. FirstChanceException is
+    /// process-wide, so counting every NullReferenceException also counted those of tests running in parallel
+    /// (NexusClientPoolTests.Pool_RentClientAsync_HandlesFactoryReturningNull throws one on purpose).
+    /// </summary>
+    private sealed class NullReferenceCounter : IDisposable
+    {
+        private static readonly AsyncLocal<NullReferenceCounter?> Current = new();
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        private NullReferenceCounter()
+        {
+        }
+
+        public static NullReferenceCounter Start()
+        {
+            var counter = new NullReferenceCounter();
+            Current.Value = counter;
+            AppDomain.CurrentDomain.FirstChanceException += counter.OnFirstChanceException;
+            return counter;
+        }
+
+        private void OnFirstChanceException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+        {
+            if (e.Exception is NullReferenceException && ReferenceEquals(Current.Value, this))
+                Interlocked.Increment(ref _count);
+        }
+
+        public void Dispose() => AppDomain.CurrentDomain.FirstChanceException -= OnFirstChanceException;
     }
 
     private static async Task WaitUntil(Func<bool> condition, TimeSpan timeout)
