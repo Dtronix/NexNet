@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
@@ -26,6 +27,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     private TaskCompletionSource? _disconnectTcs;
     private TaskCompletionSource? _readyTcs;
 
+    // Token of the current enable's processor run, and the failure recorded when that processor stopped on its own.
+    private CancellationToken _processorToken;
+    private InvalidOperationException? _processorFailure;
+
     protected NexusBroadcastSession<TUnion>? Client => _client;
 
     /// <summary>
@@ -33,6 +38,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     /// before that and after the pipe closes.
     /// </summary>
     public NexusCollectionState State { get; private set; } = NexusCollectionState.Disconnected;
+
+    /// <summary>
+    /// Test seam: runs before each message is processed. Always null outside tests.
+    /// </summary>
+    internal Action<TUnion>? ProcessTestHook { get; set; }
 
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
@@ -80,7 +90,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         OperationSemaphore = new SemaphoreSlim(1, 1);
         var stopCts = StopCts = new CancellationTokenSource();
+        Volatile.Write(ref _processorFailure, null);
+        _processorToken = stopCts.Token;
         Processor.Run(stopCts.Token);
+        _ = SuperviseProcessorAsync(Processor.LoopTask, stopCts.Token);
 
         try
         {
@@ -133,6 +146,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             if(logger != null)
                 logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster.Id}";
 
+            var processorToken = broadcaster._processorToken;
             var reader = new NexusChannelReader<TUnion>(clientState.Pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>());
             try
             {
@@ -142,6 +156,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
                     logger?.LogTrace($"Received {message.GetType()} message.");
                     await broadcaster.Processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
                 }
+            }
+            catch (ChannelClosedException) when (!processorToken.IsCancellationRequested)
+            {
+                // The processor closed its queue without being stopped: it ended on an unexpected error.
+                broadcaster.OnProcessorStopped(processorToken);
             }
             catch (Exception e)
             {
@@ -168,7 +187,76 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         var isDisconnected = client.Pipe.CompleteTask.IsCompleted;
         _initializedTcs = null;
 
+        // The pipe is closed after the failure is recorded, so a processor failure is always visible here.
+        if (isDisconnected && Volatile.Read(ref _processorFailure) is { } failure)
+            throw new InvalidOperationException(failure.Message, failure);
+
         return !isDisconnected;
+    }
+
+    /// <summary>
+    /// Watches the message processor of one enable. A processor that stops while its run is still active ended on
+    /// an unexpected error.
+    /// </summary>
+    private async Task SuperviseProcessorAsync(Task loop, CancellationToken token)
+    {
+        try
+        {
+            await loop.ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Collection message processor loop faulted.");
+        }
+
+        OnProcessorStopped(token);
+    }
+
+    /// <summary>
+    /// Handles a processor that stopped on its own: logs the error, sets <see cref="State"/> to Disconnected, faults
+    /// <see cref="ReadyTask"/> and closes the collection pipe. The pipe close runs the normal disconnect path: the collection resets,
+    /// <see cref="DisabledTask"/> completes, and a pending <see cref="EnableAsync"/> throws. Re-enabling the
+    /// collection (relays do it on their own) resynchronizes it from the server.
+    /// </summary>
+    /// <param name="token">Token of the processor run that stopped. A cancelled run was stopped on purpose.</param>
+    private void OnProcessorStopped(CancellationToken token)
+    {
+        if (token.IsCancellationRequested)
+            return;
+
+        var failure = new InvalidOperationException(
+            "The collection message processor stopped unexpectedly; the collection was disabled. Enable it again to resynchronize.");
+
+        // Only the first observer of the current run's stop handles it.
+        if (!token.Equals(_processorToken)
+            || Interlocked.CompareExchange(ref _processorFailure, failure, null) != null)
+            return;
+
+        Logger?.LogError(failure.Message);
+
+        if (_readyTcs is { } readyTcs && readyTcs.TrySetException(failure))
+            _ = readyTcs.Task.Exception; // Observed here; callers awaiting ReadyTask still see the fault.
+
+        State = NexusCollectionState.Disconnected;
+
+        if (_client is { } client)
+            _ = ClosePipeAsync(client).AsTask();
+    }
+
+    /// <summary>
+    /// Closes the collection pipe after a protocol error or a processor failure. The pipe's completion then runs
+    /// <see cref="Disconnected"/>, which resets the collection.
+    /// </summary>
+    private async ValueTask ClosePipeAsync(NexusBroadcastSession<TUnion> client)
+    {
+        try
+        {
+            await client.CompletePipe().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogDebug(e, "Error while closing the collection pipe.");
+        }
     }
 
 
@@ -237,6 +325,9 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
+        // Outside the protocol-error handling below, so an injected failure reaches the processor itself.
+        ProcessTestHook?.Invoke(message);
+
         BroadcastMessageProcessResult result;
         try
         {
@@ -253,14 +344,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if (result.Disconnect && _client is { } client)
         {
             Logger?.LogInfo($"Protocol error while processing {message.GetType().Name} message. Closing the pipe.");
-            try
-            {
-                await client.CompletePipe().ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                Logger?.LogDebug(e, "Error while closing the collection pipe after a protocol error.");
-            }
+            await ClosePipeAsync(client).ConfigureAwait(false);
         }
 
         return result;
