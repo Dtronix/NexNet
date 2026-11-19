@@ -1,3 +1,4 @@
+{"id":"CollectionListMessage","kind":"union","typeParams":0,"cases":[[0,"CollectionListResetStart"],[1,"CollectionListResetValues"],[2,"CollectionListResetComplete"],[3,"CollectionListClear"],[4,"CollectionListInsert"],[5,"CollectionListReplace"],[6,"CollectionListMove"],[7,"CollectionListRemove"],[8,"CollectionListNoop"]]}
 {"id":"IInteropMessage","kind":"union","typeParams":0,"cases":[[0,"InteropTextMessage"],[1,"InteropBinaryMessage"]]}
 {"id":"InteropAllTypes","kind":"object","typeParams":0,"length":32,"members":[[0,"BoolValue","bool"],[1,"SByteValue","sbyte"],[2,"ByteValue","byte"],[3,"Int16Value","short"],[4,"UInt16Value","ushort"],[5,"Int32Value","int"],[6,"UInt32Value","uint"],[7,"Int64Value","long"],[8,"UInt64Value","ulong"],[9,"SingleValue","float"],[10,"DoubleValue","double"],[11,"HalfValue","half"],[12,"CharValue","char"],[13,"DecimalValue","decimal"],[14,"StringValue","string"],[15,"BytesValue","byte[]"],[16,"DateTimeValue","DateTime"],[17,"DateTimeOffsetValue","DateTimeOffset"],[18,"TimeSpanValue","TimeSpan"],[19,"DateOnlyValue","DateOnly"],[20,"TimeOnlyValue","TimeOnly"],[21,"GuidValue","Guid"],[22,"BigIntegerValue","BigInteger"],[23,"UriValue","Uri"],[24,"VersionValue","Version"],[25,"EnumValue","InteropEnum"],[26,"FlagsValue","InteropFlags"],[27,"LongEnumValue","InteropLongEnum"],[28,"NullableInt32Value","int?"],[29,"Int32ArrayValue","int[]"],[30,"StringListValue","List<string>"],[31,"StringMapValue","Dictionary<string,int>"]]}
 {"id":"InteropBinaryMessage","kind":"object","typeParams":0,"length":2,"members":[[0,"Data","byte[]"],[1,"Flags","InteropFlags"]]}
@@ -27,4 +28,13 @@
 {"id":"MessageAbort","kind":"message","messageType":115,"minCount":3,"maxCount":3,"fields":[["invocationId","ushort"],["kind","byte"],["reason","byte"]]}
 {"id":"InvocationCredit","kind":"message","messageType":116,"minCount":1,"maxCount":1,"fields":[["credits","ushort"]]}
 {"id":"DuplexPipeUpdateState","kind":"message","messageType":120,"minCount":3,"maxCount":3,"fields":[["pipeId","ushort"],["state","byte"],["window","uint"]]}
+{"id":"CollectionListClear","kind":"message","messageType":null,"minCount":2,"maxCount":2,"fields":[["flags","byte"],["version","int"]]}
+{"id":"CollectionListInsert","kind":"message","messageType":null,"minCount":4,"maxCount":4,"fields":[["flags","byte"],["version","int"],["index","int"],["value","raw"]]}
+{"id":"CollectionListMove","kind":"message","messageType":null,"minCount":4,"maxCount":4,"fields":[["flags","byte"],["version","int"],["fromIndex","int"],["toIndex","int"]]}
+{"id":"CollectionListNoop","kind":"message","messageType":null,"minCount":1,"maxCount":1,"fields":[["flags","byte"]]}
+{"id":"CollectionListRemove","kind":"message","messageType":null,"minCount":3,"maxCount":3,"fields":[["flags","byte"],["version","int"],["index","int"]]}
+{"id":"CollectionListReplace","kind":"message","messageType":null,"minCount":4,"maxCount":4,"fields":[["flags","byte"],["version","int"],["index","int"],["value","raw"]]}
+{"id":"CollectionListResetComplete","kind":"message","messageType":null,"minCount":1,"maxCount":1,"fields":[["flags","byte"]]}
+{"id":"CollectionListResetStart","kind":"message","messageType":null,"minCount":3,"maxCount":3,"fields":[["flags","byte"],["version","int"],["totalValues","int"]]}
+{"id":"CollectionListResetValues","kind":"message","messageType":null,"minCount":2,"maxCount":2,"fields":[["flags","byte"],["values","raw"]]}
 {"id":"RemoteErrorDetail","kind":"message","messageType":null,"minCount":3,"maxCount":3,"fields":[["code","int?"],["type","string"],["message","string"]]}
