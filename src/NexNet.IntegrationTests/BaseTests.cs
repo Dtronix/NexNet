@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
+using NexNet.InteropServer;
 using NexNet.Collections;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -31,7 +32,9 @@ internal abstract class BaseTests
         TcpTls,
         Quic,
         WebSocket,
-        HttpSocket
+        HttpSocket,
+        WebSocketTls,
+        HttpSocketTls
     }
 
     private static int _counter;
@@ -62,6 +65,19 @@ internal abstract class BaseTests
     /// Cleared after each test.
     /// </summary>
     protected Action<ListenOptions>? AspListenOptions { get; set; }
+
+    /// <summary>
+    /// Applied to the Kestrel endpoint of every ASP server: HTTPS with the F08 test server certificate for the
+    /// WebSocketTls/HttpSocketTls transports, then <see cref="AspListenOptions"/>.
+    /// </summary>
+    private void ConfigureAspListen(ListenOptions listen)
+    {
+        if (_aspHttps)
+            listen.UseHttps(InteropCertificates.LoadServerCertificate());
+        AspListenOptions?.Invoke(listen);
+    }
+
+    private bool _aspHttps;
 
     public int? CurrentTcpPort
     {
@@ -151,6 +167,7 @@ internal abstract class BaseTests
     {
         CurrentUdsPath = null;
         AspListenOptions = null;
+        _aspHttps = false;
         _currentTcpPort = null;
         _currentUdpPort = null;
 
@@ -324,18 +341,20 @@ internal abstract class BaseTests
 
 
 
-        if (type == Type.WebSocket)
+        if (type is Type.WebSocket or Type.WebSocketTls)
         {
             _currentTcpPort ??= FreeTcpPort();
+            _aspHttps |= type == Type.WebSocketTls;
             
             if(logger != null)
                 logger.Behaviors |= NexusLogBehaviors.LogTransportData;
             return new WebSocketServerConfig() { Path = "/websocket-test", Logger = logger };
         }
 
-        if (type == Type.HttpSocket)
+        if (type is Type.HttpSocket or Type.HttpSocketTls)
         {
             _currentTcpPort ??= FreeTcpPort();
+            _aspHttps |= type == Type.HttpSocketTls;
             if(logger != null)
                 logger.Behaviors |= NexusLogBehaviors.LogTransportData;
             return new HttpSocketServerConfig() { Path = "/httpsocket-test", Logger = logger, };
@@ -411,7 +430,7 @@ internal abstract class BaseTests
             };
         }
 
-        if (type == Type.WebSocket)
+        if (type is Type.WebSocket or Type.WebSocketTls)
         {
             _currentTcpPort ??= FreeTcpPort();
             if(logger != null)
@@ -419,12 +438,13 @@ internal abstract class BaseTests
             
             return new WebSocketClientConfig()
             {
-                Url = new Uri($"ws://127.0.0.1:{_currentTcpPort}/websocket-test"), 
+                Url = new Uri($"{(type == Type.WebSocketTls ? "wss" : "ws")}://127.0.0.1:{_currentTcpPort}/websocket-test"), 
                 Logger = logger,
+                SslClientAuthenticationOptions = type == Type.WebSocketTls ? TestCaTlsOptions() : null,
             };
         }
 
-        if (type == Type.HttpSocket)
+        if (type is Type.HttpSocket or Type.HttpSocketTls)
         {
             _currentTcpPort ??= FreeTcpPort();
             if(logger != null)
@@ -432,13 +452,24 @@ internal abstract class BaseTests
             
             return new HttpSocketClientConfig()
             {
-                Url = new Uri($"http://127.0.0.1:{_currentTcpPort}/httpsocket-test"), 
+                Url = new Uri($"{(type == Type.HttpSocketTls ? "https" : "http")}://127.0.0.1:{_currentTcpPort}/httpsocket-test"), 
                 Logger = logger,
+                SslClientAuthenticationOptions = type == Type.HttpSocketTls ? TestCaTlsOptions() : null,
             };
         }
 
         throw new InvalidOperationException();
     }
+
+    /// <summary>
+    /// TLS options of the WebSocketTls/HttpSocketTls clients: trust only the F08 test CA, with host name checks.
+    /// </summary>
+    private static SslClientAuthenticationOptions TestCaTlsOptions() => new()
+    {
+        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+        RemoteCertificateValidationCallback = InteropCertificates.CreateValidationCallback(InteropCertificates.LoadTestCa()),
+    };
 
     protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
@@ -472,7 +503,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, ConfigureAspListen));
             
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
@@ -522,7 +553,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, ConfigureAspListen));
             
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
@@ -606,7 +637,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, ConfigureAspListen));
 
             builder.Services.AddNexusServer<TServerNexus, TClientProxy>();
 
@@ -687,6 +718,8 @@ internal abstract class BaseTests
     {
         if (types.Length == 0 || types.Distinct().Count() != types.Length)
             throw new ArgumentException("Give each transport once.", nameof(types));
+        if (types.Any(t => t is Type.WebSocketTls or Type.HttpSocketTls))
+            throw new NotSupportedException("The ASP.NET endpoints of a multi-endpoint server share one plain HTTP port.");
 
         LoggerMode = BasePipeTests.LogMode.OnTestFail;
         var savedTcpPort = _currentTcpPort;
@@ -749,7 +782,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((_, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, aspPort.Value, listen => AspListenOptions?.Invoke(listen)));
+                serverOptions.Listen(IPAddress.Loopback, aspPort.Value, ConfigureAspListen));
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
             builder.Logging.AddProvider(new AspLoggerProviderBridge(_logger));
             onAspCreateServices?.Invoke(builder);
