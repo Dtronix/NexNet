@@ -17,6 +17,19 @@ import { MessageType } from '../session/protocol.js';
 import { encodeDuplexPipeUpdateState } from '../session/wire.js';
 import { MAX_CREDIT, MAX_PIPE_CHUNK, PipeState, READER_COMPLETE, WRITER_COMPLETE } from './constants.js';
 import { countPipes } from './diagnostics.js';
+import { MetricTags } from '../metrics/instruments.js';
+
+const REFUSED_REMOTE = Object.freeze({ [MetricTags.refusalSide]: 'remote' });
+const RESET_TAGS = Object.freeze({
+  invalid_item: Object.freeze({ [MetricTags.resetReason]: 'invalid_item' }),
+  too_large: Object.freeze({ [MetricTags.resetReason]: 'too_large' }),
+});
+
+/**
+ * Why a pipe was reset (the `nexnet.reset.reason` tag): a channel item that breaks the framing or does not decode,
+ * or one larger than `maxMessageSize`.
+ * @typedef {'invalid_item' | 'too_large'} PipeResetReason
+ */
 
 /**
  * What a pipe needs from its session, supplied by the {@link PipeManager}.
@@ -32,6 +45,8 @@ import { countPipes } from './diagnostics.js';
  * @property {number} maxMessageSize Largest channel item this side accepts.
  * @property {import('../contract/codec.js').SerializerOptions} serializerOptions
  * @property {(level: import('../contract/config.js').NexusLogLevel, message: string, error?: unknown) => void} log
+ * @property {(name: string, value: number, tags?: Readonly<Record<string, string>>) => void} metric Reports an event
+ *   instrument (`session.recordMetric`).
  */
 
 /**
@@ -93,6 +108,8 @@ export class PipeCore {
   extraOutstanding = 0;
   /** Clock time of the last data or extra grant. */
   lastDataAt = 0;
+  /** True once data arrived or extra credit was granted, so {@link PipeCore#lastDataAt} is meaningful. */
+  dataSeen = false;
   /** Length (prefix included) of a channel item that has partly arrived; 0 if none. */
   pendingItemLength = 0;
   /** @type {Array<() => void>} */
@@ -109,6 +126,10 @@ export class PipeCore {
   #creditWaiters = [];
   /** Called once when the output completes for a reason other than this side's writer. @type {(() => void) | null} */
   onOutputDone = null;
+  /** Clock time the writer started waiting for credit; null when it is not waiting. @type {number | null} */
+  #creditWaitSince = null;
+  /** Bytes the writer still has to send while it waits for credit. */
+  #waitingBytes = 0;
 
   // Two-sided close (§7.3).
   sentClose = false;
@@ -256,6 +277,7 @@ export class PipeCore {
 
   /** Opening side: the peer refused the open (a limit, or the method is not authorized). */
   #onRefused() {
+    this.host.metric('pipeRefusals', 1, REFUSED_REMOTE);
     this.phase = 'failed';
     this.failure = new NexusBusyError('The peer refused the pipe: a session limit is reached or the invocation is not authorized.');
     this.#resolveReady(this.failure);
@@ -368,9 +390,11 @@ export class PipeCore {
   /**
    * Resets the pipe after a bad channel item (C# `Reset`): drops the input and closes the pipe. The session stays up.
    * @param {string} why
+   * @param {PipeResetReason} [reason]
    * @returns {void}
    */
-  reset(why) {
+  reset(why, reason = 'invalid_item') {
+    this.host.metric('pipeResets', 1, RESET_TAGS[reason]);
     this.host.log('debug', `Pipe P${this.id} reset: ${why}`);
     this.dropInput();
     this.#completeInput();
@@ -426,6 +450,7 @@ export class PipeCore {
     this.#counted += length;
     countPipes('bufferedBytes', length);
     this.lastDataAt = this.host.now();
+    this.dataSeen = true;
     this.#wakeInput();
     return true;
   }
@@ -593,6 +618,7 @@ export class PipeCore {
     this.extraOutstanding += extra;
     this.recvCredit += extra;
     this.lastDataAt = this.host.now();
+    this.dataSeen = true;
     this.grant(extra);
     return true;
   }
@@ -666,25 +692,69 @@ export class PipeCore {
   }
 
   /**
-   * Waits until send credit is available or the output completes. Waiting for credit is never a stall (§9).
+   * Waits until send credit is available or the output completes. Waiting for credit is never a stall (§9). A wait
+   * that parks is shown in snapshots (`waitingForCredit`, `waitingBytes`) and recorded to
+   * `nexnet.pipe.credit_wait` when it ends.
    * @param {AbortSignal | undefined} signal
+   * @param {number} [waitingBytes] Bytes the writer still has to send.
    * @returns {Promise<void>}
    */
-  waitCredit(signal) {
+  waitCredit(signal, waitingBytes = 0) {
     if (signal?.aborted) return Promise.reject(cancellationError(signal));
     if (this.sendCredit > 0 || this.outputDone) return Promise.resolve();
+    if (this.#creditWaitSince === null) this.#creditWaitSince = this.host.now();
+    this.#waitingBytes = waitingBytes;
     return new Promise((resolve, reject) => {
       const onAbort = () => {
         this.#creditWaiters = this.#creditWaiters.filter((w) => w !== wake);
+        this.#endCreditWait();
         reject(cancellationError(signal));
       };
       const wake = () => {
         signal?.removeEventListener('abort', onAbort);
+        this.#endCreditWait();
         resolve();
       };
       this.#creditWaiters.push(wake);
       signal?.addEventListener('abort', onAbort, { once: true });
     });
+  }
+
+  /** Ends the credit wait in progress, if any, and records how long it lasted (C# `EndCreditWait`). */
+  #endCreditWait() {
+    const since = this.#creditWaitSince;
+    if (since === null) return;
+    this.#creditWaitSince = null;
+    this.#waitingBytes = 0;
+    this.host.metric('pipeCreditWait', Math.max(0, this.host.now() - since) / 1000);
+  }
+
+  /**
+   * A snapshot of the pipe (C# `NexusDuplexPipe.GetSnapshot`). Durations are milliseconds on the session clock.
+   * @param {number} now
+   * @returns {import('../diagnostics/snapshot.js').NexusPipeSnapshot}
+   */
+  snapshot(now) {
+    const since = (/** @type {number} */ at) => Math.max(0, now - at);
+    return {
+      id: this.id !== 0 ? this.id : this.localId,
+      isReady: (this.state & PipeState.Ready) !== 0,
+      readerCompleted: this.inputDone,
+      writerCompleted: this.outputDone,
+      closing: this.sentClose && !this.receivedClose ? since(this.closingSince) : null,
+      window: this.host.window,
+      receiveCredit: this.recvCredit,
+      buffered: this.buffered,
+      consumedNotGranted: this.consumedSinceGrant,
+      extraOutstanding: this.extraOutstanding,
+      sinceLastData: this.dataSeen ? since(this.lastDataAt) : null,
+      partialItem: this.pendingItemLength > 0
+        ? { length: this.pendingItemLength, received: Math.min(this.buffered, this.pendingItemLength) }
+        : null,
+      sendCredit: this.sendCredit,
+      waitingForCredit: this.#creditWaitSince === null ? null : since(this.#creditWaitSince),
+      waitingBytes: this.#waitingBytes,
+    };
   }
 
   /** The error of a write that can't be sent. @returns {unknown} */
@@ -711,7 +781,7 @@ export class PipeCore {
       if (this.outputDone) throw this.outputClosedError();
       if (this.sendCredit <= 0) {
         try {
-          await this.waitCredit(signal);
+          await this.waitCredit(signal, bytes.length - offset);
         } catch (error) {
           if (framed && offset > 0) void this.completeWriting();
           throw error;

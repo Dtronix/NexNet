@@ -20,6 +20,9 @@ import { PipeState } from './constants.js';
 import { countPipes } from './diagnostics.js';
 import { NexusDuplexPipe, pipeCore } from './NexusDuplexPipe.js';
 import { PipeCore } from './PipeCore.js';
+import { MetricTags } from '../metrics/instruments.js';
+
+const REFUSED_LOCAL = Object.freeze({ [MetricTags.refusalSide]: 'local' });
 
 /** @type {WeakMap<object, PipeManager>} */
 const managers = new WeakMap();
@@ -111,6 +114,7 @@ export class PipeManager {
       maxMessageSize: options.maxMessageSize,
       serializerOptions: options.serializerOptions,
       log: (/** @type {import('../contract/config.js').NexusLogLevel} */ level, /** @type {string} */ message, /** @type {unknown} */ error) => this.#log(level, message, error),
+      metric: (/** @type {string} */ name, /** @type {number} */ value, /** @type {Readonly<Record<string, string>> | undefined} */ tags) => session.recordMetric(name, value, tags),
     });
 
     session.setHandler(MessageType.DuplexPipeWrite, (frame) => this.#onData(frame.pipeId, frame.body));
@@ -118,6 +122,7 @@ export class PipeManager {
     session.setHandler(MessageType.DuplexPipeUpdateState, (frame) => this.#onState(frame.body));
     session.onClose((reason) => this.#cancelAll(reason));
     session.addProgressProbe((now, timeout) => this.#findStalled(now, timeout));
+    session.addSnapshotSource({ pipes: (now) => this.snapshots(now) });
     invocations.pipeHooks = {
       pipe: (pipeId, ctx) => this.register(pipeId, ctx),
       channel: (pipeId, formatter, ctx) => new NexusDuplexChannel(this.register(pipeId, ctx), formatter),
@@ -135,6 +140,16 @@ export class PipeManager {
     return this.#openPipes;
   }
 
+  /**
+   * Snapshots of the pipes the session still tracks: open, being opened, or closing until both sides confirmed
+   * (C# `NexusPipeManager.AddSnapshots`).
+   * @param {number} now Session clock time.
+   * @returns {import('../diagnostics/snapshot.js').NexusPipeSnapshot[]}
+   */
+  snapshots(now) {
+    return [...this.#pipes.values()].map((core) => core.snapshot(now));
+  }
+
   // ---------------------------------------------------------------- opening
 
   /**
@@ -143,6 +158,7 @@ export class PipeManager {
    */
   rentPipe() {
     if (!this.#reserveWindow()) {
+      this.#session.recordMetric('pipeRefusals', 1, REFUSED_LOCAL);
       throw new NexusBusyError("Can't open a pipe: the session's pipe limit or budget is reached.");
     }
     const localId = this.#newLocalId();
@@ -266,6 +282,7 @@ export class PipeManager {
    * @param {number} otherId
    */
   #refuse(otherId) {
+    this.#session.recordMetric('pipeRefusals', 1, REFUSED_LOCAL);
     const partial = (otherId << 8) & 0xffff;
     void this.#session.send(encodeFrame(MessageType.DuplexPipeUpdateState, encodeDuplexPipeUpdateState(partial, PipeState.Refused, 0)));
   }
