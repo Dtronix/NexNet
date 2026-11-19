@@ -80,7 +80,7 @@ internal static class JsScaffoldingEmitter
     private const string ScriptableRemarks =
         "Every call hands its typed-JSON arguments to the script host, which runs the slot's script, and completes with the typed-JSON "
         + "result converted back. ~onConnected~ and ~onDisconnected~ run their slots without waiting for them. Fire-and-forget "
-        + "methods drop their result and errors.";
+        + "methods drop their result and errors. ~onInvocationException~ asks the script host.";
 
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -223,6 +223,11 @@ internal static class JsScaffoldingEmitter
             w.Line();
             using (w.Block("onDisconnected()"))
                 w.Line(Sr + ".runDetached(this.#host, " + Sr + ".ON_DISCONNECTED, []);");
+            w.Line();
+            JsSyntax.Doc(w, Doc("Asks the script host (~ScriptHost.onInvocationException~)."),
+                "@param {unknown} error\n@param {number} methodId\n@returns {{ code?: number | null, message?: string | null } | null | undefined}");
+            using (w.Block("onInvocationException(error, methodId)"))
+                w.Line("return this.#host.onInvocationException?.(error, methodId) ?? null;");
         }
     }
 
@@ -428,6 +433,7 @@ internal static class JsScaffoldingEmitter
 
             w.Line("onConnected(isReconnected: boolean): void;");
             w.Line("onDisconnected(): void;");
+            w.Line("onInvocationException(error: unknown, methodId: number): { code?: number | null; message?: string | null } | null | undefined;");
         }
 
         w.Line();

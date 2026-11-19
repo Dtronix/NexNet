@@ -1384,6 +1384,10 @@ export class ScriptCall {
  * @property {(call: ScriptCall) => unknown} call Runs the script of one call. Returns (or resolves to) the typed-JSON
  *   result; null or undefined is the .NET default result. A throw or rejection fails the call. Ignored for
  *   fire-and-forget methods and lifecycle slots.
+ * @property {(error: unknown, methodId: number) => ({ code?: number | null, message?: string | null } | null | undefined)} [onInvocationException]
+ *   The scriptable nexus's `onInvocationException` hook (`ClientSpec.onInvocationException`): the application error
+ *   to send for a failed client nexus method in place of the error's detail, or null (also when absent) to send what
+ *   `remoteExceptionDetail` selects.
  */
 
 /**
@@ -1708,6 +1712,11 @@ export declare class ScriptCall {
 export interface ScriptHost {
   /** Returns (or resolves to) the typed-JSON result; null or undefined is the .NET default. A throw fails the call. */
   call(call: ScriptCall): unknown;
+  /**
+   * The scriptable nexus's `onInvocationException` hook: the application error to send for a failed client nexus
+   * method in place of the error's detail, or null (also when absent) to send what `remoteExceptionDetail` selects.
+   */
+  onInvocationException?(error: unknown, methodId: number): { code?: number | null; message?: string | null } | null | undefined;
 }
 
 /** Hands a call to the host; a host that throws gives a rejected promise. */
