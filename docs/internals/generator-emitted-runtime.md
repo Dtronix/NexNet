@@ -170,16 +170,17 @@ A Generator test checks that two runs give byte-identical bundles and that no em
 - **Generator.** The resources are read once per process and cached; the runtime part of the bundle depends only on
   the target options, so Roslyn's incremental pipeline caches it like the rest of the bundle step.
 - **IDE.** Design-time builds emit no bundle (G04), so the runtime never reaches the IDE's compilations.
-- **Compiler.** With both targets and the runtime on, `NexNet.Targets.g.cs` grows by about BUNDLE_SIZE of base64
+- **Compiler.** With both targets and the runtime on, `NexNet.Targets.g.cs` grows by about 2 MB of base64
   comments. The compiler parses it as trivia only.
 - **Unpack.** `NexNetUnpackTargets` runs only when the bundle changes, and writes only changed files.
 
 ## 10. Package size
 
-The embedded runtime adds about DLL_DELTA to `NexNet.Generator.dll` (JS ~JS_SIZE, Java ~JAVA_SIZE, uncompressed);
-the `.nupkg` is a zip, so the download grows by roughly NUPKG_DELTA. Resources are loaded only when a target emits the
-runtime; a project without `NexNetTarget` never touches them. Compressing the resources (gzip at build time) would save
-about NUPKG_DELTA on disk but adds a build step; not worth it now.
+Measured on 0.20.0: the embedded runtime adds about 1.5 MB to `NexNet.Generator.dll` (1.3 MB → 2.8 MB; JavaScript
+0.58 MB and Java 0.9 MB of source, uncompressed). The `.nupkg` is a zip, so the download grows by about 0.4 MB (the
+package is 0.66 MB with the runtime). Resources are loaded only when a target emits the runtime; a project without
+`NexNetTarget` never touches them. Compressing the resources at build time would shrink the DLL by about 1 MB on disk
+but adds a build step and a decompression on first use; not worth it now.
 
 ## 11. Proof
 
