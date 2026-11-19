@@ -142,7 +142,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
                 }
 
                 // Clear data on disconnection
-                OnParentDisconnected();
+                await OnParentDisconnectedAsync().ConfigureAwait(false);
 
                 // Small delay before reconnection attempt
                 if (!ct.IsCancellationRequested)
@@ -169,7 +169,8 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         _relayCts?.Dispose();
         _relayCts = null;
 
-        OnParentDisconnected();
+        // Runs on the processing loop while it is still running, or directly once the collection has stopped.
+        _ = OnParentDisconnectedAsync();
     }
 
     private async Task ConnectToParent(CancellationToken ct)
@@ -202,169 +203,205 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     {
         Logger?.LogTrace($"Parent changed: {args.ChangedAction}");
 
+        var parentList = _parentList;
+        if (parentList == null)
+            return;
+
         switch (args.ChangedAction)
         {
             case NexusCollectionChangedAction.Ready:
-                SyncFullStateFromParent();
-                _state = NexusCollectionState.Connected;
-                _readyTcs?.TrySetResult();
-                _disconnectedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                break;
-
             case NexusCollectionChangedAction.Reset:
-                // Parent was cleared - clear our state and broadcast
-                SyncFullStateFromParent();
-                break;
-
             case NexusCollectionChangedAction.Add:
             case NexusCollectionChangedAction.Remove:
             case NexusCollectionChangedAction.Replace:
             case NexusCollectionChangedAction.Move:
-                // Sync and broadcast individual changes
-                SyncIncrementalChangeFromParent(args.ChangedAction);
                 break;
+            default:
+                return;
+        }
+
+        // Capture the parent state now, as of this change; the relay applies it on its processing loop.
+        var parentState = ImmutableList.CreateRange(parentList);
+        var action = args.ChangedAction;
+        _ = ApplyOnLoopAsync(() => ApplyParentChange(action, parentState));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="apply"/> on the processing loop, then broadcasts the message it returns. A change is applied
+    /// to the local list and broadcast without a client registering in between, so a connecting client gets each
+    /// change exactly once: in its snapshot, or as a broadcast after it. When the loop is stopped, no client can
+    /// connect: the change is applied locally and not broadcast.
+    /// </summary>
+    private async Task ApplyOnLoopAsync(Func<INexusCollectionListMessage?> apply)
+    {
+        var ran = false;
+        try
+        {
+            await Processor.EnqueueActionWaitForResult(async ct =>
+            {
+                ran = true;
+                var message = Apply(apply);
+                if (RelayChangeTestHook is { } hook)
+                    await hook().ConfigureAwait(false);
+                if (message != null)
+                    await BroadcastFromLoopAsync(message, ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+        }
+        catch (Exception e) when (!ran)
+        {
+            Logger?.LogDebug(e, "Relay processing loop is stopped; applying the parent change locally.");
+        }
+        catch (Exception e)
+        {
+            Logger?.LogWarning(e, "Could not apply a parent change to the relay.");
+        }
+
+        if (!ran)
+            Apply(apply)?.Return();
+    }
+
+    private INexusCollectionListMessage? Apply(Func<INexusCollectionListMessage?> apply)
+    {
+        lock (_syncLock)
+            return apply();
+    }
+
+    /// <summary>
+    /// Test seam: runs on the processing loop after a parent change is applied locally and before it is broadcast.
+    /// Always null outside tests.
+    /// </summary>
+    internal Func<Task>? RelayChangeTestHook { get; set; }
+
+    /// <summary>
+    /// Applies a parent change to the local list. Runs on the processing loop (or with the loop stopped).
+    /// </summary>
+    /// <returns>The message to broadcast to the relay's clients, or null.</returns>
+    private INexusCollectionListMessage? ApplyParentChange(NexusCollectionChangedAction action, ImmutableList<T> parentState)
+    {
+        switch (action)
+        {
+            case NexusCollectionChangedAction.Ready:
+                SyncFullState(parentState);
+                _state = NexusCollectionState.Connected;
+                _readyTcs?.TrySetResult();
+                _disconnectedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                return null;
+
+            case NexusCollectionChangedAction.Reset:
+            case NexusCollectionChangedAction.Move:
+                // Parent was cleared, or an item moved: resync the full state.
+                SyncFullState(parentState);
+                return null;
+
+            default:
+                return SyncIncrementalChange(action, parentState);
         }
     }
 
-    private void SyncFullStateFromParent()
+    private void SyncFullState(ImmutableList<T> parentState)
     {
-        if (_parentList == null)
-            return;
+        // Reset our local list to match
+        _itemList.ResetTo(parentState, 0);
+        _lastKnownParentState = parentState;
 
-        lock (_syncLock)
+        Logger?.LogDebug($"Synced full state from parent: {parentState.Count} items.");
+
+        // Raise changed event
+        using (var eventArgs = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Ready))
         {
-            // Get the current parent state
-            var parentItems = new List<T>();
-            foreach (var item in _parentList)
-            {
-                parentItems.Add(item);
-            }
-
-            var newState = ImmutableList<T>.Empty.AddRange(parentItems);
-
-            // Reset our local list to match
-            _itemList.ResetTo(newState, 0);
-            _lastKnownParentState = newState;
-
-            Logger?.LogDebug($"Synced full state from parent: {parentItems.Count} items.");
-
-            // Raise changed event
-            using (var eventArgs = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Ready))
-            {
-                CoreChangedEvent.Raise(eventArgs.Value);
-            }
+            CoreChangedEvent.Raise(eventArgs.Value);
         }
     }
 
-    private void SyncIncrementalChangeFromParent(NexusCollectionChangedAction action)
+    private INexusCollectionListMessage? SyncIncrementalChange(NexusCollectionChangedAction action, ImmutableList<T> currentParentState)
     {
-        if (_parentList == null)
-            return;
+        var previousState = _lastKnownParentState;
+        INexusCollectionListMessage? message = null;
 
-        lock (_syncLock)
+        // Determine what changed
+        switch (action)
         {
-            // Get the current parent state
-            var parentItems = new List<T>();
-            foreach (var item in _parentList)
-            {
-                parentItems.Add(item);
-            }
+            case NexusCollectionChangedAction.Add:
+                // Item was added - find the new item
+                if (currentParentState.Count > previousState.Count)
+                {
+                    // Find the added item (typically at the end for Add)
+                    var addedIndex = currentParentState.Count - 1;
+                    var addedItem = currentParentState[addedIndex];
 
-            var currentParentState = ImmutableList<T>.Empty.AddRange(parentItems);
-            var previousState = _lastKnownParentState;
+                    // Apply to our local list
+                    var insertOp = InsertOperation<T>.Rent();
+                    insertOp.Index = addedIndex;
+                    insertOp.Item = addedItem;
+                    _itemList.ApplyOperation(insertOp, _itemList.Version);
+                    insertOp.Return();
 
-            // Determine what changed and broadcast
-            switch (action)
-            {
-                case NexusCollectionChangedAction.Add:
-                    // Item was added - find the new item
-                    if (currentParentState.Count > previousState.Count)
+                    var insert = NexusCollectionListInsertMessage.Rent();
+                    insert.Version = _itemList.Version;
+                    insert.Index = addedIndex;
+                    insert.Value = PayloadSerializer.Serialize(addedItem);
+                    message = insert;
+                }
+                break;
+
+            case NexusCollectionChangedAction.Remove:
+                // Item was removed - find the removed index
+                if (currentParentState.Count < previousState.Count)
+                {
+                    // Find the removed index by comparing lists
+                    var removedIndex = FindRemovedIndex(previousState, currentParentState);
+                    if (removedIndex >= 0)
                     {
-                        // Find the added item (typically at the end for Add)
-                        var addedIndex = currentParentState.Count - 1;
-                        var addedItem = currentParentState[addedIndex];
+                        // Apply to our local list
+                        var removeOp = RemoveOperation<T>.Rent();
+                        removeOp.Index = removedIndex;
+                        _itemList.ApplyOperation(removeOp, _itemList.Version);
+                        removeOp.Return();
+
+                        var remove = NexusCollectionListRemoveMessage.Rent();
+                        remove.Version = _itemList.Version;
+                        remove.Index = removedIndex;
+                        message = remove;
+                    }
+                }
+                break;
+
+            case NexusCollectionChangedAction.Replace:
+                // Item was replaced - find the replaced index
+                if (currentParentState.Count == previousState.Count)
+                {
+                    var replacedIndex = FindReplacedIndex(previousState, currentParentState);
+                    if (replacedIndex >= 0)
+                    {
+                        var newValue = currentParentState[replacedIndex];
 
                         // Apply to our local list
-                        var insertOp = InsertOperation<T>.Rent();
-                        insertOp.Index = addedIndex;
-                        insertOp.Item = addedItem;
-                        _itemList.ApplyOperation(insertOp, _itemList.Version);
-                        insertOp.Return();
+                        var modifyOp = ModifyOperation<T>.Rent();
+                        modifyOp.Index = replacedIndex;
+                        modifyOp.Value = newValue;
+                        _itemList.ApplyOperation(modifyOp, _itemList.Version);
+                        modifyOp.Return();
 
-                        // Broadcast to our clients
-                        var message = NexusCollectionListInsertMessage.Rent();
-                        message.Version = _itemList.Version;
-                        message.Index = addedIndex;
-                        message.Value = PayloadSerializer.Serialize(addedItem);
-                        _ = ProcessMessage(message);
+                        var replace = NexusCollectionListReplaceMessage.Rent();
+                        replace.Version = _itemList.Version;
+                        replace.Index = replacedIndex;
+                        replace.Value = PayloadSerializer.Serialize(newValue);
+                        message = replace;
                     }
-                    break;
-
-                case NexusCollectionChangedAction.Remove:
-                    // Item was removed - find the removed index
-                    if (currentParentState.Count < previousState.Count)
-                    {
-                        // Find the removed index by comparing lists
-                        var removedIndex = FindRemovedIndex(previousState, currentParentState);
-                        if (removedIndex >= 0)
-                        {
-                            // Apply to our local list
-                            var removeOp = RemoveOperation<T>.Rent();
-                            removeOp.Index = removedIndex;
-                            _itemList.ApplyOperation(removeOp, _itemList.Version);
-                            removeOp.Return();
-
-                            // Broadcast to our clients
-                            var message = NexusCollectionListRemoveMessage.Rent();
-                            message.Version = _itemList.Version;
-                            message.Index = removedIndex;
-                            _ = ProcessMessage(message);
-                        }
-                    }
-                    break;
-
-                case NexusCollectionChangedAction.Replace:
-                    // Item was replaced - find the replaced index
-                    if (currentParentState.Count == previousState.Count)
-                    {
-                        var replacedIndex = FindReplacedIndex(previousState, currentParentState);
-                        if (replacedIndex >= 0)
-                        {
-                            var newValue = currentParentState[replacedIndex];
-
-                            // Apply to our local list
-                            var modifyOp = ModifyOperation<T>.Rent();
-                            modifyOp.Index = replacedIndex;
-                            modifyOp.Value = newValue;
-                            _itemList.ApplyOperation(modifyOp, _itemList.Version);
-                            modifyOp.Return();
-
-                            // Broadcast to our clients
-                            var message = NexusCollectionListReplaceMessage.Rent();
-                            message.Version = _itemList.Version;
-                            message.Index = replacedIndex;
-                            message.Value = PayloadSerializer.Serialize(newValue);
-                            _ = ProcessMessage(message);
-                        }
-                    }
-                    break;
-
-                case NexusCollectionChangedAction.Move:
-                    // Move is complex - for now, do a full resync
-                    // In a production implementation, we'd detect from/to indices
-                    SyncFullStateFromParent();
-                    return; // Skip the update below
-            }
-
-            // Update our tracking state
-            _lastKnownParentState = currentParentState;
-
-            // Raise changed event
-            using (var eventArgs = NexusCollectionChangedEventArgs.Rent(action))
-            {
-                CoreChangedEvent.Raise(eventArgs.Value);
-            }
+                }
+                break;
         }
+
+        // Update our tracking state
+        _lastKnownParentState = currentParentState;
+
+        // Raise changed event
+        using (var eventArgs = NexusCollectionChangedEventArgs.Rent(action))
+        {
+            CoreChangedEvent.Raise(eventArgs.Value);
+        }
+
+        return message;
     }
 
     private static int FindRemovedIndex(ImmutableList<T> previous, ImmutableList<T> current)
@@ -393,7 +430,17 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         return -1;
     }
 
-    private void OnParentDisconnected()
+    /// <summary>
+    /// Clears the local state after the parent connection is lost, on the processing loop after the changes queued
+    /// before it.
+    /// </summary>
+    private Task OnParentDisconnectedAsync()
+    {
+        _parentList = null;
+        return ApplyOnLoopAsync(ApplyParentDisconnected);
+    }
+
+    private INexusCollectionListMessage? ApplyParentDisconnected()
     {
         // Track if we were previously connected - used to determine TCS handling
         var wasConnected = _state == NexusCollectionState.Connected;
@@ -401,7 +448,6 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         _state = NexusCollectionState.Disconnected;
         _itemList.Reset();
         _lastKnownParentState = ImmutableList<T>.Empty;
-        _parentList = null;
 
         // Raise Reset event for local subscribers
         using (var args = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
@@ -420,6 +466,8 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         {
             _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+
+        return null;
     }
 
     #region INexusList<T> - Read Operations
@@ -543,9 +591,10 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
             return new ProcessResult(null, true); // Disconnect client trying to modify
         }
 
-        // Internal messages (from parent sync) - broadcast to our connected clients
-        Logger?.LogTrace($"Broadcasting message to relay clients: {message.GetType().Name}");
-        return new ProcessResult(message, false);
+        // Parent changes are applied and broadcast by actions on the processing loop, never queued as messages.
+        Logger?.LogWarning($"Unexpected internal message on relay collection: {message.GetType().Name}");
+        message.Return();
+        return new ProcessResult(null, false);
     }
 
     #endregion
