@@ -343,6 +343,45 @@ describe('server-to-client invocations', () => {
     expect(getInvocationCounters()).toEqual(zeroCounters());
   });
 
+  it('overlapping fire-and-forget invocations share one signal; only a client disconnect aborts it', async () => {
+    const h = await connectedHarness();
+    /** @type {AbortSignal[]} */
+    const signals = [];
+    const gate = deferred();
+    let calls = 0;
+    h.nexus.methods.set(0, async (_r, ctx) => {
+      signals.push(ctx.signal);
+      // The first call runs until the session ends; the second returns at once.
+      if (calls++ === 0) await gate.promise;
+    });
+    h.sendInvocation(0, 0, InvocationFlags.IgnoreReturn, null);
+    await until(() => signals.length === 1);
+    h.sendInvocation(0, 0, InvocationFlags.IgnoreReturn, null);
+    await until(() => signals.length === 2);
+    await tick();
+    expect(signals[1]).toBe(signals[0]);
+    // The second finishing does not abort the shared signal.
+    expect(signals[0].aborted).toBe(false);
+    expect(getInvocationCounters().inboundInvocations).toBe(1);
+
+    await h.client.disconnect();
+    expect(signals[0].aborted).toBe(true);
+    gate.resolve();
+    await tick();
+    expect(results(h)).toEqual([]);
+    expect(getInvocationCounters()).toEqual(zeroCounters());
+
+    // A new session gets a fresh signal.
+    const k = await connectedHarness();
+    /** @type {AbortSignal | null} */
+    let next = null;
+    k.nexus.methods.set(0, (_r, ctx) => { next = ctx.signal; });
+    k.sendInvocation(0, 0, InvocationFlags.IgnoreReturn, null);
+    await until(() => next !== null);
+    expect(/** @type {AbortSignal | null} */ (next)?.aborted).toBe(false);
+    await finish(k);
+  });
+
   it('a pipe parameter registers through the pipe layer (J08); releaseInvocationSlot frees the slot early', async () => {
     const h = await connectedHarness({ config: { maxConcurrentConnectionInvocations: 1 } });
     const gate = deferred();
