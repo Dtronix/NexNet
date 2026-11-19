@@ -12,7 +12,7 @@ namespace NexNet.IntegrationTests.Collections.Lists;
 internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerAddAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -25,7 +25,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerAddAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -42,7 +42,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerInsertAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -55,7 +55,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerInsertAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -72,7 +72,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -86,7 +86,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -104,7 +104,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAtAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -118,7 +118,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAtAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -136,7 +136,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerMoveAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -151,7 +151,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerMoveAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -170,7 +170,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerReplaceAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -185,7 +185,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerReplaceAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -204,7 +204,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientAddAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -220,7 +220,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientAddAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -237,7 +237,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientInsertAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -253,7 +253,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientInsertAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -270,7 +270,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -287,7 +287,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -305,7 +305,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAtAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -322,7 +322,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAtAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -340,7 +340,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientMoveAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -358,7 +358,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientMoveAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -377,7 +377,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReplaceAsync_NotifiesServer(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -395,7 +395,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReplaceAsync_NotifiesClient(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -414,7 +414,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnConnection(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -430,7 +430,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnDisconnection(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -447,7 +447,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnReConnection(ClientTarget target)
     {
         RequireInProc(target, NoListEvents);
@@ -470,7 +470,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientDisconnectionTaskCompletesOnDisconnect(ClientTarget target)
     {
         RequireInProc(target, CSharpListApi);
