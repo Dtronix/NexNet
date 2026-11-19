@@ -45,7 +45,58 @@ internal class NexusBroadcastConnectionManager<TUnion>
     /// </summary>
     internal Task LoopTask => _run?.Loop ?? Task.CompletedTask;
 
+    /// <summary>
+    /// Starts the client's writer and adds the client to the broadcast list at once. Broadcasts already queued
+    /// can reach the client before anything the caller writes to its buffer afterwards. A server that sends a
+    /// snapshot first uses <see cref="StartClient"/> and <see cref="RegisterClientAsync"/> instead.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The broadcaster is not running.</exception>
     public void AddClientAsync(INexusBroadcastSession<TUnion> client)
+    {
+        var run = StartClientCore(client);
+        run.Clients.Add(client);
+    }
+
+    /// <summary>
+    /// Queues the client's registration behind every broadcast already queued. The client receives only the
+    /// broadcasts queued after this call, and only after what is already in its buffer (its snapshot).
+    /// </summary>
+    /// <param name="client">A client whose writer was started with <see cref="StartClient"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public ValueTask RegisterClientAsync(INexusBroadcastSession<TUnion> client, CancellationToken ct = default)
+    {
+        return _messageBroadcastChannel.Writer.WriteAsync(new ClientControlItem(client, null), ct);
+    }
+
+    /// <summary>
+    /// Queues a message for one client only, in order with the broadcasts: the client receives it after every
+    /// broadcast queued before this call.
+    /// </summary>
+    /// <param name="message">The message to send. It is returned to its pool once sent.</param>
+    /// <param name="client">The client to send the message to.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async ValueTask SendToClientAsync(TUnion message, INexusBroadcastSession<TUnion> client, CancellationToken ct = default)
+    {
+        var wrapper = message.Wrap();
+        try
+        {
+            await _messageBroadcastChannel.Writer.WriteAsync(new ClientControlItem(client, wrapper), ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            wrapper.SignalSent();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Starts the task that writes the client's buffer to the client. The client receives no broadcasts until it
+    /// is registered.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The broadcaster is not running.</exception>
+    public void StartClient(INexusBroadcastSession<TUnion> client) => StartClientCore(client);
+
+    private RunState StartClientCore(INexusBroadcastSession<TUnion> client)
     {
         var run = _run;
         if(run == null || run.Stopped)
@@ -103,8 +154,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
             }
 
         }, client, TaskCreationOptions.DenyChildAttach);
-        
-        run.Clients.Add(client);
+
+        return run;
     }
 
     public async ValueTask BroadcastAsync(TUnion message, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct = default)
@@ -153,6 +204,12 @@ internal class NexusBroadcastConnectionManager<TUnion>
             {
                 await foreach (var broadcastMessage in broadcaster._messageBroadcastChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                 {
+                    if (broadcastMessage is ClientControlItem control)
+                    {
+                        await HandleControlItem(broadcaster, control, connectedClients).ConfigureAwait(false);
+                        continue;
+                    }
+
                     // Update the count.
                     broadcastMessage.ClientCount = connectedClients.Count;
                     
@@ -229,6 +286,72 @@ internal class NexusBroadcastConnectionManager<TUnion>
         }
         
         connectedClients.Clear();
+    }
+
+    private static async ValueTask HandleControlItem(
+        NexusBroadcastConnectionManager<TUnion> broadcaster,
+        ClientControlItem control,
+        SnapshotList<INexusBroadcastSession<TUnion>> connectedClients)
+    {
+        var client = control.Client;
+
+        // Registration: every broadcast queued before it was skipped for this client, every one after it follows.
+        if (control.Message == null)
+        {
+            if (client.CompletionToken.IsCancellationRequested)
+            {
+                broadcaster._logger?.LogTrace($"S{client.Id} Skipping registration of a closed client.");
+                return;
+            }
+
+            connectedClients.Add(client);
+            broadcaster._logger?.LogTrace($"S{client.Id} Registered for broadcasts.");
+            return;
+        }
+
+        // Message for one client.
+        try
+        {
+            if (client.BufferTryWrite(control.Message))
+                return;
+
+            broadcaster._logger?.LogTrace($"S{client.Id} Could not send to client collection");
+            // The client's buffer is full: it is not keeping up, so close its pipe as a broadcast would.
+            control.Message.SignalSent();
+            await client.CompletePipe().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            broadcaster._logger?.LogInfo(e, $"S{client.Id} Exception while sending to collection.");
+            control.Message.SignalSent();
+        }
+    }
+
+    /// <summary>
+    /// An item in the broadcast channel that targets one client: its registration (no message), or a message for
+    /// that client only. It goes through the channel so it is ordered with the broadcasts.
+    /// </summary>
+    private sealed class ClientControlItem : INexusCollectionBroadcasterMessageWrapper<TUnion>
+    {
+        public readonly INexusBroadcastSession<TUnion> Client;
+        public readonly INexusCollectionBroadcasterMessageWrapper<TUnion>? Message;
+
+        public ClientControlItem(INexusBroadcastSession<TUnion> client,
+            INexusCollectionBroadcasterMessageWrapper<TUnion>? message)
+        {
+            Client = client;
+            Message = message;
+        }
+
+        INexusBroadcastSession<TUnion>? INexusCollectionBroadcasterMessageWrapper<TUnion>.SourceClient => null;
+        TUnion? INexusCollectionBroadcasterMessageWrapper<TUnion>.MessageToSource => default;
+        TUnion? INexusCollectionBroadcasterMessageWrapper<TUnion>.Message => default;
+        public int ClientCount { get; set; }
+
+        public void SignalSent()
+        {
+            // Not sent itself: the wrapped message signals on its own.
+        }
     }
 
     private sealed class RunState

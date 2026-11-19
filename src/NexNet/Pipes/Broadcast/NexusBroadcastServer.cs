@@ -97,18 +97,30 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         NexusBroadcastSession<TUnion> client)
     {
         var session = client.Session;
-        _connectionManager.AddClientAsync(client);
-        
         Logger?.LogTrace($"S{session.Id} Sending client init data");
-        // Initialize the client's data.
-        
+
+        // Initialize the client's data. The snapshot and the registration run on the processing loop, so no change
+        // is applied between them: every change before it is in the snapshot and is not sent to this client, and
+        // every change after it is broadcast to this client after the snapshot (protocol specification §12).
+        bool initialized;
         try
         {
-            OnConnected(client);
+            _connectionManager.StartClient(client);
+            initialized = await Processor.EnqueueActionWaitForResult(async ct =>
+            {
+                OnConnected(client);
+                await _connectionManager.RegisterClientAsync(client, ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
         catch (Exception e)
         {
             Logger?.LogWarning(e, "Cound not send client init data");
+            initialized = false;
+        }
+
+        if (!initialized)
+        {
+            Logger?.LogWarning($"S{session.Id} Could not send client init data. Connection will be closed.");
             await pipe.CompleteAsync().ConfigureAwait(false);
             return;
         }
@@ -302,15 +314,33 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         CancellationToken ct)
     {
         ProcessTestHook?.Invoke(message);
-        var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
+        var (broadcastMessage, disconnect, replyToSource) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
+        {
+            if (replyToSource != null)
+            {
+                // Through the broadcast channel, so the source receives it after every change broadcast before it.
+                if (sourceClient != null)
+                    await _connectionManager.SendToClientAsync(replyToSource, sourceClient, ct).ConfigureAwait(false);
+                else
+                    replyToSource.Return();
+            }
+
             return new BroadcastMessageProcessResult(false, disconnect);
+        }
 
         await _connectionManager.BroadcastAsync(broadcastMessage, sourceClient, ct).ConfigureAwait(false);
         return new BroadcastMessageProcessResult(true, disconnect);
     }
 
-    public record struct ProcessResult(TUnion? BroadcastMessage, bool Disconnect);
+    /// <summary>
+    /// Result of processing a message.
+    /// </summary>
+    /// <param name="BroadcastMessage">The message to broadcast to every client, or null when nothing changed.</param>
+    /// <param name="Disconnect">True to close the source client's pipe.</param>
+    /// <param name="ReplyToSource">When nothing is broadcast: a message for the source client only. It is ordered
+    /// after every change broadcast before it.</param>
+    public record struct ProcessResult(TUnion? BroadcastMessage, bool Disconnect, TUnion? ReplyToSource = null);
 
     protected ValueTask<bool> ProcessMessage(TUnion message)
     {
