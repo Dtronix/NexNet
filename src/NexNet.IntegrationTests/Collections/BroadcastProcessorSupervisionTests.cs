@@ -50,8 +50,13 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             // One stop more than the restart budget allows within the window.
             for (var i = 0; i <= NexusBroadcastServer<INexusCollectionListMessage>.MaxProcessorRestartsPerWindow; i++)
             {
-                FailNextProcess(list);
-                await Assert.That(await AddWhenRunning(list, i)).IsFalse();
+                // An add queued while the previous run is stopping is drained with false without reaching the hook,
+                // so that stop would not count. Add until the hook has stopped the processor.
+                var fired = FailNextProcess(list);
+                for (var attempt = 0; !fired() && attempt < 20; attempt++)
+                    await Assert.That(await AddWhenRunning(list, i)).IsFalse();
+
+                await Assert.That(fired()).IsTrue().Because($"stop {i} was injected");
             }
 
             var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -174,7 +179,8 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
     /// Makes the next message processed by the collection's broadcast processor throw. With
     /// <see cref="FaultInjectingLogger"/> the error then escapes the per-message handling and stops the processor.
     /// </summary>
-    private static void FailNextProcess(INexusList<int> list)
+    /// <returns>True once the injected failure has been thrown.</returns>
+    private static Func<bool> FailNextProcess(INexusList<int> list)
     {
         var armed = 1;
         Action<INexusCollectionListMessage> hook = _ =>
@@ -194,6 +200,8 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             default:
                 throw new InvalidOperationException($"Unexpected collection type {list.GetType()}.");
         }
+
+        return () => Volatile.Read(ref armed) == 0;
     }
 
     private sealed class InjectedProcessingException() : Exception("Injected processing failure.");
