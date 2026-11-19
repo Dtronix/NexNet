@@ -116,6 +116,50 @@ public class ClientMatrixTests
         await Assert.That(Reason("java", ClientTransport.WebSocketTls)).IsNull();
     }
 
+    private static readonly int[] Sizes = [1, 2];
+
+    private static IEnumerable<string> Modes() => ["a", "b"];
+
+    [Test]
+    public async Task WithDataSource_IsTargetsTimesValues()
+    {
+        var attribute = new ClientMatrixAttribute<int>(nameof(Sizes)) { Languages = ["csharp", "browser-chromium"], Transports = [ClientTransport.Tcp, ClientTransport.WebSocket] };
+        var rows = attribute.GetRows(attribute.GetValues(typeof(ClientMatrixTests)), transportOverride: null);
+
+        await Assert.That(rows.Select(r => r.Target + ":" + r.Value)).IsEquivalentTo(
+            new[]
+            {
+                "csharp/Tcp:1", "csharp/Tcp:2", "csharp/WebSocket:1", "csharp/WebSocket:2",
+                "browser-chromium/Tcp:1", "browser-chromium/Tcp:2", "browser-chromium/WebSocket:1", "browser-chromium/WebSocket:2",
+            },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(rows.Single(r => r.Target.ToString() == "browser-chromium/Tcp" && r.Value == 1).Target.SkipReason).Contains("no Tcp transport");
+        await Assert.That(rows.Single(r => r.Target.ToString() == "csharp/Tcp" && r.Value == 2).Target.SkipReason).IsNull();
+    }
+
+    [Test]
+    public async Task WithDataSource_ReadsMethodsAndRejectsMissingMembers()
+    {
+        await Assert.That(new ClientMatrixAttribute<string>(nameof(Modes)).GetValues(typeof(ClientMatrixTests)))
+            .IsEquivalentTo(new[] { "a", "b" }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+        var error = await Assert.That(() => new ClientMatrixAttribute<int>("Nope").GetValues(typeof(ClientMatrixTests)))
+            .ThrowsExactly<InvalidOperationException>();
+        await Assert.That(error!.Message).Contains("Nope");
+        await Assert.That(() => new ClientMatrixAttribute<int>(nameof(Modes)).GetValues(typeof(ClientMatrixTests)).ToArray())
+            .Throws<InvalidCastException>();
+    }
+
+    [Test]
+    [ClientMatrix<int>(nameof(Sizes), Languages = ["csharp", "browser-chromium"], Transports = [ClientTransport.Tcp])]
+    public async Task WithDataSource_RowsCarryTheValueAndTheProperties(ClientTarget target, int size)
+    {
+        await Assert.That(Sizes).Contains(size);
+        var properties = TestContext.Current!.Metadata.TestDetails.CustomProperties;
+        await Assert.That(properties[ClientMatrixAttribute.LanguageProperty]).IsEquivalentTo(new[] { target.Language });
+        await Assert.That(properties[ClientMatrixAttribute.TransportProperty]).IsEquivalentTo(new[] { target.Transport.ToString() });
+    }
+
     [Test]
     public async Task UnknownLanguage_FailsVisibly()
     {

@@ -16,24 +16,10 @@ internal class LargeValueTests(LanguageHostPool hosts) : InvocationMatrixTests(h
 {
     private static readonly int[] Sizes = [128 * 1024, 1024 * 1024, 4 * 1024 * 1024 - 1024];
 
-    /// <summary>The client matrix rows of every transport, times every size of <see cref="Sizes"/>.</summary>
-    public static IEnumerable<Func<(ClientTarget, int)>> TargetsAndSizes()
-    {
-        var matrix = new ClientMatrixAttribute
-        {
-            Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket],
-        };
-        foreach (var target in matrix.GetTargets())
-        {
-            foreach (var size in Sizes)
-                yield return () => (target, size);
-        }
-    }
-
     private static string Digest(ReadOnlySpan<byte> data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
     [Test]
-    [MethodDataSource(nameof(TargetsAndSizes))]
+    [ClientMatrix<int>(nameof(Sizes), Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket])]
     public async Task LargeArgumentAndResult_RoundTrip(ClientTarget target, int size)
     {
         await using var server = await StartServer();

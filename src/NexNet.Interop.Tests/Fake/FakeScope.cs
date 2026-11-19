@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using NexNet.Interop.Remote;
+using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.TestNexus.Interop;
 
 namespace NexNet.Interop.Tests.Fake;
@@ -264,6 +266,7 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
             "transport", "address", "tlsServerName", "caPem", "clientCertificatePem", "clientKeyPem", "pinSha256", "insecureSkipVerify",
             "connectionTimeoutMs", "timeoutMs", "handshakeTimeoutMs", "pingIntervalMs", "reconnectDelaysMs", "reconnectContinuously",
             "authToken", "authorizationHeader", "maxMessageSize", "invocationCredits", "fakeTime", "logLevel",
+            "maxConcurrentConnectionInvocations", "remoteExceptionDetail", "onInvocationException",
         };
         foreach (var (name, _) in json)
         {
@@ -293,6 +296,11 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
             InvocationCredits = json["invocationCredits"]?.GetValue<int>(),
             FakeTime = json["fakeTime"]?.GetValue<bool>() ?? false,
             LogLevel = json["logLevel"] is { } level ? Enum.Parse<NexusLogLevel>(level.GetValue<string>()) : null,
+            MaxConcurrentConnectionInvocations = json["maxConcurrentConnectionInvocations"]?.GetValue<int>(),
+            RemoteExceptionDetail = json["remoteExceptionDetail"] is { } detail ? Enum.Parse<RemoteExceptionDetail>(detail.GetValue<string>()) : null,
+            OnInvocationException = json["onInvocationException"] is JsonObject hook
+                ? new NexusRemoteError(hook["code"]?.GetValue<int>(), hook["message"]?.GetValue<string>())
+                : null,
         };
     }
 }

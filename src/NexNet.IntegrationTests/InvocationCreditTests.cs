@@ -315,53 +315,49 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         await Assert.That(stalled.IsConnected).IsTrue();
     }
 
-    /// <summary>
-    /// C#-only for now: it needs the client's <c>MaxConcurrentConnectionInvocations</c> = 1, which
-    /// <see cref="ClientSpec"/> cannot express.
-    /// </summary>
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task Broadcasts_ArriveInOrderAtEachClient(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Broadcasts_ArriveInOrderAtEachClient(ClientTarget target)
     {
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
-        // order they arrive.
+        // order they arrive (each call is reported when its handler starts).
         const int count = 500;
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
 
-        var orders = new List<List<int>>();
-        var done = new List<Task>();
-        for (var i = 0; i < 3; i++)
+        var clients = new List<IClientUnderTest>();
+        try
         {
-            var clientConfig = CreateClientConfig(type);
-            clientConfig.InvocationCredits = 2;
-            clientConfig.MaxConcurrentConnectionInvocations = 1;
-            var order = new List<int>();
-            var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var (client, clientNexus) = CreateClient(clientConfig);
-            clientNexus.ClientTaskWithParamEvent = (_, id) =>
+            for (var i = 0; i < 3; i++)
             {
-                lock (order)
+                clients.Add(await Connect(target, server, spec =>
                 {
-                    order.Add(id);
-                    if (order.Count == count)
-                        all.TrySetResult();
-                }
+                    spec.InvocationCredits = 2;
+                    spec.MaxConcurrentConnectionInvocations = 1;
+                }));
+            }
 
-                return default;
-            };
-            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-            orders.Add(order);
-            done.Add(all.Task);
+            using (var context = server.Server.ContextProvider.Rent())
+            {
+                for (var i = 0; i < count; i++)
+                    await context.Proxy.All.ClientTaskWithParam(i).Timeout(T(1));
+            }
+
+            foreach (var client in clients)
+            {
+                var order = new List<int>(count);
+                for (var i = 0; i < count; i++)
+                    order.Add((await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(5))).data);
+                await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
+            }
+
+            foreach (var client in clients)
+                await DisconnectAndAudit(client);
         }
-
-        using var context = server.ContextProvider.Rent();
-        for (var i = 0; i < count; i++)
-            await context.Proxy.All.ClientTaskWithParam(i).Timeout(T(1));
-
-        await Task.WhenAll(done).Timeout(T(5));
-        foreach (var order in orders)
-            await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
+        finally
+        {
+            foreach (var client in clients)
+                await client.DisposeAsync();
+        }
     }
 
     [Test]

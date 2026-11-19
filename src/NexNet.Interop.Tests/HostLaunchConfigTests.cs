@@ -1,6 +1,8 @@
 using NexNet.Interop.Hosts;
 using NexNet.Interop.Remote;
+using NexNet.Invocation;
 using NexNet.TestNexus.Interop;
+using NexNet.Transports;
 
 namespace NexNet.Interop.Tests;
 
@@ -80,6 +82,19 @@ public class HostLaunchConfigTests
         var spec = ControlJson.ToJson(new ClientSpec { Transport = ClientTransport.Tcp, Address = "tcp://h:1", ReconnectDelaysMs = [1, 2], FakeTime = true });
         await Assert.That(spec.Select(p => p.Key)).IsEquivalentTo(new[] { "transport", "address", "reconnectDelaysMs", "fakeTime" });
         await Assert.That(spec["transport"]!.GetValue<string>()).IsEqualTo("Tcp");
+
+        var invocations = ControlJson.ToJson(new ClientSpec
+        {
+            Address = "tcp://h:1",
+            MaxConcurrentConnectionInvocations = 1,
+            RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage,
+            OnInvocationException = new NexusRemoteError(7, null),
+        });
+        await Assert.That(invocations.Select(p => p.Key)).IsEquivalentTo(
+            new[] { "address", "maxConcurrentConnectionInvocations", "remoteExceptionDetail", "onInvocationException" });
+        await Assert.That(invocations["maxConcurrentConnectionInvocations"]!.GetValue<int>()).IsEqualTo(1);
+        await Assert.That(invocations["remoteExceptionDetail"]!.GetValue<string>()).IsEqualTo("TypeAndMessage");
+        await Assert.That(invocations["onInvocationException"]!.ToJsonString()).IsEqualTo("{\"code\":7}");
 
         await Assert.That(ControlJson.TypeExpression(TypedCodecs.Get<InteropItem>().Schema)).IsEqualTo("NexNet.TestNexus.Interop.InteropItem");
         await Assert.That(ControlJson.TypeExpression(TypedCodecs.Get<long>().Schema)).IsEqualTo("long");
