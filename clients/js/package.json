@@ -14,7 +14,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint .",
     "test": "vitest run --project node",
-    "test:browser": "vitest run --project browser"
+    "test:browser": "vitest run --project browser",
+    "build:interop-host": "node packages/interop-host-node/src/node/build.js",
+    "build:host": "node packages/interop-host-node/src/node/build.js",
+    "selftest:host": "node packages/interop-host-node/src/node/selftest.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
