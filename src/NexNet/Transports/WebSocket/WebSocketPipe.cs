@@ -112,13 +112,24 @@ internal class WebSocketPipe : IWebSocketPipe
     async Task ReadInputAsync(CancellationToken cancellation)
     {
         bool enableTransportLog = _config.Logger is { } logger && (logger.Behaviors & NexusLogBehaviors.LogTransportData) != 0;
+        // Set when the peer breaks the binding's rules; the close handshake then carries this status.
+        WebSocketCloseStatus? violation = null;
         while (_webSocket.State == WebSocketState.Open && !cancellation.IsCancellationRequested)
         {
             try
             {
                 var buffer = _inputPipe.Writer.GetMemory(DefaultBufferSize);
                 var message = await _webSocket.ReceiveAsync(buffer, cancellation).ConfigureAwait(false);
-                
+
+                // NexNet bytes travel in binary messages only. A text message is not part of the stream: drop its
+                // payload and close with 1003 (unsupported data). Continuation frames keep the first frame's type.
+                if (message.MessageType == WebSocketMessageType.Text)
+                {
+                    _config.Logger?.LogWarning("Received a WebSocket text message; closing with 1003 (unsupported data).");
+                    violation = WebSocketCloseStatus.InvalidMessageType;
+                    break;
+                }
+
                 while (!cancellation.IsCancellationRequested && !message.EndOfMessage && message.MessageType != WebSocketMessageType.Close)
                 {
                     if (message.Count == 0)
@@ -155,6 +166,14 @@ internal class WebSocketPipe : IWebSocketPipe
             {
                 break;
             }
+        }
+
+        if (violation != null)
+        {
+            // Close first, so the session's own close (1000) cannot race ahead once the input completes.
+            await CloseAsync(violation.Value, "NexNet accepts binary messages only.").ConfigureAwait(false);
+            await CompleteAsync().ConfigureAwait(false);
+            return;
         }
 
         // Preserve the close status since it might be triggered by a received Close message containing the status and description.
