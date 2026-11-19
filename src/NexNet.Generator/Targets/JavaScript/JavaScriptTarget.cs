@@ -6,14 +6,19 @@ namespace NexNet.Generator.Targets.JavaScript;
 /// <summary>
 /// The JavaScript client target (<c>@dtronix/nexnet</c>, ESM + <c>.d.ts</c>). Type names are TypeScript declaration
 /// syntax. J03 emits a module and declarations per declared type, <c>formatters.js</c> and the support module; J04 emits
-/// a module per export with its handshake, server proxy, client nexus base and factory (see <see cref="Emit"/>).
+/// a module per export with its handshake, server proxy, client nexus base and factory (see <see cref="Emit"/>). The test
+/// scaffolding of the cross-language harness (<see cref="EmitMode.TestScaffolding"/>, option <c>EmitTestScaffolding</c>)
+/// goes in its <c>scaffolding/</c> directory (J11, <see cref="JsScaffoldingEmitter"/>).
 /// </summary>
 internal sealed class JavaScriptTarget : TargetLanguageBase
 {
     /// <summary>Option: the module name generated code imports the runtime from (optional).</summary>
     public const string ModuleNameOption = "ModuleName";
 
-    private static readonly string[] Options = { ModuleNameOption };
+    /// <summary>Option: <c>true</c> also emits the test scaffolding (<see cref="EmitMode.TestScaffolding"/>).</summary>
+    public const string TestScaffoldingOption = Bundle.TargetBundleBuilder.TestScaffoldingOption;
+
+    private static readonly string[] Options = { ModuleNameOption, TestScaffoldingOption };
 
     /// <summary>ECMAScript reserved words (strict mode and modules) and TypeScript type keywords.</summary>
     internal static readonly string[] Keywords =
@@ -170,15 +175,18 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     /// </summary>
     public override IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode)
     {
-        if (mode != EmitMode.Client || !ir.Exports.Any(e => (e.Targets & (int)Flag) != 0))
+        if ((mode != EmitMode.Client && mode != EmitMode.TestScaffolding) || !ir.Exports.Any(e => (e.Targets & (int)Flag) != 0))
             return Array.Empty<GeneratedFile>();
 
         var decls = TargetIrWalker.TargetDecls(ir, Flag).Select(d => d.Decl).ToArray();
         var context = new JsContext(this, ir, decls, options.Get(ModuleNameOption) ?? JsSyntax.DefaultRuntimeModule);
+        var users = JsFormatterEmitter.UserFormatters(ir, decls);
+        if (mode == EmitMode.TestScaffolding)
+            return JsScaffoldingEmitter.Emit(context, users);
+
         var files = new List<GeneratedFile>();
         foreach (var decl in decls)
             files.AddRange(JsTypeEmitter.Emit(context, decl));
-        var users = JsFormatterEmitter.UserFormatters(ir, decls);
         files.AddRange(JsFormatterEmitter.Emit(context, users));
         files.AddRange(JsSupportEmitter.Emit(context));
         foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
