@@ -76,8 +76,12 @@ internal static class ScaffoldingEmitter
 
         files.Add(new GeneratedFile(directory + CodecsClass + ".java", codecs.Write(package, decls)));
         files.Add(new GeneratedFile(directory + IndexClass + ".java", Index(context, exports, package)));
+        // The sources are raw string literals: normalize the line endings a CRLF checkout gives them.
         foreach (var (name, text) in ScaffoldingRuntime.Files)
-            files.Add(new GeneratedFile(directory + name + ".java", JavaSyntax.Header + "\n" + text.Replace(ScaffoldingRuntime.PackagePlaceholder, package) + "\n"));
+        {
+            var content = text.Replace("\r\n", "\n").Replace(ScaffoldingRuntime.PackagePlaceholder, package);
+            files.Add(new GeneratedFile(directory + name + ".java", JavaSyntax.Header + "\n" + content + "\n"));
+        }
 
         return files.OrderBy(f => f.Path, StringComparer.Ordinal).ToArray();
     }
