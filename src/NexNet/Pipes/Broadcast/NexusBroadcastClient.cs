@@ -84,6 +84,8 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         var disconnectedTask = _disconnectTcs!.Task.ConfigureAwait(false);
         var loopTask = Processor.LoopTask;
         var readerTask = _readerTask;
+        var pipe = _client.Pipe;
+        var session = _session;
         // Complete the pipe and everything closes.
         await _client!.CompletePipe().ConfigureAwait(false);
 
@@ -100,10 +102,36 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             Logger?.LogDebug(e, "Collection message processor loop ended with an error.");
         }
 
-        // The reader returns the pipe once it ends. Waiting for it means the pipe's slot is free as soon as the peer
-        // has confirmed the close, so an enable right after this one does not find the pipe limit reached.
+        // The reader returns the pipe once it ends.
         if (readerTask != null)
             await readerTask.ConfigureAwait(false);
+
+        // The pipe's slot, window and ID are freed only once the server has confirmed the close. Waiting for that
+        // means an enable right after this one does not find the pipe limit reached.
+        if (session != null)
+            await WaitPipeFreedAsync(session, pipe).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits for the pipe manager to free a returned pipe, bounded by the session's
+    /// <see cref="Transports.ConfigBase.ProgressTimeout"/>: a peer that never confirms the close is reported by the
+    /// session's stall detection, and the disable completes regardless.
+    /// </summary>
+    private async ValueTask WaitPipeFreedAsync(INexusSession session, INexusDuplexPipe pipe)
+    {
+        var freed = session.PipeManager.WaitFreedAsync(pipe);
+        if (freed.IsCompleted)
+            return;
+
+        var config = session.Config;
+        try
+        {
+            await freed.WaitAsync(TimeSpan.FromMilliseconds(config.ProgressTimeout), config.Time).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            Logger?.LogDebug("Disabled the collection before the server confirmed the pipe's close.");
+        }
     }
 
     public async ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)
