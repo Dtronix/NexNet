@@ -284,8 +284,11 @@ internal class NexusPipeManager
         if (_isCanceled)
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
-        if (!TryReserveWindow())
+        if (!TryReserveWindow() && !await TryReserveAfterPendingFreesAsync().ConfigureAwait(false))
         {
+            if (_isCanceled)
+                throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
+
             await RefusePipe(otherId).ConfigureAwait(false);
             throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
         }
@@ -323,6 +326,70 @@ internal class NexusPipeManager
         _logger?.LogTrace($"Sending Ready Notification");
         return pipe;
     }
+
+    /// <summary>
+    /// Waits for completed pipes to be freed, then reserves a slot and window (see <see cref="TryReserveWindow"/>).
+    /// A completed pipe keeps its slot until both sides confirmed the close and the application released it, and
+    /// the peer frees its own side as soon as this side's close confirmation arrives. The peer can therefore open its
+    /// next pipe before this side's handler (a collection connection, for example) has returned and released the old
+    /// one. Waiting for such a pipe, bounded by <see cref="MaxPendingFreeWait"/> and
+    /// <see cref="Transports.ConfigBase.ProgressTimeout"/>, avoids refusing an open that is only racing the release.
+    /// Returns false at once when no completed pipe is waiting to be freed.
+    /// </summary>
+    private async ValueTask<bool> TryReserveAfterPendingFreesAsync()
+    {
+        var config = _session.Config;
+        var time = config.Time;
+        var waitMs = Math.Min(config.ProgressTimeout, (long)MaxPendingFreeWait.TotalMilliseconds);
+        var deadline = time.GetTickCount64() + waitMs;
+        List<Task>? pending = null;
+
+        while (!_isCanceled)
+        {
+            pending?.Clear();
+            foreach (var entry in _activePipes)
+            {
+                // Completed by either side and not freed yet: it is freed once the close exchange and the
+                // application's release are done.
+                if (entry.Value.CurrentState != State.Complete)
+                    continue;
+
+                var freed = WaitFreedAsync(entry.Value);
+                if (freed.IsCompleted)
+                    continue;
+
+                pending ??= new List<Task>();
+                pending.Add(freed);
+            }
+
+            if (pending is not { Count: > 0 })
+                return TryReserveWindow();
+
+            var remaining = deadline - time.GetTickCount64();
+            if (remaining <= 0)
+                return false;
+
+            _logger?.LogTrace($"Pipe limit reached; waiting up to {remaining} ms for {pending.Count} completed pipe(s) to be freed.");
+            try
+            {
+                await Task.WhenAny(pending).WaitAsync(TimeSpan.FromMilliseconds(remaining), time).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                return TryReserveWindow();
+            }
+
+            if (TryReserveWindow())
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Longest wait in <see cref="RegisterPipe"/> for completed pipes to be freed before refusing a new one.
+    /// </summary>
+    internal static readonly TimeSpan MaxPendingFreeWait = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Refuses a pipe the peer opened without registering it: sends Refused for the opener's partial ID, so the
