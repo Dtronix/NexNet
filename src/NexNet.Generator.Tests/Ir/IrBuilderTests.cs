@@ -39,6 +39,37 @@ public class IrBuilderTests
     [Test]
     public Task ZooSnapshot() => IrSnapshots.Verify("zoo", IrJson.Write(Zoo.Ir));
 
+    [Test]
+    public Task NullableTuplesSnapshot() => IrSnapshots.Verify("nullable-tuples", IrJson.Write(IrTestRunner.Run(IrFixtures.NullableTuples).Ir));
+
+    [Test]
+    public async Task NullableTupleElementsAreRecorded()
+    {
+        var ir = IrTestRunner.Run(IrFixtures.NullableTuples).Ir;
+        var server = Export(ir, "TupleServerNexus").ServerApi;
+
+        // (int, string?, double)
+        var get = Method(server, "Get").ReturnType!;
+        await Assert.That(get.Kind).IsEqualTo(TypeRefKind.Tuple);
+        await Assert.That(get.RefNullable).IsFalse();
+        await Assert.That(get.Args.Select(a => a.RefNullable)).IsEquivalentTo(new[] { false, true, false }, CollectionOrdering.Matching);
+        await Assert.That(Method(server, "Set").Params[0].Type).IsEqualTo(get);
+
+        // (string?, (int, List<string?>?)?, Tuple<string?, int>?)
+        var nested = Method(server, "Nested").ReturnType!;
+        await Assert.That(nested.Args[0].RefNullable).IsTrue();
+        var inner = nested.Args[1];
+        await Assert.That(inner.Kind).IsEqualTo(TypeRefKind.Nullable);
+        var list = inner.Args[0].Args[1];
+        await Assert.That(list.RefNullable).IsTrue();
+        await Assert.That(list.Args[0].RefNullable).IsTrue();
+        var refTuple = nested.Args[2];
+        await Assert.That(refTuple.RefNullable).IsTrue();
+        await Assert.That(refTuple.Args[0].RefNullable).IsTrue();
+        await Assert.That(refTuple.Args[1].RefNullable).IsFalse();
+        await Assert.That(Method(server, "Nested").Params[0].Type).IsEqualTo(nested);
+    }
+
     // ------------------------------------------------------------------ determinism and JSON
 
     [Test]

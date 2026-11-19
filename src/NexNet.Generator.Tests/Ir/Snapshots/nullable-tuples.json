@@ -1,0 +1,620 @@
+{
+  "exports": [
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": 26367953,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "Tuples.ITupleClient",
+        "clrNamespace": "Tuples",
+        "collections": [],
+        "hash": 26367953,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 441856590,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Echo",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "Value",
+                "name": "list",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "String",
+                          "refNullable": true
+                        },
+                        {
+                          "kind": "Prim",
+                          "prim": "String"
+                        }
+                      ],
+                      "clr": "ValueTuple",
+                      "kind": "Tuple"
+                    }
+                  ],
+                  "clr": "List",
+                  "kind": "Seq"
+                },
+                "wireIndex": 2
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 2
+          }
+        ],
+        "name": "ITupleClient",
+        "versions": []
+      },
+      "clrNamespace": "Tuples",
+      "handshake": {
+        "clientNexusHash": 26367953,
+        "serverNexusHash": -1087266103
+      },
+      "name": "TupleClientNexus",
+      "serverApi": {
+        "clrName": "Tuples.ITupleServer",
+        "clrNamespace": "Tuples",
+        "collections": [],
+        "hash": -1087266103,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 2137786412,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Get",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "Double"
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1562846621,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Set",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Double"
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 777101003,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "Nested",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "kind": "Prim",
+                              "prim": "Int32"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "kind": "Prim",
+                                  "prim": "String",
+                                  "refNullable": true
+                                }
+                              ],
+                              "clr": "List",
+                              "kind": "Seq",
+                              "refNullable": true
+                            }
+                          ],
+                          "clr": "ValueTuple",
+                          "kind": "Tuple"
+                        }
+                      ],
+                      "kind": "Nullable"
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "String",
+                          "refNullable": true
+                        },
+                        {
+                          "kind": "Prim",
+                          "prim": "Int32"
+                        }
+                      ],
+                      "clr": "Tuple",
+                      "kind": "Tuple",
+                      "refNullable": true
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "Int32"
+                        },
+                        {
+                          "args": [
+                            {
+                              "kind": "Prim",
+                              "prim": "String",
+                              "refNullable": true
+                            }
+                          ],
+                          "clr": "List",
+                          "kind": "Seq",
+                          "refNullable": true
+                        }
+                      ],
+                      "clr": "ValueTuple",
+                      "kind": "Tuple"
+                    }
+                  ],
+                  "kind": "Nullable"
+                },
+                {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "clr": "Tuple",
+                  "kind": "Tuple",
+                  "refNullable": true
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "ITupleServer",
+        "versions": []
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": 26367953,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "Tuples.ITupleClient",
+        "clrNamespace": "Tuples",
+        "collections": [],
+        "hash": 26367953,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 441856590,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Echo",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "Value",
+                "name": "list",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "String",
+                          "refNullable": true
+                        },
+                        {
+                          "kind": "Prim",
+                          "prim": "String"
+                        }
+                      ],
+                      "clr": "ValueTuple",
+                      "kind": "Tuple"
+                    }
+                  ],
+                  "clr": "List",
+                  "kind": "Seq"
+                },
+                "wireIndex": 2
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 2
+          }
+        ],
+        "name": "ITupleClient",
+        "versions": []
+      },
+      "clrNamespace": "Tuples",
+      "handshake": {
+        "clientNexusHash": 26367953,
+        "serverNexusHash": -1087266103
+      },
+      "name": "TupleServerNexus",
+      "serverApi": {
+        "clrName": "Tuples.ITupleServer",
+        "clrNamespace": "Tuples",
+        "collections": [],
+        "hash": -1087266103,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 2137786412,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Get",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                {
+                  "kind": "Prim",
+                  "prim": "Double"
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1562846621,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Set",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Double"
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 777101003,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "Nested",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "args": [
+                        {
+                          "args": [
+                            {
+                              "kind": "Prim",
+                              "prim": "Int32"
+                            },
+                            {
+                              "args": [
+                                {
+                                  "kind": "Prim",
+                                  "prim": "String",
+                                  "refNullable": true
+                                }
+                              ],
+                              "clr": "List",
+                              "kind": "Seq",
+                              "refNullable": true
+                            }
+                          ],
+                          "clr": "ValueTuple",
+                          "kind": "Tuple"
+                        }
+                      ],
+                      "kind": "Nullable"
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "String",
+                          "refNullable": true
+                        },
+                        {
+                          "kind": "Prim",
+                          "prim": "Int32"
+                        }
+                      ],
+                      "clr": "Tuple",
+                      "kind": "Tuple",
+                      "refNullable": true
+                    }
+                  ],
+                  "clr": "ValueTuple",
+                  "kind": "Tuple"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "Prim",
+                          "prim": "Int32"
+                        },
+                        {
+                          "args": [
+                            {
+                              "kind": "Prim",
+                              "prim": "String",
+                              "refNullable": true
+                            }
+                          ],
+                          "clr": "List",
+                          "kind": "Seq",
+                          "refNullable": true
+                        }
+                      ],
+                      "clr": "ValueTuple",
+                      "kind": "Tuple"
+                    }
+                  ],
+                  "kind": "Nullable"
+                },
+                {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "String",
+                      "refNullable": true
+                    },
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "clr": "Tuple",
+                  "kind": "Tuple",
+                  "refNullable": true
+                }
+              ],
+              "clr": "ValueTuple",
+              "kind": "Tuple"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "ITupleServer",
+        "versions": []
+      },
+      "targets": 0
+    }
+  ],
+  "irVersion": 1,
+  "types": []
+}
