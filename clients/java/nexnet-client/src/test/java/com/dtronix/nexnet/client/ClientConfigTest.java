@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
@@ -122,6 +124,28 @@ class ClientConfigTest {
             .pingIntervalMillis());
         assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(0));
         assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(-5));
+    }
+
+    @Test
+    void invocationOptionsAndProgressTimeoutAreConfigurable() {
+        ClientConfig defaults = ClientConfig.tcp("h", 1).build();
+        assertSame(InvocationOptions.defaults(), defaults.invocationOptions());
+        assertEquals(30_000, defaults.progressTimeoutMillis());
+
+        InvocationOptions options = InvocationOptions.defaults().withMaxConcurrentInvocations(8)
+            .withMaxSeparatePoolInvocations(3).withSessionBudget(1024 * 1024)
+            .withRemoteExceptionDetail(RemoteExceptionDetail.TYPE_AND_MESSAGE);
+        ClientConfig config = ClientConfig.tcp("h", 1).invocationOptions(options).progressTimeoutMillis(50).build();
+        assertSame(options, config.invocationOptions());
+        assertEquals(8, config.invocationOptions().maxConcurrentInvocations());
+        assertEquals(3, config.invocationOptions().maxSeparatePoolInvocations());
+        assertEquals(1024 * 1024, config.invocationOptions().sessionBudget());
+        assertEquals(RemoteExceptionDetail.TYPE_AND_MESSAGE, config.invocationOptions().remoteExceptionDetail());
+        assertEquals(50, config.progressTimeoutMillis());
+
+        assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).progressTimeoutMillis(49));
+        assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).progressTimeoutMillis(600_001));
+        assertThrows(NullPointerException.class, () -> ClientConfig.tcp("h", 1).invocationOptions(null));
     }
 
     @Test
