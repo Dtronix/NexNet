@@ -27,8 +27,23 @@ internal class WebSocketPipe : IWebSocketPipe
     readonly System.Net.WebSockets.WebSocket _webSocket;
     readonly WebSocketPipeOptions _options;
 
+    // Wait at most this long in CompleteAsync for a receive that does not honor cancellation; the read loop still
+    // completes the input writer itself when that receive returns.
+    static readonly TimeSpan readLoopExitTimeout = TimeSpan.FromMilliseconds(250);
+
+    readonly CancellationTokenSource _readCancellation = new CancellationTokenSource();
+
+    // Completes when the read loop has exited and completed the input writer.
+    readonly TaskCompletionSource _readLoopExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // Who completes the input writer: InputOwnerNone until RunAsync (the read loop) or CompleteAsync claims it.
+    const int InputOwnerNone = 0;
+    const int InputOwnerReadLoop = 1;
+    const int InputOwnerCompleted = 2;
+    int _inputOwner;
+
+    // Set once a CompleteAsync call has started; the read loop then stops delivering received bytes.
     volatile bool _completed;
-    readonly object _inputWriterLock = new();
     private readonly ConfigBase _config;
 
     public WebSocketPipe(
@@ -63,7 +78,12 @@ internal class WebSocketPipe : IWebSocketPipe
         if (_webSocket.State != WebSocketState.Open)
             throw new InvalidOperationException($"WebSocket must be opened. State was {_webSocket.State}");
 
-        var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _disposeCancellation.Token);
+        // Already completed before the read loop started: the input writer is completed and nothing is read.
+        if (Interlocked.CompareExchange(ref _inputOwner, InputOwnerReadLoop, InputOwnerNone) != InputOwnerNone)
+            return Task.CompletedTask;
+
+        var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _disposeCancellation.Token,
+            _readCancellation.Token);
         return ReadInputAsync(combined.Token);
     }
 
@@ -72,17 +92,12 @@ internal class WebSocketPipe : IWebSocketPipe
     {
         if (_completed)
             return;
+        _completed = true;
 
-        // The read loop may be inside a receive; it advances the writer only under this lock and only while the
-        // pipe is not completed, so it never advances a completed writer.
-        lock (_inputWriterLock)
-        {
-            _completed = true;
-            _inputPipe.Writer.Complete();
-        }
-
-        // NOTE: invoking these more than once is no-op.
-        await _inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+        // The input is not completed here. A receive may still be writing into memory from the input writer; completing
+        // the writer (with the reader already completed by the session) would return that memory to the shared pool
+        // while the receive writes into it, and the late bytes would land in another connection's data. Only the read
+        // loop completes the writer, when it exits, and only the session that reads the input completes the reader.
 
         // If the output was completed (graceful close), let the send loop write what was flushed before the close
         // frame; otherwise stop it.
@@ -90,6 +105,28 @@ internal class WebSocketPipe : IWebSocketPipe
 
         if (_options.CloseWhenCompleted || closeStatus != null)
             await CloseAsync(closeStatus ?? WebSocketCloseStatus.NormalClosure, closeStatusDescription ?? "").ConfigureAwait(false);
+
+        // No read loop started: nothing writes into the input, and none will start now.
+        if (Interlocked.CompareExchange(ref _inputOwner, InputOwnerCompleted, InputOwnerNone) == InputOwnerNone)
+        {
+            await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+
+        // Stop the read loop and wait for it to exit, so the input is completed when this returns. When the read loop
+        // itself is completing the pipe it has already exited.
+        if (_readLoopExited.Task.IsCompleted)
+            return;
+
+        _readCancellation.Cancel();
+        try
+        {
+            await _readLoopExited.Task.WaitAsync(readLoopExitTimeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // A receive that ignores cancellation; the read loop completes the writer when it returns.
+        }
     }
 
     async ValueTask CloseAsync(WebSocketCloseStatus closeStatus, string closeStatusDescription)
@@ -168,10 +205,23 @@ internal class WebSocketPipe : IWebSocketPipe
             }
         }
 
+        // Close first on a violation, so the session's own close (1000) cannot race ahead once the input completes.
+        if (violation != null)
+            await CloseAsync(violation.Value, "NexNet accepts binary messages only.").ConfigureAwait(false);
+
+        // No receive is pending any more, so the writer's memory can go back to the pool once the reader completes.
+        try
+        {
+            await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignore
+        }
+        _readLoopExited.TrySetResult();
+
         if (violation != null)
         {
-            // Close first, so the session's own close (1000) cannot race ahead once the input completes.
-            await CloseAsync(violation.Value, "NexNet accepts binary messages only.").ConfigureAwait(false);
             await CompleteAsync().ConfigureAwait(false);
             return;
         }
@@ -183,17 +233,15 @@ internal class WebSocketPipe : IWebSocketPipe
     /// <summary>
     /// Advances the input writer by <paramref name="count"/> received bytes unless the pipe has been completed.
     /// </summary>
-    /// <returns>False if the pipe was completed and the bytes were dropped.</returns>
+    /// <returns>False if the pipe is completing and the bytes were dropped.</returns>
+    /// <remarks>Only the read loop uses the input writer, so no lock is needed.</remarks>
     private bool TryAdvanceInput(int count)
     {
-        lock (_inputWriterLock)
-        {
-            if (_completed)
-                return false;
+        if (_completed)
+            return false;
 
-            _inputPipe.Writer.Advance(count);
-            return true;
-        }
+        _inputPipe.Writer.Advance(count);
+        return true;
     }
 
     public void Dispose()

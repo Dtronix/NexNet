@@ -66,22 +66,19 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
     }
 
     /// <summary>
-    /// Completes the connection and each input and output pipe.
+    /// Completes the output pipe and closes the connection. The input pipe is not completed: its reader completes it
+    /// once its pending read has ended, so the read never writes into a buffer returned to the pool.
     /// </summary>
     public async ValueTask CompleteAsync()
     {
         // If the output was completed (graceful close), let the send loop write what was flushed; otherwise stop it.
         await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
 
-        try
-        {
-            await _inputPipe.CompleteAsync().ConfigureAwait(false);
-        }
-        catch
-        {
-            // ignore
-        }
-        
+        // The input is not completed here: the session's read loop may be inside ReadAsync, with the stream reading
+        // into a pooled buffer of the input. Completing the input would return that buffer to the shared pool while
+        // the read writes into it, and the late bytes would land in another connection's data. Disposing the stream
+        // below ends the read; the reader of the input (the session's read loop) completes it after that.
+
         try
         {
             await _outputPipe.CompleteAsync().ConfigureAwait(false);
