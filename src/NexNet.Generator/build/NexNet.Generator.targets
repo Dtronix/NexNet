@@ -22,7 +22,6 @@
     <NexNetTargetsManifest Condition="'$(NexNetTargetsManifest)' == ''">$(_NexNetObjDir)nexnet-targets.manifest</NexNetTargetsManifest>
     <!-- Where nexnet-ir.json (the language-neutral contract) is written. -->
     <NexNetIrOutputPath Condition="'$(NexNetIrOutputPath)' == ''">$(_NexNetObjDir)nexnet-ir.json</NexNetIrOutputPath>
-    <_NexNetUnpackStamp>$(IntermediateOutputPath)nexnet-targets.stamp</_NexNetUnpackStamp>
     <_NexNetFirstTargetFramework Condition="'$(TargetFrameworks)' != ''">$(TargetFrameworks.Split(';')[0].Trim())</_NexNetFirstTargetFramework>
     <_NexNetIsUnpackFramework Condition="'$(TargetFrameworks)' == '' or '$(TargetFramework)' == '$(_NexNetFirstTargetFramework)'">true</_NexNetIsUnpackFramework>
     <_NexNetTasksAssembly>$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll</_NexNetTasksAssembly>
@@ -72,8 +71,19 @@
              Text="NexNetTarget is configured but the NexNet generator produced no target bundle ('$(NexNetTargetBundleFile)'); no Java/JavaScript files were written. Check that NexNet.Generator is referenced as an analyzer." />
   </Target>
 
+  <!--
+    IntermediateOutputPath is set by Microsoft.Common.targets, after a project file body that imports these targets
+    directly (G07), so the stamp path is computed when the targets run rather than at evaluation.
+  -->
+  <Target Name="_NexNetComputeUnpackStamp">
+    <PropertyGroup>
+      <_NexNetUnpackStamp>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'nexnet-targets.stamp'))</_NexNetUnpackStamp>
+    </PropertyGroup>
+  </Target>
+
   <Target Name="NexNetUnpackTargets"
           AfterTargets="CoreCompile"
+          DependsOnTargets="_NexNetComputeUnpackStamp"
           Condition="'@(NexNetTarget)' != '' and '$(DesignTimeBuild)' != 'true' and '$(_NexNetIsUnpackFramework)' == 'true' and '$(NexNetTargetBundleFile)' != '' and Exists('$(NexNetTargetBundleFile)')"
           Inputs="$(NexNetTargetBundleFile);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath)"
           Outputs="$(_NexNetUnpackStamp)">
@@ -82,6 +92,7 @@
                         ProjectDirectory="$(MSBuildProjectDirectory)"
                         IrOutputPath="$(NexNetIrOutputPath)"
                         ManifestFile="$(NexNetTargetsManifest)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_NexNetUnpackStamp)'))" />
     <Touch Files="$(_NexNetUnpackStamp)" AlwaysCreate="true" />
     <ItemGroup>
       <FileWrites Include="$(_NexNetUnpackStamp)" />
