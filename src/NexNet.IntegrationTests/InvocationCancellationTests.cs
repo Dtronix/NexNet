@@ -15,13 +15,19 @@ internal class InvocationCancellationTests : BaseTests
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var tokens = new List<CancellationToken>();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(CreateServerConfig(type), nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, ct) =>
         {
+            int index;
             lock (tokens)
             {
                 tokens.Add(ct);
-                if (tokens.Count == 2)
+                index = tokens.Count;
+                if (index == 1)
+                    firstStarted.TrySetResult();
+                if (index == 2)
                     bothStarted.TrySetResult();
             }
 
@@ -31,6 +37,8 @@ internal class InvocationCancellationTests : BaseTests
             }
             catch (OperationCanceledException)
             {
+                if (index == 1)
+                    firstCanceled.TrySetResult();
                 return -1;
             }
 
@@ -42,12 +50,12 @@ internal class InvocationCancellationTests : BaseTests
 
         using var cancel = new CancellationTokenSource();
         var first = client.Proxy.ServerTaskValueWithCancellation(cancel.Token).AsTask();
-        await Task.Delay(50);
+        await firstStarted.Task.Timeout(T(1));
         var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         await bothStarted.Task.Timeout(T(1));
 
         cancel.Cancel();
-        await Task.Delay(200);
+        await firstCanceled.Task.Timeout(T(1));
 
         // Only the canceled call's token fired; the other call is still running.
         await Assert.That(tokens[0].IsCancellationRequested).IsTrue();
@@ -67,6 +75,7 @@ internal class InvocationCancellationTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var tokens = new List<CancellationToken>();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (client, clientNexus) = CreateClient(CreateClientConfig(type));
@@ -85,6 +94,8 @@ internal class InvocationCancellationTests : BaseTests
                 return;
             }
 
+            firstStarted.TrySetResult();
+
             // The first call runs until its token is canceled.
             try
             {
@@ -100,9 +111,12 @@ internal class InvocationCancellationTests : BaseTests
         // Both are fire-and-forget with invocation ID 0.
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(T(1));
-        await Task.Delay(50);
+        await firstStarted.Task.Timeout(T(1));
         await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(T(1));
         await secondDone.Task.Timeout(T(1));
+
+        // The second call's completion runs after its handler returns, and nothing observable marks its end: give
+        // it a moment to (not) cancel the shared token.
         await Task.Delay(100);
 
         // The second finishing does not affect the first.

@@ -77,10 +77,11 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var internalCollection = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
         internalCollection.DoNotSendAck = true;
 
+        using var serverAdded = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
         var addTask = client.Proxy.IntListBi.AddAsync(42);
 
-        // Disconnect while operation is pending
-        await Task.Delay(100);
+        // Disconnect while operation is pending: the server has applied it and holds back the acknowledgment.
+        await serverAdded.Wait();
         await client.DisconnectAsync();
 
         var result = await addTask;

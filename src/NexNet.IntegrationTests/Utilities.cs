@@ -380,9 +380,18 @@ internal static class ServerTaps
         private readonly List<byte> _pending = new();
         private long _seenEnd;
         private bool _preambleSkipped;
+        private bool _started;
 
         public List<TappedFrame> Add(ReadOnlySequence<byte> buffer, long start)
         {
+            // A tap installed on a running session starts where the session is; it reads at a frame boundary.
+            if (!_started)
+            {
+                _started = true;
+                _seenEnd = start;
+                _preambleSkipped = start >= PreambleLength;
+            }
+
             var end = start + buffer.Length;
             if (end > _seenEnd)
             {

@@ -23,6 +23,7 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var sent = ArrivedInvocations(serverConfig, 3);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueEvent = async _ =>
         {
             Interlocked.Increment(ref received);
@@ -34,7 +35,7 @@ internal class InvocationCreditTests : BaseTests
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var calls = Enumerable.Range(0, 4).Select(_ => client.Proxy.ServerTaskValue().AsTask()).ToArray();
-        await Task.Delay(200);
+        await sent.Timeout(T(1));
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
         await Assert.That(received).IsEqualTo(1);
@@ -54,6 +55,7 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var sent = ArrivedInvocations(serverConfig, 2);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, _) =>
         {
             Interlocked.Increment(ref received);
@@ -67,7 +69,7 @@ internal class InvocationCreditTests : BaseTests
         // The first runs; the second takes the returned credit and waits in the queue; the third waits for credit.
         var first = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
+        await sent.Timeout(T(1));
         // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
@@ -88,6 +90,7 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var sent = ArrivedInvocations(serverConfig, 2);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
         {
             Interlocked.Increment(ref received);
@@ -99,7 +102,7 @@ internal class InvocationCreditTests : BaseTests
 
         var first = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
+        await sent.Timeout(T(1));
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
@@ -386,5 +389,21 @@ internal class InvocationCreditTests : BaseTests
         }).Timeout(T(1));
         await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(T(1));
         return raw;
+    }
+
+    /// <summary>
+    /// Completes once the server has received <paramref name="count"/> invocation frames: the calls the client was
+    /// allowed to send have arrived.
+    /// </summary>
+    private static Task ArrivedInvocations(Transports.ServerConfig serverConfig, int count)
+    {
+        var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invocations = 0;
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.Invocation && Interlocked.Increment(ref invocations) == count)
+                arrived.TrySetResult();
+        });
+        return arrived.Task;
     }
 }

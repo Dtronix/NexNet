@@ -428,6 +428,7 @@ internal class NexusServerTests_Authorization : BaseTests
                 bodyExecuted = true;
                 return ValueTask.CompletedTask;
             };
+            nexus.UnprotectedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
@@ -435,8 +436,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         try { await client.Proxy.ProtectedMethod("test").Timeout(T(1)); } catch { }
 
-        // Small delay to ensure any async work settles
-        await Task.Delay(100);
+        // Barrier: a later call on the same session has completed.
+        await client.Proxy.UnprotectedMethod().Timeout(T(1));
         await Assert.That(bodyExecuted).IsFalse();
     }
 
@@ -1024,8 +1025,11 @@ internal class NexusServerTests_Authorization : BaseTests
             });
         }
 
-        // Let all threads proceed once they've piled up
-        await Task.Delay(200);
+        // Let all threads proceed once they've piled up inside OnAuthorize (bounded: the invocation pool may run
+        // fewer at once).
+        var deadline = Environment.TickCount64 + (long)(T(1) * 1000);
+        while (Volatile.Read(ref authCallCount) < concurrentCalls && Environment.TickCount64 < deadline)
+            await Task.Delay(5);
         allThreadsReady.Set();
 
         await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));

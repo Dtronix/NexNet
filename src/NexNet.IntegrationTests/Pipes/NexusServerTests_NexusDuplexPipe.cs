@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
+using NexNet.Messages;
 using NexNet.Pipes;
 
 namespace NexNet.IntegrationTests.Pipes;
@@ -207,9 +208,11 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     public async Task Server_PipeReaderCompletesUponDisconnection(Type type)
     {
         var (server, _, cNexus, tcs) = await Setup(type);
+        var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         server.NexusCreatedQueue.First().ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
+            reading.TrySetResult();
             var result = await pipe.Input.ReadAsync();
             await Assert.That(result.IsCompleted).IsTrue();
             tcs.SetResult();
@@ -219,7 +222,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
 
         await pipe.ReadyTask.Timeout(T(1));
-        await Task.Delay(100);
+        await reading.Task.Timeout(T(1));
         await server.NexusCreatedQueue.First().Context.DisconnectAsync().Timeout(T(1));
 
         await tcs.Task.Timeout(T(1));
@@ -395,16 +398,28 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         var pipe = sNexus.Context.CreatePipe();
 
-        // Pause the receiving to test the cancellation
-        client.Config.InternalOnReceive = async (session, sequence) =>
+        // The server holds the client's pipe-ready answer and disconnects, so the pipe never becomes ready on the
+        // server.
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ServerTaps.OnReceive(server.Server.Config, async (session, frame) =>
         {
-            await sNexus.Context.DisconnectAsync().Timeout(T(1));
-            await Task.Delay(100000);
-        };
+            if (frame.Type != MessageType.DuplexPipeUpdateState)
+                return;
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            _ = sNexus.Context.DisconnectAsync();
+            await release.Task;
+        });
 
-        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(T(1));
+        try
+        {
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+
+            await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(T(1));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
     [Test]
@@ -416,16 +431,28 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         var pipe = sNexus.Context.CreatePipe();
 
-        // Pause the receiving to test the cancellation
-        client.Config.InternalOnReceive = async (session, sequence) =>
+        // The server holds the client's pipe-ready answer and disconnects, so the pipe never becomes ready on the
+        // server.
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ServerTaps.OnReceive(server.Server.Config, async (session, frame) =>
         {
-            await sNexus.Context.DisconnectAsync().Timeout(T(1));
-            await Task.Delay(100000);
-        };
+            if (frame.Type != MessageType.DuplexPipeUpdateState)
+                return;
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            _ = sNexus.Context.DisconnectAsync();
+            await release.Task;
+        });
 
-        await AssertThrows<TaskCanceledException>(async () => await pipe.CompleteTask).Timeout(T(1));
+        try
+        {
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+
+            await AssertThrows<TaskCanceledException>(async () => await pipe.CompleteTask).Timeout(T(1));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
     }
 
 

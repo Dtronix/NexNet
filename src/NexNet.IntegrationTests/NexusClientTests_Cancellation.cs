@@ -145,7 +145,15 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         var firstGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+        var firstResultSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverConfig = CreateServerConfig(type);
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
+        {
+            // Only the first call can have completed: the second waits for its gate.
+            if (frame.Type == MessageType.InvocationResult)
+                firstResultSent.TrySetResult();
+        });
+        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
 
         server.OnNexusCreated = nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = async (_, value, _) =>
         {
@@ -174,8 +182,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         firstGate.SetResult();
         await firstSent.Task.Timeout(T(1));
 
-        // Give the late result time to arrive before the second call's own result.
-        await Task.Delay(100);
+        // The late result is sent before the second call's own result, and frames arrive in order.
+        await firstResultSent.Task.Timeout(T(1));
         secondGate.SetResult();
 
         await Assert.That(await second.Timeout(T(1))).IsEqualTo(20);
@@ -219,6 +227,16 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invocations = 0;
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.Invocation && Interlocked.Increment(ref invocations) == 2)
+                secondReceived.TrySetResult();
+            else if (frame.Type == MessageType.InvocationCancellation)
+                cancellationReceived.TrySetResult();
+        });
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = async (_, value, token) =>
         {
@@ -241,10 +259,11 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
         using var cts = new CancellationTokenSource();
         var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, cts.Token).AsTask();
-        await Task.Delay(100);
+        // The second call is queued on the server before it is canceled.
+        await secondReceived.Task.Timeout(T(1));
         cts.Cancel();
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await second.Timeout(T(1)));
-        await Task.Delay(100);
+        await cancellationReceived.Task.Timeout(T(1));
 
         release.SetResult();
         await Assert.That(await first.Timeout(T(1))).IsEqualTo(1);

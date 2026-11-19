@@ -292,8 +292,7 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(results.Length).IsEqualTo(20);
             await Assert.That(invocationCount).IsEqualTo(20);
 
-            // All clients should be returned to pool eventually
-            await Task.Delay(100);
+            // Rented clients go back to the pool; it never holds more than its maximum.
             await Assert.That(pool.AvailableConnections).IsLessThanOrEqualTo(10);
         }
         finally

@@ -221,6 +221,7 @@ internal partial class NexusClientTests : BaseTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
 
@@ -228,6 +229,11 @@ internal partial class NexusClientTests : BaseTests
         {
             if (isReconnected)
                 tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnecting.TrySetResult();
             return ValueTask.CompletedTask;
         };
 
@@ -239,7 +245,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StopAsync();
         
         // Wait for the client to process the disconnect.
-        await Task.Delay(100);
+        await reconnecting.Task.Timeout(T(1));
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         // The client's first reconnect attempt starts about 20 ms after the disconnect, while the server is still
@@ -339,9 +345,15 @@ internal partial class NexusClientTests : BaseTests
         var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         clientNexus.OnConnectedEvent = (_, isReconnected) =>
         {
             if (isReconnected) reconnected.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnecting.TrySetResult();
             return ValueTask.CompletedTask;
         };
 
@@ -350,10 +362,11 @@ internal partial class NexusClientTests : BaseTests
 
         // Restart cycle: stop, then bring server back up so the eventual reconnect can succeed.
         await server.StopAsync();
-        await Task.Delay(100); // let disconnect propagate so the reconnect loop entered the Task.Delay
+        await reconnecting.Task.Timeout(T(1)); // the reconnect loop starts its policy delay right after this event
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        // Without advancing fake time, the 30 s reconnect delay must not have elapsed yet.
+        // Without advancing fake time, the 30 s reconnect delay must not have elapsed yet. This wait is about time:
+        // real time passes, fake time does not.
         await Task.Delay(100);
         await Assert.That(reconnected.Task.IsCompleted).IsFalse().Because("Reconnect must not occur until fakeTime has advanced past the policy delay.");
 
@@ -441,10 +454,9 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        await Task.Delay(100);
         await server.StopAsync();
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await tcs.Task.Timeout(T(5));
     }
 
     [Test]
@@ -457,8 +469,10 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
         
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = async _ =>
         {
+            invoked.TrySetResult();
             await Task.Delay(100000);
             return 12345;
         };
@@ -482,7 +496,8 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        await Task.Delay(100);
+        // The call reached the server before it stops.
+        await invoked.Task.Timeout(T(1));
         await server.StopAsync();
         await tcs.Task.Timeout(T(1));
     }
@@ -761,7 +776,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
+        await Task.WhenAny(disconnectSent.Task, Task.Delay(TimeSpan.FromSeconds(T(1))));
 
         using (Assert.Multiple())
         {
@@ -818,8 +833,10 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectedTask.Timeout(T(1));
 
-        // Give it a moment to (not) trigger
+        // The reconnect decision runs right after the disconnect, and no event marks that it is over: give it a
+        // moment to (not) trigger.
         await Task.Delay(50);
         await Assert.That(reconnectingFired).IsFalse().Because("With a disabled reconnection policy, OnReconnectingEvent must not fire.");
     }

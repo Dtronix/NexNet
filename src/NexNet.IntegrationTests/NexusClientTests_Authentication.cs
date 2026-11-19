@@ -73,6 +73,7 @@ internal partial class NexusClientTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
         clientConfig.AuthenticateAsync = _ =>
@@ -89,11 +90,16 @@ internal partial class NexusClientTests
                 reconnected.TrySetResult();
             return ValueTask.CompletedTask;
         };
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnecting.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
 
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         await server.StopAsync();
-        await Task.Delay(100);
+        await reconnecting.Task.Timeout(T(1));
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         await reconnected.Task.Timeout(T(1));

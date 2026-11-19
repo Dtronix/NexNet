@@ -920,6 +920,17 @@ internal abstract class BaseTests
         => pipe.GetChannelReader<TItem>();
 
     /// <summary>
+    /// Waits until <paramref name="condition"/> holds, for at most <c>T(seconds)</c>, and returns either way: the
+    /// assertions after it report what is wrong. For state that changes without an event to wait for.
+    /// </summary>
+    protected static async Task WaitUntil(Func<bool> condition, double seconds = 1)
+    {
+        var deadline = Environment.TickCount64 + (long)(T(seconds) * 1000);
+        while (!condition() && Environment.TickCount64 < deadline)
+            await Task.Delay(5);
+    }
+
+    /// <summary>
     /// A round trip from the client to the server. Frames on a session arrive in order, so once it returns the server
     /// has received everything the client sent before it. Use it before asserting that something did not arrive.
     /// The server nexus needs no handler: a missing one fails the call remotely, which still completes the round trip.
