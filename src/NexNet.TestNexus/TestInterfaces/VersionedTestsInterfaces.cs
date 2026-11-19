@@ -102,7 +102,7 @@ public partial class NonVersionedClientNexus
 
 
 
-[Nexus<IVersionedServerNexusV2, ISimpleClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IVersionedServerNexusV2, ISimpleClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
 public partial class VersionedServerNexusV2
 {
     public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
@@ -131,7 +131,7 @@ public partial class VersionedServerNexusV2
     }
 }
 
-[Nexus<IVersionedServerNexusV1_1, ISimpleClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IVersionedServerNexusV1_1, ISimpleClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
 public partial class VersionedServerNexusV1_1
 {
     public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
@@ -154,7 +154,7 @@ public partial class VersionedServerNexusV1_1
     }
 }
 
-[Nexus<IVersionedServerNexusV1, ISimpleClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IVersionedServerNexusV1, ISimpleClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
 public partial class VersionedServerNexusV1
 {
     public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
