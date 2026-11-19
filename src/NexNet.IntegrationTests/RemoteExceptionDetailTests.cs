@@ -1,6 +1,10 @@
 using System.Buffers;
+using System.Buffers.Binary;
+using System.Threading.Channels;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Serialization;
@@ -12,22 +16,27 @@ namespace NexNet.IntegrationTests;
 
 /// <summary>
 /// Remote exception detail: the opt-in type and message, the application error hook, and the optional third element
-/// of an Exception invocation result.
+/// of an Exception invocation result. End-to-end tests of a client calling the server run on the client matrix (P01b);
+/// so does the parsing of every detail shape, through frames the server injects. The C# parser and exception
+/// constructor tests, the server-calling-client tests (client options <see cref="ClientSpec"/> cannot express) and the
+/// client pool test stay C#-only.
 /// </summary>
-internal class RemoteExceptionDetailTests : BaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
 {
     private const string DefaultMessage = "Exception occurred while executing method on proxy.";
 
-    // ----- Caller side, from the message bodies directly -----
+    // ----- Caller side, from the message bodies directly (C#-only: the C# parser; the injected-frame test below runs
+    // the same shapes on every client) -----
 
     private delegate void DetailWriter(ref MsgPackWriter writer);
 
-    private static byte[] ExceptionResultBody(DetailWriter? detail)
+    private static byte[] ExceptionResultBody(DetailWriter? detail, ushort invocationId = 1)
     {
         var buffer = new ArrayBufferWriter<byte>();
         var writer = new MsgPackWriter(buffer);
         writer.WriteArrayHeader(detail == null ? 2 : 3);
-        writer.Write((ushort)1);
+        writer.Write(invocationId);
         writer.Write((byte)InvocationResultMessage.StateType.Exception);
         detail?.Invoke(ref writer);
         writer.Flush();
@@ -109,7 +118,24 @@ internal class RemoteExceptionDetailTests : BaseTests
     [Arguments("nil detail")]
     public async Task ExceptionResultWithMalformedDetail_ThrowsPlainException(string shape)
     {
-        DetailWriter detail = shape switch
+        var exception = await ThrowFromBody(ExceptionResultBody(MalformedDetail(shape)));
+
+        await Assert.That(exception.GetType()).IsEqualTo(typeof(ProxyRemoteInvocationException));
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
+    }
+
+    private static readonly string[] MalformedShapes =
+    [
+        "int instead of array", "two-element array", "four-element array", "string code", "int type", "array message",
+        "nil detail",
+    ];
+
+    private static DetailWriter MalformedDetail(string shape)
+    {
+        return shape switch
         {
             "int instead of array" => (ref MsgPackWriter w) => w.Write(5),
             "two-element array" => (ref MsgPackWriter w) => { w.WriteArrayHeader(2); w.Write(1); w.Write("t"); },
@@ -126,28 +152,22 @@ internal class RemoteExceptionDetailTests : BaseTests
             "nil detail" => (ref MsgPackWriter w) => w.WriteNil(),
             _ => throw new ArgumentOutOfRangeException(nameof(shape))
         };
-
-        var exception = await ThrowFromBody(ExceptionResultBody(detail));
-
-        await Assert.That(exception.GetType()).IsEqualTo(typeof(ProxyRemoteInvocationException));
-        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
-        await Assert.That(exception.RemoteErrorCode).IsNull();
-        await Assert.That(exception.RemoteExceptionType).IsNull();
-        await Assert.That(exception.RemoteMessage).IsNull();
     }
+
+    private static DetailWriter OversizedDetail(int typeLength, int messageLength) => (ref MsgPackWriter w) =>
+    {
+        w.WriteArrayHeader(3);
+        w.Write(1);
+        w.Write(new string('t', typeLength));
+        w.Write(new string('m', messageLength));
+    };
 
     [Test]
     [Arguments(257, 10)]
     [Arguments(10, 2049)]
     public async Task ExceptionResultWithOversizedDetail_ThrowsPlainException(int typeLength, int messageLength)
     {
-        var exception = await ThrowFromBody(ExceptionResultBody((ref MsgPackWriter w) =>
-        {
-            w.WriteArrayHeader(3);
-            w.Write(1);
-            w.Write(new string('t', typeLength));
-            w.Write(new string('m', messageLength));
-        }));
+        var exception = await ThrowFromBody(ExceptionResultBody(OversizedDetail(typeLength, messageLength)));
 
         await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
         await Assert.That(exception.RemoteErrorCode).IsNull();
@@ -155,6 +175,93 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(exception.RemoteMessage).IsNull();
     }
 
+    // ----- Caller side, from frames the server injects into a client under test's session -----
+
+    /// <summary>
+    /// Every detail shape of the tests above, parsed by the client under test: the server answers a pending call with
+    /// an injected Exception result (H02 frame injection) instead of running it.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task InjectedExceptionResults_ParseLikeTheCSharpClient(ClientTarget target)
+    {
+        var arrived = Channel.CreateUnbounded<(INexusSession Session, ushort InvocationId)>();
+        await using var server = await StartServer(
+            // Never answered: the injected result completes the call; the session's end cancels the handler.
+            nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, ct) =>
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+                return 0;
+            },
+            config =>
+            {
+                config.MaxConcurrentConnectionInvocations = 32;
+                config.InvocationCredits = 64;
+                ServerTaps.OnReceive(config, (session, frame) =>
+                {
+                    if (frame.Type == MessageType.Invocation)
+                        arrived.Writer.TryWrite((session, TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body).InvocationId));
+                });
+            });
+        await using var client = await Connect(target, server);
+
+        async Task<ProxyRemoteInvocationException> Inject(DetailWriter? detail)
+        {
+            var call = Proxy(client).ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
+            var (session, id) = await arrived.Reader.ReadAsync().AsTask().Timeout(T(1));
+            var body = ExceptionResultBody(detail, id);
+            var frame = new byte[3 + body.Length];
+            frame[0] = (byte)MessageType.InvocationResult;
+            BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(1), (ushort)body.Length);
+            body.CopyTo(frame, 3);
+            await ((NexusSession<ServerNexus, ServerNexus.ClientProxy>)session).InternalSendRawAsync(frame).AsTask().Timeout(T(1));
+            return await Throws(async () => await call.Timeout(T(1)));
+        }
+
+        async Task AssertPlain(ProxyRemoteInvocationException exception, string because)
+        {
+            await Assert.That(exception.Message).IsEqualTo(DefaultMessage).Because(because);
+            await Assert.That(exception.RemoteErrorCode).IsNull().Because(because);
+            await Assert.That(exception.RemoteExceptionType).IsNull().Because(because);
+            await Assert.That(exception.RemoteMessage).IsNull().Because(because);
+        }
+
+        await AssertPlain(await Inject(null), "old two-element result");
+
+        var detailed = await Inject((ref MsgPackWriter w) =>
+        {
+            w.WriteArrayHeader(3);
+            w.Write(42);
+            w.Write("System.InvalidOperationException");
+            w.Write("boom");
+        });
+        await Assert.That(detailed.RemoteErrorCode).IsEqualTo(42);
+        await Assert.That(detailed.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(detailed.RemoteMessage).IsEqualTo("boom");
+
+        var nilFields = await Inject((ref MsgPackWriter w) =>
+        {
+            w.WriteArrayHeader(3);
+            w.Write(7);
+            w.WriteNil();
+            w.WriteNil();
+        });
+        await Assert.That(nilFields.RemoteErrorCode).IsEqualTo(7);
+        await Assert.That(nilFields.RemoteExceptionType).IsNull();
+        await Assert.That(nilFields.RemoteMessage).IsNull();
+
+        foreach (var shape in MalformedShapes)
+            await AssertPlain(await Inject(MalformedDetail(shape)), shape);
+        await AssertPlain(await Inject(OversizedDetail(257, 10)), "oversized type");
+        await AssertPlain(await Inject(OversizedDetail(10, 2049)), "oversized message");
+
+        // Malformed details fail only their call: the session stays up.
+        await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(0);
+        await AssertState(client, ConnectionState.Connected);
+        await DisconnectAndAudit(client);
+    }
+
+    /// <summary>C#-only: the constructor and message of the C# exception type.</summary>
     [Test]
     public async Task ExceptionConstructedWithDetail_IncludesRemoteMessage()
     {
@@ -180,29 +287,25 @@ internal class RemoteExceptionDetailTests : BaseTests
     // ----- End to end -----
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task NoneByDefault_ExceptionResultBytesAreUnchanged(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task NoneByDefault_ExceptionResultBytesAreUnchanged(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        await Assert.That(serverConfig.RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
-        await Assert.That(CreateClientConfig(type).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
+        await Assert.That(CreateServerConfig(Type.Uds).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
+        await Assert.That(CreateClientConfig(Type.Uds).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
 
         var results = new List<byte[]>();
-        ServerTaps.OnSend(serverConfig, (_, frame) =>
-        {
-            if (frame.Type == MessageType.InvocationResult)
-                lock (results)
-                    results.Add(frame.Frame);
-        });
-
-        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
-        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("secret");
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer(
+            nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("secret"),
+            config => ServerTaps.OnSend(config, (_, frame) =>
+            {
+                if (frame.Type == MessageType.InvocationResult)
+                    lock (results)
+                        results.Add(frame.Frame);
+            }));
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsNull();
@@ -221,78 +324,71 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(body).Count().IsEqualTo(3);
         await Assert.That(body[0]).IsEqualTo(0x92);
         await Assert.That(body[2]).IsEqualTo((byte)InvocationResultMessage.StateType.Exception);
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
-        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        var fail = true;
+        await using var server = await StartServer(
+            nexus => nexus.ServerTaskValueEvent = _ => fail ? throw new InvalidOperationException("boom") : ValueTask.FromResult(5),
+            config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
         await Assert.That(exception.Message).Contains("boom");
 
         // The session stays usable.
-        server.NexusCreatedQueue.TryPeek(out var serverNexus);
-        serverNexus!.ServerTaskValueEvent = _ => ValueTask.FromResult(5);
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(5);
+        fail = false;
+        await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(5);
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task TypeAndMessage_TruncatesLongMessage(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task TypeAndMessage_TruncatesLongMessage(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         var longMessage = new string('x', 5000);
-        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException(longMessage);
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer(
+            nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException(longMessage),
+            config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo(new string('x', 2048));
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task TypeAndMessage_LimitFailureCarriesItsType(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task TypeAndMessage_LimitFailureCarriesItsType(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, CreateClientConfig(type));
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer(configureEndpoint: config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await Connect(target, server);
 
         // Larger than the client accepts (4 MiB by default): the server fails the call with a limit exception.
         var exception = await Throws(
-            async () => await clientNexus.Context.Proxy.ServerDataResult(5 * 1024 * 1024).Timeout(T(5)));
+            async () => await Proxy(client).ServerDataResult(5 * 1024 * 1024).Timeout(T(5)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo(typeof(NexusMessageTooLargeException).FullName);
         await Assert.That(string.IsNullOrEmpty(exception.RemoteMessage)).IsFalse();
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task Hook_ResultIsSentWhateverTheSetting(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Hook_ResultIsSentWhateverTheSetting(ClientTarget target)
     {
         Exception? seen = null;
         var thrown = new InvalidOperationException("secret");
-        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
-        server.OnNexusCreated = nexus =>
+        await using var server = await StartServer(nexus =>
         {
             nexus.ServerTaskValueEvent = _ => throw thrown;
             nexus.OnInvocationExceptionEvent = (_, exception, _) =>
@@ -300,72 +396,71 @@ internal class RemoteExceptionDetailTests : BaseTests
                 seen = exception;
                 return new NexusRemoteError(42, "denied");
             };
-        };
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        });
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(seen).IsSameReferenceAs(thrown);
         await Assert.That(exception.RemoteErrorCode).IsEqualTo(42);
         await Assert.That(exception.RemoteExceptionType).IsNull();
         await Assert.That(exception.RemoteMessage).IsEqualTo("denied");
         await Assert.That(exception.Message).Contains("denied");
         await Assert.That(exception.Message).DoesNotContain("secret");
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task Hook_ReturningNull_FallsBackToTheSetting(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Hook_ReturningNull_FallsBackToTheSetting(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.ServerTaskValueEvent = _ => throw new ArgumentException("bad");
-            nexus.OnInvocationExceptionEvent = (_, _, _) => null;
-        };
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer(
+            nexus =>
+            {
+                nexus.ServerTaskValueEvent = _ => throw new ArgumentException("bad");
+                nexus.OnInvocationExceptionEvent = (_, _, _) => null;
+            },
+            config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.ArgumentException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("bad");
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         var fail = true;
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.ServerTaskValueEvent = _ => fail ? throw new InvalidOperationException("boom") : ValueTask.FromResult(9);
-            nexus.OnInvocationExceptionEvent = (_, _, _) => throw new NotSupportedException("hook failed");
-        };
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer(
+            nexus =>
+            {
+                nexus.ServerTaskValueEvent = _ => fail ? throw new InvalidOperationException("boom") : ValueTask.FromResult(9);
+                nexus.OnInvocationExceptionEvent = (_, _, _) => throw new NotSupportedException("hook failed");
+            },
+            config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await Connect(target, server);
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
+            async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
 
         fail = false;
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(9);
-        await WaitForState(client, ConnectionState.Connected);
+        await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(9);
+        await AssertState(client, ConnectionState.Connected);
+        await DisconnectAndAudit(client);
     }
 
+    /// <summary>
+    /// C#-only for now: it sets the client's <c>RemoteExceptionDetail</c>, which <see cref="ClientSpec"/> cannot
+    /// express.
+    /// </summary>
     [Test]
     [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(Type type)
@@ -385,6 +480,10 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(exception.RemoteMessage).IsEqualTo("client boom");
     }
 
+    /// <summary>
+    /// C#-only for now: it uses the client nexus's <c>OnInvocationException</c> hook, which client scripts cannot
+    /// express.
+    /// </summary>
     [Test]
     [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ServerCallingClient_CarriesApplicationError(Type type)
@@ -417,6 +516,7 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(exception.Message).DoesNotContain("client secret");
     }
 
+    /// <summary>C#-only: the C# client pool (client pools are ported by P01g).</summary>
     [Test]
     public async Task TypeAndMessage_ThroughClientPool_CarriesTypeAndMessage()
     {
