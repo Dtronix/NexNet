@@ -588,7 +588,7 @@ Public types:
 
 | Type | Use |
 |---|---|
-| `NexusRemoteError(int code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError` |
+| `NexusRemoteError(@Nullable Integer code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError`. `code()` is `@Nullable Integer` like C#'s `int? Code` (C-10): a null code goes on the wire as nil, so an error with only a message round-trips. Source-compatible with the former `int` signature (`new NexusRemoteError(42, "m")` autoboxes); a caller that unboxes `code()` must handle null |
 | `RemoteExceptionDetail` | `NONE` (default): the server sees a failure without detail. `TYPE_AND_MESSAGE`: the class name and message, truncated to 256 and 2048 chars. Use `TYPE_AND_MESSAGE` only with a trusted peer |
 | `InvocationOptions` | Immutable `withX` copies of `defaults()`, the C# untrusted defaults: `maxConcurrentInvocations` 2 (1–1000), `maxSeparatePoolInvocations` 4 (1–1000), `sessionBudget` 16 MiB (at least 64 KiB), `remoteExceptionDetail` `NONE`. Set through `ClientConfig.Builder.invocationOptions`, which `NexusClient` passes to `InvocationRuntime.Builder.options` |
 | `SessionBudget` | The session's receive memory (`tryReserve`, `release`, `reserved`, `limit`; thread-safe). The invocation queue (`invocationCredits` x 64 KiB) is reserved up front. A large argument or result that does not fit the rest is refused with `Busy`. The pipe runtime reserves its windows from it. `InvocationRuntime.budget()` |
@@ -694,6 +694,10 @@ public interface ProgressProbe {                       // com.dtronix.nexnet.ses
 the progress timeout plus `disconnectDelayMillis`. It then logs a `WARNING` ("The disconnect byte was not written
 within the progress timeout; closing.") and closes the transport, so a stalled writer cannot keep a session in
 `CLOSING` forever.
+
+The disconnect delay and the close fallback run on real time (`SessionTimers.system()`), never on the injected
+`SessionTimers` clock, as C#'s `Task.Delay` does (K34): the delay gives the network wall-clock time to carry the byte,
+and a test clock that is no longer advanced must not hold a session in `CLOSING`.
 
 ### 6.10 Snapshots and metrics hooks (K20)
 
@@ -802,7 +806,8 @@ strings), `String` and `List` (JSON arrays). Floats are bit-pattern strings (`"f
 
 The scriptable nexus's `onInvocationException` asks `ScriptHost.onInvocationException(exception, methodId)` (a
 default method returning null), which a host overrides to honor `ClientSpec.onInvocationException`. The Java
-`NexusRemoteError` always has a code, so the JVM host refuses a hook error without one with `NotSupported`.
+`NexusRemoteError` code is nullable (C-10), so the JVM host honors a hook error without a code; a code outside Int32 is a
+`BadRequest`.
 
 **The JVM interop host** (`clients/java/interop-host`, K12) implements the control protocol
 (`docs/internals/interop-control-protocol.md`) on top of this API. `clients/java/gradlew -p clients/java
