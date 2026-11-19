@@ -1,5 +1,5 @@
 // The platform-WebSocket transport (the browser entry's), run in Node against its global WebSocket.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DisconnectReason } from '../../src/contract/enums.js';
 import { NexusClient } from '../../src/client/NexusClient.js';
 import { webSocketTransport } from '../../src/transport/WebSocketTransport.js';
@@ -11,6 +11,7 @@ let cleanup = [];
 afterEach(async () => {
   for (const c of cleanup.reverse()) await c();
   cleanup = [];
+  vi.unstubAllGlobals();
 });
 
 /** @param {(r: import('./support/servers.js').UpgradeRequest) => void} handler */
@@ -68,6 +69,22 @@ describe.skipIf(typeof globalThis.WebSocket !== 'function')('platform WebSocket 
   it('a refused upgrade is a SocketError connect failure', async () => {
     const url = await server(({ socket }) => socket.end(httpStatus(403)));
     await expect(connect(url)).rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.SocketError });
+  });
+
+  it('an \'error\' with no \'close\' still fails the connect (Node 22 undici on a refused upgrade)', async () => {
+    // Node 22 fires only 'error' for a non-101 response and leaves the socket CONNECTING; browsers and Node 24 follow
+    // it with 'close'. A stub reproduces the Node 22 order on every runtime.
+    class ErrorOnlyWebSocket extends EventTarget {
+      readyState = 0;
+      binaryType = 'blob';
+      constructor() {
+        super();
+        setTimeout(() => this.dispatchEvent(new Event('error')), 0);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', ErrorOnlyWebSocket);
+    await expect(connect('ws://127.0.0.1:1/nexus')).rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.SocketError });
   });
 
   it('close() sends Close 1000', async () => {

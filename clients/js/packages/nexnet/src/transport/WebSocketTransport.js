@@ -114,6 +114,7 @@ export async function webSocketTransport(config, { signal }) {
   await new Promise((resolve, reject) => {
     const cleanup = () => {
       socket.removeEventListener('open', onOpen);
+      socket.removeEventListener('error', onFail);
       socket.removeEventListener('close', onFail);
       signal.removeEventListener('abort', onAbort);
     };
@@ -121,6 +122,8 @@ export async function webSocketTransport(config, { signal }) {
       cleanup();
       resolve(undefined);
     };
+    // A failed connect fires 'error' then 'close' (WHATWG "fail the WebSocket connection"). Either one fails the
+    // connect: Node 22's undici fires only 'error' for a refused upgrade and leaves the socket CONNECTING.
     const onFail = () => {
       cleanup();
       reject(transportError(`WebSocket connection to ${url.href} failed.`));
@@ -135,6 +138,7 @@ export async function webSocketTransport(config, { signal }) {
       reject(cancellationError(signal));
     };
     socket.addEventListener('open', onOpen);
+    socket.addEventListener('error', onFail);
     socket.addEventListener('close', onFail);
     signal.addEventListener('abort', onAbort);
   });
