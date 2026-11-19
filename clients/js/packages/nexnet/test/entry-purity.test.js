@@ -6,7 +6,7 @@ import { isNodeBuiltin, stripComments, walkImports } from './support/import-grap
 const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
 
 describe('browser entry purity', () => {
-  for (const entry of ['browser.js', 'index.js']) {
+  for (const entry of ['browser.js', 'index.js', 'diagnostics.js']) {
     it(`${entry} reaches no node: or Node built-in import`, () => {
       const graph = walkImports(path.join(src, entry));
       expect(graph.files.length).toBeGreaterThan(1);
