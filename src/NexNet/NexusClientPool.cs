@@ -137,24 +137,41 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     /// <summary>
     /// Returns a client to the pool for reuse.
     /// </summary>
+    /// <remarks>
+    /// Never throws. After the pool is disposed, the client is disposed and the pool's semaphore (disposed with the
+    /// pool) is left alone.
+    /// </remarks>
     internal void ReturnClient(PooledClient client)
     {
         if (_disposed)
         {
             _ = client.DisposeAsync();
+            return;
         }
-        else if (client.IsHealthy)
+
+        if (client.IsHealthy)
         {
             // Update last used time when returning
             client.UpdateLastUsed();
             _availableClients.Enqueue(client);
+
+            // DisposeAsync may have drained the queue between the check above and the enqueue.
+            if (_disposed && _availableClients.Remove(client))
+                _ = client.DisposeAsync();
         }
         else
         {
             _ = client.DisposeAsync();
         }
 
-        _semaphore.Release();
+        try
+        {
+            _semaphore.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The pool was disposed concurrently; there is nothing left to release.
+        }
     }
 
     private void PerformHealthAndIdleCheck(object? state)
