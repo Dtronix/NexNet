@@ -123,7 +123,8 @@ final class CollectionWire {
         int tag = (int) tagValue;
         int count = in.arrayHeader();
         int needed = fieldCount(tag);
-        if (count < needed) {
+        // Bodies have their exact element count (golden collection.reject.noop-count-2).
+        if (count != needed) {
             throw new MsgPackException("Collection item " + tag + " has " + count + " fields, expected " + needed);
         }
         int flags = in.int32Range(0, 0xFF, "flags");
@@ -163,10 +164,6 @@ final class CollectionWire {
                 break;
             default:
                 throw new MsgPackException("Unknown collection item tag " + tag);
-        }
-        // Fields past the known ones are skipped (newer peers may append).
-        for (int i = needed; i < count; i++) {
-            in.skip();
         }
         if (in.remaining() != 0) {
             throw new MsgPackException("A collection item has trailing bytes.");
