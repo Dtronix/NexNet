@@ -496,39 +496,36 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     #region NexusBroadcastServer Overrides
 
     /// <summary>
-    /// Called when a client connects - sends the current state.
+    /// Runs on the processing loop when a client connects: captures the current state and returns the messages that
+    /// bring the client to it. The base class writes them with backpressure, so a large relayed list reaches a slow
+    /// client whole instead of overflowing its buffer.
     /// </summary>
-    protected override void OnConnected(NexusBroadcastSession<INexusCollectionListMessage> client)
+    protected override IEnumerable<INexusCollectionListMessage> CaptureSnapshot()
     {
+        // Captured here, on the processing loop; the messages are built as they are written.
         var state = _itemList.State;
+        return SnapshotMessages(state);
+    }
 
+    private static IEnumerable<INexusCollectionListMessage> SnapshotMessages(VersionedList<T>.ListState state)
+    {
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
         reset.TotalValues = state.List.Count;
-        client.BufferTryWrite(reset.Wrap());
+        yield return reset;
 
-        foreach (var values in ResetValuesEnumerator(state))
+        if (state.List.Count > 0)
         {
-            client.BufferTryWrite(values);
+            var bufferSize = Math.Min(state.List.Count, 40);
+            foreach (var item in state.List.MemoryChunk(bufferSize))
+            {
+                var message = NexusCollectionListResetValuesMessage.Rent();
+                message.Values = PayloadSerializer.Serialize(item);
+                yield return message;
+            }
         }
 
-        client.BufferTryWrite(NexusCollectionListResetCompleteMessage.Rent().Wrap());
-    }
-
-    private IEnumerable<INexusCollectionBroadcasterMessageWrapper<INexusCollectionListMessage>> ResetValuesEnumerator(
-        VersionedList<T>.ListState state)
-    {
-        if (state.List.Count == 0)
-            yield break;
-
-        var bufferSize = Math.Min(state.List.Count, 40);
-
-        foreach (var item in state.List.MemoryChunk(bufferSize))
-        {
-            var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = PayloadSerializer.Serialize(item);
-            yield return message.Wrap();
-        }
+        yield return NexusCollectionListResetCompleteMessage.Rent();
     }
 
     /// <summary>
