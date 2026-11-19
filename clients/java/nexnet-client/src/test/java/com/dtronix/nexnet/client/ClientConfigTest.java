@@ -2,10 +2,12 @@ package com.dtronix.nexnet.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import java.net.URI;
@@ -49,6 +51,13 @@ class ClientConfigTest {
         assertEquals(10_000, config.pingIntervalMillis());
         assertTrue(config.tls().hostnameVerification());
         assertSame(TlsOptions.defaults(), config.tls());
+        assertNull(config.logger());
+    }
+
+    @Test
+    void loggerIsConfigurable() {
+        NexusLogger logger = (level, category, exception, message) -> { };
+        assertSame(logger, ClientConfig.tcp("h", 1).logger(logger).build().logger());
     }
 
     @Test
