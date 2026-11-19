@@ -298,7 +298,7 @@ describe('large arguments and results (§6)', () => {
     for (const c of chunks) { body.set(c.body, o); o += c.body.length; }
     const inner = decodeInvocation(body);
     expect([inner.invocationId, inner.methodId, inner.flags]).toEqual([start.invocationId, 1, 0]);
-    expect(inner.args).toEqual(pack(binArgs(payload)));
+    expect(inner.args).toEqual(pack(/** @type {any} */ (binArgs(payload))));
 
     h.sendResult(start.invocationId, ResultState.CompletedResult, Uint8Array.of(9));
     h.sendResult(decodeInvocation(h.framesOf(MessageType.Invocation)[0].body).invocationId, ResultState.CompletedResult);

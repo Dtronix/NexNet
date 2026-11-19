@@ -4,7 +4,7 @@ import * as browser from '../src/browser.js';
 import * as node from '../src/node.js';
 
 const {
-  ClientNexusBase, ConnectionState, DisconnectReason, FormatterRegistry, MsgPackReader, MsgPackWriter,
+  ClientNexusBase, ConnectionState, DisconnectReason,
   NexusBusyError, NexusChannelReader, NexusChannelWriter, NexusClient, NexusDateTime,
   NexusDecimal, NexusDuplexChannel, NexusDuplexPipe, NexusError, NexusList, NexusMessageTooLargeError,
   NexusRemoteInvocationError, NexusTransportError, NexusUnauthorizedError, NexusVersion, ProxyBase, Version,
@@ -24,6 +24,8 @@ const coreExports = [
   'NexusClientPoolConnectionError', 'CoreLogger', 'ConsoleLogger', 'RollingLogger', 'NexusLogBehaviors',
   'NexusLogLevelOrder', 'DefaultReconnectionPolicy', 'DEFAULT_RECONNECT_DELAYS', 'DEFAULT_RECONNECT_REASONS',
   'ReconnectController', 'NexusMetrics', 'Instruments', 'MetricTags', 'METER_NAME', 'diagnostics',
+  // J02
+  'NexusSerializationError', 'NexusSerializerOptions', 'boolFormatter', 'sbyteFormatter', 'byteFormatter', 'int16Formatter', 'uint16Formatter', 'int32Formatter', 'uint32Formatter', 'int64Formatter', 'uint64Formatter', 'int64NumberFormatter', 'uint64NumberFormatter', 'float32Formatter', 'float64Formatter', 'halfFormatter', 'charFormatter', 'stringFormatter', 'binFormatter', 'decimalFormatter', 'dateTimeFormatter', 'dateTimeOffsetFormatter', 'timeSpanFormatter', 'dateOnlyFormatter', 'timeOnlyFormatter', 'guidFormatter', 'bigIntegerFormatter', 'uriFormatter', 'versionFormatter', 'rawFormatter', 'int8ArrayFormatter', 'int16ArrayFormatter', 'uint16ArrayFormatter', 'int32ArrayFormatter', 'uint32ArrayFormatter', 'int64ArrayFormatter', 'uint64ArrayFormatter', 'float32ArrayFormatter', 'float64ArrayFormatter', 'charArrayFormatter', 'halfArrayFormatter', 'nullableFormatter', 'arrayFormatter', 'setFormatter', 'mapFormatter', 'keyValuePairFormatter', 'parseGuid', 'guidToBytes', 'guidFromBytes', 'guidToDotNetBytes', 'guidFromDotNetBytes', 'EMPTY_GUID',
 ];
 
 const notImplemented = /^not implemented: /;
@@ -145,20 +147,6 @@ describe('client skeleton', () => {
     expect(() => new NexusChannelWriter(/** @type {any} */ ({}), /** @type {any} */ ({}))).toThrow(TypeError);
   });
 
-  it('every skeleton prototype method throws not implemented', () => {
-    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry];
-    for (const cls of classes) {
-      const proto = cls.prototype;
-      const keys = [...Object.getOwnPropertyNames(proto), ...Object.getOwnPropertySymbols(proto)]
-        .filter((k) => k !== 'constructor');
-      expect(keys.length, cls.name).toBeGreaterThan(0);
-      for (const key of keys) {
-        const desc = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(proto, key));
-        const fn = desc.get ?? desc.value;
-        expect(() => fn.call(Object.create(proto)), `${cls.name}.${String(key)}`).toThrow(notImplemented);
-      }
-    }
-  });
 });
 
 describe('values', () => {
