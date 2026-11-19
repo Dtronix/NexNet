@@ -15,7 +15,7 @@ namespace NexNet.IntegrationTests;
 /// other client language has QUIC.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_Cancellation(LanguageHostPool hosts) : CancellationMatrixTests(hosts)
+internal class NexusServerTests_Cancellation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

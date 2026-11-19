@@ -22,8 +22,11 @@ namespace NexNet.IntegrationTests;
 /// stay C#-only.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     private const string DefaultMessage = "Exception occurred while executing method on proxy.";
 
     // ----- Caller side, from the message bodies directly (C#-only: the C# parser; the injected-frame test below runs
@@ -186,7 +189,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
     public async Task InjectedExceptionResults_ParseLikeTheCSharpClient(ClientTarget target)
     {
         var arrived = Channel.CreateUnbounded<(INexusSession Session, ushort InvocationId)>();
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             // Never answered: the injected result completes the call; the session's end cancels the handler.
             nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, ct) =>
             {
@@ -203,7 +206,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
                         arrived.Writer.TryWrite((session, TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body).InvocationId));
                 });
             });
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         async Task<ProxyRemoteInvocationException> Inject(DetailWriter? detail)
         {
@@ -258,7 +261,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         // Malformed details fail only their call: the session stays up.
         await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(0);
         await AssertState(client, ConnectionState.Connected);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     /// <summary>C#-only: the constructor and message of the C# exception type.</summary>
@@ -294,7 +297,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         await Assert.That(CreateClientConfig(Type.Uds).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
 
         var results = new List<byte[]>();
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("secret"),
             config => ServerTaps.OnSend(config, (_, frame) =>
             {
@@ -302,7 +305,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
                     lock (results)
                         results.Add(frame.Frame);
             }));
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
@@ -324,7 +327,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         await Assert.That(body).Count().IsEqualTo(3);
         await Assert.That(body[0]).IsEqualTo(0x92);
         await Assert.That(body[2]).IsEqualTo((byte)InvocationResultMessage.StateType.Exception);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -332,10 +335,10 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
     public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(ClientTarget target)
     {
         var fail = true;
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskValueEvent = _ => fail ? throw new InvalidOperationException("boom") : ValueTask.FromResult(5),
             config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
@@ -347,7 +350,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         // The session stays usable.
         fail = false;
         await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(5);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -355,31 +358,31 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
     public async Task TypeAndMessage_TruncatesLongMessage(ClientTarget target)
     {
         var longMessage = new string('x', 5000);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException(longMessage),
             config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo(new string('x', 2048));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task TypeAndMessage_LimitFailureCarriesItsType(ClientTarget target)
     {
-        await using var server = await StartServer(configureEndpoint: config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
-        await using var client = await Connect(target, server);
+        await using var server = await StartServerAsync(configure: config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var client = await ConnectAsync(target, server);
 
         // Larger than the client accepts (4 MiB by default): the server fails the call with a limit exception.
         var exception = await Throws(
             async () => await Proxy(client).ServerDataResult(5 * 1024 * 1024).Timeout(T(5)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo(typeof(NexusMessageTooLargeException).FullName);
         await Assert.That(string.IsNullOrEmpty(exception.RemoteMessage)).IsFalse();
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -388,7 +391,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
     {
         Exception? seen = null;
         var thrown = new InvalidOperationException("secret");
-        await using var server = await StartServer(nexus =>
+        await using var server = await StartServerAsync(nexus =>
         {
             nexus.ServerTaskValueEvent = _ => throw thrown;
             nexus.OnInvocationExceptionEvent = (_, exception, _) =>
@@ -397,7 +400,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
                 return new NexusRemoteError(42, "denied");
             };
         });
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
@@ -407,28 +410,28 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         await Assert.That(exception.RemoteMessage).IsEqualTo("denied");
         await Assert.That(exception.Message).Contains("denied");
         await Assert.That(exception.Message).DoesNotContain("secret");
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task Hook_ReturningNull_FallsBackToTheSetting(ClientTarget target)
     {
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus =>
             {
                 nexus.ServerTaskValueEvent = _ => throw new ArgumentException("bad");
                 nexus.OnInvocationExceptionEvent = (_, _, _) => null;
             },
             config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.ArgumentException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("bad");
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -436,14 +439,14 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
     public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(ClientTarget target)
     {
         var fail = true;
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus =>
             {
                 nexus.ServerTaskValueEvent = _ => fail ? throw new InvalidOperationException("boom") : ValueTask.FromResult(9);
                 nexus.OnInvocationExceptionEvent = (_, _, _) => throw new NotSupportedException("hook failed");
             },
             config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         var exception = await Throws(
             async () => await Proxy(client).ServerTaskValue().Timeout(T(1)));
@@ -454,15 +457,15 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         fail = false;
         await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(9);
         await AssertState(client, ConnectionState.Connected);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(ClientTarget target)
     {
-        await using var server = await StartServer();
-        await using var client = await Connect(target, server, spec => spec.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
         Script(client).ClientTaskValue.Throws(ErrorKind.InvalidOperation, "client boom");
 
         ProxyRemoteInvocationException exception;
@@ -479,15 +482,15 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
             await Assert.That(string.IsNullOrEmpty(exception.RemoteExceptionType)).IsFalse();
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteMessage).IsEqualTo("client boom");
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task Hook_ServerCallingClient_CarriesApplicationError(ClientTarget target)
     {
-        await using var server = await StartServer();
-        await using var client = await Connect(target, server, spec => spec.OnInvocationException = new NexusRemoteError(7, null));
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.OnInvocationException = new NexusRemoteError(7, null));
         Script(client).ClientTaskValue.Throws(ErrorKind.InvalidOperation, "client secret");
 
         ProxyRemoteInvocationException exception;
@@ -501,7 +504,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         await Assert.That(exception.RemoteExceptionType).IsNull();
         await Assert.That(exception.RemoteMessage).IsNull();
         await Assert.That(exception.Message).DoesNotContain("client secret");
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     /// <summary>C#-only: the C# client pool (client pools are ported by P01g).</summary>

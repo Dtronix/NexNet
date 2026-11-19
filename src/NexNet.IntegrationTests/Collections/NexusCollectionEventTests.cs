@@ -8,7 +8,7 @@ namespace NexNet.IntegrationTests.Collections;
 
 /// <summary>Change events and concurrent changes on the client under test's lists.</summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusCollectionEventTests(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
+internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]

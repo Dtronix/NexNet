@@ -9,7 +9,7 @@ namespace NexNet.IntegrationTests.Collections;
 /// <summary>Acknowledgments of the client under test's list operations.</summary>
 [NotInParallel]
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusCollectionAckTests(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
+internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]

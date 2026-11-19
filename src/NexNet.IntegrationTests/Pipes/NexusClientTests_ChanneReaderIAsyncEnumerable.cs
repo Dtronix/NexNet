@@ -7,7 +7,7 @@ namespace NexNet.IntegrationTests.Pipes;
 
 /// <summary>Channels on pipes the client under test opens: the client's channel reader and writer.</summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : PipeMatrixTests(hosts)
+internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     private const string NoReadCancel = "a remote channel read cannot be canceled (follow-up card)";
 

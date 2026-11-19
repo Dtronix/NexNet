@@ -6,10 +6,10 @@ namespace NexNet.IntegrationTests.Collections.Lists;
 
 /// <summary>
 /// The change events a list raises on the server and on the client under test. Events of the client's list are only
-/// observable on the C# client until the harness reports them (<see cref="CollectionMatrixTests.NoListEvents"/>).
+/// observable on the C# client until the harness reports them (<see cref="MatrixTestBase.NoListEvents"/>).
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusListTests_Events(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
+internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]

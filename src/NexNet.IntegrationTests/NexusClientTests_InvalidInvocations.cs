@@ -8,14 +8,17 @@ namespace NexNet.IntegrationTests;
 /// Invocations a client under test cannot complete because of the message size limits (P01b).
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal partial class NexusClientTests_InvalidInvocations(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal partial class NexusClientTests_InvalidInvocations(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public async Task ClientThrowsWhenArgumentTooLarge(ClientTarget target)
     {
-        await using var server = await StartServer();
-        await using var client = await Connect(target, server);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server);
 
         // Larger than the server's MaxMessageSize (4 MiB by default): refused before anything is sent.
         var data = new byte[4 * 1024 * 1024 + 1];
@@ -23,15 +26,15 @@ internal partial class NexusClientTests_InvalidInvocations(LanguageHostPool host
             .Timeout(T(5));
 
         await AssertState(client, ConnectionState.Connected);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public async Task ResultOverMaxMessageSizeFailsCallAndNextCallSucceeds(ClientTarget target)
     {
-        await using var server = await StartServer();
-        await using var client = await Connect(target, server);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server);
 
         // Larger than the client accepts (4 MiB by default). It used to leave the session's send buffer dirty,
         // failing every later send while pings kept the session looking alive.
@@ -40,7 +43,7 @@ internal partial class NexusClientTests_InvalidInvocations(LanguageHostPool host
 
         var result = await Proxy(client).ServerDataResult(10).Timeout(T(1));
         await Assert.That(result.Length).IsEqualTo(10);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC

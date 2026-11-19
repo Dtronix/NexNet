@@ -11,8 +11,11 @@ namespace NexNet.IntegrationTests;
 /// must encode them byte for byte like the C# client.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal partial class NexusClientTests_SendInvocation(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal partial class NexusClientTests_SendInvocation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public Task ClientSendsInvocationFor_ServerVoid(ClientTarget target)
@@ -148,7 +151,7 @@ internal partial class NexusClientTests_SendInvocation(LanguageHostPool hosts) :
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Observed on the server: the invocation frame as it arrives.
-        await using var server = await StartServer(configureEndpoint: config => ServerTaps.OnReceive(config, (_, frame) =>
+        await using var server = await StartServerAsync(configure: config => ServerTaps.OnReceive(config, (_, frame) =>
         {
             if (frame.Type != MessageType.Invocation)
                 return;
@@ -165,12 +168,12 @@ internal partial class NexusClientTests_SendInvocation(LanguageHostPool hosts) :
             CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
             tcs.TrySetResult();
         }));
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         await action(Proxy(client)).AsTask().Timeout(T(1));
         await tcs.Task.Timeout(T(1));
         await client.BarrierAsync().Timeout(T(1));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC

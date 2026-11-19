@@ -26,7 +26,7 @@ namespace NexNet.IntegrationTests;
 /// rows are skipped with the capability they lack.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
+internal class TlsCertificateTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     // Loaded once for the class; TUnit creates an instance per test.
     private static X509Certificate2 ServerCertificate = null!;
@@ -34,9 +34,6 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
     private static X509Certificate2 TestCa = null!;
     private static string ServerFingerprint = null!;
     private static string ServerSpkiPin = null!;
-
-    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
-    protected LanguageHostPool Hosts { get; } = hosts;
 
     [Before(HookType.Class)]
     public static void LoadCertificates()
@@ -97,7 +94,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         await client.ConnectAsync().Timeout(T(2));
 
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
@@ -112,7 +109,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
 
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -132,7 +129,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(await serverSaw.Task.Timeout(T(1))).IsEqualTo(ClientCertificate.Thumbprint);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -151,7 +148,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(await serverSaw.Task.Timeout(T(1))).IsNull();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -172,7 +169,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(inProc.Nexus.Context.RemoteCertificate?.Thumbprint).IsEqualTo(ServerCertificate.Thumbprint);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -187,7 +184,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         await client.ConnectAsync().Timeout(T(2));
 
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -208,7 +205,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
         await Assert.That(sessionCreated).IsFalse();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     // A client that cannot choose what it trusts (a browser: its launcher decides) cannot run this.
@@ -224,14 +221,14 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
 
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
     public async Task HostHeader_IncludesNonDefaultPort(ClientTarget target)
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = ToType(target.Transport);
         var serverConfig = CreateServerConfig(type);
 
         var hostSeen = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -242,12 +239,12 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         }));
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await using var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(
-            target, AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger));
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
 
         await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(await hostSeen.Task.Timeout(T(1))).IsEqualTo($"127.0.0.1:{CurrentTcpPort}");
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     /// <summary>Creates (not connects) the client of <paramref name="target"/> of the basic test nexus.</summary>
@@ -302,7 +299,7 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
         var address = CreateClientConfig(type) switch
         {
             HttpClientConfig http => new UriBuilder(http.Url) { Scheme = http.Url.Scheme == "ws" ? "wss" : "https" }.Uri.ToString(),
-            var other => AuthTlsMatrix.Address(other),
+            var other => Address(other),
         };
         return new ClientSpec { Transport = target.Transport, Address = address, Logger = Logger };
     }

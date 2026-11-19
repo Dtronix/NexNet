@@ -10,7 +10,7 @@ namespace NexNet.IntegrationTests;
 /// fire-and-forget calls. Runs on the client matrix.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class InvocationCancellationTests(LanguageHostPool hosts) : CancellationMatrixTests(hosts)
+internal class InvocationCancellationTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]

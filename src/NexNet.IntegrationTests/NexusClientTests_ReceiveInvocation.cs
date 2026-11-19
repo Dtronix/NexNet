@@ -10,8 +10,11 @@ namespace NexNet.IntegrationTests;
 /// each call and its arguments, and returns the scripted result to the server.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal partial class NexusClientTests_ReceiveInvocation(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal partial class NexusClientTests_ReceiveInvocation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public Task ClientReceivesInvocation_ClientVoid(ClientTarget target)
@@ -183,14 +186,14 @@ internal partial class NexusClientTests_ReceiveInvocation(LanguageHostPool hosts
         Func<ClientNexusScript, Task> verify,
         Action<ClientNexusScript>? configureScript = null)
     {
-        await using var server = await StartServer(nexus => nexus.OnConnectedEvent = onConnected);
-        await using var client = await CreateClient(target, server);
+        await using var server = await StartServerAsync(nexus => nexus.OnConnectedEvent = onConnected);
+        await using var client = await CreateClientAsync(target, server);
         var script = Script(client);
         configureScript?.Invoke(script);
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await verify(script).Timeout(T(1));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC

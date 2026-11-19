@@ -16,8 +16,11 @@ namespace NexNet.IntegrationTests;
 /// nexus, which observes the call and its arguments.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public Task ServerReceivesInvocation_ServerVoid(ClientTarget target)
@@ -214,7 +217,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Invo
             await ZooEcho.RunAsync(proxy, new Random(seed), "seed " + seed, failures).Timeout(T(30));
 
         await Assert.That(failures).IsEmpty().Because(string.Join(Environment.NewLine, failures));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     private async Task ServerReceivesInvocation(
@@ -223,12 +226,12 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Invo
         Func<Remote_IServerNexus, ValueTask> invoke)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var server = await StartServer(nexus => configureNexus(nexus, tcs));
-        await using var client = await Connect(target, server);
+        await using var server = await StartServerAsync(nexus => configureNexus(nexus, tcs));
+        await using var client = await ConnectAsync(target, server);
 
         await invoke(Proxy(client)).AsTask().Timeout(T(1));
         await tcs.Task.Timeout(T(1));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC
@@ -472,124 +475,6 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Invo
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await tcs.Task.Timeout(T(1));
-    }
-}
-
-/// <summary>
-/// Base of the invocation tests on the client matrix (P01b): a dedicated interop server of the integration tests'
-/// <see cref="ServerNexus"/> on every interop endpoint, and clients under test of <see cref="ClientNexus"/> created
-/// through <see cref="Harness"/> (the C# client in process, or a language host's client).
-/// </summary>
-/// <remarks>
-/// Derived classes take the <see cref="LanguageHostPool"/> (<c>[ClassDataSource&lt;LanguageHostPool&gt;(Shared =
-/// SharedType.PerTestSession)]</c>), so the hosts of NEXNET_TEST_LANGS are probed before their matrix rows are built.
-/// </remarks>
-internal abstract class InvocationMatrixTests(LanguageHostPool hosts) : BaseTests
-{
-    /// <summary>The language hosts of the test session; empty when only the C# row runs.</summary>
-    protected LanguageHostPool Hosts { get; } = hosts;
-
-    /// <summary>
-    /// Starts a dedicated interop server of <see cref="ServerNexus"/>. Every server method completes with its default
-    /// result unless <paramref name="configureNexus"/> sets its handler.
-    /// </summary>
-    /// <param name="configureNexus">Configures the nexus of each session.</param>
-    /// <param name="configureEndpoint">Configures each endpoint's server configuration (limits, taps).</param>
-    protected static Task<InteropServer<ServerNexus, ServerNexus.ClientProxy>> StartServer(
-        Action<ServerNexus>? configureNexus = null,
-        Action<ServerConfig>? configureEndpoint = null)
-    {
-        return InteropServerHost.StartAsync<ServerNexus, ServerNexus.ClientProxy>(
-            () =>
-            {
-                var nexus = new ServerNexus();
-                CompleteByDefault(nexus);
-                configureNexus?.Invoke(nexus);
-                return nexus;
-            },
-            new InteropServerOptions { ConfigureEndpoint = configureEndpoint == null ? null : (_, config) => configureEndpoint(config) })
-            .Timeout(T(TestTimeouts.Connect));
-    }
-
-    /// <summary>Creates a client under test of <paramref name="server"/>'s endpoint for the row; it is not connected.</summary>
-    protected static Task<IClientUnderTest> CreateClient(
-        ClientTarget target,
-        InteropServer<ServerNexus, ServerNexus.ClientProxy> server,
-        Action<ClientSpec>? configure = null)
-    {
-        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
-        configure?.Invoke(spec);
-        return Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
-    }
-
-    /// <summary>Creates a client under test and connects it.</summary>
-    protected static async Task<IClientUnderTest> Connect(
-        ClientTarget target,
-        InteropServer<ServerNexus, ServerNexus.ClientProxy> server,
-        Action<ClientSpec>? configure = null)
-    {
-        var client = await CreateClient(target, server, configure);
-        try
-        {
-            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        }
-        catch
-        {
-            await client.DisposeAsync();
-            throw;
-        }
-
-        return client;
-    }
-
-    /// <summary>The server proxy of <paramref name="client"/>.</summary>
-    protected static Remote_IServerNexus Proxy(IClientUnderTest client) => client.Proxy<Remote_IServerNexus>();
-
-    /// <summary>What <paramref name="client"/> does when the server invokes its client nexus.</summary>
-    protected static ClientNexusScript Script(IClientUnderTest client) => client.Callbacks<ClientNexusScript>();
-
-    /// <summary>Asserts that <paramref name="client"/> reaches (or stays in) <paramref name="state"/>.</summary>
-    protected static async Task AssertState(IClientUnderTest client, ConnectionState state)
-    {
-        try
-        {
-            await client.WaitForStateAsync(state, T(1));
-        }
-        catch (TimeoutException)
-        {
-            // Reported by the assertion below.
-        }
-
-        await Assert.That(await client.GetStateAsync()).IsEqualTo(state);
-    }
-
-    /// <summary>Disconnects <paramref name="client"/> and asserts that it holds nothing more (leak audit).</summary>
-    protected static async Task DisconnectAndAudit(IClientUnderTest client)
-    {
-        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
-        var report = await client.EndTestAuditAsync().Timeout(T(5));
-        await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
-    }
-
-    /// <summary>The single session of <paramref name="server"/>'s first connected client.</summary>
-    protected static long FirstSessionId(InteropServer<ServerNexus, ServerNexus.ClientProxy> server)
-    {
-        using var context = server.Server.ContextProvider.Rent();
-        return context.Proxy.GetIds().First();
-    }
-
-    private static void CompleteByDefault(ServerNexus nexus)
-    {
-        nexus.ServerVoidEvent = _ => { };
-        nexus.ServerVoidWithParamEvent = (_, _) => { };
-        nexus.ServerTaskEvent = _ => ValueTask.CompletedTask;
-        nexus.ServerTaskWithParamEvent = (_, _) => ValueTask.CompletedTask;
-        nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(0);
-        nexus.ServerTaskValueWithParamEvent = (_, _) => ValueTask.FromResult(0);
-        nexus.ServerTaskWithCancellationEvent = (_, _) => ValueTask.CompletedTask;
-        nexus.ServerTaskWithValueAndCancellationEvent = (_, _, _) => ValueTask.CompletedTask;
-        nexus.ServerTaskValueWithCancellationEvent = (_, _) => ValueTask.FromResult(0);
-        nexus.ServerTaskValueWithValueAndCancellationEvent = (_, _, _) => ValueTask.FromResult(0);
     }
 }
 

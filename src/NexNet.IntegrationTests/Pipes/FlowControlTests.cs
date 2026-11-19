@@ -13,7 +13,7 @@ namespace NexNet.IntegrationTests.Pipes;
 /// the client under test as the writer.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class FlowControlTests(LanguageHostPool hosts) : PipeMatrixTests(hosts)
+internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

@@ -15,8 +15,11 @@ namespace NexNet.IntegrationTests;
 /// run on the client matrix (P01b); tests of the server's broadcasts to raw or stalled clients stay C#-only.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task CallerWaitsLocallyForCredit(ClientTarget target)
@@ -26,7 +29,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         var received = 0;
         var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sent = ArrivedInvocations(3, out var tap);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskValueEvent = async _ =>
             {
                 Interlocked.Increment(ref received);
@@ -40,7 +43,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
                 config.MaxConcurrentConnectionInvocations = 1;
                 tap(config);
             });
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
         var proxy = Proxy(client);
 
         var calls = Enumerable.Range(0, 4).Select(_ => proxy.ServerTaskValue().AsTask()).ToArray();
@@ -55,7 +58,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         release.SetResult();
         await Assert.That(await Task.WhenAll(calls).Timeout(T(1))).All(x => Equals(x, 1));
         await Assert.That(received).IsEqualTo(4);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -65,7 +68,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
         var sent = ArrivedInvocations(2, out var tap);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, _) =>
             {
                 Interlocked.Increment(ref received);
@@ -78,7 +81,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
                 config.MaxConcurrentConnectionInvocations = 1;
                 tap(config);
             });
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
         var proxy = Proxy(client);
 
         // The first runs; the second takes the returned credit and waits in the queue; the third waits for credit.
@@ -94,7 +97,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         await Task.WhenAll(first, second).Timeout(T(1));
         await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
         await Assert.That(await proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(T(1))).IsEqualTo(1);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -104,7 +107,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
         var sent = ArrivedInvocations(2, out var tap);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
             {
                 Interlocked.Increment(ref received);
@@ -116,7 +119,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
                 config.MaxConcurrentConnectionInvocations = 1;
                 tap(config);
             });
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
         var proxy = Proxy(client);
 
         var first = proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
@@ -129,7 +132,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         await Task.WhenAll(first, second).Timeout(T(1));
         await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
         await AssertState(client, ConnectionState.Connected);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     /// <summary>
@@ -175,14 +178,14 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         const int count = 2000;
         var received = 0;
         var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.ServerVoidWithParamEvent = (_, _) =>
             {
                 if (Interlocked.Increment(ref received) == count)
                     all.TrySetResult();
             },
             config => config.InvocationCredits = 4);
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
         var proxy = Proxy(client);
 
         for (var i = 0; i < count; i++)
@@ -191,7 +194,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         await client.BarrierAsync().Timeout(T(10));
         await all.Task.Timeout(T(10));
         await AssertState(client, ConnectionState.Connected);
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     /// <summary>C#-only: a raw protocol client that never returns credit; the server's broadcast is under test.</summary>
@@ -322,14 +325,14 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
         // order they arrive (each call is reported when its handler starts).
         const int count = 500;
-        await using var server = await StartServer();
+        await using var server = await StartServerAsync();
 
         var clients = new List<IClientUnderTest>();
         try
         {
             for (var i = 0; i < 3; i++)
             {
-                clients.Add(await Connect(target, server, spec =>
+                clients.Add(await ConnectAsync(target, server, configure: spec =>
                 {
                     spec.InvocationCredits = 2;
                     spec.MaxConcurrentConnectionInvocations = 1;
@@ -351,7 +354,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
             }
 
             foreach (var client in clients)
-                await DisconnectAndAudit(client);
+                await EndAsync(client);
         }
         finally
         {
@@ -365,7 +368,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
     public async Task Broadcast_WritesOneEncodedFrameToEveryClient(ClientTarget target)
     {
         var frames = new List<byte[]>();
-        await using var server = await StartServer(configureEndpoint: config => ServerTaps.OnSend(config, (_, frame) =>
+        await using var server = await StartServerAsync(configure: config => ServerTaps.OnSend(config, (_, frame) =>
         {
             if (frame.Type == MessageType.Invocation)
                 lock (frames)
@@ -376,7 +379,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
         try
         {
             for (var i = 0; i < 3; i++)
-                clients.Add(await Connect(target, server));
+                clients.Add(await ConnectAsync(target, server));
 
             using (var context = server.Server.ContextProvider.Rent())
                 await context.Proxy.All.ClientTaskWithParam(12345).Timeout(T(1));
@@ -393,7 +396,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : InvocationMatrixT
             await Assert.That(sent[2]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
 
             foreach (var client in clients)
-                await DisconnectAndAudit(client);
+                await EndAsync(client);
         }
         finally
         {

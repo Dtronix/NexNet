@@ -11,8 +11,11 @@ namespace NexNet.IntegrationTests;
 /// client answers each one with its unscripted default result.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
+internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
     public Task ServerSendsInvocationFor_ServerVoid(ClientTarget target)
@@ -155,7 +158,7 @@ internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) :
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var server = await StartServer(
+        await using var server = await StartServerAsync(
             nexus => nexus.OnConnectedEvent = async connected =>
             {
                 try
@@ -185,11 +188,11 @@ internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) :
                 CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
                 tcs.TrySetResult();
             }));
-        await using var client = await Connect(target, server);
+        await using var client = await ConnectAsync(target, server);
 
         await tcs.Task.Timeout(T(1));
         await invoked.Task.Timeout(T(1));
-        await DisconnectAndAudit(client);
+        await EndAsync(client);
     }
 
     // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC
