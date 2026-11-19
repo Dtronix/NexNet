@@ -1,0 +1,334 @@
+name: Nightly (full interop matrix, browsers, Android, stress)
+
+# Everything too slow or too heavy for every PR: the full transport matrix on every language host, the three browsers,
+# the Android checks (D26) and a repeated interop run that shakes out flaky tests. clients.yml runs the per-PR subset.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'  # 03:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  # Bucket-A interop rows on every transport: plaintext and TLS, TCP, TcpTls, HttpSocket, WebSocket, and UDS on Node
+  # (Linux runners only; Node cannot use AF_UNIX on Windows). Browsers run their WebSocket rows; the rest are visible
+  # capability skips. Firefox and WebKit run only here (D29).
+  interop:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [node, java, browser-chromium, browser-firefox, browser-webkit]
+    env:
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
+      NEXNET_REQUIRE_SDKS: '1'
+      # Every transport instead of the per-PR default (HttpSocketTls, WebSocketTls). Read by ClientMatrix once it
+      # supports the override (follow-up of H08); until then the rows use the transports each test names.
+      NEXNET_TEST_TRANSPORTS: all
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Is the host buildable yet?
+        id: host
+        shell: bash
+        run: |
+          case "${{ matrix.lang }}" in
+            java) grep -q installInteropHost clients/java/interop-host/build.gradle.kts && ready=true || ready=false; card=K12 ;;
+            *)    grep -q '"build:interop-host"' clients/js/package.json && ready=true || ready=false; card=J12 ;;
+          esac
+          [ "$ready" = true ] || echo "::notice::The ${{ matrix.lang }} interop host does not exist yet ($card); interop rows skipped."
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          browser="${{ matrix.lang }}"
+          echo "browser=${browser#browser-}" >> "$GITHUB_OUTPUT"
+
+      - name: Install msquic
+        if: steps.host.outputs.ready == 'true'
+        run: sudo apt-get update && sudo apt-get install -y libmsquic
+
+      - uses: actions/setup-dotnet@v6
+        if: steps.host.outputs.ready == 'true'
+        with:
+          dotnet-version: '10.*'
+
+      - name: Cache NuGet packages
+        if: steps.host.outputs.ready == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        if: steps.host.outputs.ready == 'true' && matrix.lang != 'java'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/js/package-lock.json
+
+      - uses: actions/setup-java@v6
+        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+
+      - name: Build the C# side
+        if: steps.host.outputs.ready == 'true'
+        run: dotnet build src -c Release --maxcpucount:1
+
+      # The host build commands are fixed by docs/internals/interop-control-protocol.md §10.
+      - name: Build the Node/browser host
+        if: steps.host.outputs.ready == 'true' && matrix.lang != 'java'
+        run: |
+          npm ci --prefix clients/js
+          npm run build:interop-host --prefix clients/js
+
+      - name: Install ${{ steps.host.outputs.browser }}
+        if: steps.host.outputs.ready == 'true' && startsWith(matrix.lang, 'browser-')
+        working-directory: clients/js
+        run: npx playwright install --with-deps ${{ steps.host.outputs.browser }}
+
+      - name: Build the JVM host
+        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
+
+      - name: Interop tests (${{ matrix.lang }}, every transport)
+        if: steps.host.outputs.ready == 'true'
+        env:
+          NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
+        run: >-
+          dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
+          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]"
+          -- --report-trx
+
+      - name: Upload interop results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-interop-${{ matrix.lang }}
+          path: |
+            TestResults/
+            /tmp/nexnet-interop-transcripts/
+            artifacts/interop/
+            !artifacts/interop/*/generated/**
+          if-no-files-found: ignore
+
+  # The interop suite ten times in a row on the per-PR transports. Every run's failures are kept; the job fails when
+  # any run failed, and the TRX files show which tests are flaky.
+  stress:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [node, java]
+    env:
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
+      NEXNET_REQUIRE_SDKS: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Is the host buildable yet?
+        id: host
+        shell: bash
+        run: |
+          case "${{ matrix.lang }}" in
+            java) grep -q installInteropHost clients/java/interop-host/build.gradle.kts && ready=true || ready=false; card=K12 ;;
+            *)    grep -q '"build:interop-host"' clients/js/package.json && ready=true || ready=false; card=J12 ;;
+          esac
+          [ "$ready" = true ] || echo "::notice::The ${{ matrix.lang }} interop host does not exist yet ($card); stress run skipped."
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          browser="${{ matrix.lang }}"
+          echo "browser=${browser#browser-}" >> "$GITHUB_OUTPUT"
+
+      - name: Install msquic
+        if: steps.host.outputs.ready == 'true'
+        run: sudo apt-get update && sudo apt-get install -y libmsquic
+
+      - uses: actions/setup-dotnet@v6
+        if: steps.host.outputs.ready == 'true'
+        with:
+          dotnet-version: '10.*'
+
+      - name: Cache NuGet packages
+        if: steps.host.outputs.ready == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        if: steps.host.outputs.ready == 'true' && matrix.lang != 'java'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/js/package-lock.json
+
+      - uses: actions/setup-java@v6
+        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+
+      - name: Build
+        if: steps.host.outputs.ready == 'true'
+        shell: bash
+        run: |
+          dotnet build src -c Release --maxcpucount:1
+          if [ "${{ matrix.lang }}" = java ]; then
+            clients/java/gradlew -p clients/java :interop-host:installInteropHost
+          else
+            npm ci --prefix clients/js
+            npm run build:interop-host --prefix clients/js
+          fi
+
+      - name: Interop tests, 10 runs
+        if: steps.host.outputs.ready == 'true'
+        shell: bash
+        run: |
+          failed=0
+          for i in $(seq 1 10); do
+            echo "::group::Run $i of 10"
+            if ! dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory "TestResults/run-$i" \
+                --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" -- --report-trx; then
+              failed=$((failed + 1))
+              echo "::warning::Run $i of 10 failed."
+            fi
+            echo "::endgroup::"
+          done
+          echo "$failed of 10 runs failed."
+          [ "$failed" -eq 0 ]
+
+      - name: Upload stress results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-stress-${{ matrix.lang }}
+          path: |
+            TestResults/
+            /tmp/nexnet-interop-transcripts/
+            artifacts/interop/
+            !artifacts/interop/*/generated/**
+          if-no-files-found: ignore
+
+  # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
+  # D8 and R8, and smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2.
+  android:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      ANDROID_BUILD_TOOLS: '35.0.0'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install the API 24 platform and build tools
+        run: sdkmanager --install "platforms;android-24" "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Build the core JAR
+        run: clients/java/gradlew -p clients/java :nexnet-client:jar
+
+      - name: D8 and R8 at --min-api 24
+        shell: bash
+        run: |
+          jar=$(ls clients/java/nexnet-client/build/libs/nexnet-client*.jar | grep -v -e sources -e javadoc | head -n 1)
+          tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
+          android_jar="$ANDROID_HOME/platforms/android-24/android.jar"
+          echo "Dexing $jar"
+          mkdir -p "$RUNNER_TEMP/d8" "$RUNNER_TEMP/r8"
+          "$tools/d8" --release --min-api 24 --lib "$android_jar" --output "$RUNNER_TEMP/d8" "$jar"
+          # R8 fails on a reference to a class or member that API 24 lacks. JSpecify annotations are compile-only.
+          printf '%s\n' '-keep class com.dtronix.nexnet.** { *; }' '-dontwarn org.jspecify.**' > "$RUNNER_TEMP/keep.pro"
+          java -cp "$tools/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 24 --lib "$android_jar" \
+            --pg-conf "$RUNNER_TEMP/keep.pro" --output "$RUNNER_TEMP/r8" "$jar"
+          ls -l "$RUNNER_TEMP/d8" "$RUNNER_TEMP/r8"
+
+      - name: Does the Android module exist yet?
+        id: module
+        shell: bash
+        run: |
+          if [ -d clients/java/nexnet-client-android ]; then aar=true; else aar=false
+            echo "::notice::nexnet-client-android does not exist yet (K13); AAR build and emulator smoke test skipped."; fi
+          if [ -d clients/java/nexnet-client-android/src/androidTest ]; then smoke=true; else smoke=false; fi
+          echo "aar=$aar" >> "$GITHUB_OUTPUT"
+          echo "smoke=$smoke" >> "$GITHUB_OUTPUT"
+
+      - name: Build the AAR
+        if: steps.module.outputs.aar == 'true'
+        run: clients/java/gradlew -p clients/java :nexnet-client-android:assembleRelease
+
+      - uses: actions/setup-dotnet@v6
+        if: steps.module.outputs.smoke == 'true'
+        with:
+          dotnet-version: '10.*'
+
+      - name: Start the interop server
+        if: steps.module.outputs.smoke == 'true'
+        # Prints "<endpoint> <address>" per endpoint. Addresses use 127.0.0.1; the emulator reaches the host's loopback
+        # at 10.0.2.2. They become instrumentation arguments nexnet.endpoint.<name>, plus nexnet.token.
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/interop-server.log"
+          nohup dotnet run --project src/NexNet.InteropServer/Cli -c Release -- --token nightly-android > "$log" 2>&1 &
+          for _ in $(seq 1 180); do grep -q '^Running' "$log" && break; sleep 1; done
+          grep -q '^Running' "$log" || { cat "$log"; echo "::error::The interop server did not start."; exit 1; }
+          cat "$log"
+          args="-Pandroid.testInstrumentationRunnerArguments.nexnet.token=nightly-android"
+          while read -r name address; do
+            case "$name" in Running*|test-ca|"") continue ;; esac
+            args="$args -Pandroid.testInstrumentationRunnerArguments.nexnet.endpoint.$name=${address//127.0.0.1/10.0.2.2}"
+          done < "$log"
+          echo "NEXNET_ANDROID_ARGS=$args" >> "$GITHUB_ENV"
+
+      - name: Enable KVM
+        if: steps.module.outputs.smoke == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke test on an API 24 emulator (connect, invoke, pipe)
+        if: steps.module.outputs.smoke == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 24
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
+
+      - name: Upload Android results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-android
+          path: |
+            ${{ runner.temp }}/interop-server.log
+            clients/java/**/build/outputs/androidTest-results/
+            clients/java/**/build/reports/
+          if-no-files-found: ignore
