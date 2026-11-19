@@ -908,6 +908,38 @@ internal abstract class BaseTests
     protected static ValueTask<INexusChannelReader<TItem>> ChannelReader<TItem>(INexusDuplexPipe pipe)
         => pipe.GetChannel<TItem>().GetReaderAsync();
 
+    /// <summary>
+    /// A round trip from the client to the server. Frames on a session arrive in order, so once it returns the server
+    /// has received everything the client sent before it. Use it before asserting that something did not arrive.
+    /// The server nexus needs no handler: a missing one fails the call remotely, which still completes the round trip.
+    /// </summary>
+    protected static async Task Barrier(ClientNexus.ServerProxy proxy)
+    {
+        try
+        {
+            await proxy.ServerTaskValue().Timeout(T(1));
+        }
+        catch (ProxyRemoteInvocationException)
+        {
+            // The server answered.
+        }
+    }
+
+    /// <summary>
+    /// A round trip from the server to a client; see <see cref="Barrier(ClientNexus.ServerProxy)"/>.
+    /// </summary>
+    protected static async Task Barrier(ServerNexus.ClientProxy proxy)
+    {
+        try
+        {
+            await proxy.ClientTaskValue().Timeout(T(1));
+        }
+        catch (ProxyRemoteInvocationException)
+        {
+            // The client answered.
+        }
+    }
+
     public static async Task AssertThrows<T>(Func<Task> task)
         where T : Exception
     {

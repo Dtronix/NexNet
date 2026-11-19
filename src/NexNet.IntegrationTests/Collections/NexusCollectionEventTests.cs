@@ -94,11 +94,11 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await client.Proxy.IntListSC.EnableAsync().Timeout(2);
-        await client.Proxy.IntListSC.ReadyTask.Timeout(2);
+        await client.Proxy.IntListSC.EnableAsync().Timeout(T(2));
+        await client.Proxy.IntListSC.ReadyTask.Timeout(T(2));
 
         var serverNexus = server.NexusCreatedQueue.First();
         await serverNexus.IntListSC.AddAsync(100);

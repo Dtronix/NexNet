@@ -36,15 +36,15 @@ internal class InvocationCancellationTests : BaseTests
 
             return 1;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         using var cancel = new CancellationTokenSource();
         var first = client.Proxy.ServerTaskValueWithCancellation(cancel.Token).AsTask();
         await Task.Delay(50);
         var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
-        await bothStarted.Task.Timeout(1);
+        await bothStarted.Task.Timeout(T(1));
 
         cancel.Cancel();
         await Task.Delay(200);
@@ -55,7 +55,7 @@ internal class InvocationCancellationTests : BaseTests
         await Assert.That(second.IsCompleted).IsFalse();
 
         release.SetResult();
-        await Assert.That(await second.Timeout(1)).IsEqualTo(1);
+        await Assert.That(await second.Timeout(T(1))).IsEqualTo(1);
         await Assert.That(first.IsCanceled || first.IsCompleted).IsTrue();
     }
 
@@ -64,7 +64,7 @@ internal class InvocationCancellationTests : BaseTests
     public async Task OverlappingFireAndForgetCalls_ShareTheSessionToken_CanceledOnDisconnect(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var tokens = new List<CancellationToken>();
         var secondDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,14 +95,14 @@ internal class InvocationCancellationTests : BaseTests
                 firstCanceled.TrySetResult();
             }
         };
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         // Both are fire-and-forget with invocation ID 0.
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(1);
+        await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(T(1));
         await Task.Delay(50);
-        await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(1);
-        await secondDone.Task.Timeout(1);
+        await context.Proxy.All.ClientTaskWithCancellation(CancellationToken.None).Timeout(T(1));
+        await secondDone.Task.Timeout(T(1));
         await Task.Delay(100);
 
         // The second finishing does not affect the first.
@@ -110,8 +110,8 @@ internal class InvocationCancellationTests : BaseTests
         await Assert.That(tokens[0].IsCancellationRequested).IsFalse();
 
         // The session ending cancels it.
-        await client.DisconnectAsync().Timeout(1);
-        await firstCanceled.Task.Timeout(1);
+        await client.DisconnectAsync().Timeout(T(1));
+        await firstCanceled.Task.Timeout(T(1));
     }
 
     [Test]
@@ -122,7 +122,7 @@ internal class InvocationCancellationTests : BaseTests
         // the call.
         var voidCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(CreateServerConfig(type), nexus => nexus.ServerVoidEvent = _ => voidCalled.TrySetResult());
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (client, clientNexus) = CreateClient(CreateClientConfig(type));
@@ -131,21 +131,21 @@ internal class InvocationCancellationTests : BaseTests
             clientCalled.TrySetResult();
             return ValueTask.CompletedTask;
         };
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
 
         // A canceled call that waits for its result throws, and leaves the session usable.
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
-            await client.Proxy.ServerTaskWithCancellation(canceled.Token).AsTask().Timeout(1));
+            await client.Proxy.ServerTaskWithCancellation(canceled.Token).AsTask().Timeout(T(1)));
 
         client.Proxy.ServerVoid();
-        await voidCalled.Task.Timeout(1);
+        await voidCalled.Task.Timeout(T(1));
 
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTaskWithCancellation(canceled.Token).Timeout(1);
-        await clientCalled.Task.Timeout(1);
+        await context.Proxy.All.ClientTaskWithCancellation(canceled.Token).Timeout(T(1));
+        await clientCalled.Task.Timeout(T(1));
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 }

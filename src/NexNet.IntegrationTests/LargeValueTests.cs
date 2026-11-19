@@ -23,18 +23,18 @@ internal class LargeValueTests : BaseTests
     public async Task LargeArgumentAndResult_RoundTrip(Type type, int size)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var data = new byte[size];
         Random.Shared.NextBytes(data);
 
-        var echoed = await client.Proxy.ServerEcho(data).Timeout(10);
+        var echoed = await client.Proxy.ServerEcho(data).Timeout(T(10));
         await Assert.That(echoed).IsEquivalentTo(data, CollectionOrdering.Matching);
 
         // The session is still usable, and nothing stays reserved for the streams.
-        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1)).Count().IsEqualTo(10);
+        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
     }
 
     [Test]
@@ -47,12 +47,12 @@ internal class LargeValueTests : BaseTests
             received.TrySetResult(data.Length);
             return default;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(5);
-        await Assert.That(await received.Task.Timeout(5)).IsEqualTo(1024 * 1024);
+        await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(T(5));
+        await Assert.That(await received.Task.Timeout(T(5))).IsEqualTo(1024 * 1024);
     }
 
     [Test]
@@ -60,7 +60,7 @@ internal class LargeValueTests : BaseTests
     public async Task BroadcastLargeArgument_ReachesEveryClient(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var received = new[]
         {
@@ -75,14 +75,14 @@ internal class LargeValueTests : BaseTests
                 tcs.TrySetResult(data.Length);
                 return default;
             };
-            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         }
 
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientData(new byte[300 * 1024]).Timeout(5);
+        await context.Proxy.All.ClientData(new byte[300 * 1024]).Timeout(T(5));
 
         foreach (var tcs in received)
-            await Assert.That(await tcs.Task.Timeout(5)).IsEqualTo(300 * 1024);
+            await Assert.That(await tcs.Task.Timeout(T(5))).IsEqualTo(300 * 1024);
     }
 
     [Test]
@@ -108,20 +108,20 @@ internal class LargeValueTests : BaseTests
 
             return data;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
-        await holding.Task.Timeout(5);
+        await holding.Task.Timeout(T(5));
 
-        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5));
+        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(T(5)));
 
         // The session is fine; once the first call ends its reservation is released.
-        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(5)).Count().IsEqualTo(10);
+        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(T(5))).Count().IsEqualTo(10);
         hold.SetResult();
-        await Assert.That(await first.Timeout(5)).Count().IsEqualTo(900 * 1024);
-        await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5)).Count().IsEqualTo(900 * 1024);
+        await Assert.That(await first.Timeout(T(5))).Count().IsEqualTo(900 * 1024);
+        await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(T(5))).Count().IsEqualTo(900 * 1024);
     }
 
     [Test]

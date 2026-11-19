@@ -310,7 +310,8 @@ internal sealed class BufferedTestLogger
 /// <param name="Type">The frame's message type.</param>
 /// <param name="Body">The frame's body, without the header and post-header; empty for header-only frames (ping and
 /// disconnect).</param>
-internal readonly record struct TappedFrame(MessageType Type, byte[] Body);
+/// <param name="Frame">The whole frame as it is on the wire: header, post-header and body.</param>
+internal readonly record struct TappedFrame(MessageType Type, byte[] Body, byte[] Frame);
 
 /// <summary>
 /// Server-side observation of the frames a server exchanges with its clients. Tests observe a client's wire behavior
@@ -349,6 +350,13 @@ internal static class ServerTaps
     }
 
     /// <summary>
+    /// Calls <paramref name="onSession"/> with every session the server creates, once the transport has connected and
+    /// before any byte is read. Replaces the server configuration's <c>InternalOnSessionSetup</c>.
+    /// </summary>
+    public static void OnSessionCreated(ServerConfig config, Action<INexusSession> onSession)
+        => config.InternalOnSessionSetup = onSession;
+
+    /// <summary>
     /// Calls <paramref name="onFrame"/> with every frame the server sends. Replaces the server configuration's
     /// <c>InternalOnSend</c>.
     /// </summary>
@@ -359,7 +367,7 @@ internal static class ServerTaps
             if (bytes.Length == 0)
                 return;
 
-            onFrame(session, new TappedFrame((MessageType)bytes[0], bytes.Length > 3 ? bytes[3..] : []));
+            onFrame(session, new TappedFrame((MessageType)bytes[0], bytes.Length > 3 ? bytes[3..] : [], bytes));
         };
     }
 
@@ -400,7 +408,7 @@ internal static class ServerTaps
                 // Ping and the disconnect codes are a single byte.
                 if (type == MessageType.Ping || _pending[position] is >= 20 and < 39)
                 {
-                    frames.Add(new TappedFrame(type, []));
+                    frames.Add(new TappedFrame(type, [], [_pending[position]]));
                     position++;
                     continue;
                 }
@@ -419,7 +427,10 @@ internal static class ServerTaps
                 if (position + headerLength + bodyLength > _pending.Count)
                     break;
 
-                frames.Add(new TappedFrame(type, _pending.GetRange(position + headerLength, bodyLength).ToArray()));
+                frames.Add(new TappedFrame(
+                    type,
+                    _pending.GetRange(position + headerLength, bodyLength).ToArray(),
+                    _pending.GetRange(position, headerLength + bodyLength).ToArray()));
                 position += headerLength + bodyLength;
             }
 

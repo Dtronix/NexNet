@@ -159,37 +159,28 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        serverConfig.InternalOnSend = (_, bytes) =>
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
         {
-            try
-            {
-                if (bytes[0] != (byte)MessageType.Invocation)
-                    return;
+            if (frame.Type != MessageType.Invocation)
+                return;
 
-                var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                CallbackAssert.NotNull(message);
+            var message = TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body);
+            CallbackAssert.NotNull(message);
 
-                if (message == null)
-                    return;
+            if (message == null)
+                return;
 
-                CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
-                CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
-                CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
-                CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
-                tcs.SetResult();
-            }
-            catch
-            {
-                // Not an invocationRequest.
-            }
+            CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
+            CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
+            CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
+            CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
+            tcs.TrySetResult();
+        });
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        };
-
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(T(1));
     }
 
 }

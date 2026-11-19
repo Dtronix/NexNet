@@ -22,8 +22,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         };
 
         var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
+        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
         int counter = 0;
 
         _ = Task.Run(async () =>
@@ -44,7 +44,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
             await Task.Delay(1);
         }
         await writer.CompleteAsync().ConfigureAwait(false);
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(T(1));
     }
     
     [Test]
@@ -60,8 +60,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         };
 
         var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
+        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(1000);
@@ -69,7 +69,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         {
             messageReceivedCount++;
         }
-        await pipe.CompleteTask.Timeout(1);
+        await pipe.CompleteTask.Timeout(T(1));
         
         await Assert.That(messageReceivedCount).IsEqualTo(1);
     }
@@ -88,8 +88,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         };
 
         var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
+        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(50);
@@ -98,7 +98,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
             messageReceivedCount++;
         }
         await Assert.That(messageReceivedCount).IsEqualTo(0);
-        await pipe.CompleteTask.Timeout(1);
+        await pipe.CompleteTask.Timeout(T(1));
     }
     
     [Test]
@@ -115,8 +115,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         };
 
         var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
+        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(50);
@@ -133,6 +133,6 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         }
         
         await Assert.That(messageReceivedCount).IsEqualTo(1);
-        await pipe.CompleteTask.Timeout(1);
+        await pipe.CompleteTask.Timeout(T(1));
     }
 }

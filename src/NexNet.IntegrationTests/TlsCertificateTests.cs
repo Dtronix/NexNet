@@ -79,8 +79,8 @@ internal class TlsCertificateTests : BaseTests
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
@@ -95,9 +95,9 @@ internal class TlsCertificateTests : BaseTests
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
@@ -115,10 +115,10 @@ internal class TlsCertificateTests : BaseTests
         });
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(await serverSaw.Task.Timeout(1)).IsEqualTo(ClientCertificate.Thumbprint);
+        await Assert.That(await serverSaw.Task.Timeout(T(1))).IsEqualTo(ClientCertificate.Thumbprint);
     }
 
     [Test]
@@ -135,10 +135,10 @@ internal class TlsCertificateTests : BaseTests
         });
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(await serverSaw.Task.Timeout(1)).IsNull();
+        await Assert.That(await serverSaw.Task.Timeout(T(1))).IsNull();
     }
 
     [Test]
@@ -150,8 +150,8 @@ internal class TlsCertificateTests : BaseTests
         var server = CreateServer(serverConfig, null);
         var (client, clientNexus) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(clientNexus.Context.RemoteCertificate?.Thumbprint).IsEqualTo(ServerCertificate.Thumbprint);
     }
@@ -165,8 +165,8 @@ internal class TlsCertificateTests : BaseTests
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
@@ -186,9 +186,9 @@ internal class TlsCertificateTests : BaseTests
         });
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
         await Assert.That(sessionCreated).IsFalse();
     }
@@ -204,9 +204,9 @@ internal class TlsCertificateTests : BaseTests
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
@@ -225,10 +225,10 @@ internal class TlsCertificateTests : BaseTests
         }));
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(await hostSeen.Task.Timeout(1)).IsEqualTo($"127.0.0.1:{CurrentTcpPort}");
+        await Assert.That(await hostSeen.Task.Timeout(T(1))).IsEqualTo($"127.0.0.1:{CurrentTcpPort}");
     }
 
     private X509ChainPolicy TrustTestCa()

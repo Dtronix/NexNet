@@ -22,7 +22,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
@@ -31,7 +31,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Act
-            using var rentedClient = await pool.RentClientAsync().Timeout(1);
+            using var rentedClient = await pool.RentClientAsync().Timeout(T(1));
 
             // Assert
             await Assert.That(rentedClient).IsNotNull();
@@ -53,7 +53,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
@@ -68,7 +68,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             // Act - First rental
             ClientNexus.ServerProxy? firstProxy = null;
-            using (var firstClient = await pool.RentClientAsync().Timeout(1))
+            using (var firstClient = await pool.RentClientAsync().Timeout(T(1)))
             {
                 firstProxy = firstClient.Proxy;
                 firstClient.Proxy.ServerVoid();
@@ -78,7 +78,7 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(pool.AvailableConnections).IsEqualTo(1); // Client should be returned
 
             // Act - Second rental (should reuse same client)
-            using (var secondClient = await pool.RentClientAsync().Timeout(1))
+            using (var secondClient = await pool.RentClientAsync().Timeout(T(1)))
             {
                 secondClient.Proxy.ServerVoid();
                 await Task.Delay(50); // Allow invocation to complete
@@ -105,7 +105,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 2 };
@@ -124,12 +124,12 @@ internal class NexusClientPoolTests : BaseTests
         {
             //await client.ConnectAsync();
             // Act - Rent maximum connections
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
 
             // Start operations on both clients
-            await client1.Proxy.ServerTask().Timeout(1);
-            //await client2.Proxy.ServerTask().Timeout(1);
+            await client1.Proxy.ServerTask().Timeout(T(1));
+            //await client2.Proxy.ServerTask().Timeout(T(1));
 
             await Assert.That(pool.AvailableConnections).IsEqualTo(0);
 
@@ -143,10 +143,10 @@ internal class NexusClientPoolTests : BaseTests
             client1.Dispose();
             
             // Now third client should be available
-            using var client3 = await rentTask.Timeout(1);
+            using var client3 = await rentTask.Timeout(T(1));
             await Assert.That(client3).IsNotNull();
 
-            //await client2.DisposeAsync().Timeout(1);
+            //await client2.DisposeAsync().Timeout(T(1));
         }
         finally
         {
@@ -162,7 +162,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[]
@@ -178,21 +178,21 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Act
-            using var rentedClient = await pool.RentClientAsync().Timeout(1);
+            using var rentedClient = await pool.RentClientAsync().Timeout(T(1));
             
             await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
 
             // Simulate disconnection by stopping server
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             
             // Wait for disconnection to be detected
             await Task.Delay(200);
 
             // Start server again
-            await server.StartAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
             // Attempt to ensure connection
-            var reconnected = await rentedClient.EnsureConnectedAsync().Timeout(1);
+            var reconnected = await rentedClient.EnsureConnectedAsync().Timeout(T(1));
 
             // Assert
             await Assert.That(reconnected).IsTrue();
@@ -212,15 +212,15 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
 
         // Rent and return some clients to populate the pool
-        var client1 = await pool.RentClientAsync().Timeout(1);
-        var client2 = await pool.RentClientAsync().Timeout(1);
+        var client1 = await pool.RentClientAsync().Timeout(T(1));
+        var client2 = await pool.RentClientAsync().Timeout(T(1));
         
         client1.Dispose();
         client2.Dispose();
@@ -250,7 +250,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             // Act & Assert
             await AssertThrows<ClientPoolConnectionException>(async () =>
-                await pool.RentClientAsync().Timeout(1));
+                await pool.RentClientAsync().Timeout(T(1)));
         }
         finally
         {
@@ -266,7 +266,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 10 };
@@ -280,13 +280,13 @@ internal class NexusClientPoolTests : BaseTests
             // Act - Multiple concurrent rentals and operations
             var tasks = Enumerable.Range(0, 20).Select(async i =>
             {
-                using var client = await pool.RentClientAsync().Timeout(1);
+                using var client = await pool.RentClientAsync().Timeout(T(1));
                 client.Proxy.ServerVoid();
                 await Task.Delay(10); // Small delay to simulate work
                 return i;
             }).ToArray();
 
-            var results = await Task.WhenAll(tasks).Timeout(1);
+            var results = await Task.WhenAll(tasks).Timeout(T(1));
 
             // Assert
             await Assert.That(results.Length).IsEqualTo(20);
@@ -310,7 +310,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -322,8 +322,8 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(pool.MaxConnections).IsEqualTo(3);
             await Assert.That(pool.AvailableConnections).IsEqualTo(0);
 
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
 
             await Assert.That(pool.AvailableConnections).IsEqualTo(0); // Both rented
 
@@ -347,7 +347,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -363,8 +363,8 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
             client1.Dispose();
             client2.Dispose();
 
@@ -391,7 +391,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -406,9 +406,9 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Create and return multiple clients
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
-            var client3 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
+            var client3 = await pool.RentClientAsync().Timeout(T(1));
             client1.Dispose();
             client2.Dispose();
             client3.Dispose();
@@ -436,7 +436,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -452,7 +452,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Create and return one client
-            using (var _ = await pool.RentClientAsync().Timeout(1)) { }
+            using (var _ = await pool.RentClientAsync().Timeout(T(1))) { }
 
             await Assert.That(pool.AvailableConnections).IsEqualTo(1);
 
@@ -474,7 +474,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -493,7 +493,7 @@ internal class NexusClientPoolTests : BaseTests
             var clients = new List<IRentedNexusClient<ClientNexus.ServerProxy>>();
             for (int i = 0; i < 5; i++)
             {
-                clients.Add(await pool.RentClientAsync().Timeout(1));
+                clients.Add(await pool.RentClientAsync().Timeout(T(1)));
             }
 
             // Return all clients
@@ -522,7 +522,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -541,7 +541,7 @@ internal class NexusClientPoolTests : BaseTests
             var clients = new List<IRentedNexusClient<ClientNexus.ServerProxy>>();
             for (int i = 0; i < 2; i++)
             {
-                clients.Add(await pool.RentClientAsync().Timeout(1));
+                clients.Add(await pool.RentClientAsync().Timeout(T(1)));
             }
 
             // Return all clients
@@ -571,7 +571,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -590,7 +590,7 @@ internal class NexusClientPoolTests : BaseTests
             var clients = new List<IRentedNexusClient<ClientNexus.ServerProxy>>();
             for (int i = 0; i < 3; i++)
             {
-                clients.Add(await pool.RentClientAsync().Timeout(1));
+                clients.Add(await pool.RentClientAsync().Timeout(T(1)));
             }
 
             // Return all clients
@@ -662,11 +662,11 @@ internal class NexusClientPoolTests : BaseTests
         {
             // Act - Try to rent when connection will fail
             await AssertThrows<ClientPoolConnectionException>(async () =>
-                await pool.RentClientAsync().Timeout(1));
+                await pool.RentClientAsync().Timeout(T(1)));
 
             // Assert - Semaphore should be released, allowing another attempt
             await AssertThrows<ClientPoolConnectionException>(async () =>
-                await pool.RentClientAsync().Timeout(1));
+                await pool.RentClientAsync().Timeout(T(1)));
         }
         finally
         {
@@ -700,7 +700,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -720,10 +720,10 @@ internal class NexusClientPoolTests : BaseTests
         {
             // First call should throw due to factory exception
             await AssertThrows<InvalidOperationException>(async () =>
-                await pool.RentClientAsync().Timeout(1));
+                await pool.RentClientAsync().Timeout(T(1)));
 
             // Second call should succeed
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             await Assert.That(client).IsNotNull();
             await Assert.That(factoryCallCount).IsEqualTo(2);
         }
@@ -742,7 +742,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -751,7 +751,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Rent and return a client
-            using (var client = await pool.RentClientAsync().Timeout(1))
+            using (var client = await pool.RentClientAsync().Timeout(T(1)))
             {
                 await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
             }
@@ -759,12 +759,12 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(pool.AvailableConnections).IsEqualTo(1);
 
             // Stop server to make client unhealthy
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(100); // Allow disconnection to be detected
 
             // Try to rent again - should create new client since old one is unhealthy
-            await server.StartAsync().Timeout(TestTimeouts.Connect);
-            using (var newClient = await pool.RentClientAsync().Timeout(1))
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+            using (var newClient = await pool.RentClientAsync().Timeout(T(1)))
             {
                 await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
             }
@@ -784,7 +784,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
@@ -795,14 +795,14 @@ internal class NexusClientPoolTests : BaseTests
             // Act - Concurrent property access while renting/returning
             var tasks = Enumerable.Range(0, 20).Select(async _ =>
             {
-                using var client = await pool.RentClientAsync().Timeout(1);
+                using var client = await pool.RentClientAsync().Timeout(T(1));
                 var available = pool.AvailableConnections; // Should not throw
                 var max = pool.MaxConnections; // Should not throw
                 await Task.Delay(10);
                 return available + max; // Just to use the values
             }).ToArray();
 
-            var results = await Task.WhenAll(tasks).Timeout(1);
+            var results = await Task.WhenAll(tasks).Timeout(T(1));
             await Assert.That(results.Length).IsEqualTo(20);
         }
         finally
@@ -820,7 +820,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -831,7 +831,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             try
             {
-                using var client = await pool.RentClientAsync().Timeout(1);
+                using var client = await pool.RentClientAsync().Timeout(T(1));
                 await Task.Delay(100 + i * 10); // Stagger the operations
             }
             catch (ObjectDisposedException)
@@ -845,8 +845,8 @@ internal class NexusClientPoolTests : BaseTests
         var disposeTask = pool.DisposeAsync();
 
         // Wait for all operations to complete
-        await Task.WhenAll(rentalTasks).Timeout(1);
-        await disposeTask.Timeout(1);
+        await Task.WhenAll(rentalTasks).Timeout(T(1));
+        await disposeTask.Timeout(T(1));
 
         // Subsequent operations should throw
         await AssertThrows<ObjectDisposedException>(async () =>
@@ -862,7 +862,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -870,7 +870,7 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var rentedClient = await pool.RentClientAsync().Timeout(1);
+            var rentedClient = await pool.RentClientAsync().Timeout(T(1));
             
             // Verify working state
             await Assert.That(rentedClient.Proxy).IsNotNull();
@@ -901,7 +901,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -909,7 +909,7 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var rentedClient = await pool.RentClientAsync().Timeout(1);
+            var rentedClient = await pool.RentClientAsync().Timeout(T(1));
             
             // Dispose multiple times - should not throw
             rentedClient.Dispose();
@@ -933,7 +933,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -941,11 +941,11 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var rentedClient = await pool.RentClientAsync().Timeout(1);
+            var rentedClient = await pool.RentClientAsync().Timeout(T(1));
             await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
 
             // Disconnect server to make client unhealthy
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(200); // Wait for disconnection
 
             // Return the now-unhealthy client
@@ -955,8 +955,8 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(pool.AvailableConnections).IsEqualTo(0);
 
             // Restart server and try again - should create new client
-            await server.StartAsync().Timeout(TestTimeouts.Connect);
-            using var newClient = await pool.RentClientAsync().Timeout(1);
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+            using var newClient = await pool.RentClientAsync().Timeout(T(1));
             await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
         }
         finally
@@ -973,7 +973,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -984,7 +984,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Should create client successfully with default factory
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             await Assert.That(client).IsNotNull();
             await Assert.That(client.Proxy).IsNotNull();
         }
@@ -1025,7 +1025,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -1078,7 +1078,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -1095,9 +1095,9 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Act
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
-            var client3 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
+            var client3 = await pool.RentClientAsync().Timeout(T(1));
 
             // Assert
             await Assert.That(factoryCallCount).IsEqualTo(3);
@@ -1121,7 +1121,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 2 };
@@ -1130,8 +1130,8 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Create two clients and return them
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
             
             var client1Proxy = client1.Proxy;
             var client2Proxy = client2.Proxy;
@@ -1140,14 +1140,14 @@ internal class NexusClientPoolTests : BaseTests
             client2.Dispose();
 
             // Disconnect server to make one client unhealthy
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(100);
 
             // Start server again
-            await server.StartAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
             // Rent should return a healthy client
-            using var newClient = await pool.RentClientAsync().Timeout(1);
+            using var newClient = await pool.RentClientAsync().Timeout(T(1));
             await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
         }
         finally
@@ -1164,7 +1164,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) 
@@ -1180,7 +1180,7 @@ internal class NexusClientPoolTests : BaseTests
             var clients = new List<IRentedNexusClient<ClientNexus.ServerProxy>>();
             for (int i = 0; i < 3; i++)
             {
-                clients.Add(await pool.RentClientAsync().Timeout(1));
+                clients.Add(await pool.RentClientAsync().Timeout(T(1)));
             }
 
             foreach (var client in clients)
@@ -1191,7 +1191,7 @@ internal class NexusClientPoolTests : BaseTests
             await Assert.That(pool.AvailableConnections).IsEqualTo(3);
 
             // Disconnect server to make all clients unhealthy
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(500); // Allow more time for health check to run and detect disconnection
 
             // Available connections should decrease as unhealthy clients are removed
@@ -1211,7 +1211,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -1227,7 +1227,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Create and return client
-            using (var client = await pool.RentClientAsync().Timeout(1)) { }
+            using (var client = await pool.RentClientAsync().Timeout(T(1))) { }
 
             await Assert.That(pool.AvailableConnections).IsEqualTo(1);
 
@@ -1268,7 +1268,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1279,7 +1279,7 @@ internal class NexusClientPoolTests : BaseTests
             IRentedNexusClient<ClientNexus.ServerProxy> rentedClient;
             
             // Rent and return client
-            using (rentedClient = await pool.RentClientAsync().Timeout(1))
+            using (rentedClient = await pool.RentClientAsync().Timeout(T(1)))
             {
                 // Verify proxy works while rented
                 await Assert.That(rentedClient.Proxy).IsNotNull();
@@ -1302,7 +1302,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
@@ -1317,7 +1317,7 @@ internal class NexusClientPoolTests : BaseTests
             {
                 try
                 {
-                    using var client = await pool.RentClientAsync().Timeout(1);
+                    using var client = await pool.RentClientAsync().Timeout(T(1));
                     await Task.Delay(Random.Shared.Next(1, 10)); // Random small delay
                     
                     // Access properties to test thread safety
@@ -1331,7 +1331,7 @@ internal class NexusClientPoolTests : BaseTests
                 }
             }).ToArray();
 
-            await Task.WhenAll(tasks).Timeout(5);
+            await Task.WhenAll(tasks).Timeout(T(5));
 
             // Assert - No exceptions should occur during normal operation
             await Assert.That(exceptions.IsEmpty).IsTrue().Because($"Exceptions occurred: {string.Join(", ", exceptions.Select(e => e.Message))}");
@@ -1350,7 +1350,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1358,16 +1358,16 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             
             // Initially should not be completed
             await Assert.That(client.DisconnectedTask.IsCompleted).IsFalse();
 
             // Disconnect server
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
 
             // Wait for disconnection
-            await client.DisconnectedTask.Timeout(1);
+            await client.DisconnectedTask.Timeout(T(1));
             await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
         }
         finally
@@ -1384,7 +1384,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1392,14 +1392,14 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             
             // Stop server
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(100);
 
             // EnsureConnectedAsync should fail
-            var result = await client.EnsureConnectedAsync().Timeout(1);
+            var result = await client.EnsureConnectedAsync().Timeout(T(1));
             await Assert.That(result).IsFalse();
         }
         finally
@@ -1416,7 +1416,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1424,10 +1424,10 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             
             // Should succeed when already connected
-            var result = await client.EnsureConnectedAsync().Timeout(1);
+            var result = await client.EnsureConnectedAsync().Timeout(T(1));
             await Assert.That(result).IsTrue();
         }
         finally
@@ -1444,7 +1444,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -1455,7 +1455,7 @@ internal class NexusClientPoolTests : BaseTests
             // Sequential rent/return operations
             for (int i = 0; i < 10; i++)
             {
-                using var client = await pool.RentClientAsync().Timeout(1);
+                using var client = await pool.RentClientAsync().Timeout(T(1));
                 await Assert.That(pool.AvailableConnections).IsEqualTo(0).Because($"Iteration {i}: Should have 0 available when rented");
             }
             
@@ -1476,7 +1476,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -1491,8 +1491,8 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Create clients to populate pool
-            var client1 = await pool.RentClientAsync().Timeout(1);
-            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client1 = await pool.RentClientAsync().Timeout(T(1));
+            var client2 = await pool.RentClientAsync().Timeout(T(1));
 
             client1.Dispose();
             client2.Dispose();
@@ -1521,7 +1521,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1534,7 +1534,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             // Should handle null factory return gracefully
             await AssertThrows<NullReferenceException>(async () =>
-                await pool.RentClientAsync().Timeout(1));
+                await pool.RentClientAsync().Timeout(T(1)));
         }
         finally
         {
@@ -1556,7 +1556,7 @@ internal class NexusClientPoolTests : BaseTests
             for (int i = 0; i < 3; i++)
             {
                 await AssertThrows<ClientPoolConnectionException>(async () =>
-                    await pool.RentClientAsync().Timeout(1));
+                    await pool.RentClientAsync().Timeout(T(1)));
             }
             
             // Pool should still be functional for future attempts
@@ -1577,7 +1577,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
@@ -1585,23 +1585,23 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            using var client = await pool.RentClientAsync().Timeout(1);
+            using var client = await pool.RentClientAsync().Timeout(T(1));
             
             // Initial state
             await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
             // Disconnect server
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(100);
             
             // State should reflect disconnection
             await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
 
             // Reconnect server
-            await server.StartAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
             
             // Manual reconnect
-            var reconnected = await client.EnsureConnectedAsync().Timeout(1);
+            var reconnected = await client.EnsureConnectedAsync().Timeout(T(1));
             if (reconnected)
             {
                 await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
@@ -1621,7 +1621,7 @@ internal class NexusClientPoolTests : BaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
@@ -1637,7 +1637,7 @@ internal class NexusClientPoolTests : BaseTests
             // Long operation
             tasks.Add(Task.Run(async () =>
             {
-                using var client = await pool.RentClientAsync().Timeout(1);
+                using var client = await pool.RentClientAsync().Timeout(T(1));
                 await Task.Delay(500); // Long delay
                 Interlocked.Increment(ref completedOperations);
             }));
@@ -1647,13 +1647,13 @@ internal class NexusClientPoolTests : BaseTests
             {
                 tasks.Add(Task.Run(async () =>
                 {
-                    using var client = await pool.RentClientAsync().Timeout(1);
+                    using var client = await pool.RentClientAsync().Timeout(T(1));
                     await Task.Delay(50); // Short delay
                     Interlocked.Increment(ref completedOperations);
                 }));
             }
 
-            await Task.WhenAll(tasks).Timeout(2);
+            await Task.WhenAll(tasks).Timeout(T(2));
             
             await Assert.That(completedOperations).IsEqualTo(6);
         }
@@ -1676,7 +1676,7 @@ internal class NexusClientPoolTests : BaseTests
             nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
         });
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         // Create client without authentication configured
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -1686,13 +1686,13 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var exception = await Assert.ThrowsExactlyAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
+            var exception = await Assert.ThrowsExactlyAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(T(1)));
             await Assert.That(exception!.ConnectionResult.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
         }
         finally
         {
             await pool.DisposeAsync();
-            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
         }
     }
 }

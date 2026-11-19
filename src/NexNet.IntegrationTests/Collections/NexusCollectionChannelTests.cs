@@ -24,7 +24,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         }
 
         // Should not throw or timeout
-        await Task.WhenAll(tasks).Timeout(10);
+        await Task.WhenAll(tasks).Timeout(T(10));
 
         await completeTask.Wait();
 
@@ -49,7 +49,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         }
 
         // Client should not disconnect due to channel saturation
-        await Task.WhenAll(tasks).Timeout(2);
+        await Task.WhenAll(tasks).Timeout(T(2));
 
         await completeTask.Wait(2);
 
@@ -75,7 +75,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         var serverTasks = Enumerable.Range(0, 25).Select(i =>
             serverNexus.IntListBi.AddAsync(i * 2 + 1)).ToArray();
 
-        await Task.WhenAll(clientTasks.Concat(serverTasks)).Timeout(10);
+        await Task.WhenAll(clientTasks.Concat(serverTasks)).Timeout(T(10));
 
         //await Task.Delay(1000);
 
@@ -105,7 +105,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
             tasks.Add(serverNexus.IntListBi.AddAsync(i));
         }
 
-        await Task.WhenAll(tasks).Timeout(5);
+        await Task.WhenAll(tasks).Timeout(T(5));
 
         // Client should be disconnected due to slow processing
         await Task.Delay(100);
