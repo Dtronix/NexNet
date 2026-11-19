@@ -88,7 +88,7 @@ know (so a later minor addition is not a breaking change) and MUST fail the conn
 | `lib` | string | Free text: the NexNet client library and its version. |
 | `schemaHash` | string | Lower-case hex SHA-256 of the bytes of the `nexnet-ir.json` the host's generated code was built from (§4.6). |
 | `capabilities` | string[] | Names of the `ClientCapabilities` flags the client supports (`AuthorizationHeader`, `ClientCertificate`, `Pinning`, `CustomCa`, `RemoteCertificate`, `HttpSocket`, `Tcp`, `Uds`, `Quic`, `FakeTime`, `ClientPool`). Unknown names are ignored. |
-| `transports` | string[] | Names of the `ClientTransport` values the client implements (`Tcp`, `TcpTls`, `Uds`, `HttpSocket`, `HttpSocketTls`, `WebSocket`, `WebSocketTls`). |
+| `transports` | string[] | Names of the `ClientTransport` values the client implements (`Tcp`, `TcpTls`, `Uds`, `HttpSocket`, `HttpSocketTls`, `WebSocket`, `WebSocketTls`). `Quic` is a C#-only transport: only the in-process C# driver runs it, and no language host lists it. |
 | `maxConcurrency` | int ≥ 1 | How many tests the host can run at once. The runner never runs more tests at once on this host. |
 | `pid` | int? | The process id of the host (for thread dumps); absent in a browser. |
 
@@ -577,7 +577,7 @@ When the file is missing, every row of the language fails with the command that 
 |---|---|
 | `Remote.ControlFraming`, `ControlConnection`, `ControlListener`, `HostHello` | Framing, request/response correlation, events, transcripts, hello checks. |
 | `Remote.ControlErrors`, `ControlJson`, `LeakReports` | Error objects (§8), the JSON of specs, method/collection references, steps and type expressions, leak reports. |
-| `Remote.RemoteClientDriver` (`IClientUnderTest`), `RemoteClientDriverFactory` (`IClientDriverFactory`) | Map the harness API onto the ops above; rethrow error kinds as C# exceptions. |
+| `Remote.RemoteClientDriver` (`IClientUnderTest`), `RemotePoolDriver` (`IPoolUnderTest`), `RemoteClientDriverFactory` (`IClientDriverFactory`, `IPoolDriverFactory`) | Map the harness API onto the ops above (`RemotePoolDriver`: the pool ops of §6.11); rethrow error kinds as C# exceptions. |
 | `Remote.RemoteTestAudit` | Opens scopes, and at the end of each TUnit test sends `test.end`, fails the test on a leak and attaches the transcript on failure. |
 | `Hosts.HostLaunchConfig`, `SchemaHash` | `host.json` (§10), the expected schema hash (§4.6). |
 | `Hosts.LanguageHost`, `LanguageHostPool` | Launch, warm-up, ping, crash capture, process-tree kill, restart. The pool is a TUnit `ClassDataSource` shared per test session; it registers each host's driver with `Harness`. |
