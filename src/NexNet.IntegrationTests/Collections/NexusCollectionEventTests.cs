@@ -25,7 +25,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         await completeTask.Wait();
 
         await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(40);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -55,7 +55,10 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         await waitEvent.Wait();
 
-        await Task.Delay(100); // Allow events to propagate
+        // Every subscriber sees each event; the waiter may complete before the others ran for the last one.
+        await WaitUntil(() => Volatile.Read(ref subscriber1Events) == 10
+                              && Volatile.Read(ref subscriber2Events) == 10
+                              && Volatile.Read(ref subscriber3Events) == 10);
 
         await Assert.That(subscriber1Events).IsEqualTo(10);
         await Assert.That(subscriber2Events).IsEqualTo(10);
@@ -80,10 +83,10 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         // Operations should continue working despite exceptions
         await serverNexus.IntListBi.AddAsync(42);
-        await Task.Delay(100);
+        await WaitUntil(() => Volatile.Read(ref goodEventCount) >= 1);
 
         await Assert.That(goodEventCount).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -94,19 +97,19 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await client.Proxy.IntListSC.EnableAsync().Timeout(2);
-        await client.Proxy.IntListSC.ReadyTask.Timeout(2);
+        await client.Proxy.IntListSC.EnableAsync().Timeout(T(2));
+        await client.Proxy.IntListSC.ReadyTask.Timeout(T(2));
 
         var serverNexus = server.NexusCreatedQueue.First();
         await serverNexus.IntListSC.AddAsync(100);
 
-        await Task.Delay(200);
+        await WaitUntil(() => client.Proxy.IntListSC.Count == 1);
 
         await Assert.That(client.Proxy.IntListSC.Count).IsEqualTo(1);
         await Assert.That(client.Proxy.IntListSC[0]).IsEqualTo(100);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 }

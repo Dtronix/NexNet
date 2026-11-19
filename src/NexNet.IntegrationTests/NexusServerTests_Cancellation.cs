@@ -29,9 +29,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
                 {
                     await nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token);
                 });
-            }).Timeout(1);
+            }).Timeout(T(1));
 
-        await tcs.Timeout(1);
+        await tcs.Timeout(T(1));
     }
 
 
@@ -56,9 +56,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
                 {
                     await nexus.Context.Clients.Caller.ClientTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
                 });
-            }).Timeout(1);
+            }).Timeout(T(1));
 
-        await tcs.Timeout(1);
+        await tcs.Timeout(T(1));
     }
 
 
@@ -81,9 +81,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             async nexus =>
             {
                 await Assert.ThrowsExactlyAsync<TaskCanceledException>(async() => await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
-            }).Timeout(1);
+            }).Timeout(T(1));
 
-        await tcs.Timeout(1);
+        await tcs.Timeout(T(1));
     }
 
 
@@ -106,15 +106,17 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             async nexus =>
             {
                 await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
-            }).Timeout(1);
+            }).Timeout(T(1));
 
-        await tcs.Timeout(1);
+        await tcs.Timeout(T(1));
     }
 
     [Test]
     [Transports]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
+        using var cts = new CancellationTokenSource();
+        var completed = new TaskCompletionSource<ServerNexus>(TaskCreationOptions.RunContinuationsAsynchronously);
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             nexus => nexus.ClientTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
@@ -123,15 +125,24 @@ internal partial class NexusServerTests_Cancellation : BaseTests
                 CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
-            nexus => nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(200).Token));
+            async nexus =>
+            {
+                await nexus.Context.Clients.Caller.ClientTaskWithCancellation(cts.Token);
+                completed.TrySetResult(nexus);
+            });
 
-        await AssertThrows<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
+        var serverNexus = await completed.Task.Timeout(T(1));
+
+        // Canceled after the call completed: there is nothing left to cancel.
+        cts.Cancel();
+        await Barrier(serverNexus.Context.Clients.Caller);
+        await Assert.That(tcs.IsCompleted).IsFalse().Because("The server must not send a cancellation after the call completed.");
     }
 
 
 
-    private async Task<Task> ServerSendsMessage<T>(Type type, Action<ClientNexus> setup, Action<T, TaskCompletionSource> onMessage, Func<ServerNexus, ValueTask> action)
-        where T : class, IMessageBase, new()
+    private async Task<Task> ServerSendsMessage<TMessage>(Type type, Action<ClientNexus> setup, Action<TMessage, TaskCompletionSource> onMessage, Func<ServerNexus, ValueTask> action)
+        where TMessage : class, IMessageBase, new()
     {
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
@@ -140,24 +151,17 @@ internal partial class NexusServerTests_Cancellation : BaseTests
 
         setup.Invoke(clientNexus);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        serverConfig.InternalOnSend = (_, bytes) =>
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
         {
-            try
-            {
-                if (bytes[0] != (byte)T.Type)
-                    return;
+            if (frame.Type != TMessage.Type)
+                return;
 
-                var message = TestSerialization.DeserializeMessage<T>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                Debug.Assert(message != null, nameof(message) + " != null");
-                onMessage(message, tcs);
-            }
-            catch
-            {
-                // not a type we care about
-            }
-        };
+            var message = TestSerialization.DeserializeMessage<TMessage>(frame.Body);
+            Debug.Assert(message != null, nameof(message) + " != null");
+            onMessage(message, tcs);
+        });
 
 
         server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus2 =>
@@ -167,7 +171,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         };
 
 
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         return tcs.Task;
     }

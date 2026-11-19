@@ -14,6 +14,7 @@ using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Pipes;
 using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
@@ -856,6 +857,110 @@ internal abstract class BaseTests
     /// A loopback UDP port no other test in this run has been given; see <see cref="TestPorts"/>.
     /// </summary>
     protected static int FreeUdpPort() => TestPorts.Next();
+
+    /// <summary>
+    /// Multiplier for every <see cref="T"/> timeout, from the NEXNET_TIMEOUT_SCALE environment variable (default 1).
+    /// Raise it on slow machines and for clients that run out of process.
+    /// </summary>
+    protected static readonly double TimeoutScale = ReadTimeoutScale();
+
+    private static double ReadTimeoutScale()
+    {
+        var value = Environment.GetEnvironmentVariable("NEXNET_TIMEOUT_SCALE");
+        return double.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var scale) && scale > 0
+            ? scale
+            : 1;
+    }
+
+    /// <summary>
+    /// A hang guard of <paramref name="seconds"/>, scaled by <see cref="TimeoutScale"/>, plus 250 ms of slack, for
+    /// <c>.Timeout(T(x))</c>. Use it for every wait on a step whose duration depends on the machine; the
+    /// <see cref="TestTimeouts"/> constants go through it too (<c>T(TestTimeouts.Connect)</c>).
+    /// </summary>
+    protected static double T(double seconds) => seconds * TimeoutScale + 0.25;
+
+    /// <summary>
+    /// Waits until <paramref name="client"/> reaches <paramref name="state"/>, for at most <c>T(seconds)</c>, then
+    /// asserts it. Use it instead of reading the state right after an action: a client in another process reports
+    /// its state asynchronously.
+    /// </summary>
+    protected static Task WaitForState(INexusClient client, ConnectionState state, string? because = null, double seconds = 1)
+        => WaitForState(() => client.State, state, because, seconds);
+
+    /// <inheritdoc cref="WaitForState(INexusClient, ConnectionState, string?, double)"/>
+    protected static Task WaitForState<TProxy>(IRentedNexusClient<TProxy> client, ConnectionState state, string? because = null, double seconds = 1)
+        where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash
+        => WaitForState(() => client.State, state, because, seconds);
+
+    private static async Task WaitForState(Func<ConnectionState> getState, ConnectionState state, string? because, double seconds)
+    {
+        var deadline = Environment.TickCount64 + (long)(T(seconds) * 1000);
+        while (getState() != state && Environment.TickCount64 < deadline)
+            await Task.Delay(5);
+
+        if (because == null)
+            await Assert.That(getState()).IsEqualTo(state);
+        else
+            await Assert.That(getState()).IsEqualTo(state).Because(because);
+    }
+
+    /// <summary>
+    /// The client's writer on a pipe used as a channel of <typeparamref name="TItem"/>. Tests go through this helper
+    /// instead of the channel extensions, so the cross-language harness can map it to its remote pipe operations.
+    /// </summary>
+    protected static ValueTask<INexusChannelWriter<TItem>> ChannelWriter<TItem>(INexusDuplexPipe pipe)
+        => pipe.GetChannelWriter<TItem>();
+
+    /// <summary>
+    /// The client's reader on a pipe used as a channel of <typeparamref name="TItem"/>; see
+    /// <see cref="ChannelWriter{TItem}"/>.
+    /// </summary>
+    protected static ValueTask<INexusChannelReader<TItem>> ChannelReader<TItem>(INexusDuplexPipe pipe)
+        => pipe.GetChannelReader<TItem>();
+
+    /// <summary>
+    /// Waits until <paramref name="condition"/> holds, for at most <c>T(seconds)</c>, and returns either way: the
+    /// assertions after it report what is wrong. For state that changes without an event to wait for.
+    /// </summary>
+    protected static async Task WaitUntil(Func<bool> condition, double seconds = 1)
+    {
+        var deadline = Environment.TickCount64 + (long)(T(seconds) * 1000);
+        while (!condition() && Environment.TickCount64 < deadline)
+            await Task.Delay(5);
+    }
+
+    /// <summary>
+    /// A round trip from the client to the server. Frames on a session arrive in order, so once it returns the server
+    /// has received everything the client sent before it. Use it before asserting that something did not arrive.
+    /// The server nexus needs no handler: a missing one fails the call remotely, which still completes the round trip.
+    /// </summary>
+    protected static async Task Barrier(ClientNexus.ServerProxy proxy)
+    {
+        try
+        {
+            await proxy.ServerTaskValue().Timeout(T(1));
+        }
+        catch (ProxyRemoteInvocationException)
+        {
+            // The server answered.
+        }
+    }
+
+    /// <summary>
+    /// A round trip from the server to a client; see <see cref="Barrier(ClientNexus.ServerProxy)"/>.
+    /// </summary>
+    protected static async Task Barrier(ServerNexus.ClientProxy proxy)
+    {
+        try
+        {
+            await proxy.ClientTaskValue().Timeout(T(1));
+        }
+        catch (ProxyRemoteInvocationException)
+        {
+            // The client answered.
+        }
+    }
 
     public static async Task AssertThrows<T>(Func<Task> task)
         where T : Exception

@@ -148,39 +148,32 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
 
     private async Task InvokeFromClientAndVerifySent(Type type, InvocationMessage expectedMessage, Action<NexusClient<ClientNexus, ClientNexus.ServerProxy>> action)
     {
-        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type),
-            clientConfig);
+            serverConfig,
+            CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        clientConfig.InternalOnSend = (_, bytes) =>
+        // Observed on the server: the invocation frame as it arrives.
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
         {
-            try
-            {
-                if (bytes[0] != (byte)MessageType.Invocation)
-                    return;
+            if (frame.Type != MessageType.Invocation)
+                return;
 
-                var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                CallbackAssert.NotNull(message);
+            var message = TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body);
+            CallbackAssert.NotNull(message);
 
-                if (message == null)
-                    return;
+            if (message == null)
+                return;
 
-                CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
-                CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
-                CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
-                CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
-                tcs.SetResult();
-            }
-            catch
-            {
-                // Not an invocationRequest.
-            }
-
-        };
+            CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
+            CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
+            CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
+            CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
+            tcs.TrySetResult();
+        });
 
         clientNexus.OnConnectedEvent = (nexus, b) =>
         {
@@ -188,10 +181,10 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(T(1));
     }
 
 }

@@ -23,25 +23,30 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sent = ArrivedInvocations(serverConfig, 3);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueEvent = async _ =>
         {
             Interlocked.Increment(ref received);
+            running.TrySetResult();
             await release.Task;
             return 1;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var calls = Enumerable.Range(0, 4).Select(_ => client.Proxy.ServerTaskValue().AsTask()).ToArray();
-        await Task.Delay(200);
+        // The tap sees frames as they arrive, before the session starts running them: wait for both.
+        await sent.Timeout(T(1));
+        await running.Task.Timeout(T(1));
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
-        await Assert.That(received).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(Volatile.Read(ref received)).IsEqualTo(1);
+        await WaitForState(client, ConnectionState.Connected);
 
         release.SetResult();
-        await Assert.That(await Task.WhenAll(calls).Timeout(1)).All(x => Equals(x, 1));
+        await Assert.That(await Task.WhenAll(calls).Timeout(T(1))).All(x => Equals(x, 1));
         await Assert.That(received).IsEqualTo(4);
     }
 
@@ -54,29 +59,30 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var sent = ArrivedInvocations(serverConfig, 2);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, _) =>
         {
             Interlocked.Increment(ref received);
             await release.Task;
             return 1;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         // The first runs; the second takes the returned credit and waits in the queue; the third waits for credit.
         var first = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
+        await sent.Timeout(T(1));
         // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
 
         release.SetResult();
-        await Task.WhenAll(first, second).Timeout(1);
+        await Task.WhenAll(first, second).Timeout(T(1));
         await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
-        await Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1)).IsEqualTo(1);
+        await Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(T(1))).IsEqualTo(1);
     }
 
     [Test]
@@ -88,26 +94,27 @@ internal class InvocationCreditTests : BaseTests
         serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
+        var sent = ArrivedInvocations(serverConfig, 2);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
         {
             Interlocked.Increment(ref received);
             await release.Task;
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var first = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
+        await sent.Timeout(T(1));
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
 
         release.SetResult();
-        await Task.WhenAll(first, second).Timeout(1);
+        await Task.WhenAll(first, second).Timeout(T(1));
         await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -123,9 +130,9 @@ internal class InvocationCreditTests : BaseTests
             nexus.ServerVoidEvent = _ => voidCalled.TrySetResult();
             nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
@@ -136,10 +143,10 @@ internal class InvocationCreditTests : BaseTests
             InvocationId = 0,
             MethodId = 0 // ServerVoid
         };
-        await Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1)).IsTrue();
+        await Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(T(1))).IsTrue();
 
-        await voidCalled.Task.Timeout(1);
-        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1)).IsEqualTo(1);
+        await voidCalled.Task.Timeout(T(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(T(1))).IsEqualTo(1);
     }
 
     [Test]
@@ -157,15 +164,15 @@ internal class InvocationCreditTests : BaseTests
             if (Interlocked.Increment(ref received) == count)
                 all.TrySetResult();
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         for (var i = 0; i < count; i++)
             client.Proxy.ServerVoidWithParam(i);
 
-        await all.Task.Timeout(10);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await all.Task.Timeout(T(10));
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -186,14 +193,14 @@ internal class InvocationCreditTests : BaseTests
             ServerNexusHash = IInvocationMethodHash.GetMethodHash<ServerNexus>(),
             ClientNexusHash = IInvocationMethodHash.GetMethodHash<ClientNexus>(),
             InvocationCredits = 1,
-        }).Timeout(1);
-        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
+        }).Timeout(T(1));
+        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(T(1));
 
         using var context = server.ContextProvider.Rent();
 
         // The first uses the only credit; the second waits ProgressTimeout, is dropped, and the broadcast finishes.
-        await context.Proxy.All.ClientTask().Timeout(1);
-        await context.Proxy.All.ClientTask().Timeout(2);
+        await context.Proxy.All.ClientTask().Timeout(T(1));
+        await context.Proxy.All.ClientTask().Timeout(T(2));
         await Assert.That(raw.IsConnected).IsTrue();
     }
 
@@ -220,25 +227,25 @@ internal class InvocationCreditTests : BaseTests
                     tcs.TrySetResult();
                 return default;
             };
-            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             received.Add(tcs.Task);
         }
 
         using var context = server.ContextProvider.Rent();
 
         // Uses the stalled clients' only credit.
-        await context.Proxy.All.ClientTaskWithParam(0).Timeout(1);
+        await context.Proxy.All.ClientTaskWithParam(0).Timeout(T(1));
 
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientTaskWithParam(1).AsTask();
 
         // The healthy clients get it while the broadcast still waits for the stalled ones.
-        await Task.WhenAll(received).Timeout(1);
+        await Task.WhenAll(received).Timeout(T(1));
         await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
         await Assert.That(broadcast.IsCompleted).IsFalse();
 
         // Both stalled clients are waited for at the same time: one timeout, not two.
-        await broadcast.Timeout(3);
+        await broadcast.Timeout(T(3));
         await Assert.That(elapsed.ElapsedMilliseconds).IsBetween(900, 1800);
         await Assert.That(stalled1.IsConnected && stalled2.IsConnected).IsTrue();
     }
@@ -265,20 +272,20 @@ internal class InvocationCreditTests : BaseTests
                 tcs.TrySetResult(data.Length);
                 return default;
             };
-            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             received.Add(tcs.Task);
         }
 
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTask().Timeout(1);
+        await context.Proxy.All.ClientTask().Timeout(T(1));
 
         // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
-        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 300 * 1024));
+        await Assert.That(await Task.WhenAll(received).Timeout(T(1))).All(x => Equals(x, 300 * 1024));
         await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
 
-        await broadcast.Timeout(3);
+        await broadcast.Timeout(T(3));
         await Assert.That(stalled.IsConnected).IsTrue();
     }
 
@@ -290,7 +297,7 @@ internal class InvocationCreditTests : BaseTests
         // order they arrive.
         const int count = 500;
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var orders = new List<List<int>>();
         var done = new List<Task>();
@@ -313,16 +320,16 @@ internal class InvocationCreditTests : BaseTests
 
                 return default;
             };
-            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             orders.Add(order);
             done.Add(all.Task);
         }
 
         using var context = server.ContextProvider.Rent();
         for (var i = 0; i < count; i++)
-            await context.Proxy.All.ClientTaskWithParam(i).Timeout(1);
+            await context.Proxy.All.ClientTaskWithParam(i).Timeout(T(1));
 
-        await Task.WhenAll(done).Timeout(5);
+        await Task.WhenAll(done).Timeout(T(5));
         foreach (var order in orders)
             await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
     }
@@ -333,14 +340,14 @@ internal class InvocationCreditTests : BaseTests
     {
         var serverConfig = CreateServerConfig(type);
         var frames = new List<byte[]>();
-        serverConfig.InternalOnSend = (_, bytes) =>
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
         {
-            if (bytes.Length > 0 && bytes[0] == (byte)MessageType.Invocation)
+            if (frame.Type == MessageType.Invocation)
                 lock (frames)
-                    frames.Add(bytes);
-        };
+                    frames.Add(frame.Frame);
+        });
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var received = new List<Task<int>>();
         for (var i = 0; i < 3; i++)
@@ -352,14 +359,14 @@ internal class InvocationCreditTests : BaseTests
                 tcs.TrySetResult(data);
                 return default;
             };
-            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             received.Add(tcs.Task);
         }
 
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
+        await context.Proxy.All.ClientTaskWithParam(12345).Timeout(T(1));
 
-        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 12345));
+        await Assert.That(await Task.WhenAll(received).Timeout(T(1))).All(x => Equals(x, 12345));
         byte[][] sent;
         lock (frames)
             sent = frames.ToArray();
@@ -383,8 +390,24 @@ internal class InvocationCreditTests : BaseTests
             ServerNexusHash = IInvocationMethodHash.GetMethodHash<ServerNexus>(),
             ClientNexusHash = IInvocationMethodHash.GetMethodHash<ClientNexus>(),
             InvocationCredits = 1,
-        }).Timeout(1);
-        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
+        }).Timeout(T(1));
+        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(T(1));
         return raw;
+    }
+
+    /// <summary>
+    /// Completes once the server has received <paramref name="count"/> invocation frames: the calls the client was
+    /// allowed to send have arrived.
+    /// </summary>
+    private static Task ArrivedInvocations(Transports.ServerConfig serverConfig, int count)
+    {
+        var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invocations = 0;
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.Invocation && Interlocked.Increment(ref invocations) == count)
+                arrived.TrySetResult();
+        });
+        return arrived.Task;
     }
 }

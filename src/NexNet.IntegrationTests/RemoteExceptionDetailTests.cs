@@ -188,21 +188,21 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(CreateClientConfig(type).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
 
         var results = new List<byte[]>();
-        serverConfig.InternalOnSend = (_, bytes) =>
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
         {
-            if (bytes.Length > 0 && bytes[0] == (byte)MessageType.InvocationResult)
+            if (frame.Type == MessageType.InvocationResult)
                 lock (results)
-                    results.Add(bytes);
-        };
+                    results.Add(frame.Frame);
+        });
 
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("secret");
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsNull();
@@ -232,11 +232,11 @@ internal class RemoteExceptionDetailTests : BaseTests
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
@@ -245,7 +245,7 @@ internal class RemoteExceptionDetailTests : BaseTests
         // The session stays usable.
         server.NexusCreatedQueue.TryPeek(out var serverNexus);
         serverNexus!.ServerTaskValueEvent = _ => ValueTask.FromResult(5);
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(5);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(5);
     }
 
     [Test]
@@ -258,11 +258,11 @@ internal class RemoteExceptionDetailTests : BaseTests
         var longMessage = new string('x', 5000);
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException(longMessage);
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo(new string('x', 2048));
     }
@@ -275,12 +275,12 @@ internal class RemoteExceptionDetailTests : BaseTests
         serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
         var (server, client, clientNexus) = CreateServerClient(serverConfig, CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         // Larger than the client accepts (4 MiB by default): the server fails the call with a limit exception.
         var exception = await Throws(
-            async () => await clientNexus.Context.Proxy.ServerDataResult(5 * 1024 * 1024).Timeout(5));
+            async () => await clientNexus.Context.Proxy.ServerDataResult(5 * 1024 * 1024).Timeout(T(5)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo(typeof(NexusMessageTooLargeException).FullName);
         await Assert.That(string.IsNullOrEmpty(exception.RemoteMessage)).IsFalse();
     }
@@ -302,11 +302,11 @@ internal class RemoteExceptionDetailTests : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(seen).IsSameReferenceAs(thrown);
         await Assert.That(exception.RemoteErrorCode).IsEqualTo(42);
         await Assert.That(exception.RemoteExceptionType).IsNull();
@@ -328,11 +328,11 @@ internal class RemoteExceptionDetailTests : BaseTests
             nexus.OnInvocationExceptionEvent = (_, _, _) => null;
         };
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.ArgumentException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("bad");
@@ -352,18 +352,18 @@ internal class RemoteExceptionDetailTests : BaseTests
             nexus.OnInvocationExceptionEvent = (_, _, _) => throw new NotSupportedException("hook failed");
         };
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var exception = await Throws(
-            async () => await client.Proxy.ServerTaskValue().Timeout(1));
+            async () => await client.Proxy.ServerTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
 
         fail = false;
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(9);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(9);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -375,12 +375,12 @@ internal class RemoteExceptionDetailTests : BaseTests
         var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), clientConfig);
         clientNexus.ClientTaskValueEvent = _ => throw new InvalidOperationException("client boom");
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         using var context = server.Server.ContextProvider.Rent();
         var exception = await Throws(
-            async () => await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue().Timeout(1));
+            async () => await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue().Timeout(T(1)));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
         await Assert.That(exception.RemoteMessage).IsEqualTo("client boom");
     }
@@ -407,10 +407,10 @@ internal class RemoteExceptionDetailTests : BaseTests
             }
         };
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        var exception = await tcs.Task.Timeout(1);
+        var exception = await tcs.Task.Timeout(T(1));
         await Assert.That(exception.RemoteErrorCode).IsEqualTo(7);
         await Assert.That(exception.RemoteExceptionType).IsNull();
         await Assert.That(exception.RemoteMessage).IsNull();
@@ -424,15 +424,15 @@ internal class RemoteExceptionDetailTests : BaseTests
         serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
         var (server, _, _) = CreateServerClient(serverConfig, CreateClientConfig(Type.Uds));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("pooled boom");
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
             new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 2 });
         try
         {
-            using var rented = await pool.RentClientAsync().Timeout(1);
+            using var rented = await pool.RentClientAsync().Timeout(T(1));
             var exception = await Throws(
-                async () => await rented.Proxy.ServerTaskValue().Timeout(1));
+                async () => await rented.Proxy.ServerTaskValue().Timeout(T(1)));
             await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
             await Assert.That(exception.RemoteMessage).IsEqualTo("pooled boom");
         }

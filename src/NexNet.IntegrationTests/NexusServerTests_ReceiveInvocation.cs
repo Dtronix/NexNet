@@ -267,10 +267,10 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
         
         server.OnNexusCreated = nexus => action(nexus, clientNexus, tcs);
         
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(T(1));
     }
     
 }

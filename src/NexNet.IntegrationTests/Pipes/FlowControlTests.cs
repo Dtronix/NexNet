@@ -23,7 +23,7 @@ internal class FlowControlTests : BaseTests
         {
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
             {
-                await foreach (var item in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                await foreach (var item in await ChannelReader<byte[]>(pipe))
                 {
                     await Task.Delay(5);
                     if (Interlocked.Increment(ref received) == count)
@@ -32,14 +32,14 @@ internal class FlowControlTests : BaseTests
             };
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await using var pipe = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
+        var writer = await ChannelWriter<byte[]>(pipe);
         var writing = Task.Run(async () =>
         {
             for (var i = 0; i < count; i++)
@@ -47,10 +47,10 @@ internal class FlowControlTests : BaseTests
         });
 
         // The call is answered while the burst is still being read.
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
 
-        await writing.Timeout(10);
-        await allReceived.Task.Timeout(10);
+        await writing.Timeout(T(10));
+        await allReceived.Task.Timeout(T(10));
     }
 
     [Test]
@@ -64,23 +64,23 @@ internal class FlowControlTests : BaseTests
         {
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
             {
-                await foreach (var received in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                await foreach (var received in await ChannelReader<byte[]>(pipe))
                     item.TrySetResult(received.Length);
             };
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await using var pipe = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
-        await writer.WriteAsync(new byte[300 * 1024]).Timeout(5);
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
+        var writer = await ChannelWriter<byte[]>(pipe);
+        await writer.WriteAsync(new byte[300 * 1024]).Timeout(T(5));
 
-        await Assert.That(await item.Task.Timeout(5)).IsEqualTo(300 * 1024);
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
+        await Assert.That(await item.Task.Timeout(T(5))).IsEqualTo(300 * 1024);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
     }
 
     [Test]
@@ -93,22 +93,22 @@ internal class FlowControlTests : BaseTests
         var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
-            await foreach (var value in await pipe.GetChannel<byte[]>().GetReaderAsync())
+            await foreach (var value in await ChannelReader<byte[]>(pipe))
                 received.TrySetResult(value.Length);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await using var pipe = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
+        var writer = await ChannelWriter<byte[]>(pipe);
 
         // The server accepts 64 KiB; the client checks before sending.
         await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[100 * 1024]));
-        await writer.WriteAsync(new byte[10]).Timeout(1);
-        await Assert.That(await received.Task.Timeout(1)).IsEqualTo(10);
+        await writer.WriteAsync(new byte[10]).Timeout(T(1));
+        await Assert.That(await received.Task.Timeout(T(1))).IsEqualTo(10);
     }
 
     [Test]
@@ -121,23 +121,23 @@ internal class FlowControlTests : BaseTests
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var pipe = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+        await pipe.ReadyTask.Timeout(T(1));
 
         // More than the window: the write waits for credit that never comes, in the writer's own task.
         using var cts = new CancellationTokenSource(500);
-        var result = await pipe.Output.WriteAsync(new byte[1024 * 1024], cts.Token).AsTask().Timeout(2);
+        var result = await pipe.Output.WriteAsync(new byte[1024 * 1024], cts.Token).AsTask().Timeout(T(2));
         await Assert.That(result.IsCanceled).IsTrue();
 
-        await pipe.CompleteAsync().Timeout(1);
+        await pipe.CompleteAsync().Timeout(T(1));
         await pipe.DisposeAsync();
 
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
     }
 
     [Test]
@@ -153,9 +153,9 @@ internal class FlowControlTests : BaseTests
                 pipe.Input.AdvanceTo(read.Buffer.End);
             };
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         // Reserved for the session's lifetime: the invocation queue (InvocationCredits x 64 KiB).
         var budget = client.Session!.Budget;
@@ -164,10 +164,10 @@ internal class FlowControlTests : BaseTests
         for (var i = 0; i < 300; i++)
         {
             await using var pipe = client.CreatePipe();
-            await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-            await pipe.ReadyTask.Timeout(1);
-            await pipe.Output.WriteAsync(new byte[] { 1 }).Timeout(1);
-            await pipe.CompleteTask.Timeout(1);
+            await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.ReadyTask.Timeout(T(1));
+            await pipe.Output.WriteAsync(new byte[] { 1 }).Timeout(T(1));
+            await pipe.CompleteTask.Timeout(T(1));
         }
 
         // Every window reserved by the client was released.
@@ -187,26 +187,26 @@ internal class FlowControlTests : BaseTests
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var pipes = new List<IRentedNexusDuplexPipe>();
         for (var i = 0; i < 2; i++)
         {
             var open = client.CreatePipe();
             pipes.Add(open);
-            await client.Proxy.ServerTaskValueWithDuplexPipe(open).Timeout(1);
-            await open.ReadyTask.Timeout(1);
+            await client.Proxy.ServerTaskValueWithDuplexPipe(open).Timeout(T(1));
+            await open.ReadyTask.Timeout(T(1));
         }
 
         // The server's limit is reached: the third open is refused.
         var refused = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(refused).Timeout(1);
-        await Assert.ThrowsExactlyAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
+        await client.Proxy.ServerTaskValueWithDuplexPipe(refused).Timeout(T(1));
+        await Assert.ThrowsExactlyAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(T(1)));
         await refused.DisposeAsync();
 
-        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
         foreach (var pipe in pipes)
             await pipe.DisposeAsync();
     }
