@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 public final class NexusSessionSnapshot {
     /** The field names, in the order of the C# record (camelCase); checked against tests/golden/snapshot-fields.json. */
     public static final List<String> FIELDS = Collections.unmodifiableList(Arrays.asList(
-        "id", "isServer", "transport", "endpoint", "isSecure", "state", "isEstablished", "connected",
+        "id", "isServer", "transport", "endpoint", "isSecure", "pingInterval", "state", "isEstablished", "connected",
         "sinceLastReceived", "sinceLastSent", "flushInProgress", "budget", "invocations", "pipes",
         "largeMessages", "framesSent", "bytesSent", "framesReceived", "bytesReceived"));
 
@@ -29,6 +29,7 @@ public final class NexusSessionSnapshot {
     private final String transport;
     private final @Nullable String endpoint;
     private final @Nullable Boolean isSecure;
+    private final @Nullable NexusTimeSpan pingInterval;
     private final ConnectionState state;
     private final boolean isEstablished;
     private final @Nullable NexusTimeSpan connected;
@@ -52,6 +53,8 @@ public final class NexusSessionSnapshot {
      * @param transport the transport name, as in the {@code nexnet.transport} metric tag
      * @param endpoint the server endpoint name; null for a client session
      * @param isSecure on a client, whether the transport is encrypted; null on a server session
+     * @param pingInterval on a client, the interval at which it pings the server; null on a server session or before
+     *                     the handshake
      * @param state the connection state
      * @param isEstablished true once the handshake completed
      * @param connected the time since the transport connected, or null when not tracked
@@ -67,12 +70,13 @@ public final class NexusSessionSnapshot {
      * @param framesReceived the frames read, or null when not tracked
      * @param bytesReceived the bytes read, or null when not tracked
      */
-    public NexusSessionSnapshot(long id, boolean isServer, String transport, @Nullable String endpoint, @Nullable Boolean isSecure, ConnectionState state, boolean isEstablished, @Nullable NexusTimeSpan connected, @Nullable NexusTimeSpan sinceLastReceived, @Nullable NexusTimeSpan sinceLastSent, @Nullable NexusTimeSpan flushInProgress, @Nullable NexusBudgetSnapshot budget, @Nullable NexusInvocationSnapshot invocations, List<NexusPipeSnapshot> pipes, List<NexusLargeMessageSnapshot> largeMessages, @Nullable Long framesSent, @Nullable Long bytesSent, @Nullable Long framesReceived, @Nullable Long bytesReceived) {
+    public NexusSessionSnapshot(long id, boolean isServer, String transport, @Nullable String endpoint, @Nullable Boolean isSecure, @Nullable NexusTimeSpan pingInterval, ConnectionState state, boolean isEstablished, @Nullable NexusTimeSpan connected, @Nullable NexusTimeSpan sinceLastReceived, @Nullable NexusTimeSpan sinceLastSent, @Nullable NexusTimeSpan flushInProgress, @Nullable NexusBudgetSnapshot budget, @Nullable NexusInvocationSnapshot invocations, List<NexusPipeSnapshot> pipes, List<NexusLargeMessageSnapshot> largeMessages, @Nullable Long framesSent, @Nullable Long bytesSent, @Nullable Long framesReceived, @Nullable Long bytesReceived) {
         this.id = id;
         this.isServer = isServer;
         this.transport = Objects.requireNonNull(transport, "transport");
         this.endpoint = endpoint;
         this.isSecure = isSecure;
+        this.pingInterval = pingInterval;
         this.state = Objects.requireNonNull(state, "state");
         this.isEstablished = isEstablished;
         this.connected = connected;
@@ -132,6 +136,16 @@ public final class NexusSessionSnapshot {
      */
     public @Nullable Boolean isSecure() {
         return isSecure;
+    }
+
+    /**
+     * On a client, the interval at which it pings the server: the configured interval when set, otherwise derived from
+     * the server's advertised idle timeout. Null on a server session or before the handshake.
+     *
+     * @return the value
+     */
+    public @Nullable NexusTimeSpan pingInterval() {
+        return pingInterval;
     }
 
     /**
@@ -274,6 +288,7 @@ public final class NexusSessionSnapshot {
             && Objects.equals(transport, o.transport)
             && Objects.equals(endpoint, o.endpoint)
             && Objects.equals(isSecure, o.isSecure)
+            && Objects.equals(pingInterval, o.pingInterval)
             && Objects.equals(state, o.state)
             && isEstablished == o.isEstablished
             && Objects.equals(connected, o.connected)
@@ -292,7 +307,7 @@ public final class NexusSessionSnapshot {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, isServer, transport, endpoint, isSecure, state, isEstablished, connected, sinceLastReceived, sinceLastSent, flushInProgress, budget, invocations, pipes, largeMessages, framesSent, bytesSent, framesReceived, bytesReceived);
+        return Objects.hash(id, isServer, transport, endpoint, isSecure, pingInterval, state, isEstablished, connected, sinceLastReceived, sinceLastSent, flushInProgress, budget, invocations, pipes, largeMessages, framesSent, bytesSent, framesReceived, bytesReceived);
     }
 
     @Override
@@ -302,6 +317,7 @@ public final class NexusSessionSnapshot {
             + ", transport=" + transport
             + ", endpoint=" + endpoint
             + ", isSecure=" + isSecure
+            + ", pingInterval=" + pingInterval
             + ", state=" + state
             + ", isEstablished=" + isEstablished
             + ", connected=" + connected

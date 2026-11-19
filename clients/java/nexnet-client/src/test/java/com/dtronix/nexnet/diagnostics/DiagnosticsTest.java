@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(30)
 class DiagnosticsTest {
+    private final NexusCounters baseline = Diagnostics.counters();
     /** The records of tests/golden/snapshot-fields.json, in file order. */
     static Map<String, List<String>> goldenFields() throws IOException {
         String json = new String(Files.readAllBytes(Paths.get(System.getProperty("nexnet.golden"),
@@ -91,13 +92,15 @@ class DiagnosticsTest {
         NexusPipeSnapshot pipe = new NexusPipeSnapshot(513, true, false, false, null, 65_536, 1, 2, 3, 4,
             NexusTimeSpan.ofMillis(5), new NexusPartialItemSnapshot(10, 4), 6, null, 0);
         List<NexusPipeSnapshot> pipes = new ArrayList<>(Arrays.asList(pipe));
-        NexusSessionSnapshot a = new NexusSessionSnapshot(1, false, "tcp", null, false, ConnectionState.CONNECTED, true,
+        NexusSessionSnapshot a = new NexusSessionSnapshot(1, false, "tcp", null, false, NexusTimeSpan.ofMillis(1_000),
+            ConnectionState.CONNECTED, true,
             null, null, null, null, new NexusBudgetSnapshot(100, 10), null, pipes, Collections.emptyList(), 1L, 2L,
             3L, 4L);
         pipes.clear();
         assertEquals(1, a.pipes().size());
         assertThrows(UnsupportedOperationException.class, () -> a.pipes().clear());
-        NexusSessionSnapshot b = new NexusSessionSnapshot(1, false, "tcp", null, false, ConnectionState.CONNECTED, true,
+        NexusSessionSnapshot b = new NexusSessionSnapshot(1, false, "tcp", null, false, NexusTimeSpan.ofMillis(1_000),
+            ConnectionState.CONNECTED, true,
             null, null, null, null, new NexusBudgetSnapshot(100, 10), null, Arrays.asList(pipe),
             Collections.emptyList(), 1L, 2L, 3L, 4L);
         assertEquals(a, b);
@@ -120,22 +123,25 @@ class DiagnosticsTest {
             assertEquals("tcp", snapshot.transport());
             assertNull(snapshot.endpoint());
             assertEquals(Boolean.FALSE, snapshot.isSecure());
+            NexusTimeSpan ping = snapshot.pingInterval();
+            assertNotNull(ping);
+            assertTrue(ping.toMillis() > 0, ping.toString());
             assertEquals(ConnectionState.CONNECTED, snapshot.state());
             assertTrue(snapshot.isEstablished());
             assertTrue(snapshot.pipes().isEmpty());
             assertFalse(Diagnostics.isIdle());
-            assertEquals(1, Diagnostics.counters().sessions());
+            assertEquals(baseline.sessions() + 1, Diagnostics.counters().sessions());
             client.disconnect().get(5, TimeUnit.SECONDS);
             assertNull(Diagnostics.snapshot(client));
         } finally {
             client.close();
         }
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
     }
 
     @Test
     void registeredSourcesAddToTheCounters() throws Exception {
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
         Registration registration = Diagnostics.registerCounterSource(new CounterSource() {
             @Override
             public int pipes() {
@@ -153,13 +159,13 @@ class DiagnosticsTest {
             }
         });
         NexusCounters counters = Diagnostics.counters();
-        assertEquals(2, counters.pipes());
-        assertEquals(3, counters.timers());
-        assertEquals(4, counters.subscriptions());
+        assertEquals(baseline.pipes() + 2, counters.pipes());
+        assertEquals(baseline.timers() + 3, counters.timers());
+        assertEquals(baseline.subscriptions() + 4, counters.subscriptions());
         assertFalse(counters.isIdle());
-        assertTrue(counters.toString().contains("pipes=2"));
+        assertTrue(counters.toString().contains("pipes=" + (baseline.pipes() + 2)));
         registration.close();
-        assertTrue(Diagnostics.isIdle());
+        assertEquals(baseline.toString(), Diagnostics.counters().toString());
         assertThrows(NullPointerException.class, () -> Diagnostics.registerCounterSource(null));
     }
 }

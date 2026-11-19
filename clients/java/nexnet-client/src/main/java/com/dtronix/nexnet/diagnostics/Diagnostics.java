@@ -1,5 +1,6 @@
 package com.dtronix.nexnet.diagnostics;
 
+import com.dtronix.nexnet.NexusTimeSpan;
 import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.invocation.InvocationCounters;
@@ -75,7 +76,8 @@ public final class Diagnostics {
     /**
      * A snapshot of the client's current session (C# {@code NexusClient.GetSnapshot()}).
      *
-     * <p>This runtime does not track every value yet: the transport counters, the timings, the budget and the
+     * <p>This runtime does not track every value yet: the transport counters, the timings (other than the ping
+     * interval), the budget and the
      * invocation queues are null, and the pipe and large-message lists are empty, until the session and invocation
      * layers expose them.
      *
@@ -93,6 +95,7 @@ public final class Diagnostics {
             MetricTags.transportTag(client.config()),
             null,
             client.isSecure(),
+            session.pingIntervalMillis() > 0 ? NexusTimeSpan.ofMillis(session.pingIntervalMillis()) : null,
             client.state(),
             session.isConnected(),
             null,
