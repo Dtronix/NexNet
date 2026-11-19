@@ -232,7 +232,13 @@ internal partial class NexusClientTests : BaseTests
         await Task.Delay(100);
         await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await tcs.Task.Timeout(1);
+        // The client's first reconnect attempt starts about 20 ms after the disconnect, while the server is still
+        // stopped, and the transport retransmits on its own schedule rather than failing fast. QUIC drops the
+        // Initial packet silently and resends it after the first probe timeout (about 1 s: RFC 9002 initial RTT
+        // 333 ms x 3), so the reconnect lands about 900 ms after the restart; on Windows a TCP SYN to a closed
+        // loopback port is retried after about 500 ms. A 1 s wait sat right at QUIC's retransmit and failed under
+        // load, so the wait covers a second retransmit too.
+        await tcs.Task.Timeout(TestTimeouts.Connect);
     }
     
     /*
