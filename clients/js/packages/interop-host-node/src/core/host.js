@@ -1108,6 +1108,42 @@ export class Host {
   }
 
   /**
+   * Waits until the current session has ended (C# `DisconnectedTask`): at once when the client is disconnected or
+   * between reconnect attempts, else at its next `disconnected` event or when it reaches `Disconnected` or
+   * `Reconnecting`. (The runtime's `client.disconnected` resolves only once reconnection gives up.)
+   * @param {any} client
+   * @param {AbortSignal} signal
+   * @returns {Promise<void>}
+   */
+  #awaitSessionEnd(client, signal) {
+    const ended = () => client.state === ConnectionState.Disconnected || client.state === ConnectionState.Reconnecting;
+    if (ended()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const onDisconnected = () => {
+        cleanup();
+        resolve();
+      };
+      const onState = () => {
+        if (!ended()) return;
+        cleanup();
+        resolve();
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(signal.reason);
+      };
+      const cleanup = () => {
+        client.removeEventListener('disconnected', onDisconnected);
+        client.removeEventListener('statechange', onState);
+        signal.removeEventListener('abort', onAbort);
+      };
+      client.addEventListener('disconnected', onDisconnected);
+      client.addEventListener('statechange', onState);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  /**
    * Polls a rental's state (a rental raises no events).
    * @param {RentalEntry} entry
    * @param {number} value
@@ -1195,6 +1231,9 @@ export class Host {
       const fake = parsed.fakeTime ? new FakeClock() : null;
       const entry = new ClientEntry(this.#newHandle('c'), scope, exp, new TrackingClock(fake ?? systemClock), fake);
       entry.config = { ...parsed.config, clock: entry.clock, logger: parsed.logLevel ? this.#logger(entry, parsed.logLevel, null) : null };
+      // The runtime waits the disconnect delay on the client clock (C# waits real time): a fake clock would hold every
+      // disconnect until the test moves it.
+      if (fake) entry.config.disconnectDelay = 0;
       entry.scripts = new ClientScripts({
         event: (ev, data) => this.#event(entry, ev, data),
         forward: (slot, callArgs, signal) => this.#forward(entry, slot, callArgs, signal),
@@ -1218,12 +1257,21 @@ export class Host {
     });
     op('client.connect', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.connect');
-      await entry.client.connect();
+      try {
+        await entry.client.connect();
+      } catch (error) {
+        // A connect that fails before the handshake raises no disconnected event; its reason is the error's (as the
+        // C# DisconnectedTask reports it).
+        const reason = /** @type {any} */ (error)?.reason;
+        if (typeof reason === 'number') entry.lastReason = reason;
+        throw error;
+      }
       return {};
     });
     op('client.tryConnect', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.tryConnect');
       const result = await entry.client.tryConnect();
+      if (!result.success) entry.lastReason = result.disconnectReason;
       return { ok: result.success === true };
     });
     op('client.disconnect', async (args, ctx) => {
@@ -1262,7 +1310,7 @@ export class Host {
         if (entry.rental.state !== ConnectionState.Disconnected) await abortable(entry.rental.disconnected, ctx.signal);
         return { reason: reasonName(entry.pool.reasons.get(entry.client) ?? null) };
       }
-      if (entry.client.state !== ConnectionState.Disconnected) await abortable(entry.client.disconnected, ctx.signal);
+      await this.#awaitSessionEnd(entry.client, ctx.signal);
       return { reason: reasonName(entry.lastReason) };
     });
     op('time.advance', async (args, ctx) => {
@@ -1744,6 +1792,8 @@ export class Host {
     }
     /** @type {Record<string, any>} */
     const clientConfig = { ...parsed.config, clock: fake ?? systemClock, logger: null };
+    // As for clients (client.create): the disconnect delay must not wait on a fake clock.
+    if (fake) clientConfig.disconnectDelay = 0;
     if (parsed.logLevel) {
       // Pool logs are not about one client handle; they travel as host log events.
       const min = levelOrder(parsed.logLevel);
