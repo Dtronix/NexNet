@@ -1,6 +1,5 @@
 package com.dtronix.nexnet.interop.host;
 
-import com.dtronix.nexnet.pipes.InteropChannels;
 import com.dtronix.nexnet.pipes.NexusChannelReader;
 import com.dtronix.nexnet.pipes.NexusChannelWriter;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
@@ -58,7 +57,7 @@ final class PipeEntry {
     /** The channel view of the pipe for items of {@code codec}. */
     NexusDuplexChannel<Object> channel(TypedCodec<?> codec) {
         TypedCodec<Object> typed = codec(codec);
-        return views.computeIfAbsent(typed.expression(), k -> InteropChannels.over(pipe, typed.formatter()));
+        return views.computeIfAbsent(typed.expression(), k -> NexusDuplexChannel.over(pipe, typed.formatter()));
     }
 
     boolean isOpen() {

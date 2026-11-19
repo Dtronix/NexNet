@@ -3,13 +3,13 @@ package com.dtronix.nexnet.interop.host;
 import com.dtronix.nexnet.CancellationToken;
 import com.dtronix.nexnet.client.ConnectionResult;
 import com.dtronix.nexnet.client.ConnectionState;
-import com.dtronix.nexnet.client.InteropClientFactory;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.pool.NexusClientPool;
 import com.dtronix.nexnet.pool.NexusClientPoolConfig;
 import com.dtronix.nexnet.pool.NexusClientPoolConnectionException;
 import com.dtronix.nexnet.pool.RentedNexusClient;
+import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptHost;
 import java.util.Arrays;
@@ -100,8 +100,9 @@ final class PoolEntry {
     private <P> NexusClientPool<P> newPool(ScaffoldingExport<P> typed, NexusClientPoolConfig config,
                                            SpecMapper.Setup setup) {
         return new NexusClientPool<>(config, () -> {
-            NexusClient<P> client = InteropClientFactory.create(setup.config, typed.handshake(),
-                typed.createNexus(UNSCRIPTED), typed.proxyFactory(), setup.timers, setup.sessionOptions);
+            NexusClient<P> client = NexusClient.create(setup.config, typed.handshake(),
+                typed.createNexus(UNSCRIPTED), typed.proxyFactory(), NexusConnector.defaults(), setup.timers,
+                setup.sessionOptions);
             Pooled pooled = new Pooled("pc" + nextClient.incrementAndGet(), client);
             clients.add(client);
             synchronized (byProxy) {
