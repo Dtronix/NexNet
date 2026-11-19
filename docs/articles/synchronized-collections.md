@@ -193,6 +193,7 @@ foreach (var state in client.Proxy.GameStates)
 - **Auto-reconnect**: Automatically reconnects to the parent collection if disconnected
 - **State synchronization**: Maintains full state sync with parent, including initial snapshot and incremental updates
 - **Event propagation**: `Changed` events fire for both local subscribers and connected clients
+- **Resync resets clients**: when the relay reconnects to the parent, or the parent's list is reset or an item moves in it, each client already connected receives the relay's whole list as a new reset and stays connected. The reset is written with backpressure, as a new client's snapshot is, so a large list reaches a slow client whole
 
 ### Monitoring Relay State
 
