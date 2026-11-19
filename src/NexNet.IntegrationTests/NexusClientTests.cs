@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using NexNet.Internals;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
 using NexNet.InteropServer;
@@ -711,6 +712,688 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
         // Second concurrent start should throw InvalidOperationException
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync().Timeout(T(TestTimeouts.Connect)));
+    }
+}
+
+/// <summary>
+/// C#-only companions of the client-matrix tests above, on the C# transports the client matrix has no row for yet
+/// (QUIC: the interop server has no QUIC endpoint). They are the pre-port tests, unchanged but for the transport list,
+/// so the C# client keeps its QUIC lifecycle coverage until the matrix gets C#-only rows (H16).
+/// </summary>
+internal partial class NexusClientTests
+{
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task NexusFiresOnConnected_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, clientNexus) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        clientNexus.OnConnectedEvent = (_, _) =>
+        {
+            tcs.SetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ConnectsToServer_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Observed on the server: its nexus for this client connected.
+        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = _ =>
+        {
+            tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientFailsGracefullyWithNoServer_CSharpTransports(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
+            CreateServerConfig(type),
+            clientConfig);
+
+        clientConfig.ConnectionTimeout = 100;
+
+        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(T(10)));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientTimesOutWithNoServer_CSharpTransports(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
+            CreateServerConfig(type),
+            clientConfig);
+
+        clientConfig.ConnectionTimeout = 50;
+
+        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(T(100)));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ConnectsAndDisconnectsMultipleTimesFromServer_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        for (int i = 0; i < 5; i++)
+        {
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+            var disconnected = client.DisconnectedTask;
+            await client.DisconnectAsync().Timeout(T(1));
+            await disconnected.Timeout(T(1));
+        }
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ConnectTimesOutWithNoServer_CSharpTransports(Type type)
+    {
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await AssertThrows<TransportException>(async () => await client.ConnectAsync());
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientProvidesAuthenticationToken_CSharpTransports(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            clientConfig);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        clientConfig.Authenticate = () => new byte[] { 123 };
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type != MessageType.ClientGreeting)
+                return;
+
+            var message = TestSerialization.DeserializeMessage<ClientGreetingMessage>(frame.Body);
+
+            if (message!.AuthenticationToken!.Span[0] == 123)
+            {
+                tcs.SetResult();
+                return;
+            }
+            tcs.SetException(new Exception("Client didn't send token"));
+        });
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientSendsPing_CSharpTransports(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.PingInterval = 20;
+        var serverConfig = CreateServerConfig(type);
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            clientConfig);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.Ping)
+                tcs.TrySetResult();
+        });
+
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
+    public async Task ReconnectsOnDisconnect_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
+
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
+        {
+            if (isReconnected)
+                tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnecting.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        
+        // Wait for the client to process the disconnect.
+        await reconnecting.Task.Timeout(T(1));
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        // The client's first reconnect attempt starts about 20 ms after the disconnect, while the server is still
+        // stopped, and the transport retransmits on its own schedule rather than failing fast. QUIC drops the
+        // Initial packet silently and resends it after the first probe timeout (about 1 s: RFC 9002 initial RTT
+        // 333 ms x 3), so the reconnect lands about 900 ms after the restart; on Windows a TCP SYN to a closed
+        // loopback port is retried after about 500 ms. A 1 s wait sat right at QUIC's retransmit and failed under
+        // load, so the wait covers a second retransmit too.
+        await tcs.Task.Timeout(T(TestTimeouts.Connect));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReconnectsOnTimeout_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
+
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
+        {
+            if (isReconnected)
+                tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+        clientConfig.PingInterval = 75;
+        clientConfig.Timeout = 50;
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReconnectsNotifiesReconnecting_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await tcs.Task.Timeout(T(1000));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReconnectsStopsAfterSpecifiedTimes_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[]
+        {
+            TimeSpan.FromMilliseconds(20)
+        }, false);
+
+
+        clientNexus.OnDisconnectedEvent = _ =>
+        {
+            tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        // Only the reconnect attempt must time out fast: a first QUIC handshake under load can take over 100 ms.
+        clientConfig.ConnectionTimeout = 100;
+
+        await server.StopAsync();
+
+        await tcs.Task.Timeout(T(5));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientProxyInvocationCancelsOnDisconnect_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var (server, client, clientNexus) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+        
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = async _ =>
+        {
+            invoked.TrySetResult();
+            await Task.Delay(100000);
+            return 12345;
+        };
+
+        clientNexus.OnConnectedEvent = async (_, _) =>
+        {
+            try
+            {
+                await client.Proxy.ServerTaskValue();
+            }
+            catch (TaskCanceledException)
+            {
+                tcs.TrySetResult();
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        // The call reached the server before it stops.
+        await invoked.Task.Timeout(T(1));
+        await server.StopAsync();
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReadyTaskCompletesUponConnection_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReadyTaskCompletesUponAuthentication_CSharpTransports(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        
+        bool authCompleted = false;
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+        
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub =>
+        {
+            authCompleted = true;
+            return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        
+        await Assert.That(authCompleted).IsTrue();
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ReadyTaskCompletesUponAuthFailure_CSharpTransports(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DisconnectTaskCompletesUponDisconnection_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        var disconnectTask = client.DisconnectedTask;
+
+        await server.StopAsync();
+
+        await disconnectTask.Timeout(T(1));
+
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DisconnectTaskCompletesUponAuthFailure_CSharpTransports(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectedTask.Timeout(T(1));
+
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DisconnectTaskCompletesAfterServerStops_CSharpTransports(Type type)
+    {
+        // Arrange
+        var serverConfig = CreateServerConfig(type);
+        var clientConfig = CreateClientConfig(type);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        // Act
+        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+
+        // Assert: client.DisconnectedTask will complete promptly
+        await client.DisconnectedTask.Timeout(T(1));
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ClientSendsDisconnectSignal_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverConfig = CreateServerConfig(type);
+        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.DisconnectGraceful)
+                tcs.TrySetResult();
+        });
+
+        var (server, client, _) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectAsync().Timeout(T(1));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task FiresOnDisconnectedEvent_CSharpTransports(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, clientNexus) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        clientNexus.OnDisconnectedEvent = _ =>
+        {
+            tcs.SetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectAsync().Timeout(T(1));
+
+        await tcs.Task.Timeout(T(1));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ProxyInvocationPropagatesServerException_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server throws
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(() => client.Proxy.ServerTaskValue().Timeout(T(1)));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DisconnectWithoutConnectDoesNotThrow_CSharpTransports(Type type)
+    {
+        var (_, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+        
+        // Should complete without throwing
+        await Assert.That(async () => await client.DisconnectAsync().Timeout(T(1))).ThrowsNothing();
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DoubleConnectDoesNotThrow_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        // Second ConnectAsync should throw
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task DoubleDisconnectDoesNotThrow_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        
+        await WaitForState(client, ConnectionState.Connected);
+        // First disconnect
+        await client.DisconnectAsync().Timeout(T(1));
+        
+        // Second disconnect should be a no-op
+        await Assert.That(async () => await client.DisconnectAsync().Timeout(T(1))).ThrowsNothing();
+        await WaitForState(client, ConnectionState.Disconnected);
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ConcurrentProxyInvocations_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server always returns 42
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        // Fire off 20 simultaneous calls
+        var calls = Enumerable.Range(0, 20)
+            .Select(_ => client.Proxy.ServerTaskValue().AsTask())
+            .ToArray();
+
+        var results = await Task.WhenAll(calls).Timeout(T(1));
+        await Assert.That(results.Count(r => r == 42)).IsEqualTo(20);
+    }
+
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
+    public async Task ServerRejectsAuth_SendsDisconnect_CSharpTransports(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        // Signalled when any frame the server sends is the authentication disconnect.
+        var disconnectSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ServerTaps.OnSend(serverConfig, (_, frame) =>
+        {
+            if (frame.Type == MessageType.DisconnectAuthentication)
+                disconnectSent.TrySetResult();
+        });
+
+        var clientConfig = CreateClientConfig(type);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+
+        // Force authentication to fail
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await Task.WhenAny(disconnectSent.Task, Task.Delay(TimeSpan.FromSeconds(T(1))));
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(disconnectSent.Task.IsCompleted).IsTrue().Because("Server should send a Disconnect message when auth is rejected");
+            await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication).Because("The client should observe the authentication rejection, not a bare socket close.");
+
+        }
+    }
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task ProxyInvocationAfterDisconnectThrows_CSharpTransports(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server will respond, but we will disconnect before calling
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectAsync().Timeout(T(1));
+
+        // Any RPC after clean disconnect should throw
+        await AssertThrows<InvalidOperationException>(() => client.Proxy.ServerTaskValue().Timeout(T(1)));
+    }
+
+    /// <summary>
+    /// If the reconnection policy is null, OnReconnectingEvent must never fire after a disconnect.
+    /// </summary>
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task OnReconnectingEventNotFiredWithNoRetries_CSharpTransports(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        // Zero‐retry policy
+        clientConfig.ReconnectionPolicy = null;
+
+        var serverConfig = CreateServerConfig(type);
+        // Ensure no clean‐disconnect signal is sent
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        var reconnectingFired = false;
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnectingFired = true;
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectedTask.Timeout(T(1));
+
+        // The reconnect decision runs right after the disconnect, and no event marks that it is over: give it a
+        // moment to (not) trigger.
+        await Task.Delay(50);
+        await Assert.That(reconnectingFired).IsFalse().Because("With a disabled reconnection policy, OnReconnectingEvent must not fire.");
     }
 }
 
