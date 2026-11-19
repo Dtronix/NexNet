@@ -49,6 +49,37 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
         return (result["items"] as JsonArray ?? new JsonArray()).Select(n => codec.Decode(n)!).ToArray();
     }
 
+    public async ValueTask<IRemoteListWatch<T>> WatchAsync()
+    {
+        // The runner names the watch and routes its events before asking, so no event can arrive unrouted.
+        var name = driver.NewName("w");
+        var watch = new RemoteListWatch<T>(Collection, async () =>
+        {
+            try
+            {
+                if (!driver.Connection.IsClosed && driver.Connection.HasScope(driver.Test))
+                    await driver.CallAsync("list.unwatch", new JsonObject { ["watch"] = name }, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
+            }
+            finally
+            {
+                driver.RemoveListWatch(name);
+            }
+        });
+        driver.AddListWatch(name, evt => watch.Add(ControlJson.ToListChange(evt, codec)));
+        try
+        {
+            await driver.CallAsync("list.watch", new JsonObject { ["collection"] = ControlJson.ToJson(Collection), ["watch"] = name }, RemoteClientDriver.DefaultOpMs)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            driver.RemoveListWatch(name);
+            throw;
+        }
+
+        return watch;
+    }
+
     public async ValueTask<IReadOnlyList<T>> WaitForAsync(Func<IReadOnlyList<T>, bool> predicate, TimeSpan timeout)
     {
         ArgumentNullException.ThrowIfNull(predicate);

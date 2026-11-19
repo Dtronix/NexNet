@@ -16,6 +16,7 @@ public class ErrorKindsTests
     [Arguments(ErrorKind.Busy, typeof(NexusBusyException))]
     [Arguments(ErrorKind.TooLarge, typeof(NexusMessageTooLargeException))]
     [Arguments(ErrorKind.InvalidOperation, typeof(InvalidOperationException))]
+    [Arguments(ErrorKind.ArgumentOutOfRange, typeof(ArgumentOutOfRangeException))]
     public async Task EveryKind_MapsToItsExceptionAndBack(ErrorKind kind, Type expected)
     {
         var exception = ErrorKinds.ToException(new RemoteErrorInfo(kind, "boom") { Reason = "ConnectionRefused", Code = 7, Type = "X" });

@@ -118,6 +118,8 @@ public class ControlConnectionTests
         var tooLarge = (NexusMessageTooLargeException)Map("TooLarge", new JsonObject { ["size"] = 10, ["limit"] = 5 });
         await Assert.That(tooLarge.Size).IsEqualTo(10L);
         await Assert.That(Map("InvalidOperation")).IsTypeOf<InvalidOperationException>();
+        var outOfRange = (ArgumentOutOfRangeException)Map("ArgumentOutOfRange", new JsonObject { ["param"] = "index" });
+        await Assert.That(outOfRange.ParamName).IsEqualTo("index");
 
         await Assert.That(Map("Timeout")).IsTypeOf<TimeoutException>();
         await Assert.That(Map("NotSupported")).IsTypeOf<NotSupportedException>();
@@ -139,5 +141,14 @@ public class ControlConnectionTests
         await Assert.That(ControlErrors.FromException(new TimeoutException("t"))["kind"]!.GetValue<string>()).IsEqualTo(ControlErrors.Timeout);
         await Assert.That(ControlErrors.FromException(new InvalidOperationException(ErrorKinds.NotConnectedMessage))["kind"]!.GetValue<string>())
             .IsEqualTo("Disconnected");
+
+        // A client argument error is a client kind, not a malformed request; other argument errors stay BadRequest.
+        var argument = ControlErrors.FromException(new ArgumentOutOfRangeException("index", "Index must not be negative."));
+        await Assert.That(argument["kind"]!.GetValue<string>()).IsEqualTo("ArgumentOutOfRange");
+        await Assert.That(argument["message"]!.GetValue<string>()).IsEqualTo("Index must not be negative.");
+        var argumentBack = (ArgumentOutOfRangeException)ControlErrors.ToException(argument);
+        await Assert.That(argumentBack.ParamName).IsEqualTo("index");
+        await Assert.That(argumentBack.Message).IsEqualTo(new ArgumentOutOfRangeException("index", "Index must not be negative.").Message);
+        await Assert.That(ControlErrors.FromException(new ArgumentException("bad"))["kind"]!.GetValue<string>()).IsEqualTo(ControlErrors.BadRequest);
     }
 }

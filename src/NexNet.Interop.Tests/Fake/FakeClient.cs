@@ -25,6 +25,7 @@ internal sealed class FakeClient : IAsyncDisposable
 
     private readonly ConcurrentDictionary<string, SlotScript> _scripts = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonNode?>> _forwards = new();
+    private readonly ConcurrentDictionary<string, IRemoteListWatch<InteropItem>> _watches = new(StringComparer.Ordinal);
     private readonly ScriptSignals _signals = new();
     private readonly CancellationTokenSource _lifetime = new();
     private ConnectionState _lastState = ConnectionState.Disconnected;
@@ -106,6 +107,10 @@ internal sealed class FakeClient : IAsyncDisposable
                 return ListSnapshotAsync(args);
             case "list.op":
                 return ListOpAsync(args);
+            case "list.watch":
+                return ListWatchAsync(args);
+            case "list.unwatch":
+                return ListUnwatchAsync(args);
             default:
                 throw new ArgumentException("Unknown op '" + op + "'.");
         }
@@ -116,6 +121,9 @@ internal sealed class FakeClient : IAsyncDisposable
         await _lifetime.CancelAsync();
         foreach (var forward in _forwards.Values)
             forward.TrySetCanceled();
+        foreach (var watch in _watches.Values)
+            await watch.DisposeAsync();
+        _watches.Clear();
         await Driver.DisposeAsync();
         _lifetime.Dispose();
     }
@@ -206,6 +214,31 @@ internal sealed class FakeClient : IAsyncDisposable
         var codec = TypedCodecs.Get<InteropItem>();
         var items = await Items(args).SnapshotAsync();
         return new JsonObject { ["items"] = new JsonArray(items.Select(i => codec.Encode(i)).ToArray()) };
+    }
+
+    private async Task<JsonObject> ListWatchAsync(JsonObject args)
+    {
+        var name = args["watch"]!.GetValue<string>();
+        var codec = TypedCodecs.Get<InteropItem>();
+        var watch = (RemoteListWatch<InteropItem>)await Items(args).WatchAsync();
+        if (!_watches.TryAdd(name, watch))
+        {
+            await watch.DisposeAsync();
+            throw new ArgumentException("The watch " + name + " exists.");
+        }
+
+        // Hooked before the response, so every change raised after list.watch completes is sent.
+        watch.Recorded += change => Scope.Host.SendEvent(Scope.Test, Handle, "list.changed", ControlJson.ToJson(name, change, codec));
+        return new JsonObject();
+    }
+
+    private async Task<JsonObject> ListUnwatchAsync(JsonObject args)
+    {
+        var name = args["watch"]!.GetValue<string>();
+        if (!_watches.TryRemove(name, out var watch))
+            throw new UnknownHandleException("Unknown watch " + name + ".");
+        await watch.DisposeAsync();
+        return new JsonObject();
     }
 
     private async Task<JsonObject> ListOpAsync(JsonObject args)

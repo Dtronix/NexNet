@@ -41,6 +41,7 @@ public static class ControlErrors
                 Reason = detail?["reason"]?.GetValue<string>(),
                 Size = Number(detail?["size"]),
                 Limit = Number(detail?["limit"]),
+                Param = detail?["param"]?.GetValue<string>(),
             };
             return info.ToException();
         }
@@ -72,6 +73,9 @@ public static class ControlErrors
             case NotSupportedException:
                 kind = NotSupported;
                 break;
+            // A client argument error (a negative list index), not a malformed request.
+            case ArgumentOutOfRangeException:
+                return ClientError(exception);
             case ArgumentException:
                 kind = BadRequest;
                 break;
@@ -79,22 +83,29 @@ public static class ControlErrors
                 kind = remote.Kind;
                 break;
             default:
-                var info = ErrorKinds.FromException(exception);
-                kind = info.Kind.ToString();
-                if (info.Type != null)
-                    detail["type"] = info.Type;
-                if (info.Code != null)
-                    detail["code"] = info.Code;
-                if (info.Reason != null)
-                    detail["reason"] = info.Reason;
-                if (info.Size != null)
-                    detail["size"] = info.Size;
-                if (info.Limit != null)
-                    detail["limit"] = info.Limit;
-                return Create(kind, info.Message, detail);
+                return ClientError(exception);
         }
 
         return Create(kind, exception.Message, detail);
+    }
+
+    private static JsonObject ClientError(Exception exception)
+    {
+        var info = ErrorKinds.FromException(exception);
+        var detail = new JsonObject();
+        if (info.Type != null)
+            detail["type"] = info.Type;
+        if (info.Code != null)
+            detail["code"] = info.Code;
+        if (info.Reason != null)
+            detail["reason"] = info.Reason;
+        if (info.Size != null)
+            detail["size"] = info.Size;
+        if (info.Limit != null)
+            detail["limit"] = info.Limit;
+        if (info.Param != null)
+            detail["param"] = info.Param;
+        return Create(info.Kind.ToString(), info.Message, detail);
     }
 
     /// <summary>An integer member, whether parsed from the wire or built in memory.</summary>

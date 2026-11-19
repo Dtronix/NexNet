@@ -184,7 +184,7 @@ Rebuild it: <build command>
 | `openPipes` | Pipes that are neither complete in both directions nor disposed. |
 | `timers` | Timers of the client runtime still scheduled for clients of the scope (ping, reconnect, `afterMs` cancellations, delays of scripts). A disconnected client MUST have none. |
 | `pendingInvocations` | Invocations started and not completed (a fire-and-forget invocation until it is sent). |
-| `subscriptions` | Collections still enabled on a client that is not `Disconnected`, and listeners the host attached for the scope and did not detach. |
+| `subscriptions` | Collections still enabled on a client that is not `Disconnected`, and listeners the host attached for the scope and did not detach (including collection watches, §6.10, not ended by `list.unwatch`). |
 | `details` | One human-readable line per leak. |
 
 Before counting, a host waits up to 1 s for pending invocations to settle. Any non-zero count fails the test.
@@ -199,7 +199,7 @@ not listed under "host-level" requires `req.test`. Unless an op says otherwise, 
 A host reads requests in order and MUST **start** them in arrival order. Before it starts the next request it MUST have
 applied the synchronous effect of each of these ops: `test.begin`, `client.create`, `script.set`, `script.clear`,
 `signal`, `token.create`, `token.cancel`, `callback.reply`, `pipe.create`, `list.op` (the change is handed to the
-client runtime), and `invoke` (the invocation is handed to the client runtime: its message queued for sending, in
+client runtime), `list.watch` and `list.unwatch` (the listener is attached or detached), and `invoke` (the invocation is handed to the client runtime: its message queued for sending, in
 order). Other ops MAY run concurrently. So a script set before an invocation applies to the calls it causes, and
 fire-and-forget invocations are sent in request order.
 
@@ -373,6 +373,11 @@ id). Items are typed JSON.
 | `list.disable` | `{h, collection}` | `{}` |
 | `list.op` | `{h, collection, op, item?, index?, from?, to?}` | `{ok}`. `op`: `add` (item), `insert` (index, item), `remove` (item), `removeAt` (index), `replace` (index, item), `move` (from, to), `clear`. |
 | `list.snapshot` | `{h, collection}` | `{items}`: the items the client has now. |
+| `list.watch` | `{h, collection, watch}` | `{}`. Attaches a listener to the collection's change events; from the moment it responds, every change event the client raises for the collection is sent as a `list.changed` event (§7.6) carrying `watch`. `watch` is a runner-chosen name, unique per client (so events that arrive before the response can be routed); a name already in use fails with `BadRequest`. Works whether or not the collection is enabled. |
+| `list.unwatch` | `{h, collection?, watch}` | `{}`. Detaches the listener; no `list.changed` of `watch` follows the response. An unknown watch fails with `UnknownHandle`. A watch not ended by `list.unwatch` counts in `subscriptions` (§5.1). |
+
+A list op with an index out of range (a negative index, for example) fails with the client error kind
+`ArgumentOutOfRange` (§8) when the client runtime rejects it before sending.
 
 ### 6.11 Client pools (capability `ClientPool`)
 
@@ -468,6 +473,23 @@ test's transcript.
 `{message, detail?}`: an error the host could not attribute to a request (an unhandled rejection, a crashed worker).
 The runner fails the test of the scope (or the next test, for a host-level error).
 
+### 7.6 list.changed
+
+`{watch, action, index?, oldIndex?, items?, oldItems?}` with `h` set: the client raised a change event for the
+collection of watch `watch` (`list.watch`, §6.10). Events of one watch are sent in the order the client raised them, and
+the event's `hostNs` (§4.4) is its host timestamp, so a host SHOULD send each event when it is raised.
+
+| Member | Type | Meaning |
+|---|---|---|
+| `action` | string | A C# `NexusCollectionChangedAction` name: `Add`, `Remove`, `Replace`, `Move`, `Reset` (a clear or a completed reset) or `Ready` (the collection is synchronized). Never `Unset`. |
+| `index` | int? | The index of the item after the change: `Add`, `Replace`, `Move`. |
+| `oldIndex` | int? | The index of the item before the change: `Remove`, `Move`. |
+| `items` | array? | The new items, typed JSON: `Add` and `Replace` (the new item), `Move` (the moved item). |
+| `oldItems` | array? | The old items, typed JSON: `Remove` (the removed item), `Replace` (the replaced item). |
+
+`index`, `oldIndex`, `items` and `oldItems` are omitted when the client runtime does not report them. The C# client
+reports only `action`, so tests that run on every row assert on actions (and counts) only.
+
 ## 8. Errors
 
 `error` is `{kind, message, detail?}`.
@@ -485,6 +507,7 @@ The runner fails the test of the scope (or the next test, for a host-level error
 | `Busy` | | `NexusBusyException` |
 | `TooLarge` | `size`, `limit` | `NexusMessageTooLargeException` |
 | `InvalidOperation` | `type`? | `InvalidOperationException` |
+| `ArgumentOutOfRange` | `param`?: the parameter name | `ArgumentOutOfRangeException` (`message` without .NET's " (Parameter 'x')" suffix) |
 
 **Harness error kinds** (failures of the control layer, not of the client):
 
@@ -492,7 +515,7 @@ The runner fails the test of the scope (or the next test, for a host-level error
 |---|---|---|
 | `Timeout` | `timeoutMs` passed. | `TimeoutException` |
 | `NotSupported` | The host or its client cannot do this (an option, a handler, a nexus pair). | `NotSupportedException` |
-| `BadRequest` | Malformed arguments, an unknown op, a scope that is not open. | `ArgumentException` |
+| `BadRequest` | Malformed arguments, an unknown op, a scope that is not open. A C# host reports any `ArgumentException` as `BadRequest` except `ArgumentOutOfRangeException`, which is the client kind `ArgumentOutOfRange`. | `ArgumentException` |
 | `UnknownHandle` | §5. | `InvalidOperationException` |
 | `Internal` | A bug in the host. `detail.stack` SHOULD hold the stack. | `RemoteHostException` |
 
