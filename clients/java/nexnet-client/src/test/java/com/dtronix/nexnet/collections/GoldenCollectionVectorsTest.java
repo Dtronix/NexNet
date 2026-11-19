@@ -10,11 +10,8 @@ import com.dtronix.nexnet.serialization.Formatters;
 import com.dtronix.nexnet.serialization.GoldenFiles;
 import com.dtronix.nexnet.serialization.MsgPackException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
@@ -28,13 +25,6 @@ import org.junit.jupiter.api.TestFactory;
 class GoldenCollectionVectorsTest {
     private static final PayloadCodec CODEC = PayloadCodec.MSGPACK;
     private static final Formatter<String> STRING = Formatters.nullable(Formatters.STRING);
-
-    /**
-     * Reject vectors the runtime accepts today, with why. Each is asserted to be still accepted and then reported as
-     * skipped, so fixing the runtime fails the test until the entry is removed.
-     */
-    static final Map<String, String> KNOWN_ACCEPTED = Collections.singletonMap("collection.reject.noop-count-2",
-        "CollectionWire.decode skips fields past the known ones instead of refusing the body");
 
     @TestFactory
     Stream<DynamicTest> replay() {
@@ -156,11 +146,6 @@ class GoldenCollectionVectorsTest {
     }
 
     private static void reject(GoldenFiles.Vector v) {
-        String known = KNOWN_ACCEPTED.get(v.id);
-        if (known != null) {
-            CollectionWire.decode(v.bytes(), CODEC, Formatters.INT);
-            Assumptions.abort("known divergence, accepted: " + known);
-        }
         assertThrows(MsgPackException.class, () -> CollectionWire.decode(v.bytes(), CODEC, Formatters.INT), "refused");
     }
 }

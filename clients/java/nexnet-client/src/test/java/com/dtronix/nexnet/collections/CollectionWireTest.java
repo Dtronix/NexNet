@@ -163,11 +163,10 @@ class CollectionWireTest {
     }
 
     @Test
-    void extraFieldsFromNewerPeersAreSkipped() {
-        // Remove [0, version 15, index 1, extra "x", extra [1, 2]].
-        CollectionWire.Message<Long> m = CollectionWire.decode(
-            CollectionFixtures.hex("92079500" + "0f01" + "a178" + "920102"), CODEC, TestFormat.LONG);
-        assertMessage(m, CollectionWire.REMOVE, 0, 15, 1, 0);
+    void extraFieldsAreRefused() {
+        // Remove [0, version 15, index 1, extra "x", extra [1, 2]]: bodies have their exact element count.
+        assertThrows(MsgPackException.class, () -> CollectionWire.decode(
+            CollectionFixtures.hex("92079500" + "0f01" + "a178" + "920102"), CODEC, TestFormat.LONG));
     }
 
     @Test
