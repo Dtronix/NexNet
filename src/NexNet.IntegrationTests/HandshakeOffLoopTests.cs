@@ -90,8 +90,9 @@ internal class HandshakeOffLoopTests : BaseTests
 
             // A third connection is closed straight away, long before the TLS handshake timeout.
             using var rejected = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            await rejected.ConnectAsync(endPoint).Timeout(TestTimeouts.Connect);
-            await Assert.That(await ReceiveUntilClosed(rejected).Timeout(1)).IsEqualTo(0);
+            await AssertRejectedAsync(rejected, endPoint);
+            await Assert.That(server.GetSnapshot().PendingHandshakes).IsEqualTo(2)
+                .Because("The rejected connection must not take a pending handshake slot.");
         }
         finally
         {
@@ -356,6 +357,25 @@ internal class HandshakeOffLoopTests : BaseTests
     {
         foreach (var socket in sockets)
             socket.Dispose();
+    }
+
+    /// <summary>
+    /// Asserts that the server rejects a new connection without sending anything. The server closes it right after
+    /// accepting it, so on Linux the reset can reach the client before its connect completes: a connect that fails
+    /// with a reset or refusal and a connect that is then closed or reset are the same outcome (see S10).
+    /// </summary>
+    private static async Task AssertRejectedAsync(Socket socket, EndPoint endPoint)
+    {
+        try
+        {
+            await socket.ConnectAsync(endPoint).Timeout(TestTimeouts.Connect);
+        }
+        catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionRefused)
+        {
+            return;
+        }
+
+        await Assert.That(await ReceiveUntilClosed(socket).Timeout(1)).IsEqualTo(0);
     }
 
     /// <summary>
