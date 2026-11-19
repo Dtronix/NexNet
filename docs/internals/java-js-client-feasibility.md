@@ -1,6 +1,15 @@
 # Java & JavaScript clients: feasibility investigation
 
-Status: **investigation / proposal**. No code has been changed. Written 2026-11-17 against `master` @ `ec02d2b` (0.20.0).
+> [!IMPORTANT]
+> **Superseded.** This investigation led to the Java and JavaScript clients and is kept for its history and rationale
+> only. Its recommendations were changed during implementation (for example, the clients are not published to npm or
+> Maven; the generator emits their runtime). For the current behavior see
+> [Multi-language Clients](../articles/multi-language-clients.md), [JavaScript Client](../articles/javascript-client.md),
+> [Java Client](../articles/java-client.md), [Generator-emitted runtime](generator-emitted-runtime.md) and the runtime
+> contracts ([JavaScript](js-runtime-contract.md), [Java](java-runtime-contract.md)).
+
+Status: **superseded** (see above). Originally an investigation / proposal, written 2026-11-17 against `master` @
+`ec02d2b` (0.20.0).
 
 This document consolidates five independent investigations:
 
