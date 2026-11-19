@@ -409,9 +409,33 @@ closes the transport. Nothing is sent after the disconnect byte.
 | Transport ended or failed | `SocketError` | no |
 | Disconnect byte received | the received reason | no |
 
+**Frames queued at disconnect.** What reaches the peer before the disconnect byte:
+- **C#.** Each send writes its frame on the sending task, under the session's write lock, and flushes. A disconnect
+  first marks the session as disconnecting, then writes the byte under the same lock. The send holding the lock
+  finishes its frame first. A send that has not taken the lock yet (it waits behind a flush that has not completed,
+  that is, transport backpressure) or that starts later writes nothing; the send itself returns without an error.
+  A send that finds the lock free writes at once, so the frames of all sends that returned before the disconnect
+  are on the wire before the byte.
+- **Java and JavaScript clients** queue frames for a writer. They write every frame queued before the disconnect
+  started, behind the write in progress, and then the byte. Frames sent after that are refused (Java: the send fails
+  with `SessionClosedException`; JavaScript: the send resolves `false`). For sends that do not wait this is the C#
+  outcome. Under backpressure they also write the frames C# discards, still before the byte; the wait for the byte
+  is bounded as above (the progress timeout, §9).
+- A receiver therefore sees a prefix of the frames the peer sent, then the byte. It handles them as usual until the
+  byte ends the session: a C# server discards invocations still waiting for an execution slot and cancels the
+  running ones.
+
+**What callers observe.** A call waiting for a result fails as canceled when the session ends, whether or not its
+invocation was written: the peer stops at the byte, so no result can follow. C# throws an `OperationCanceledException`;
+Java fails with `CancellationException` whose cause is a `SessionClosedException`; JavaScript rejects with an
+`AbortError` whose cause is the transport error. A fire-and-forget (`void`) call reports nothing to its caller.
+
 Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the 20–38 check),
 `src/NexNet/Internals/NexusSession.cs` (`DisconnectCore`, `DisconnectStartedCore`),
-`src/NexNet/Transports/ConfigBase.cs` (`DisconnectDelay`).
+`src/NexNet/Internals/NexusSession.Sending.cs` (`SendMessage`, `SendHeaderCore`),
+`src/NexNet/Transports/ConfigBase.cs` (`DisconnectDelay`),
+`clients/java/nexnet-client/src/main/java/com/dtronix/nexnet/session/NexusSession.java` (`writeDisconnect`),
+`clients/js/packages/nexnet/src/session/WriteQueue.js` (`finish`).
 
 ## 6. Large arguments and results
 
