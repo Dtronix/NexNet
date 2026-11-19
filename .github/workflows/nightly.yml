@@ -103,15 +103,13 @@ jobs:
         if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
         run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
-      # --ignore-exit-code 8 (no test ran): until P01 has ported the bucket-A tests onto ClientMatrix, a language can have
-      # no [Lang=...] rows yet. TODO(P01): remove it once every P01 card has landed, so an empty selection fails again.
       - name: Interop tests (${{ matrix.lang }}, every transport)
         if: steps.host.outputs.ready == 'true'
         env:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
           dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
-          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" --ignore-exit-code 8
+          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]"
           -- --report-trx
 
       - name: Upload interop results
@@ -201,8 +199,6 @@ jobs:
             npm run build:interop-host --prefix clients/js
           fi
 
-      # --ignore-exit-code 8 (no test ran): until P01 has ported the bucket-A tests onto ClientMatrix, a language can have
-      # no [Lang=...] rows yet. TODO(P01): remove it once every P01 card has landed, so an empty selection fails again.
       - name: Interop tests, 10 runs
         if: steps.host.outputs.ready == 'true'
         shell: bash
@@ -211,7 +207,7 @@ jobs:
           for i in $(seq 1 10); do
             echo "::group::Run $i of 10"
             if ! dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory "TestResults/run-$i" \
-                --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" --ignore-exit-code 8 -- --report-trx; then
+                --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" -- --report-trx; then
               failed=$((failed + 1))
               echo "::warning::Run $i of 10 failed."
             fi
