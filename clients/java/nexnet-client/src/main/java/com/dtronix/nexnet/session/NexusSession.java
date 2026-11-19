@@ -319,6 +319,8 @@ public final class NexusSession {
     private void writeLoop() {
         List<Pending> batch = new ArrayList<>();
         List<Frame> control = new ArrayList<>();
+        // The first batch holds the preamble and the greeting, which start() queues before the writer runs.
+        boolean handshakeWritten = false;
         try {
             OutputStream out = new BufferedOutputStream(transport.output(), 16 * 1024);
             while (true) {
@@ -340,7 +342,7 @@ public final class NexusSession {
                     }
                 }
                 if (last != null) {
-                    writeDisconnect(out, last);
+                    writeDisconnect(out, last, handshakeWritten);
                     return;
                 }
                 if (phase() == Phase.CONNECTED) {
@@ -354,6 +356,7 @@ public final class NexusSession {
                         out.write(frame.bytes());
                     }
                     out.flush();
+                    handshakeWritten = true;
                 } catch (IOException e) {
                     fail(batch, DisconnectReason.SOCKET_CLOSED_WHEN_WRITING);
                     if (phase().compareTo(Phase.CLOSING) < 0) {
@@ -383,8 +386,13 @@ public final class NexusSession {
         }
     }
 
-    /** Writes the disconnect byte and closes the transport after the disconnect delay. Nothing is sent after it. */
-    private void writeDisconnect(OutputStream out, DisconnectReason reason) {
+    /**
+     * Writes the disconnect byte and closes the transport after the disconnect delay. Nothing is sent after it. Frames
+     * still queued are dropped, except the preamble and the greeting when the writer has not written them yet (the
+     * session closed before the writer's first batch): without them the server would read the disconnect byte as
+     * the preamble.
+     */
+    private void writeDisconnect(OutputStream out, DisconnectReason reason, boolean handshakeWritten) {
         List<Pending> dropped;
         synchronized (lock) {
             dropped = new ArrayList<>(queue);
@@ -392,9 +400,18 @@ public final class NexusSession {
             SessionCounters.PENDING_WRITES.addAndGet(-dropped.size());
             lock.notifyAll();
         }
+        List<Pending> handshakeFrames = new ArrayList<>();
+        if (!handshakeWritten) {
+            List<Pending> head = dropped.subList(0, Math.min(2, dropped.size()));
+            handshakeFrames.addAll(head);
+            head.clear();
+        }
         fail(dropped, reason);
         boolean sent = false;
         try {
+            for (Pending pending : handshakeFrames) {
+                out.write(pending.frame.bytes());
+            }
             out.write(reason.code());
             out.flush();
             sent = true;

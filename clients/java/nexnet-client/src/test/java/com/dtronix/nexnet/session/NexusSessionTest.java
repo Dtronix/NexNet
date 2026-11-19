@@ -10,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.spi.HandshakeDescriptor;
+import com.dtronix.nexnet.transport.Transport;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -502,6 +505,53 @@ class NexusSessionTest {
         ExecutionException e = assertThrows(ExecutionException.class,
             () -> session.send(Frame.headerOnly(MessageTypes.PING)).get());
         assertInstanceOf(SessionClosedException.class, e.getCause());
+    }
+
+    @Test
+    void aDisconnectBeforeTheWritersFirstBatchStillSendsTheHandshakeFirst() throws Exception {
+        // The writer is held before its first write; the server greets unprompted and the session connects.
+        CountDownLatch writerMayStart = new CountDownLatch(1);
+        LoopbackTransport loopback = transport;
+        Transport held = new Transport() {
+            @Override
+            public InputStream input() {
+                return loopback.input();
+            }
+
+            @Override
+            public OutputStream output() {
+                try {
+                    writerMayStart.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return loopback.output();
+            }
+
+            @Override
+            public String name() {
+                return loopback.name();
+            }
+
+            @Override
+            public void close(DisconnectReason reason) {
+                loopback.close(reason);
+            }
+        };
+        NexusSession session = start(NexusSession.builder(held, HANDSHAKE).name("t").timers(timers)
+            .options(SessionOptions.defaults().withDisconnectDelayMillis(0))
+            .authenticationToken(new byte[] {1, 2, 3}));
+        transport.server().write(concat(FakeServer.PREAMBLE, GoldenFrames.get("server-greeting")));
+        session.ready().get(5, TimeUnit.SECONDS);
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+        writerMayStart.countDown();
+
+        // The preamble and the greeting, then the disconnect byte: never the byte where the preamble belongs.
+        transport.server().expectPreamble();
+        assertArrayEquals(GoldenFrames.get("client-greeting-v2"), transport.server().readFrame());
+        assertEquals(21, transport.server().readByte());
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        transport.server().expectEnd();
     }
 
     @Test
