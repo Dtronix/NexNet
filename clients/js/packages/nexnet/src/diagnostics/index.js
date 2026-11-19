@@ -6,10 +6,11 @@
 import { counters, isIdle, registerCounterSource } from './counters.js';
 import { getSessionCounters } from '../session/diagnostics.js';
 import { getInvocationCounters } from '../invocation/diagnostics.js';
+import { getPipeCounters } from '../pipes/diagnostics.js';
 
 export { counters, isIdle, registerCounterSource, getOpsCounters } from './counters.js';
 export { getClientSnapshot, SnapshotFields } from './snapshot.js';
-export { getSessionCounters, getInvocationCounters };
+export { getSessionCounters, getInvocationCounters, getPipeCounters };
 
 /**
  * The diagnostics namespace: `diagnostics.counters()` for the H05 leak audit.
@@ -20,4 +21,5 @@ export const diagnostics = Object.freeze({
   registerCounterSource,
   getSessionCounters,
   getInvocationCounters,
+  getPipeCounters,
 });

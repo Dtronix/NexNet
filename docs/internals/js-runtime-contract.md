@@ -53,6 +53,13 @@ browser download.
 | `src/node.js` | Node entry. Re-exports `index.js`, adds `NodeNexusClient` and exports it **as** `NexusClient` |
 | `src/diagnostics.js` | `@dtronix/nexnet/diagnostics`: the leak-audit counters (§3.9). Platform-neutral; not re-exported from the main entries |
 
+**Operational exports (J10).** Beyond the contract classes, `src/index.js` exports the client pool error
+`NexusClientPoolConnectionError`; the loggers `CoreLogger`, `ConsoleLogger`, `RollingLogger`, `NexusLogBehaviors` and
+`NexusLogLevelOrder`; reconnection (`DefaultReconnectionPolicy`, `DEFAULT_RECONNECT_DELAYS`, `DEFAULT_RECONNECT_REASONS`,
+`ReconnectController`); metrics (`NexusMetrics`, `Instruments`, `MetricTags`, `METER_NAME`, §3.10); and the
+`diagnostics` namespace (§3.9). The Node entry also exports `NodeNexusClientPool`, and exports it **as**
+`NexusClientPool`, like the client. `test/contract.test.js` pins the exported names.
+
 So `import { NexusClient } from '@dtronix/nexnet'` gives the Node-capable client under Node and the WebSocket-only client
 in a browser bundle, under the same name. Generated code imports only `@dtronix/nexnet` (or the module name set by the
 `ModuleName` target option).
@@ -128,13 +135,34 @@ Fields are public and `readonly`. Each type has `equals(other)` and conversions 
   `ClientBinding` (§4) that the generated `create<Export>Client(config, nexus)` supplies.
 - `connect({signal})`, `tryConnect({signal})` → `ConnectionResult` (`success`, `state`, `disconnectReason`, `error`),
   `disconnect()`, `[Symbol.asyncDispose]()`.
-- `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `disconnected` (a promise), `config`, `nexus`.
+- `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `disconnected` (a promise, below),
+  `reconnection` (below), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
 - Events (`CustomEvent`, dispatched from a microtask, never re-entrantly from a transport callback):
   - `statechange`, `detail: { state, previous }` (both `ConnectionState` values), on every change of `state`;
   - `disconnected`, `detail: { reason }` (a `DisconnectReason`), once per session that completed its handshake, just
     before the nexus's `onDisconnected(reason)` hook. A connect that fails before the handshake completes is reported
-    only through the `connect`/`tryConnect` result, not through this event.
+    only through the `connect`/`tryConnect` result, not through this event. That includes a reconnect attempt that
+    fails: it dispatches `statechange` only.
+- `disconnected` (the promise) resolves once the current session has ended and no reconnection will bring it back: at
+  once when reconnection is off or the policy declines the reason, otherwise when the reconnection loop gives up
+  (`reconnectfailed`) or `disconnect()` is called. A successful reconnect keeps the same promise. Awaiting it after
+  the `disconnected` event sees the nexus's `onDisconnected` hook already called.
+- `getSnapshot()` returns a `NexusSessionSnapshot` (§3.9), or null when the client has no session that completed its
+  handshake.
+
+**Reconnection (J10).** `config.reconnectionPolicy` is a `ReconnectionPolicy`
+`{ reconnectDelay(attempt): number | null, shouldReconnect?(reason): boolean }` (C# `IReconnectionPolicy`; attempt is
+0-based, delays are milliseconds, null stops). When the property is absent, a browser client uses
+`DefaultReconnectionPolicy` (0, 2, 10 and 30 s, then every 30 s; reasons `SocketError`, `Timeout` and
+`ServerRestarting`) and a Node client uses none; `null` turns reconnection off. Without `shouldReconnect` a policy
+reconnects for the default reasons. After the first successful connect, `client.reconnection` is the
+`ReconnectController` (null before, and when reconnection is off). When a session that completed its handshake ends
+with a reason the policy accepts, the controller calls `nexus.onReconnecting()`, waits each policy delay on the client
+clock and retries with `ClientGreetingReconnection` (101); a successful attempt calls `nexus.onConnected(true)`. It
+dispatches `CustomEvent`s: `reconnecting {reason}`, `reconnectattempt {attempt}` (1-based), `reconnected {attempts}`
+and `reconnectfailed {reason, attempts}`. In a browser it also cuts a pending delay short on `visibilitychange` (to
+visible), `online` and `resume`. `disconnect()` stops it for good.
 - `static transports`: the transport factories the entry supports, keyed by transport kind. `NexusClient` (core and
   browser) has `webSocket`; `NodeNexusClient` adds `httpSocket`, `tcp`, `tcpTls` and `uds`.
 
@@ -217,6 +245,18 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
 - `NexusList<T> extends EventTarget` (event `changed`): `state`, `isEnabled`, `ready`, `disabled`, `count`, `get`,
   `indexOf`, `contains`, `toArray`, iterator, `enable`, `disable`, and the `Promise<boolean>` mutations `add`,
   `insert`, `remove`, `removeAt`, `replace`, `move` and `clear`.
+- Pipe details (J08):
+  - `writable` has a `highWaterMark` of **1** chunk, not 0: with 0, `ReadableStream.pipeTo` never writes (it waits for
+    a positive `desiredSize`). The sink still takes one chunk at a time and sends only what the credit allows.
+    `readable` is a byte stream with `highWaterMark` 0, so nothing is pulled, and no credit granted, before a read.
+  - `forwardTo(destination, {signal})` copies what the pipe receives to `destination` and half-closes `destination`
+    when the input completes (C# `ForwardToAsync`); it waits for the destination's credit before consuming, so a slow
+    destination stalls the source's writer. `bridge(other, {signal})` / `NexusDuplexPipe.bridge(a, b, {signal})`
+    forward both ways (C# `BridgeAsync`): each direction half-closes its destination; an abnormal end of either pipe
+    completes both; a signal stops both directions without completing either and rejects with its reason.
+  - A pipe from `createPipe()` holds a pipe slot and a receive window from the session budget until it is **disposed**
+    (`[Symbol.asyncDispose]`, or `await using`), even if it was never passed to a method. A pipe the server refused
+    frees itself. A pipe a client nexus method received is released when the method returns.
 - `NexusClientPool<TNexus, TProxy>`: `new NexusClientPool(config, nexusFactory, binding)`, `maxConnections`,
   `availableConnections`, `rent({signal})` → `RentedNexusClient`, `collectionConnector(selector)`,
   `[Symbol.asyncDispose]`.
@@ -338,6 +378,9 @@ attaches the layers (`#attachSessionLayers`) **before** `start()`, so frames tha
 | `controlSender` | The `ControlSender` (C# `SessionControlSender`). Its requests (`requestPong`, `requestPipeControl(source)`, `requestAbort(id, kind, reason)`, `requestInvocationCancellation(id)`, `returnInvocationCredit(n)`) only record what is owed; frames are built when the write queue flushes, so repeated requests cost at most one frame each, and credit is batched to half the advertised `invocationCredits`. A `PipeControlSource` implements `takePendingControl(): Uint8Array[]`. Everything pending is dropped when the session ends |
 | `onClose(listener)` | `listener(reason)` runs once, synchronously, when the session reaches `Disconnected`, after the transport closed and before `closed` resolves. A throwing listener is logged; the others still run |
 | `addProgressProbe(probe)` | `probe(now, progressTimeout)` runs on every keepalive tick (§9) after the session's own write-stall check. Return a description of what stalled, or null; the first non-null result ends the session with `DisconnectReason.Stalled` |
+| `addSnapshotSource(source)` | (J17) `source.pipes?(now)` and `source.largeMessages?(now)` return the layer's `NexusPipeSnapshot`s and `NexusLargeMessageSnapshot`s; `pipeSnapshots(now)` and `largeMessageSnapshots(now)` concatenate them. The pipe layer and the invocation layer register theirs when they attach |
+| `snapshot(now)` | (J17) The session part of `NexusSessionSnapshot`: `connected` (ms since the transport connected, `connectedAt`), `sinceLastSent` (null until a write completed) and `flushInProgress` (null when no transport write is in flight) |
+| `addMetricsSink(sink)` / `recordMetric(name, value, tags)` | (J17) Event-instrument hook. A layer calls `recordMetric` with an `Instruments` key, the increment or histogram value (seconds for durations) and the tags beyond role and transport; it costs one empty-array loop when no sink is attached. `addMetricsSink` returns a detach function; sinks are dropped when the session reaches `Disconnected`. Sinks run synchronously and must not throw |
 
 A `FrameHandler` receives a `Frame` (`type`, `body`, and the post-header fields `pipeId`, `invocationId`, `kind`) and
 returns a disconnect reason to end the session (the disconnect byte is sent) or nothing / 0 to continue. A throw ends
@@ -347,6 +390,10 @@ code from there; defer it to a microtask.
 **Body lifetime.** `frame.body` is a view into the frame reader's buffer, which is reused and compacted by later
 reads. It is valid only until the handler returns: copy (`body.slice()`) anything that must outlive the call, such as
 a pipe payload queued for a reader or a large-message chunk.
+
+`addSessionObserver({ started(session) })` (`src/session/observers.js`, J17) registers a process-wide observer that
+`start()` calls synchronously, before the session reads from its transport. The metrics layer uses it to count a
+tracked client's sessions from the transport connection, the handshake included.
 
 Other session members the layers read: `ready` and `closed` (promises that never reject), `id`,
 `isHandshakeComplete`, `isDisconnecting`, `disconnectReason`, `options` (the resolved `ClientConfig`),
@@ -360,18 +407,34 @@ passed to `_dispatch` come from it. `setInvocationCodec(codec)` replaces it (nul
 previous one; only tests use it (until J02 lands they install `test/invocation/support/testCodec.js`). Generated code
 never does.
 
-### 3.9 Diagnostic counters
+### 3.9 Diagnostics: leak-audit counters and snapshots
 
-Two process-wide counter sets support the leak audit (H05): after every client has disconnected, every counter must be
-zero. Each getter returns a snapshot copy. The package exports both on the `@dtronix/nexnet/diagnostics` subpath
-(`src/diagnostics.js`, platform-neutral), together with the `SessionCounters` and `InvocationCounters` typedefs:
+The `diagnostics` namespace (J10; `src/diagnostics/`) is what the leak audit (H05) reads:
+
+- `diagnostics.counters()` → `{ sessions, pipes, timers, pendingInvocations, subscriptions, detail }`, the process-wide
+  totals: `sessions` is `openSessions`; `pipes` is the pipe layer's `openPipes`; `timers` adds the session timers and
+  the ops timers (reconnect delays, pool health checks); `pendingInvocations` adds outbound calls and server-to-client
+  invocations; `subscriptions` counts event listeners the runtime holds (reconnection, browser lifecycle, a
+  `NexusMetrics` with tracked clients). `detail` holds the per-layer sets below and the ops set
+  (`getOpsCounters()`: `timers`, `subscriptions`, `pooledClients`).
+- `diagnostics.isIdle(c?)` is true when every total and every `detail` counter is zero: after every client has
+  disconnected and every pool and tracking `NexusMetrics` is disposed.
+- `diagnostics.registerCounterSource(() => ({ pipes?, timers?, subscriptions? }))` adds another component's counters to
+  the totals; it returns an unregister function.
+- `diagnostics.getSessionCounters()`, `getInvocationCounters()` and `getPipeCounters()` return the per-layer sets.
+
+Each getter returns a snapshot copy. The per-layer counters live in `src/session/diagnostics.js`,
+`src/invocation/diagnostics.js` and `src/pipes/diagnostics.js`.
+
+The session and invocation counter sets are also exported, without the rest of the namespace, on the
+`@dtronix/nexnet/diagnostics` subpath (J16; `src/diagnostics.js`, platform-neutral), together with the `SessionCounters` and `InvocationCounters` typedefs:
 
 ```js
 import { getSessionCounters, getInvocationCounters } from '@dtronix/nexnet/diagnostics';
 ```
 
 The counters are process-wide (per module instance), so an audit must run when no other client in the process is
-active. The main entries do not re-export them.
+active. The main entries expose them only through the `diagnostics` namespace.
 
 | Function | Counter | Counts |
 |---|---|---|
@@ -383,6 +446,50 @@ active. The main entries do not re-export them.
 | | `creditWaiters` | Outbound calls parked waiting for invocation credit |
 | | `inboundInvocations` | Server-to-client invocations queued or running |
 | | `largeMessages` | Large messages being sent or received |
+| `getPipeCounters()` | `openPipes` | Pipes holding a receive window: created, open, or closing until both sides confirmed |
+| | `bufferedBytes` | Received pipe bytes buffered and not yet read |
+
+**Snapshots.** `client.getSnapshot()` (`getClientSnapshot`) returns the C# `NexusSessionSnapshot` with its
+`NexusBudgetSnapshot`, `NexusInvocationSnapshot`, `NexusPipeSnapshot`, `NexusPartialItemSnapshot` and
+`NexusLargeMessageSnapshot` parts, field names camelCased in C# declaration order (`SnapshotFields`, checked against
+`tests/golden/snapshot-fields.json`). Durations are milliseconds on the client clock; `direction` and `kind` are
+`'inbound'`/`'outbound'` and `'argument'`/`'result'`. Since J17 every field is filled from the session
+(`snapshot()`), invocation (`invocationManager.snapshot()`) and pipe layers; a field is null only where C# is null:
+`endpoint` (client), `sinceLastSent`, `flushInProgress`, `oldestQueuedWait`, `separatePoolOldestQueuedWait`,
+`closing`, `sinceLastData`, `partialItem` and `waitingForCredit` when what they time has not started. `creditDrops` is
+always 0 on a client: only a server's multi-session invocations drop calls for lack of credit.
+
+### 3.10 Metrics
+
+`NexusMetrics` (`src/metrics/`) reports the C# instruments of `docs/articles/metrics.md` with identical names, units,
+kinds and tags. `Instruments` describes each one (`name`, `kind`, `unit`, `description`, extra `tags`, `serverOnly`,
+advised histogram `buckets`); `METER_NAME` is `NexNet`. `NexusMetrics.shared` is a process-wide instance.
+
+- `track(client)` / `untrack(client)` / `dispose()`. A tracked client's sessions are counted from the transport
+  connection to the disconnect, the handshake included (`addSessionObserver`, §3.8). A session already open when
+  tracking starts is counted from then on; its duration still runs from its transport connection.
+- `addListener({ add?, record? })` receives the event instruments as they happen: `add(instrument, value, tags)` for
+  counters, `record(instrument, value, tags)` for histograms. Listeners run synchronously where the event happens,
+  possibly in the transport's data callback: keep them cheap. A throwing listener is ignored.
+- `collect(observe)` reads the observable instruments (`observe(instrument, value, tags)`, once per instrument and tag
+  set) from the live sessions, as the C# observable instruments do; the send and receive paths pay nothing.
+
+| Instrument | Where the JS runtime records it |
+|---|---|
+| `nexnet.session.duration`, `nexnet.session.disconnects` | When a tracked session ends, duration first; `nexnet.session.phase` is `handshake` for a session that ended before the handshake completed |
+| `nexnet.invocation.queue_wait` | When a server-to-client invocation takes an execution slot, tagged with its pool |
+| `nexnet.pipe.credit_wait` | When a pipe writer's wait for credit ends (granted, completed or aborted) |
+| `nexnet.pipe.resets` | When a channel item breaks the framing or does not decode (`invalid_item`) or exceeds `maxMessageSize` (`too_large`) |
+| `nexnet.pipe.refusals` | `local` when `createPipe()` or a server-opened pipe hits `maxPipes` or the budget; `remote` when the server refuses an open |
+| `nexnet.large_message.aborts` | Inbound `busy` (no budget) and `cancelled` (by the server); outbound `busy`/`too_large` (refused by the server) and `cancelled` (by the caller's signal) |
+| Observable: `session.active`/`handshaking`, `io.frames`/`bytes`, `budget.reserved`/`limit`, `pipe.open`/`window`, `invocation.queued`/`executing` (per pool), `invocation.credit_waits`, `large_message.in_flight` (per direction) | `collect` |
+| `nexnet.connection.rejections`, `nexnet.invocation.busy` | Never: server only |
+| `nexnet.invocation.credit_drops` | Never on a client (see `creditDrops` above) |
+
+Bridging to OpenTelemetry (`@opentelemetry/api` is not a dependency): create one OTel instrument per `Instruments`
+entry with its name, unit and description (the histogram `buckets` as `advice.explicitBucketBoundaries`), forward
+`add`/`record` from a listener, and call `collect` from a batch observable callback. The module comment of
+`src/metrics/NexusMetrics.js` has the complete snippet.
 
 ## 4. Handshake descriptor and binding
 

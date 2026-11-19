@@ -1,8 +1,8 @@
 /**
  * Client metrics with the C# instrument names and tags. A {@link NexusMetrics} tracks clients; listeners receive the
- * event instruments (`nexnet.session.disconnects`, `nexnet.session.duration`) as they happen, and {@link NexusMetrics#collect}
- * reads the observable ones (sessions, frames, bytes, budget) from the live sessions, as the C# observable instruments
- * do: the send and receive paths pay nothing for metrics.
+ * event instruments (counters and histograms) as they happen, and {@link NexusMetrics#collect} reads the observable
+ * ones (sessions, frames, bytes, budget, pipes, invocation queues, credit waits, large messages) from the live
+ * sessions, as the C# observable instruments do: the send and receive paths pay nothing for metrics.
  *
  * Bridging to OpenTelemetry (`@opentelemetry/api`, not a dependency of this package):
  *
@@ -29,7 +29,8 @@
 
 import { ConnectionState } from '../contract/enums.js';
 import { getInvocationManager } from '../invocation/InvocationManager.js';
-import { systemClock } from '../session/clock.js';
+import { getPipeManager } from '../pipes/PipeManager.js';
+import { addSessionObserver } from '../session/observers.js';
 import { countOps } from '../diagnostics/counters.js';
 import { Instruments, MetricTags, disconnectReasonTag, transportTagOf } from './instruments.js';
 
@@ -58,29 +59,56 @@ import { Instruments, MetricTags, disconnectReasonTag, transportTagOf } from './
  * @typedef {object} MeteredClient
  * @property {import('../contract/config.js').ClientConfig} config
  * @property {import('../session/NexusSession.js').NexusSession | null} _session
- * @property {(type: string, listener: (event: Event) => void) => void} addEventListener
- * @property {(type: string, listener: (event: Event) => void) => void} removeEventListener
  */
+
+/** @typedef {import('../session/NexusSession.js').NexusSession} NexusSession */
 
 /**
  * @typedef {object} Tracked
  * @property {MetricTagSet} tags
- * @property {import('../session/clock.js').Clock} clock
- * @property {import('../session/NexusSession.js').NexusSession | null} session The established session being counted.
- * @property {number} establishedAt Clock time it was seen established.
+ * @property {NexusSession | null} session The client's session being counted, from its start until it ends.
+ * @property {(() => void) | null} detachSink
  * @property {{ framesSent: number, bytesSent: number, framesReceived: number, bytesReceived: number }} retired
  *   Final transport totals of the client's ended sessions.
- * @property {() => void} detach
  */
+
+/**
+ * @typedef {object} LiveSums
+ * @property {MetricTagSet} tags
+ * @property {number} active
+ * @property {number} handshaking
+ * @property {number} framesSent
+ * @property {number} bytesSent
+ * @property {number} framesReceived
+ * @property {number} bytesReceived
+ * @property {number} reserved
+ * @property {number} limit
+ * @property {number} pipesOpen
+ * @property {number} pipeWindow
+ * @property {number} queued
+ * @property {number} executing
+ * @property {number} separatePoolQueued
+ * @property {number} separatePoolExecuting
+ * @property {number} creditWaits
+ * @property {number} largeInbound
+ * @property {number} largeOutbound
+ */
+
+const EVENT_KINDS = Object.freeze({ counter: 'add', histogram: 'record' });
 
 /**
  * Tracks clients and reports the C# instruments for them.
  *
- * Event instruments are recorded from the client's public events: `nexnet.session.duration` is measured from the
- * moment the session is seen established (the C# value starts at the transport connection), and sessions that end
- * during the handshake are not yet reported to `nexnet.session.disconnects`. Instruments that need per-session
- * counters the runtime does not expose yet (invocation queues, credit waits, pipes, large messages) are listed in
- * {@link Instruments} but not reported.
+ * A tracked client's sessions are counted from the moment their transport connects (the session starts) until they
+ * end, the handshake included: `nexnet.session.duration` runs from the transport connection, and a session that ends
+ * during the handshake is reported to `nexnet.session.disconnects` with `nexnet.session.phase=handshake`. The
+ * session, invocation and pipe layers report the other event instruments (pipe resets and refusals, queue and credit
+ * waits, large-message aborts) through the session's metrics hook. `nexnet.connection.rejections` and
+ * `nexnet.invocation.busy` are server-only, and a client never records `nexnet.invocation.credit_drops` (only a
+ * server's multi-session invocations drop calls for lack of credit).
+ *
+ * Listeners are called synchronously where the event happens, which may be the transport's data callback: keep them
+ * cheap. A listener that throws is ignored.
  */
 export class NexusMetrics {
   /** @type {NexusMetrics | null} */
@@ -97,6 +125,8 @@ export class NexusMetrics {
   #clients = new Map();
   /** Transport totals of untracked clients, so the counters stay monotonic. @type {Map<string, Tracked['retired'] & { tags: MetricTagSet }>} */
   #retiredByTags = new Map();
+  /** Removes the session observer; set while at least one client is tracked. @type {(() => void) | null} */
+  #removeObserver = null;
 
   /**
    * Adds a listener for the event instruments. Returns a function that removes it.
@@ -117,41 +147,23 @@ export class NexusMetrics {
 
   /**
    * Starts reporting `client`. Returns a function that stops (also {@link NexusMetrics#untrack}). Tracking the same
-   * client twice is a no-op.
+   * client twice is a no-op. A session the client already has is counted from now on; its duration still runs from
+   * its transport connection.
    * @param {MeteredClient} client
    * @returns {() => void}
    */
   track(client) {
     if (this.#clients.has(client)) return () => this.untrack(client);
     const tags = Object.freeze({ [MetricTags.role]: 'client', [MetricTags.transport]: transportTagOf(client.config) });
-    /** @type {(event: Event) => void} */
-    const onState = (event) => {
-      const detail = /** @type {CustomEvent<{ state: number }>} */ (event).detail;
-      if (detail?.state === ConnectionState.Connected) this.#onEstablished(tracked, client);
-    };
-    /** @type {(event: Event) => void} */
-    const onDisconnected = (event) => {
-      const reason = /** @type {CustomEvent<{ reason: number }>} */ (event).detail?.reason ?? 0;
-      this.#onEnded(tracked, reason);
-    };
     /** @type {Tracked} */
-    const tracked = {
-      tags,
-      clock: client.config.clock ?? systemClock,
-      session: null,
-      establishedAt: 0,
-      retired: { framesSent: 0, bytesSent: 0, framesReceived: 0, bytesReceived: 0 },
-      detach: () => {
-        client.removeEventListener('statechange', onState);
-        client.removeEventListener('disconnected', onDisconnected);
-        countOps('subscriptions', -2);
-      },
-    };
-    client.addEventListener('statechange', onState);
-    client.addEventListener('disconnected', onDisconnected);
-    countOps('subscriptions', 2);
+    const tracked = { tags, session: null, detachSink: null, retired: { framesSent: 0, bytesSent: 0, framesReceived: 0, bytesReceived: 0 } };
     this.#clients.set(client, tracked);
-    if (client._session?.isHandshakeComplete) this.#onEstablished(tracked, client);
+    if (this.#removeObserver === null) {
+      this.#removeObserver = addSessionObserver({ started: (session) => this.#onSessionStarted(session) });
+      countOps('subscriptions', 1);
+    }
+    const session = client._session;
+    if (session !== null && session.state !== ConnectionState.Disconnected) this.#attach(tracked, session);
     return () => this.untrack(client);
   }
 
@@ -164,8 +176,8 @@ export class NexusMetrics {
     const tracked = this.#clients.get(client);
     if (!tracked) return;
     this.#clients.delete(client);
-    tracked.detach();
-    const totals = this.#totals(tracked);
+    this.#retire(tracked);
+    const totals = tracked.retired;
     const key = JSON.stringify(tracked.tags);
     const retired = this.#retiredByTags.get(key) ?? { tags: tracked.tags, framesSent: 0, bytesSent: 0, framesReceived: 0, bytesReceived: 0 };
     retired.framesSent += totals.framesSent;
@@ -173,6 +185,11 @@ export class NexusMetrics {
     retired.framesReceived += totals.framesReceived;
     retired.bytesReceived += totals.bytesReceived;
     this.#retiredByTags.set(key, retired);
+    if (this.#clients.size === 0 && this.#removeObserver !== null) {
+      this.#removeObserver();
+      this.#removeObserver = null;
+      countOps('subscriptions', -1);
+    }
   }
 
   /** Stops tracking every client and removes every listener. @returns {void} */
@@ -187,13 +204,17 @@ export class NexusMetrics {
    * @returns {void}
    */
   collect(observe) {
-    /** @type {Map<string, { tags: MetricTagSet, active: number, handshaking: number, framesSent: number, bytesSent: number, framesReceived: number, bytesReceived: number, reserved: number, limit: number }>} */
+    /** @type {Map<string, LiveSums>} */
     const sums = new Map();
     const sumFor = (/** @type {MetricTagSet} */ tags) => {
       const key = JSON.stringify(tags);
       let s = sums.get(key);
       if (!s) {
-        s = { tags, active: 0, handshaking: 0, framesSent: 0, bytesSent: 0, framesReceived: 0, bytesReceived: 0, reserved: 0, limit: 0 };
+        s = {
+          tags, active: 0, handshaking: 0, framesSent: 0, bytesSent: 0, framesReceived: 0, bytesReceived: 0, reserved: 0, limit: 0,
+          pipesOpen: 0, pipeWindow: 0, queued: 0, executing: 0, separatePoolQueued: 0, separatePoolExecuting: 0, creditWaits: 0,
+          largeInbound: 0, largeOutbound: 0,
+        };
         sums.set(key, s);
       }
       return s;
@@ -205,26 +226,41 @@ export class NexusMetrics {
       s.framesReceived += retired.framesReceived;
       s.bytesReceived += retired.bytesReceived;
     }
-    for (const [client, tracked] of this.#clients) {
+    for (const tracked of this.#clients.values()) {
       const s = sumFor(tracked.tags);
       const totals = this.#totals(tracked);
       s.framesSent += totals.framesSent;
       s.bytesSent += totals.bytesSent;
       s.framesReceived += totals.framesReceived;
       s.bytesReceived += totals.bytesReceived;
-      const session = client._session;
+      const session = tracked.session;
       if (session === null || session.state === ConnectionState.Disconnected) continue;
       s.active++;
       if (!session.isHandshakeComplete) s.handshaking++;
-      const budget = getInvocationManager(session)?.budget;
-      if (budget) {
-        s.reserved += budget.reserved;
-        s.limit += budget.limit;
+      const invocations = getInvocationManager(session);
+      if (invocations) {
+        s.reserved += invocations.budget.reserved;
+        s.limit += invocations.budget.limit;
+        const pools = invocations.poolCounts;
+        s.queued += pools.queued;
+        s.executing += pools.executing;
+        s.separatePoolQueued += pools.separatePoolQueued;
+        s.separatePoolExecuting += pools.separatePoolExecuting;
+        s.creditWaits += invocations.creditWaits;
+        const large = invocations.largeMessageCounts;
+        s.largeInbound += large.inbound;
+        s.largeOutbound += large.outbound;
       }
+      const pipes = getPipeManager(session)?.openPipes ?? 0;
+      s.pipesOpen += pipes;
+      s.pipeWindow += pipes * session.options.pipeWindow;
     }
     for (const s of sums.values()) {
-      const sent = Object.freeze({ ...s.tags, [MetricTags.direction]: 'sent' });
-      const received = Object.freeze({ ...s.tags, [MetricTags.direction]: 'received' });
+      const tagged = (/** @type {string} */ key, /** @type {string} */ value) => Object.freeze({ ...s.tags, [key]: value });
+      const sent = tagged(MetricTags.direction, 'sent');
+      const received = tagged(MetricTags.direction, 'received');
+      const normal = tagged(MetricTags.invocationPool, 'normal');
+      const separate = tagged(MetricTags.invocationPool, 'separate');
       observe(Instruments.sessionActive, s.active, s.tags);
       observe(Instruments.sessionHandshaking, s.handshaking, s.tags);
       observe(Instruments.ioFrames, s.framesSent, sent);
@@ -233,40 +269,83 @@ export class NexusMetrics {
       observe(Instruments.ioBytes, s.bytesReceived, received);
       observe(Instruments.budgetReserved, s.reserved, s.tags);
       observe(Instruments.budgetLimit, s.limit, s.tags);
+      observe(Instruments.pipeOpen, s.pipesOpen, s.tags);
+      observe(Instruments.pipeWindow, s.pipeWindow, s.tags);
+      observe(Instruments.invocationQueued, s.queued, normal);
+      observe(Instruments.invocationQueued, s.separatePoolQueued, separate);
+      observe(Instruments.invocationExecuting, s.executing, normal);
+      observe(Instruments.invocationExecuting, s.separatePoolExecuting, separate);
+      observe(Instruments.invocationCreditWaits, s.creditWaits, s.tags);
+      observe(Instruments.largeMessageInFlight, s.largeInbound, tagged(MetricTags.direction, 'inbound'));
+      observe(Instruments.largeMessageInFlight, s.largeOutbound, tagged(MetricTags.direction, 'outbound'));
+    }
+  }
+
+  /**
+   * A session started (its transport connected): counts it if it belongs to a tracked client.
+   * @param {NexusSession} session
+   */
+  #onSessionStarted(session) {
+    for (const [client, tracked] of this.#clients) {
+      if (client._session === session) {
+        this.#attach(tracked, session);
+        return;
+      }
     }
   }
 
   /**
    * @param {Tracked} tracked
-   * @param {MeteredClient} client
+   * @param {NexusSession} session
    */
-  #onEstablished(tracked, client) {
-    const session = client._session;
-    if (session === null || session === tracked.session) return;
-    if (tracked.session !== null) this.#retire(tracked);
+  #attach(tracked, session) {
+    if (tracked.session === session) return;
+    this.#retire(tracked);
     tracked.session = session;
-    tracked.establishedAt = tracked.clock.now();
+    tracked.detachSink = session.addMetricsSink((name, value, extra) => this.#onMeasurement(tracked, name, value, extra));
+    session.onClose((reason) => {
+      if (tracked.session === session) this.#onEnded(tracked, session, reason);
+    });
   }
 
   /**
+   * An event instrument reported by a session layer.
    * @param {Tracked} tracked
-   * @param {number} reason
+   * @param {string} name
+   * @param {number} value
+   * @param {Readonly<Record<string, string>> | undefined} extra
    */
-  #onEnded(tracked, reason) {
-    if (tracked.session === null) return;
-    const seconds = Math.max(0, tracked.clock.now() - tracked.establishedAt) / 1000;
-    this.#retire(tracked);
-    const reasonTag = disconnectReasonTag(reason);
-    this.#emit('add', Instruments.sessionDisconnects, 1,
-      Object.freeze({ ...tracked.tags, [MetricTags.disconnectReason]: reasonTag, [MetricTags.phase]: 'established' }));
-    this.#emit('record', Instruments.sessionDuration, seconds,
-      Object.freeze({ ...tracked.tags, [MetricTags.disconnectReason]: reasonTag }));
+  #onMeasurement(tracked, name, value, extra) {
+    const instrument = /** @type {Record<string, InstrumentDescriptor>} */ (Instruments)[name];
+    if (instrument === undefined) return;
+    const kind = /** @type {Record<string, 'add' | 'record'>} */ (EVENT_KINDS)[instrument.kind];
+    if (kind === undefined) return;
+    this.#emit(kind, instrument, value, extra ? Object.freeze({ ...tracked.tags, ...extra }) : tracked.tags);
   }
 
-  /** Moves the counted session's transport totals into `retired`. @param {Tracked} tracked */
+  /**
+   * The session ended: records its duration (from the transport connection) and its disconnect, in the C# order.
+   * @param {Tracked} tracked
+   * @param {NexusSession} session
+   * @param {number} reason
+   */
+  #onEnded(tracked, session, reason) {
+    const seconds = Math.max(0, session.options.clock.now() - session.connectedAt) / 1000;
+    const phase = session.isHandshakeComplete ? 'established' : 'handshake';
+    this.#retire(tracked);
+    const reasonTag = disconnectReasonTag(reason);
+    this.#emit('record', Instruments.sessionDuration, seconds,
+      Object.freeze({ ...tracked.tags, [MetricTags.disconnectReason]: reasonTag }));
+    this.#emit('add', Instruments.sessionDisconnects, 1,
+      Object.freeze({ ...tracked.tags, [MetricTags.disconnectReason]: reasonTag, [MetricTags.phase]: phase }));
+  }
+
+  /** Stops counting the tracked session and moves its transport totals into `retired`. @param {Tracked} tracked */
   #retire(tracked) {
     const session = tracked.session;
     if (session === null) return;
+    tracked.detachSink?.();
+    tracked.detachSink = null;
     tracked.retired.framesSent += session.framesSent;
     tracked.retired.bytesSent += session.bytesSent;
     tracked.retired.framesReceived += session.framesReceived;

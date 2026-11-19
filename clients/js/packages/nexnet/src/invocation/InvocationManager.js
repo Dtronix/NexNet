@@ -43,6 +43,7 @@ import {
   tryReadRemoteErrorDetail,
 } from './messages.js';
 import { SessionBudget } from './SessionBudget.js';
+import { MetricTags } from '../metrics/instruments.js';
 
 /** Largest serialized arguments that are never streamed (§6.1): 65,535 minus the 9-byte worst-case body overhead. */
 export const MAX_ARGUMENT_SIZE = MAX_FRAME_BODY - 9;
@@ -52,6 +53,36 @@ const QUEUE_RESERVATION_PER_CREDIT = 64 * 1024;
 
 /** Queue-wait warnings are rate limited to one per this many ms (C#: 30 s, shared by both pools). */
 const QUEUE_WARNING_INTERVAL = 30_000;
+
+/** `nexnet.invocation.pool` tags. */
+const POOL_TAGS = Object.freeze({
+  normal: Object.freeze({ [MetricTags.invocationPool]: 'normal' }),
+  separate: Object.freeze({ [MetricTags.invocationPool]: 'separate' }),
+});
+
+/**
+ * `nexnet.large_message.aborts` tags (C# `RecordLargeMessageAbort`): direction, then the reason (Busy, TooLarge,
+ * anything else is `cancelled`).
+ * @param {boolean} inbound
+ * @param {number} reason An {@link AbortReason}.
+ * @returns {Readonly<Record<string, string>>}
+ */
+function abortTags(inbound, reason) {
+  const name = reason === AbortReason.Busy ? 'busy' : reason === AbortReason.TooLarge ? 'too_large' : 'cancelled';
+  return Object.freeze({ [MetricTags.direction]: inbound ? 'inbound' : 'outbound', [MetricTags.abortReason]: name });
+}
+
+/**
+ * A large message this side is sending.
+ * @typedef {object} OutgoingLargeMessage
+ * @property {number} id
+ * @property {number} kind A {@link LargeMessageKind}.
+ * @property {number} length
+ * @property {number} sent Bytes of the body queued so far.
+ * @property {number} lastProgress Clock time of the last chunk.
+ * @property {boolean} aborted
+ * @property {number} reason
+ */
 
 /**
  * Optional hooks a nexus may implement (beyond the frozen contract): the C# `OnInvocationException` and the
@@ -180,7 +211,7 @@ export class InvocationManager {
   #idOwners = new Map();
   /** @type {Set<OutboundCall>} */
   #calls = new Set();
-  /** Large messages this side is sending, by (ID, kind) key. @type {Map<number, { aborted: boolean, reason: number }>} */
+  /** Large messages this side is sending, by (ID, kind) key. @type {Map<number, OutgoingLargeMessage>} */
   #outgoing = new Map();
 
   // Inbound.
@@ -223,7 +254,10 @@ export class InvocationManager {
       isCallOutstanding: (id) => this.#idOwners.get(id)?.expectResult === true,
       tryTakeInvocationCredit: () => --this.#inboundCredits >= 0,
       returnInvocationCredit: () => this.#returnInvocationCredit(),
-      sendAbort: (id, kind, reason) => session.controlSender.requestAbort(id, kind, reason),
+      sendAbort: (id, kind, reason) => {
+        session.recordMetric('largeMessageAborts', 1, abortTags(true, reason));
+        session.controlSender.requestAbort(id, kind, reason);
+      },
     }, this.budget, this.#options.maxMessageSize, () => this.#options.clock.now());
 
     session.setHandler(MessageType.Invocation, (frame) => this.#guard('Invocation', () => this.#handleInvocation(decodeInvocation(frame.body), false, 0)));
@@ -235,6 +269,7 @@ export class InvocationManager {
     session.setHandler(MessageType.MessageAbort, (frame) => this.#guard('MessageAbort', () => this.#onAbort(frame.body)));
     session.onClose((reason) => this.#onClose(reason));
     session.addProgressProbe((now, timeout) => this.#receiver.findStalled(now, timeout));
+    session.addSnapshotSource({ largeMessages: (now) => this.largeMessageSnapshots(now) });
     void session.ready.then((ok) => {
       if (ok) this.#ensureCredits();
     });
@@ -264,6 +299,88 @@ export class InvocationManager {
   get inboundCount() {
     return this.#normalPool.queue.length + this.#separatePool.queue.length
       + (this.#normalPool.max - this.#normalPool.free) + (this.#separatePool.max - this.#separatePool.free);
+  }
+
+  /** Calls waiting for the peer to return invocation credit. @returns {number} */
+  get creditWaits() {
+    return this.#gate.waiting;
+  }
+
+  /**
+   * Server-to-client invocations queued and running, per execution pool (the `nexnet.invocation.queued` and
+   * `nexnet.invocation.executing` instruments).
+   * @returns {{ queued: number, executing: number, separatePoolQueued: number, separatePoolExecuting: number }}
+   */
+  get poolCounts() {
+    const normal = this.#normalPool;
+    const separate = this.#separatePool;
+    return {
+      queued: normal.queue.length,
+      executing: normal.max - normal.free,
+      separatePoolQueued: separate.queue.length,
+      separatePoolExecuting: separate.max - separate.free,
+    };
+  }
+
+  /**
+   * Large messages being received and sent (the `nexnet.large_message.in_flight` instrument).
+   * @returns {{ inbound: number, outbound: number }}
+   */
+  get largeMessageCounts() {
+    return { inbound: this.#receiver.count, outbound: this.#outgoing.size };
+  }
+
+  /**
+   * The invocation part of the snapshot (C# `NexusInvocationSnapshot`). Waits are milliseconds on the session clock.
+   * A client never drops invocations for lack of credit (only a server's multi-session invocations do), so
+   * `creditDrops` is always 0.
+   * @param {number} [now]
+   * @returns {import('../diagnostics/snapshot.js').NexusInvocationSnapshot}
+   */
+  snapshot(now = this.#options.clock.now()) {
+    const normal = this.#normalPool;
+    const separate = this.#separatePool;
+    let awaitingResults = 0;
+    for (const call of this.#idOwners.values()) {
+      if (call.expectResult && !call.settled) awaitingResults++;
+    }
+    const oldest = (/** @type {InvocationPool} */ pool) => (pool.queue.length > 0 ? Math.max(0, now - pool.queue[0].queuedAt) : null);
+    return {
+      queued: normal.queue.length,
+      executing: normal.max - normal.free,
+      maxExecuting: normal.max,
+      inboundCredits: Math.max(0, this.#inboundCredits),
+      outboundCredits: this.#gate.available,
+      creditWaits: this.#gate.waiting,
+      awaitingResults,
+      creditDrops: 0,
+      oldestQueuedWait: oldest(normal),
+      separatePoolQueued: separate.queue.length,
+      separatePoolExecuting: separate.max - separate.free,
+      separatePoolMaxExecuting: separate.max,
+      separatePoolOldestQueuedWait: oldest(separate),
+    };
+  }
+
+  /**
+   * Snapshots of the large messages being received and sent (C# `NexusLargeMessageSnapshot`).
+   * @param {number} [now]
+   * @returns {import('../diagnostics/snapshot.js').NexusLargeMessageSnapshot[]}
+   */
+  largeMessageSnapshots(now = this.#options.clock.now()) {
+    const snapshots = this.#receiver.snapshots(now);
+    for (const entry of this.#outgoing.values()) {
+      snapshots.push({
+        direction: 'outbound',
+        kind: entry.kind === LargeMessageKind.Argument ? 'argument' : 'result',
+        invocationId: entry.id,
+        length: entry.length,
+        transferred: entry.sent,
+        sinceLastProgress: Math.max(0, now - entry.lastProgress),
+        aborting: false,
+      });
+    }
+    return snapshots;
   }
 
   /**
@@ -449,7 +566,9 @@ export class InvocationManager {
    */
   async #streamLarge(id, kind, innerType, body, signal) {
     const key = id | (kind << 16);
-    const entry = { aborted: false, reason: 0 };
+    const clock = this.#options.clock;
+    /** @type {OutgoingLargeMessage} */
+    const entry = { id, kind, length: body.length, sent: 0, lastProgress: clock.now(), aborted: false, reason: 0 };
     if (this.#outgoing.has(key)) throw new NexusError(`A large message for invocation ${id} is already being sent.`);
     this.#outgoing.set(key, entry);
     countInvocation('largeMessages', 1);
@@ -464,12 +583,15 @@ export class InvocationManager {
           return { result: 'refused', reason: entry.reason };
         }
         if (signal?.aborted) {
+          session.recordMetric('largeMessageAborts', 1, abortTags(false, AbortReason.Cancelled));
           void session.send(encodeFrame(MessageType.MessageAbort, encodeMessageAbort(id, kind, AbortReason.Cancelled)));
           return { result: 'canceled', reason: 0 };
         }
         const count = Math.min(body.length - offset, MAX_FRAME_BODY);
         if (!await session.send(encodeChunkFrame(id, kind, body.subarray(offset, offset + count)))) return { result: 'closed', reason: 0 };
         offset += count;
+        entry.sent = offset;
+        entry.lastProgress = clock.now();
       }
       return { result: 'sent', reason: 0 };
     } finally {
@@ -585,6 +707,7 @@ export class InvocationManager {
   #onAbort(body) {
     const abort = decodeMessageAbort(body);
     if (abort.reason === AbortReason.Busy || abort.reason === AbortReason.TooLarge) {
+      this.#session.recordMetric('largeMessageAborts', 1, abortTags(false, abort.reason));
       // From the receiver of a stream this side is sending: stop it (the stream answers with Ack).
       const entry = this.#outgoing.get(abort.invocationId | (abort.kind << 16));
       if (entry && !entry.aborted) {
@@ -601,6 +724,7 @@ export class InvocationManager {
       }
     } else {
       // From the sender of a stream this side is receiving.
+      if (abort.reason === AbortReason.Cancelled) this.#session.recordMetric('largeMessageAborts', 1, abortTags(true, abort.reason));
       this.#receiver.onAbort(abort);
     }
     return 0;
@@ -668,9 +792,10 @@ export class InvocationManager {
    */
   #checkQueueWait(item, pool) {
     const threshold = this.#options.invocationQueueWarningThreshold;
-    if (threshold === 0) return;
     const now = this.#options.clock.now();
-    const waited = now - item.queuedAt;
+    const waited = Math.max(0, now - item.queuedAt);
+    this.#session.recordMetric('invocationQueueWait', waited / 1000, pool.separate ? POOL_TAGS.separate : POOL_TAGS.normal);
+    if (threshold === 0) return;
     if (waited <= threshold) return;
     if (now - this.#lastQueueWarning < QUEUE_WARNING_INTERVAL) {
       this.#queueWarningsSuppressed++;

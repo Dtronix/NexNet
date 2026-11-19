@@ -170,6 +170,28 @@ export class LargeMessageReceiver {
   }
 
   /**
+   * Snapshots of the streams being received (C# `LargeMessageReceiver.AddSnapshots`).
+   * @param {number} now
+   * @returns {import('../diagnostics/snapshot.js').NexusLargeMessageSnapshot[]}
+   */
+  snapshots(now) {
+    /** @type {import('../diagnostics/snapshot.js').NexusLargeMessageSnapshot[]} */
+    const out = [];
+    for (const [key, stream] of this.#streams) {
+      out.push({
+        direction: 'inbound',
+        kind: stream.kind === LargeMessageKind.Argument ? 'argument' : 'result',
+        invocationId: key & 0xffff,
+        length: stream.total,
+        transferred: stream.received,
+        sinceLastProgress: Math.max(0, now - stream.lastProgress),
+        aborting: stream.aborting,
+      });
+    }
+    return out;
+  }
+
+  /**
    * Describes a stream that received nothing for longer than `timeout` (§9); null when none did.
    * @param {number} now
    * @param {number} timeout

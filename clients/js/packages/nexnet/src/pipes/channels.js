@@ -176,7 +176,7 @@ export class NexusChannelReader {
     if (prefix === null) return NONE;
     const limit = core.host.maxMessageSize;
     if (prefix.length > limit) {
-      core.reset(`item of ${prefix.length} bytes exceeds maxMessageSize`);
+      core.reset(`item of ${prefix.length} bytes exceeds maxMessageSize`, 'too_large');
       throw new NexusMessageTooLargeError(`The channel item of ${prefix.length} bytes exceeds the maximum of ${limit} bytes.`);
     }
     const total = prefix.size + prefix.length;

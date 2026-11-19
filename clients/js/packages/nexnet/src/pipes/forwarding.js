@@ -23,7 +23,7 @@ export async function forwardPipe(source, destination, signal, state = { halfClo
     if (destination.outputDone) return;
     if (source.buffered > 0) {
       if (destination.sendCredit <= 0) {
-        await destination.waitCredit(signal);
+        await destination.waitCredit(signal, source.buffered);
         continue;
       }
       const chunk = source.peekChunk();
