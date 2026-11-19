@@ -443,6 +443,16 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
     /// after every change broadcast before it.</param>
     public record struct ProcessResult(TUnion? BroadcastMessage, bool Disconnect, TUnion? ReplyToSource = null);
 
+    /// <summary>
+    /// Broadcasts a server-originated message to every client. Call it only from an action running on the processing
+    /// loop (<see cref="NexusBroadcastMessageProcessor{TUnion}.EnqueueActionWaitForResult"/>): no client registers
+    /// between a change applied by that action and its broadcast. The message is returned to its pool once sent.
+    /// </summary>
+    protected ValueTask BroadcastFromLoopAsync(TUnion message, CancellationToken ct)
+    {
+        return _connectionManager.BroadcastAsync(message, null, ct);
+    }
+
     protected ValueTask<bool> ProcessMessage(TUnion message)
     {
         return Processor.EnqueueWaitForResult(message, null);
