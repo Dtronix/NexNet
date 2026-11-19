@@ -1,0 +1,161 @@
+package com.dtronix.nexnet.client;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.dtronix.nexnet.DisconnectReason;
+import com.dtronix.nexnet.NexusRuntime;
+import com.dtronix.nexnet.serialization.MsgPackReader;
+import com.dtronix.nexnet.session.FakeServer;
+import com.dtronix.nexnet.session.Frame;
+import com.dtronix.nexnet.session.GoldenFrames;
+import com.dtronix.nexnet.session.LoopbackTransport;
+import com.dtronix.nexnet.session.ManualTimers;
+import com.dtronix.nexnet.session.MessageTypes;
+import com.dtronix.nexnet.session.SessionOptions;
+import com.dtronix.nexnet.spi.ArgumentWriter;
+import com.dtronix.nexnet.spi.ClientNexusBase;
+import com.dtronix.nexnet.spi.HandshakeDescriptor;
+import com.dtronix.nexnet.spi.InvocationContext;
+import com.dtronix.nexnet.spi.ProxyBase;
+import com.dtronix.nexnet.spi.ProxyInvoker;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+/** The invocation runtime as wired into {@link NexusClient} (K07). */
+@Timeout(30)
+class NexusClientInvocationTest {
+    static final HandshakeDescriptor HANDSHAKE = new HandshakeDescriptor(NexusRuntime.VERSION, "v2", 123456789,
+        NexusClientTest.CLIENT_HASH, new int[] {0});
+
+    static final class TestProxy extends ProxyBase {
+        TestProxy(ProxyInvoker invoker) {
+            super(invoker);
+        }
+
+        CompletableFuture<Void> ping() {
+            return invokeTask(1, ArgumentWriter.NONE, null);
+        }
+
+        void notifyServer() {
+            invokeVoid(2, ArgumentWriter.NONE);
+        }
+    }
+
+    static final class TestNexus extends ClientNexusBase<TestProxy> {
+        final List<String> events = new CopyOnWriteArrayList<>();
+        final CountDownLatch connectedGate = new CountDownLatch(1);
+
+        @Override
+        protected CompletableFuture<Void> onConnected(boolean isReconnected) {
+            try {
+                connectedGate.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            events.add("connected");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        protected CompletableFuture<Void> dispatch(int methodId, MsgPackReader arguments, InvocationContext context) {
+            events.add("dispatch " + methodId);
+            throw new IllegalArgumentException("No method " + methodId);
+        }
+    }
+
+    private final TestNexus nexus = new TestNexus();
+    private final List<LoopbackTransport> transports = new CopyOnWriteArrayList<>();
+    private final List<NexusClient<TestProxy>> clients = new ArrayList<>();
+
+    private NexusClient<TestProxy> client() {
+        NexusClient<TestProxy> client = NexusClient.create(ClientConfig.tcp("h", 1).build(), HANDSHAKE, nexus,
+            TestProxy::new, (config, timeout) -> {
+                LoopbackTransport transport = new LoopbackTransport();
+                transports.add(transport);
+                return transport;
+            }, new ManualTimers(), SessionOptions.defaults().withDisconnectDelayMillis(0));
+        clients.add(client);
+        return client;
+    }
+
+    @AfterEach
+    void tearDown() {
+        nexus.connectedGate.countDown();
+        for (NexusClient<TestProxy> client : clients) {
+            client.close();
+        }
+    }
+
+    private FakeServer accept() throws InterruptedException {
+        NexusClientTest.waitFor(() -> !transports.isEmpty());
+        FakeServer server = transports.get(0).server();
+        server.readHandshake();
+        server.write(FakeServer.PREAMBLE);
+        server.write(GoldenFrames.get("server-greeting"));
+        return server;
+    }
+
+    private static byte[] readFrame(FakeServer server) {
+        return server.readFrame();
+    }
+
+    @Test
+    void callsFailWhileNotConnected() throws Exception {
+        NexusClient<TestProxy> client = client();
+        ExecutionException e = assertThrows(ExecutionException.class,
+            () -> client.proxy().ping().get(5, TimeUnit.SECONDS));
+        assertInstanceOf(IllegalStateException.class, e.getCause());
+        assertThrows(IllegalStateException.class, () -> client.proxy().notifyServer());
+    }
+
+    @Test
+    void serverInvocationsRunOnlyAfterOnConnected() throws Exception {
+        NexusClient<TestProxy> client = client();
+        CompletableFuture<Void> connected = client.connect();
+        FakeServer server = accept();
+        // Invocation [id 7, method 0, flags 0, []] right behind the greeting.
+        server.write(Frame.of(MessageTypes.INVOCATION, new byte[] {(byte) 0x94, 7, 0, 0, (byte) 0x90}).bytes());
+        CompletableFuture<byte[]> result = CompletableFuture.supplyAsync(() -> readFrame(server));
+        Thread.sleep(200);
+        assertFalse(result.isDone(), "no result before onConnected completes");
+        assertTrue(nexus.events.isEmpty());
+        nexus.connectedGate.countDown();
+        connected.get(5, TimeUnit.SECONDS);
+        // The method failed, so the server gets an Exception result without detail; its credit came back first.
+        byte[] frame = result.get(5, TimeUnit.SECONDS);
+        if (frame[0] == MessageTypes.INVOCATION_CREDIT) {
+            frame = server.readFrame();
+        }
+        assertArrayEquals(new byte[] {MessageTypes.INVOCATION_RESULT, 3, 0, (byte) 0x92, 7, 2}, frame);
+        assertEquals("connected", nexus.events.get(0));
+    }
+
+    @Test
+    void theInvocationRuntimeHandlesMessagesFromTheFirstFrame() throws Exception {
+        NexusClient<TestProxy> client = client();
+        nexus.connectedGate.countDown();
+        CompletableFuture<Void> connected = client.connect();
+        FakeServer server = accept();
+        connected.get(5, TimeUnit.SECONDS);
+        // Credit the client never took: a flow-control error from the invocation runtime, not an unhandled type.
+        server.write(Frame.of(MessageTypes.INVOCATION_CREDIT, new byte[] {(byte) 0x91, 1}).bytes());
+        assertEquals(DisconnectReason.FLOW_CONTROL.code(), server.readByte());
+        client.disconnected().get(5, TimeUnit.SECONDS);
+        ExecutionException e = assertThrows(ExecutionException.class,
+            () -> client.proxy().ping().get(5, TimeUnit.SECONDS));
+        assertInstanceOf(IllegalStateException.class, e.getCause());
+    }
+}
