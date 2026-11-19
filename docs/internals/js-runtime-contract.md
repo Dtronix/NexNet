@@ -48,7 +48,7 @@ browser download.
 | File | Role |
 |---|---|
 | `src/index.js` | Platform-neutral API: everything generated code and applications use |
-| `src/browser.js` | Browser entry. Re-exports `index.js`; the place for browser-only additions (Worker pings, lifecycle reconnect) |
+| `src/browser.js` | Browser entry. Re-exports `index.js`; the place for browser-only additions (lifecycle reconnect). The Worker keepalive (§3.3) is feature-detected in platform-neutral code, not added here |
 | `src/node.js` | Node entry. Re-exports `index.js`, adds `NodeNexusClient` and exports it **as** `NexusClient` |
 
 So `import { NexusClient } from '@dtronix/nexnet'` gives the Node-capable client under Node and the WebSocket-only client
@@ -128,7 +128,11 @@ Fields are public and `readonly`. Each type has `equals(other)` and conversions 
   `disconnect()`, `[Symbol.asyncDispose]()`.
 - `state` (`ConnectionState`), `proxy`, `isSecure`, `disconnected` (a promise), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
-- Events: `statechange` and `disconnected`.
+- Events (`CustomEvent`, dispatched from a microtask, never re-entrantly from a transport callback):
+  - `statechange`, `detail: { state, previous }` (both `ConnectionState` values), on every change of `state`;
+  - `disconnected`, `detail: { reason }` (a `DisconnectReason`), once per session that completed its handshake, just
+    before the nexus's `onDisconnected(reason)` hook. A connect that fails before the handshake completes is reported
+    only through the `connect`/`tryConnect` result, not through this event.
 - `static transports`: the transport factories the entry supports, keyed by transport kind. `NexusClient` (core and
   browser) has `webSocket`; `NodeNexusClient` adds `httpSocket`, `tcp`, `tcpTls` and `uds`.
 
@@ -138,12 +142,29 @@ milliseconds. `authenticate({signal})` may return the token synchronously or as 
 connects, on every connect and reconnect, bounded by the handshake timeout; if it throws, the connect fails with
 `DisconnectReason.Authentication` and no connection is opened (F05 semantics).
 
+The optional `clock` property (C# `ConfigBase.Time`) is the time source of every client and session timer: the
+connection, handshake and authenticate timeouts, the keepalive, the idle and progress timeouts and the disconnect delay.
+It is a `Clock` (`src/session/clock.js`): `now()` in milliseconds on a monotonic clock, plus `setTimeout`,
+`clearTimeout`, `setInterval` and `clearInterval` with opaque handles. The default, `systemClock`, is
+`performance.now()` and the global timers. Tests inject a manual clock (`test/session/support/ManualClock.js`).
+
+**Keepalive.** Only the client pings (spec §5.5). The interval is `pingInterval` when set, else a third of the
+server's advertised `idleTimeoutMs` (S04), else 10,000 ms. Each tick first checks the receive timeout (`timeout`) and
+the progress timeout (`progressTimeout`, §9), then sends a `Ping`. In a browser, with the default clock, the keepalive
+runs in a dedicated Worker created from a `blob:` URL, because main-thread timers in background tabs are throttled to
+about once a minute or frozen, which would let the server's idle timeout expire. If no Worker can be created (no
+`Worker`, or a Content-Security-Policy without `worker-src blob:`) it falls back to `setInterval`. Node has no global
+`Worker` and always uses `setInterval`; an injected clock always uses `clock.setInterval`.
+
 `isSecure` is true only for transports that declare themselves secure: TLS, WSS, HTTPS and (Node) UDS. Over any other
 transport a client logs `NexNet: unencrypted transport (<transport>); credentials and data are visible on the network.`
 once per instance, on the first connect (D7).
 
 The `Transport` interface between the session and the transports: `write(chunks)`, `onData(cb)`, `onClose(cb)`,
 `close(reason)`, `isSecure`, `remoteCertificate`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
+The Node TLS transports (`tcpTls`, `https:` HttpSocket, `wss:` WebSocket) set `remoteCertificate` to the server's
+`X509Certificate` (`node:crypto`); every other transport, the browser WebSocket included, sets it to null. The session
+exposes it as `session.remoteCertificate`; `NexusClient` has no public accessor for it yet.
 
 ### 3.4 Generated-code base classes (`proxy.js`, `nexus.js`)
 
@@ -171,6 +192,16 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
   `DispatchContext`: `invocationId`, `signal` (the C# `CancellationToken`), `writeResult`, `pipe(pipeId)` and
   `channel(pipeId, formatter)`. Unknown IDs fall through to `super._dispatch`, which throws. The runtime checks
   `methodId` against `acceptedIds` before dispatching.
+- `onInvocationException(error, methodId)` (C# `OnInvocationException`): called when a method that returns a result
+  throws, before the failure is sent. Return a `NexusRemoteError` (`{ code?: number | null, message?: string | null }`)
+  to send that in place of the exception's detail, whatever `remoteExceptionDetail` says; return null or undefined to
+  send what that setting selects (type and message for `TypeAndMessage`, otherwise nothing). A `code` that is not an
+  int32 is sent as null; the remote type is never sent with a returned error. Not called for canceled or
+  fire-and-forget invocations. A throw from the hook is logged and treated as null.
+- `_separatePool(methodId)` (protected): true for `[NexusMethod(SeparatePool = true)]` methods. Such invocations run in
+  a second execution pool limited by `maxSeparatePoolInvocations`; all others share the pool limited by
+  `maxConcurrentConnectionInvocations`. The base returns false; generated code overrides it only when the nexus has
+  such methods.
 
 ### 3.5 Pipes, channels, collections, pool
 
@@ -205,9 +236,138 @@ Cancellation (D17) is not a NexNet error class: operations reject with `cancella
 or waiting for its result) completes as canceled, as in C# (`TaskCanceledException`) and protocol spec §4.5: it
 rejects with a `DOMException` named `AbortError` whose `cause` is a `NexusTransportError` carrying the disconnect
 `reason`. A call made while not connected still rejects with `NexusTransportError` directly.
+`cause` is set as an own, non-enumerable property, because not every platform's `DOMException` constructor accepts a
+`cause` option; read it as `error.cause`. When the session ends, server-to-client invocations that are queued are
+dropped and those running see `ctx.signal` abort.
 
 `ConnectionState`, `ConnectionResultState`, `DisconnectReason` (wire codes 20–38), `RemoteExceptionDetail`,
 `NexusCollectionState` and `DateTimeKind` are frozen objects with the C# values.
+
+### 3.7 Transport errors and TLS
+
+A transport factory rejects a failed connect with a `NexusTransportError` carrying two extra fields
+(`TransportConnectError` in `src/transport/TransportBase.js`):
+
+- `transportError`: the C# `TransportError` name (protocol spec §13.1): `InternalError`, `ConnectionAborted`,
+  `AddressInUse`, `InvalidAddress`, `ConnectionTimeout`, `Unreachable`, `ConnectionRefused`, `ProtocolError`,
+  `ConnectionReset` or `AuthenticationError`;
+- `status`: the HTTP status of a refused upgrade (HttpSocket and Node WebSocket only); absent otherwise.
+
+`reason` is `DisconnectReason.Authentication` for `AuthenticationError` and `SocketError` for everything else, as in
+the C# client. `connect()` rethrows this error as is; `tryConnect()` returns it as `error` with that
+`disconnectReason`. A connect that exceeds `connectionTimeout` fails with `DisconnectReason.Timeout` instead.
+
+| Failure | `transportError` | `reason` |
+|---|---|---|
+| Node socket error `ECONNREFUSED`, `ENOENT` (UDS path) | `ConnectionRefused` | `SocketError` |
+| `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`, `EHOSTUNREACH` | `Unreachable` | `SocketError` |
+| `ECONNRESET`, `EPIPE` | `ConnectionReset` | `SocketError` |
+| `ECONNABORTED` | `ConnectionAborted` | `SocketError` |
+| `ETIMEDOUT` | `ConnectionTimeout` | `SocketError` |
+| `EADDRINUSE` | `AddressInUse` | `SocketError` |
+| `EADDRNOTAVAIL`, `EINVAL` | `InvalidAddress` | `SocketError` |
+| Any error after the TCP connect and before the TLS handshake completes, or a TLS/certificate error code | `AuthenticationError` | `Authentication` |
+| Upgrade refused with `401` or `403` (HttpSocket, Node WebSocket) | `AuthenticationError`, `status` set | `Authentication` |
+| HttpSocket upgrade refused with any other status, `2xx` included | `InternalError`, `status` set | `SocketError` |
+| Node WebSocket upgrade refused with `5xx` | `InternalError`, `status` set | `SocketError` |
+| Node WebSocket upgrade refused with any other status | `ProtocolError`, `status` set | `SocketError` |
+| `101` with a wrong `Upgrade`/`Connection`/`Sec-WebSocket-Accept`, or a subprotocol or extension selected | `ProtocolError` | `SocketError` |
+| Browser WebSocket: any connect failure (the platform hides the cause and the status) | `InternalError` | `SocketError` |
+| Any other error | `InternalError` | `SocketError` |
+
+After the connection is up, the error a transport ends with is only logged (at `debug`): the session ends with
+`DisconnectReason.SocketError`, or `SocketClosedWhenWriting` when a write failed. The TCP, TLS, UDS and HttpSocket
+transports report the Node socket error, or none for a plain end. The WebSocket transports report `ConnectionAborted`
+for a close other than code 1000 (or a connection lost without a Close frame, 1006) and `ProtocolError` for an RFC 6455
+violation or a text message. A write on an ended transport rejects with `ConnectionAborted`.
+
+**Credentials.** The greeting token (`authenticate`) is the canonical credential for every transport (D15). For the
+HTTP-based transports in Node, extra upgrade headers, an `Authorization` header for example, go in
+`config.webSocket.headers` or `config.httpSocket.headers`; the transport sets its own upgrade headers (`Connection`,
+`Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
+cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook (F06) goes in the URL
+(`wss://host/nexus?token=…`), in Node as well as in browsers.
+
+**TLS options and pinning (Node).** `TlsOptions` follow `tls.connect`. The host name is always verified with
+`tls.checkServerIdentity` (against `servername`, defaulting to the URL or `host` name). A user
+`checkServerIdentity(hostname, certificate)` runs after that check passes; returning an `Error` fails the connect with
+`AuthenticationError`. It is the pinning hook, and it supports both pin forms Java accepts, because `certificate` is
+Node's detailed peer certificate:
+
+- certificate SHA-256: `certificate.fingerprint256` (colon-separated upper-case hex), or the SHA-256 of
+  `certificate.raw` (DER);
+- SPKI SHA-256: the SHA-256 of `certificate.pubkey`, which is the DER `SubjectPublicKeyInfo` (the HPKP
+  `pin-sha256` value when base64-encoded);
+- the issuers are reachable through `certificate.issuerCertificate`, to pin an intermediate or the root.
+
+```js
+import { createHash } from 'node:crypto';
+const pin = 'MZEa+vKvxw+5EI8S4C6W811NN39NrGjkKDakkDBwHdE='; // base64 SHA-256 of the server's SPKI
+const tls = {
+  ca: testCaPem,
+  checkServerIdentity: (host, cert) =>
+    createHash('sha256').update(cert.pubkey).digest('base64') === pin ? undefined : new Error('certificate pin mismatch'),
+};
+```
+
+Node calls the hook only when chain validation succeeded. With `rejectUnauthorized: false` and a certificate that does
+not chain to a trusted CA, it is **not called** and the connect succeeds, so pinning can only narrow CA trust, never
+replace it: pass the issuing CA in `ca` to pin a self-signed or private-CA server. The runtime has no built-in pin list
+yet. Browsers do the TLS themselves and ignore `tls`: no custom CA, client certificate or pinning (capability skips).
+
+### 3.8 Runtime internals: session extension points
+
+The layers above the session core (invocations J07, pipes J08, collections J09, reconnection J10) plug into
+`NexusSession` (`src/session/NexusSession.js`) through these members. They are internal to the runtime: not exported
+from the package entries, and generated code never uses them. The client creates one session per connect attempt and
+attaches the layers (`#attachSessionLayers`) **before** `start()`, so frames that arrive in the same read as the
+`ServerGreeting` find their handlers.
+
+| Member | Contract |
+|---|---|
+| `setHandler(type, handler)` | Registers the `FrameHandler` of a message type received after the handshake. A received type without a handler is a protocol error (`ProtocolError`). `Ping`, `ServerGreeting`, `ClientGreeting` and `ClientGreetingReconnection` belong to the session: registering them throws `TypeError`. A later registration for the same type replaces the earlier one |
+| `send(frame)` | Queues one encoded frame. Resolves true once the transport took it, false when the session ended first or the handshake has not completed (nothing is sent then). Frames queued in the same tick go out in one transport write |
+| `controlSender` | The `ControlSender` (C# `SessionControlSender`). Its requests (`requestPong`, `requestPipeControl(source)`, `requestAbort(id, kind, reason)`, `requestInvocationCancellation(id)`, `returnInvocationCredit(n)`) only record what is owed; frames are built when the write queue flushes, so repeated requests cost at most one frame each, and credit is batched to half the advertised `invocationCredits`. A `PipeControlSource` implements `takePendingControl(): Uint8Array[]`. Everything pending is dropped when the session ends |
+| `onClose(listener)` | `listener(reason)` runs once, synchronously, when the session reaches `Disconnected`, after the transport closed and before `closed` resolves. A throwing listener is logged; the others still run |
+| `addProgressProbe(probe)` | `probe(now, progressTimeout)` runs on every keepalive tick (§9) after the session's own write-stall check. Return a description of what stalled, or null; the first non-null result ends the session with `DisconnectReason.Stalled` |
+
+A `FrameHandler` receives a `Frame` (`type`, `body`, and the post-header fields `pipeId`, `invocationId`, `kind`) and
+returns a disconnect reason to end the session (the disconnect byte is sent) or nothing / 0 to continue. A throw ends
+the session with `ProtocolError`. Handlers run synchronously in the transport's data callback and must not call user
+code from there; defer it to a microtask.
+
+**Body lifetime.** `frame.body` is a view into the frame reader's buffer, which is reused and compacted by later
+reads. It is valid only until the handler returns: copy (`body.slice()`) anything that must outlive the call, such as
+a pipe payload queued for a reader or a large-message chunk.
+
+Other session members the layers read: `ready` and `closed` (promises that never reject), `id`,
+`isHandshakeComplete`, `isDisconnecting`, `disconnectReason`, `options` (the resolved `ClientConfig`),
+`peerMaxMessageSize`, `peerInvocationCredits`, `sendMaxMessageSize`, `idleTimeoutMs`, `pingInterval` and the
+frame/byte counters used by `getSnapshot()`.
+
+**Invocation codec.** The invocation layer gets its writers and readers from a process-wide factory in
+`src/invocation/codec.js`: `invocationCodec()` returns `{ createWriter(), createReader(bytes, serializerOptions) }`,
+by default `new MsgPackWriter()` and `new MsgPackReader(bytes, options)`. `DispatchContext.writeResult` and the reader
+passed to `_dispatch` come from it. `setInvocationCodec(codec)` replaces it (null restores the default) and returns the
+previous one; only tests use it (until J02 lands they install `test/invocation/support/testCodec.js`). Generated code
+never does.
+
+### 3.9 Diagnostic counters
+
+Two process-wide counter sets support the leak audit (H05): after every client has disconnected, every counter must be
+zero. Each getter returns a snapshot copy. Both live in runtime modules that the package `exports` map does not expose
+yet (`src/session/diagnostics.js`, `src/invocation/diagnostics.js`); tests import them by path.
+
+| Function | Counter | Counts |
+|---|---|---|
+| `getSessionCounters()` | `openSessions` | Sessions created and not yet `Disconnected` |
+| | `timers` | Session timers running: handshake timeout, keepalive, disconnect delay, disconnect-write timeout |
+| | `pendingWrites` | Frames queued or being written and not yet flushed |
+| `getInvocationCounters()` | `pendingInvocations` | Outbound calls not yet completed (waiting for credit, sending, or waiting for their result) |
+| | `reservedInvocationIds` | Outbound invocation IDs reserved (awaiting a result, or a late result after a cancel) |
+| | `creditWaiters` | Outbound calls parked waiting for invocation credit |
+| | `inboundInvocations` | Server-to-client invocations queued or running |
+| | `largeMessages` | Large messages being sent or received |
 
 ## 4. Handshake descriptor and binding
 
