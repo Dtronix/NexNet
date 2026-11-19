@@ -1,10 +1,12 @@
+using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
 
 namespace NexNet.Generator.Targets.JavaScript;
 
 /// <summary>
 /// The JavaScript client target (<c>@dtronix/nexnet</c>, ESM + <c>.d.ts</c>). Type names are TypeScript declaration
-/// syntax. Type and name mapping only; the emitters arrive with J03/J04/J11.
+/// syntax. J03 emits a module and declarations per declared type, <c>formatters.js</c> and the support module
+/// (see <see cref="Emit"/>); the proxies and client nexus bases arrive with J04.
 /// </summary>
 internal sealed class JavaScriptTarget : TargetLanguageBase
 {
@@ -29,7 +31,11 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     {
         "constructor", "__proto__", "prototype", "hasOwnProperty", "isPrototypeOf", "propertyIsEnumerable",
         "toLocaleString", "toString", "valueOf", "then",
+        "equals", "hashKey",    // methods of every generated class (J03)
     };
+
+    /// <summary>File names (without extension) the emitter uses for its own modules; a type or export may not take them.</summary>
+    internal static readonly string[] ReservedFileNames = { JsSyntax.FormattersModule, JsSyntax.SupportModule, JsSyntax.UserFormattersModule };
 
     // Declared after the static tables it reads: static fields initialize in textual order.
     public static readonly JavaScriptTarget Instance = new();
@@ -63,6 +69,90 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     {
         var name = TypeName(type);
         return new[] { name + ".js", name + ".d.ts" };
+    }
+
+    public override IEnumerable<TargetDiagnostic> Validate(NexusIr ir, ExportIr export, TargetOptions options)
+    {
+        var diagnostics = base.Validate(ir, export, options).ToList();
+
+        // The emitter's own modules share the output directory with the type and export modules.
+        var named = TargetIrWalker.OwnedDecls(ir, export, Flag).Select(d => (What: "type '" + d.Id + "'", Name: TypeName(d)))
+            .Append((What: "export '" + export.Name + "'", Name: Names.Type(export.Name)));
+        foreach (var (what, name) in named)
+        {
+            if (ReservedFileNames.Any(r => string.Equals(r, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                diagnostics.Add(new TargetDiagnostic(
+                    DiagnosticDescriptors.TargetNameCollision.Id,
+                    DisplayName,
+                    what + " maps to '" + name + "', which the generated " + name.ToLowerInvariant() + " module uses",
+                    export.Location));
+            }
+        }
+
+        // D12: a JavaScript formatter is '<module>#<export>' or '<module>' (its default export).
+        var invalid = new SortedSet<string>(StringComparer.Ordinal);
+        void Visit(TypeRef? type)
+        {
+            if (type == null)
+                return;
+            if (type.Kind == TypeRefKind.External && NativeFormatter(type) is { } spec && JsFormatterEmitter.ParseSpec(spec) == null)
+                invalid.Add((type.Clr ?? "?") + "\n" + spec);
+            foreach (var arg in type.Args)
+                Visit(arg);
+        }
+
+        foreach (var api in new[] { export.ServerApi, export.ClientApi })
+        {
+            foreach (var method in api.Methods)
+            {
+                Visit(method.ReturnType);
+                Visit(method.PipeType);
+                foreach (var param in method.Params)
+                    Visit(param.Type);
+            }
+
+            foreach (var collection in api.Collections)
+                Visit(collection.Item);
+        }
+
+        foreach (var decl in TargetIrWalker.OwnedDecls(ir, export, Flag).OfType<ObjectDeclIr>())
+        {
+            foreach (var member in decl.Members)
+                Visit(member.Type);
+        }
+
+        foreach (var entry in invalid)
+        {
+            var parts = entry.Split('\n');
+            diagnostics.Add(new TargetDiagnostic(
+                DiagnosticDescriptors.InvalidTargetFormatter.Id,
+                parts[0],
+                "the JavaScript formatter '" + parts[1] + "' is not '<module>#<export>' or '<module>'",
+                export.Location));
+        }
+
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// Emits, in the output directory: <c>&lt;Type&gt;.js</c> and <c>&lt;Type&gt;.d.ts</c> per declared type,
+    /// <c>formatters.js</c>/<c>.d.ts</c>, <c>nexnet-support.js</c>/<c>.d.ts</c> and, with user formatters,
+    /// <c>user-formatters.d.ts</c>. Nothing when no export opts in.
+    /// </summary>
+    public override IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode)
+    {
+        if (mode != EmitMode.Client || !ir.Exports.Any(e => (e.Targets & (int)Flag) != 0))
+            return Array.Empty<GeneratedFile>();
+
+        var decls = TargetIrWalker.TargetDecls(ir, Flag).Select(d => d.Decl).ToArray();
+        var context = new JsContext(this, ir, decls, options.Get(ModuleNameOption) ?? JsSyntax.DefaultRuntimeModule);
+        var files = new List<GeneratedFile>();
+        foreach (var decl in decls)
+            files.AddRange(JsTypeEmitter.Emit(context, decl));
+        files.AddRange(JsFormatterEmitter.Emit(context, JsFormatterEmitter.UserFormatters(ir, decls)));
+        files.AddRange(JsSupportEmitter.Emit(context));
+        return files;
     }
 
     /// <summary>Report §3.5, JS column. Only primitives (boolean, number, bigint, string) compare by value in a Map/Set.</summary>
