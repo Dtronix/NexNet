@@ -366,11 +366,6 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         // Outside the protocol-error handling below, so an injected failure reaches the processor itself.
         ProcessTestHook?.Invoke(message);
 
-        // The run was stopped (the collection disconnected) while this message waited: it belongs to a closed pipe,
-        // and applying it would leak stale state into the next enable.
-        if (ct.IsCancellationRequested)
-            return new BroadcastMessageProcessResult(false, false);
-
         BroadcastMessageProcessResult result;
         try
         {
@@ -404,10 +399,16 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
     
-    protected void InitializationCompleted()
+    /// <summary>
+    /// Marks the initial synchronization of the current run complete: sets <see cref="State"/> to Connected and
+    /// completes <see cref="ReadyTask"/>.
+    /// </summary>
+    /// <param name="ct">Token of the processor run that processed the synchronization. A synchronization of a
+    /// stopped run (the collection disconnected, possibly with a new enable already in flight) is ignored, so it
+    /// cannot report a later run as connected.</param>
+    protected void InitializationCompleted(CancellationToken ct)
     {
-        // A synchronization that finishes after the collection disconnected must not report it as connected.
-        if (_client == null || _processorToken.IsCancellationRequested)
+        if (ct.IsCancellationRequested)
             return;
 
         State = NexusCollectionState.Connected;

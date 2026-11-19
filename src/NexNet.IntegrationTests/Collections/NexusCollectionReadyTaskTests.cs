@@ -1,7 +1,6 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Pipes.Broadcast;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -43,17 +42,17 @@ internal class NexusCollectionReadyTaskTests : NexusCollectionBaseTests
             await resetStarted.Task.Timeout(1);
 
             var ready = list.ReadyTask;
-            Assert.That(ready.IsCompleted, Is.False);
+            await Assert.That(ready.IsCompleted).IsFalse();
 
             await client.DisconnectAsync().Timeout(1);
 
             await AssertThrows<InvalidOperationException>(() => ready.Timeout(1));
-            Assert.That(ready.Exception!.InnerException!.Message,
-                Does.Contain("disconnected before its initial synchronization"));
-            Assert.That(await enable.Timeout(1), Is.False);
+            await Assert.That(ready.Exception!.InnerException!.Message)
+                .Contains("disconnected before its initial synchronization");
+            await Assert.That(await enable.Timeout(1)).IsFalse();
 
             // ReadyTask keeps the failure instead of reporting the collection as ready.
-            Assert.That(list.ReadyTask.IsFaulted, Is.True);
+            await Assert.That(list.ReadyTask.IsFaulted).IsTrue();
         }
         finally
         {
@@ -63,14 +62,14 @@ internal class NexusCollectionReadyTaskTests : NexusCollectionBaseTests
 
         // The held synchronization finishing late does not mark the collection connected.
         await Task.Delay(50);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
         // A new enable on a new session gets a fresh ReadyTask.
         await client.ConnectAsync().Timeout(1);
         list = client.Proxy.IntListBi;
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
-        Assert.That(list, Is.EquivalentTo([7]));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+        await Assert.That(list).IsEquivalentTo([7]);
     }
 }
