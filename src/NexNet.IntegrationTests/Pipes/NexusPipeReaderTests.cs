@@ -114,6 +114,34 @@ public class NexusPipeReaderTests
     }
     
     [Test]
+    public async Task ReadAsync_AfterDispose_ReturnsWithoutThrowing()
+    {
+        var reader = CreateReader();
+        reader.Dispose();
+
+        var result = await reader.ReadAsync();
+
+        await Assert.That(result.Buffer.IsEmpty).IsTrue();
+        await Assert.That(result.IsCanceled).IsFalse();
+    }
+
+    [Test]
+    public async Task ReadAsync_Pending_CompleteNoNotify_WakesTheRead()
+    {
+        var reader = CreateReader();
+
+        var readTask = reader.ReadAsync().AsTask();
+        await Assert.That(readTask.IsCompleted).IsFalse().Because("No data is buffered, so the read must wait");
+
+        // Completion swaps the semaphore field out and releases that instance: the waiting read must wake.
+        reader.CompleteNoNotify();
+        var result = await readTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(result.IsCompleted).IsTrue();
+        await Assert.That(result.Buffer.IsEmpty).IsTrue();
+    }
+
+    [Test]
     public async Task TryRead_AfterCancelPendingRead_ReturnsTrueAndCanceled()
     {
         var reader = TestPipes.Reader(new DummyStateManager(), null, false);

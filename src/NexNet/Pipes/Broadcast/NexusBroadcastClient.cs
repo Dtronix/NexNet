@@ -235,6 +235,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
                 // The processor closed its queue without being stopped: it ended on an unexpected error.
                 broadcaster.OnProcessorStopped(processorToken);
             }
+            catch (ChannelClosedException e)
+            {
+                // The processor was stopped (the pipe closed or the collection was disabled): an expected close.
+                logger?.LogDebug(e, "Session collection reader stopped: the processor queue closed.");
+            }
             catch (Exception e)
             {
                 logger?.LogInfo(e, "Error while reading session collection message.");
