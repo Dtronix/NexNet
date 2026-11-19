@@ -1,56 +1,64 @@
 ﻿using NexNet.Collections;
+using NexNet.IntegrationTests.Collections.Lists;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.IntegrationTests.TestInterfaces;
 
 namespace NexNet.IntegrationTests.Collections;
 
-internal class NexusCollectionEventTests : NexusCollectionBaseTests
+/// <summary>Change events and concurrent changes on the client under test's lists.</summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionEventTests(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
 {
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task EventRacing_DoesNotCauseTimeout(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task EventRacing_DoesNotCauseTimeout(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync();
-        
-        var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 40);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await list.EnableAsync().Timeout(T(1));
 
         // Create rapid sequence of operations that might cause event racing
         var tasks = new List<Task>();
         for (int i = 0; i < 20; i++)
         {
-            tasks.Add(serverNexus.IntListBi.AddAsync(i));
-            tasks.Add(client.Proxy.IntListBi.AddAsync(i + 100));
+            tasks.Add(s.ServerList.AddAsync(i));
+            tasks.Add(list.AddAsync(i + 100).AsTask());
         }
 
-        await completeTask.Wait();
+        var items = await WaitForCountAsync(list, 40);
+        await Task.WhenAll(tasks).Timeout(T(2));
 
-        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(40);
-        await WaitForState(client, ConnectionState.Connected);
+        await Assert.That(items.Length).IsEqualTo(40);
+        await s.Client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task MultipleEventSubscribers_HandleConcurrency(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task MultipleEventSubscribers_HandleConcurrency(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync();
+        RequireInProc(target, NoListEvents);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        var clientList = InProc(s.Client).Client.Proxy.IntListBi;
+        await list.EnableAsync().Timeout(T(1));
 
         var subscriber1Events = 0;
         var subscriber2Events = 0;
         var subscriber3Events = 0;
 
         // Multiple event subscribers
-        client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber1Events));
-        client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber2Events));
-        client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber3Events));
-        
-        var waitEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 10);
+        using var subscription1 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber1Events));
+        using var subscription2 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber2Events));
+        using var subscription3 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber3Events));
+
+        using var waitEvent = clientList.WaitForEvent(NexusCollectionChangedAction.Add, 10);
 
         // Perform operations
         for (int i = 0; i < 10; i++)
         {
-            await serverNexus.IntListBi.AddAsync(i);
+            await s.ServerList.AddAsync(i).Timeout(T(1));
         }
 
         await waitEvent.Wait();
@@ -63,53 +71,52 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         await Assert.That(subscriber1Events).IsEqualTo(10);
         await Assert.That(subscriber2Events).IsEqualTo(10);
         await Assert.That(subscriber3Events).IsEqualTo(10);
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task EventException_DoesNotBreakSystem(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task EventException_DoesNotBreakSystem(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync();
+        RequireInProc(target, NoListEvents);
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        var clientList = InProc(s.Client).Client.Proxy.IntListBi;
+        await list.EnableAsync().Timeout(T(1));
 
         var goodEventCount = 0;
 
         // One subscriber that throws exceptions
-        client.Proxy.IntListBi.Changed.Subscribe(args => throw new InvalidOperationException("Test exception"));
+        using var throwing = clientList.Changed.Subscribe(args => throw new InvalidOperationException("Test exception"));
 
         // One subscriber that works normally
-        client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref goodEventCount));
+        using var counting = clientList.Changed.Subscribe(args => Interlocked.Increment(ref goodEventCount));
 
         // Operations should continue working despite exceptions
-        await serverNexus.IntListBi.AddAsync(42);
+        await s.ServerList.AddAsync(42).Timeout(T(1));
         await WaitUntil(() => Volatile.Read(ref goodEventCount) >= 1);
 
         await Assert.That(goodEventCount).IsEqualTo(1);
-        await WaitForState(client, ConnectionState.Connected);
+        await s.Client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await s.EndAsync();
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task ServerToClientCollection_ServerCanModify(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task ServerToClientCollection_ServerCanModify(ClientTarget target)
     {
-        var (server, client, _) = CreateServerClient(
-            CreateServerConfig(type),
-            CreateClientConfig(type));
+        await using var s = await ConnectAsync(target);
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListSC));
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(2));
+        await Assert.That(await list.EnableAsync().Timeout(T(2))).IsTrue();
 
-        await client.Proxy.IntListSC.EnableAsync().Timeout(T(2));
-        await client.Proxy.IntListSC.ReadyTask.Timeout(T(2));
+        await s.Nexus.IntListSC.AddAsync(100).Timeout(T(1));
 
-        var serverNexus = server.NexusCreatedQueue.First();
-        await serverNexus.IntListSC.AddAsync(100);
+        var items = await WaitForCountAsync(list, 1);
 
-        await WaitUntil(() => client.Proxy.IntListSC.Count == 1);
-
-        await Assert.That(client.Proxy.IntListSC.Count).IsEqualTo(1);
-        await Assert.That(client.Proxy.IntListSC[0]).IsEqualTo(100);
-        await WaitForState(client, ConnectionState.Connected);
+        await Assert.That(items.Length).IsEqualTo(1);
+        await Assert.That(items[0]).IsEqualTo(100);
+        await s.Client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await s.EndAsync();
     }
 }
