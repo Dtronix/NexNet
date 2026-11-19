@@ -14,6 +14,7 @@ using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Pipes;
 using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
@@ -856,6 +857,56 @@ internal abstract class BaseTests
     /// A loopback UDP port no other test in this run has been given; see <see cref="TestPorts"/>.
     /// </summary>
     protected static int FreeUdpPort() => TestPorts.Next();
+
+    /// <summary>
+    /// Multiplier for every <see cref="T"/> timeout, from the NEXNET_TIMEOUT_SCALE environment variable (default 1).
+    /// Raise it on slow machines and for clients that run out of process.
+    /// </summary>
+    protected static readonly double TimeoutScale = ReadTimeoutScale();
+
+    private static double ReadTimeoutScale()
+    {
+        var value = Environment.GetEnvironmentVariable("NEXNET_TIMEOUT_SCALE");
+        return double.TryParse(value, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var scale) && scale > 0
+            ? scale
+            : 1;
+    }
+
+    /// <summary>
+    /// A hang guard of <paramref name="seconds"/>, scaled by <see cref="TimeoutScale"/>, plus 250 ms of slack, for
+    /// <c>.Timeout(T(x))</c>. Use it for every wait on a step whose duration depends on the machine; the
+    /// <see cref="TestTimeouts"/> constants go through it too (<c>T(TestTimeouts.Connect)</c>).
+    /// </summary>
+    protected static double T(double seconds) => seconds * TimeoutScale + 0.25;
+
+    /// <summary>
+    /// Waits until <paramref name="client"/> reaches <paramref name="state"/>, for at most <c>T(seconds)</c>, then
+    /// asserts it. Use it instead of reading the state right after an action: a client in another process reports
+    /// its state asynchronously.
+    /// </summary>
+    protected static async Task WaitForState(INexusClient client, ConnectionState state, double seconds = 1)
+    {
+        var deadline = Environment.TickCount64 + (long)(T(seconds) * 1000);
+        while (client.State != state && Environment.TickCount64 < deadline)
+            await Task.Delay(5);
+
+        await Assert.That(client.State).IsEqualTo(state);
+    }
+
+    /// <summary>
+    /// The client's writer on a pipe used as a channel of <typeparamref name="TItem"/>. Tests go through this helper
+    /// instead of the channel extensions, so the cross-language harness can map it to its remote pipe operations.
+    /// </summary>
+    protected static ValueTask<INexusChannelWriter<TItem>> ChannelWriter<TItem>(INexusDuplexPipe pipe)
+        => pipe.GetChannel<TItem>().GetWriterAsync();
+
+    /// <summary>
+    /// The client's reader on a pipe used as a channel of <typeparamref name="TItem"/>; see
+    /// <see cref="ChannelWriter{TItem}"/>.
+    /// </summary>
+    protected static ValueTask<INexusChannelReader<TItem>> ChannelReader<TItem>(INexusDuplexPipe pipe)
+        => pipe.GetChannel<TItem>().GetReaderAsync();
 
     public static async Task AssertThrows<T>(Func<Task> task)
         where T : Exception

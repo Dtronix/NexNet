@@ -3,6 +3,9 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
+using NexNet.Internals;
+using NexNet.Messages;
+using NexNet.Transports;
 
 namespace NexNet.IntegrationTests;
 
@@ -298,6 +301,130 @@ internal sealed class BufferedTestLogger
             {
                 TestContext.Current?.Output.StandardOutput.Write(_buffer.ToString());
             }
+        }
+    }
+}
+/// <summary>
+/// A NexNet frame seen by a <see cref="ServerTaps"/> tap.
+/// </summary>
+/// <param name="Type">The frame's message type.</param>
+/// <param name="Body">The frame's body, without the header and post-header; empty for header-only frames (ping and
+/// disconnect).</param>
+internal readonly record struct TappedFrame(MessageType Type, byte[] Body);
+
+/// <summary>
+/// Server-side observation of the frames a server exchanges with its clients. Tests observe a client's wire behavior
+/// here, on the C# server, rather than with taps inside the client, so the same test works for a client written in
+/// any language.
+/// </summary>
+internal static class ServerTaps
+{
+    /// <summary>
+    /// Calls <paramref name="onFrame"/> with every frame the server receives, in order, before the session handles it.
+    /// Replaces the server configuration's <c>InternalOnReceive</c>.
+    /// </summary>
+    public static void OnReceive(ServerConfig config, Action<INexusSession, TappedFrame> onFrame)
+        => OnReceive(config, (session, frame) =>
+        {
+            onFrame(session, frame);
+            return ValueTask.CompletedTask;
+        });
+
+    /// <inheritdoc cref="OnReceive(ServerConfig, Action{INexusSession, TappedFrame})"/>
+    /// <remarks>The session's read loop waits for <paramref name="onFrame"/>, so a tap can hold the session's
+    /// receiving.</remarks>
+    public static void OnReceive(ServerConfig config, Func<INexusSession, TappedFrame, ValueTask> onFrame)
+    {
+        var readers = new ConditionalWeakTable<INexusSession, FrameReader>();
+        config.InternalOnReceive = async (session, buffer) =>
+        {
+            var reader = readers.GetValue(session, static _ => new FrameReader());
+
+            // The tap sees the session's whole unconsumed input on each read. The bytes the session has consumed so
+            // far give the stream offset of this buffer, so only the new bytes are added.
+            var start = session.GetSnapshot().BytesReceived;
+            foreach (var frame in reader.Add(buffer, start))
+                await onFrame(session, frame).ConfigureAwait(false);
+        };
+    }
+
+    /// <summary>
+    /// Calls <paramref name="onFrame"/> with every frame the server sends. Replaces the server configuration's
+    /// <c>InternalOnSend</c>.
+    /// </summary>
+    public static void OnSend(ServerConfig config, Action<INexusSession, TappedFrame> onFrame)
+    {
+        config.InternalOnSend = (session, bytes) =>
+        {
+            if (bytes.Length == 0)
+                return;
+
+            onFrame(session, new TappedFrame((MessageType)bytes[0], bytes.Length > 3 ? bytes[3..] : []));
+        };
+    }
+
+    /// <summary>
+    /// Splits one session's received byte stream into frames (docs/internals/protocol-specification.md).
+    /// </summary>
+    private sealed class FrameReader
+    {
+        private const int PreambleLength = 8;
+        private readonly List<byte> _pending = new();
+        private long _seenEnd;
+        private bool _preambleSkipped;
+
+        public List<TappedFrame> Add(ReadOnlySequence<byte> buffer, long start)
+        {
+            var end = start + buffer.Length;
+            if (end > _seenEnd)
+            {
+                _pending.AddRange(buffer.Slice(_seenEnd - start).ToArray());
+                _seenEnd = end;
+            }
+
+            var frames = new List<TappedFrame>();
+            var position = 0;
+            if (!_preambleSkipped)
+            {
+                if (_pending.Count < PreambleLength)
+                    return frames;
+
+                position = PreambleLength;
+                _preambleSkipped = true;
+            }
+
+            while (position < _pending.Count)
+            {
+                var type = (MessageType)_pending[position];
+
+                // Ping and the disconnect codes are a single byte.
+                if (type == MessageType.Ping || _pending[position] is >= 20 and < 39)
+                {
+                    frames.Add(new TappedFrame(type, []));
+                    position++;
+                    continue;
+                }
+
+                var headerLength = type switch
+                {
+                    MessageType.DuplexPipeWrite or MessageType.PipeWindowUpdate => 3 + sizeof(ushort),
+                    MessageType.MessageChunk => 3 + sizeof(ushort) + 1,
+                    _ => 3,
+                };
+
+                if (position + headerLength > _pending.Count)
+                    break;
+
+                var bodyLength = _pending[position + 1] | (_pending[position + 2] << 8);
+                if (position + headerLength + bodyLength > _pending.Count)
+                    break;
+
+                frames.Add(new TappedFrame(type, _pending.GetRange(position + headerLength, bodyLength).ToArray()));
+                position += headerLength + bodyLength;
+            }
+
+            _pending.RemoveRange(0, position);
+            return frames;
         }
     }
 }
