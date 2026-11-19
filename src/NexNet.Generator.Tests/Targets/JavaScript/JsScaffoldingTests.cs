@@ -138,7 +138,8 @@ public class JsScaffoldingTests
         var ir = JsProxyEmitterTests.Chat.Ir!;
         IReadOnlyList<GeneratedFile> Bundle(bool scaffolding)
         {
-            var values = new List<TargetOption>();
+            // Without the emitted runtime (D31), which test scaffolding turns off by default.
+            var values = new List<TargetOption> { new("EmitRuntime", "false") };
             if (scaffolding)
                 values.Add(new TargetOption(JavaScriptTarget.TestScaffoldingOption, "true"));
             var configuration = new TargetConfiguration(

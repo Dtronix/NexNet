@@ -61,6 +61,26 @@ internal sealed class JavaSdk
         return new JavaSdk(javac!, java!, jar!, FindJSpecify());
     }
 
+    /// <summary>
+    /// Only <c>javac</c> and <c>java</c>, for checks that must not see the nexnet-client jar (the emitted runtime, D31).
+    /// Skips (or fails) like <see cref="Get"/>.
+    /// </summary>
+    public static (string Javac, string Java) Tools()
+    {
+        if (!Enabled)
+            Skip.Test("Java SDK checks run only with NEXNET_REQUIRE_SDKS=1 or NEXNET_TEST_LANGS containing java (required in CI).");
+
+        var javac = FindTool("javac");
+        var java = FindTool("java");
+        if (javac == null || java == null)
+            Unavailable("javac/java not found on JAVA_HOME or PATH; install JDK 21 (set NEXNET_REQUIRE_SDKS=1 in CI).");
+        return (javac!, java!);
+    }
+
+    /// <summary>Runs a process and collects its output (stdout and stderr), killing it after <paramref name="timeout"/>.</summary>
+    internal static Task<ProcessResult> RunProcess(string file, IEnumerable<string> args, string workingDirectory, TimeSpan timeout)
+        => Run(file, args, workingDirectory, timeout);
+
     private static void Unavailable(string reason)
     {
         if (Required)

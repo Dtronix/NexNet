@@ -126,7 +126,8 @@ public class JavaScaffoldingTests
         var ir = JavaProxyEmitterTests.Chat.Ir!;
         IReadOnlyList<GeneratedFile> Bundle(bool scaffolding)
         {
-            var values = new List<TargetOption> { new(JavaTarget.PackageOption, JavaFixtures.ChatPackage) };
+            // Without the emitted runtime (D31), which test scaffolding turns off by default.
+            var values = new List<TargetOption> { new(JavaTarget.PackageOption, JavaFixtures.ChatPackage), new("EmitRuntime", "false") };
             if (scaffolding)
                 values.Add(new TargetOption(JavaTarget.TestScaffoldingOption, "true"));
             var configuration = new TargetConfiguration(
