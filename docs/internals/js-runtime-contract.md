@@ -41,7 +41,8 @@ browser download.
 ```json
 "exports": {
   ".":      { "types": "./dist/index.d.ts", "browser": "./src/browser.js", "node": "./src/node.js", "default": "./src/index.js" },
-  "./node": { "types": "./dist/node.d.ts",  "node": "./src/node.js" }
+  "./node": { "types": "./dist/node.d.ts",  "node": "./src/node.js" },
+  "./diagnostics": { "types": "./dist/diagnostics.d.ts", "default": "./src/diagnostics.js" }
 }
 ```
 
@@ -50,12 +51,13 @@ browser download.
 | `src/index.js` | Platform-neutral API: everything generated code and applications use |
 | `src/browser.js` | Browser entry. Re-exports `index.js`; the place for browser-only additions (lifecycle reconnect). The Worker keepalive (§3.3) is feature-detected in platform-neutral code, not added here |
 | `src/node.js` | Node entry. Re-exports `index.js`, adds `NodeNexusClient` and exports it **as** `NexusClient` |
+| `src/diagnostics.js` | `@dtronix/nexnet/diagnostics`: the leak-audit counters (§3.9). Platform-neutral; not re-exported from the main entries |
 
 So `import { NexusClient } from '@dtronix/nexnet'` gives the Node-capable client under Node and the WebSocket-only client
 in a browser bundle, under the same name. Generated code imports only `@dtronix/nexnet` (or the module name set by the
 `ModuleName` target option).
 
-**Browser purity rule.** Nothing reachable from `src/browser.js` or `src/index.js` may import `node:*` or a bare Node
+**Browser purity rule.** Nothing reachable from `src/browser.js`, `src/index.js` or `src/diagnostics.js` may import `node:*` or a bare Node
 built-in, statically or through a literal dynamic `import()`. `test/entry-purity.test.js` walks the import graph and
 fails on any such import, and on any non-relative import at all (zero runtime dependencies). Node-only code lives in
 `src/node.js`, `src/contract/node.js` and directories named `node/` (for example `src/transport/node/`), which only the
@@ -126,7 +128,7 @@ Fields are public and `readonly`. Each type has `equals(other)` and conversions 
   `ClientBinding` (§4) that the generated `create<Export>Client(config, nexus)` supplies.
 - `connect({signal})`, `tryConnect({signal})` → `ConnectionResult` (`success`, `state`, `disconnectReason`, `error`),
   `disconnect()`, `[Symbol.asyncDispose]()`.
-- `state` (`ConnectionState`), `proxy`, `isSecure`, `disconnected` (a promise), `config`, `nexus`.
+- `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `disconnected` (a promise), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
 - Events (`CustomEvent`, dispatched from a microtask, never re-entrantly from a transport callback):
   - `statechange`, `detail: { state, previous }` (both `ConnectionState` values), on every change of `state`;
@@ -164,7 +166,9 @@ The `Transport` interface between the session and the transports: `write(chunks)
 `close(reason)`, `isSecure`, `remoteCertificate`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
 The Node TLS transports (`tcpTls`, `https:` HttpSocket, `wss:` WebSocket) set `remoteCertificate` to the server's
 `X509Certificate` (`node:crypto`); every other transport, the browser WebSocket included, sets it to null. The session
-exposes it as `session.remoteCertificate`; `NexusClient` has no public accessor for it yet.
+exposes it as `session.remoteCertificate`, and `NexusClient.remoteCertificate` returns the current session's value:
+null when not connected (before the first connect, after a disconnect, between reconnect attempts) and on non-TLS
+transports. Its JSDoc type is `unknown` so the platform-neutral declarations do not depend on Node types.
 
 ### 3.4 Generated-code base classes (`proxy.js`, `nexus.js`)
 
@@ -288,32 +292,36 @@ HTTP-based transports in Node, extra upgrade headers, an `Authorization` header 
 cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook (F06) goes in the URL
 (`wss://host/nexus?token=…`), in Node as well as in browsers.
 
-**TLS options and pinning (Node).** `TlsOptions` follow `tls.connect`. The host name is always verified with
-`tls.checkServerIdentity` (against `servername`, defaulting to the URL or `host` name). A user
-`checkServerIdentity(hostname, certificate)` runs after that check passes; returning an `Error` fails the connect with
-`AuthenticationError`. It is the pinning hook, and it supports both pin forms Java accepts, because `certificate` is
-Node's detailed peer certificate:
+**TLS options and pinning (Node).** `TlsOptions` follow `tls.connect`. Unless `rejectUnauthorized` is false, the
+chain must lead to a trusted CA (`ca`, else Node's bundled roots) and the host name is verified with
+`tls.checkServerIdentity` (against `servername`, defaulting to the URL or `host` name).
 
-- certificate SHA-256: `certificate.fingerprint256` (colon-separated upper-case hex), or the SHA-256 of
-  `certificate.raw` (DER);
-- SPKI SHA-256: the SHA-256 of `certificate.pubkey`, which is the DER `SubjectPublicKeyInfo` (the HPKP
-  `pin-sha256` value when base64-encoded);
-- the issuers are reachable through `certificate.issuerCertificate`, to pin an intermediate or the root.
+**Pins.** `pins` is the built-in pin list, with the same semantics as Java `TlsOptions.Builder.pinCertificateSha256`
+(K06/K15). Each pin is a SHA-256 value, as base64 text (base64url and missing padding are accepted) or as 32 raw bytes
+(`Uint8Array`). A pin matches a server chain certificate when it equals either form:
+
+- certificate SHA-256: the SHA-256 of the certificate's DER encoding;
+- SPKI SHA-256: the SHA-256 of its DER `SubjectPublicKeyInfo` (the HPKP `pin-sha256` value), which survives a
+  renewal with the same key.
+
+The connect succeeds only when some pin matches some certificate of the chain: the leaf, the intermediates the server
+sent and, when Node can find it (`ca` or the bundled roots), the root. The transports check the pins themselves after
+the handshake (`socket.getPeerCertificate(true)`), so they apply **in addition to** CA trust when
+`rejectUnauthorized` is true and **on their own** when it is false (pinning a self-signed server without a `ca`).
+A mismatch fails the connect with `AuthenticationError` (`DisconnectReason.Authentication`). Over `https:` HttpSocket
+and `wss:` WebSocket the upgrade request is held until the pins are checked, so no header (an `Authorization` header,
+say) reaches a server that fails them. A malformed pin (not base64, not 32 bytes) rejects the connect with a
+`TypeError`. An empty or absent list means no pinning.
 
 ```js
-import { createHash } from 'node:crypto';
-const pin = 'MZEa+vKvxw+5EI8S4C6W811NN39NrGjkKDakkDBwHdE='; // base64 SHA-256 of the server's SPKI
-const tls = {
-  ca: testCaPem,
-  checkServerIdentity: (host, cert) =>
-    createHash('sha256').update(cert.pubkey).digest('base64') === pin ? undefined : new Error('certificate pin mismatch'),
-};
+const tls = { ca: testCaPem, pins: ['MZEa+vKvxw+5EI8S4C6W811NN39NrGjkKDakkDBwHdE='] }; // server SPKI SHA-256
 ```
 
-Node calls the hook only when chain validation succeeded. With `rejectUnauthorized: false` and a certificate that does
-not chain to a trusted CA, it is **not called** and the connect succeeds, so pinning can only narrow CA trust, never
-replace it: pass the issuing CA in `ca` to pin a self-signed or private-CA server. The runtime has no built-in pin list
-yet. Browsers do the TLS themselves and ignore `tls`: no custom CA, client certificate or pinning (capability skips).
+A user `checkServerIdentity(hostname, certificate)` is still accepted for other checks. It runs after the host-name
+check passes, and returning an `Error` fails the connect with `AuthenticationError`. Node calls it only when chain
+validation succeeded and honors its result only when `rejectUnauthorized` is true, so it cannot replace `pins`.
+
+Browsers do the TLS themselves and ignore `tls`: no custom CA, client certificate or pinning (capability skips).
 
 ### 3.8 Runtime internals: session extension points
 
@@ -355,8 +363,15 @@ never does.
 ### 3.9 Diagnostic counters
 
 Two process-wide counter sets support the leak audit (H05): after every client has disconnected, every counter must be
-zero. Each getter returns a snapshot copy. Both live in runtime modules that the package `exports` map does not expose
-yet (`src/session/diagnostics.js`, `src/invocation/diagnostics.js`); tests import them by path.
+zero. Each getter returns a snapshot copy. The package exports both on the `@dtronix/nexnet/diagnostics` subpath
+(`src/diagnostics.js`, platform-neutral), together with the `SessionCounters` and `InvocationCounters` typedefs:
+
+```js
+import { getSessionCounters, getInvocationCounters } from '@dtronix/nexnet/diagnostics';
+```
+
+The counters are process-wide (per module instance), so an audit must run when no other client in the process is
+active. The main entries do not re-export them.
 
 | Function | Counter | Counts |
 |---|---|---|

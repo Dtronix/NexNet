@@ -307,6 +307,30 @@ describe('connect', () => {
     expect(h.client.getSnapshot()).toMatchObject({ id: 99n, state: ConnectionState.Connected, isSecure: false, isEstablished: true, transport: 'tcp' });
   });
 
+  it('remoteCertificate is the transport certificate while connected and null otherwise', async () => {
+    const cert = { subject: 'CN=localhost' };
+    const h = harness({ kind: 'tcpTls', transport: { isSecure: true } });
+    h.setFactory(async () => {
+      const t = new LoopbackTransport({ isSecure: true, name: 'tls' });
+      t.remoteCertificate = /** @type {any} */ (cert);
+      h.transports.push(t);
+      return t;
+    });
+    expect(h.client.remoteCertificate).toBeNull();
+    await connected(h);
+    expect(h.client.remoteCertificate).toBe(cert);
+    const done = h.client.disconnect();
+    h.clock.advance(60_000);
+    await done;
+    expect(h.client.remoteCertificate).toBeNull();
+  });
+
+  it('remoteCertificate is null on a transport without one', async () => {
+    const h = harness();
+    await connected(h);
+    expect(h.client.remoteCertificate).toBeNull();
+  });
+
   it('session counters return to zero after the client disconnects', async () => {
     const h = harness({ config: { disconnectDelay: 100 } });
     await connected(h);

@@ -163,6 +163,16 @@ export class NexusClient extends EventTarget {
     return this.#options.isSecure;
   }
 
+  /**
+   * The server certificate of the current connection: Node's `X509Certificate` (`node:crypto`) on the Node TLS
+   * transports (`tcpTls`, `wss:` WebSocket, `https:` HttpSocket). Null when not connected, and on every other
+   * transport, the browser WebSocket included (browsers do not expose it).
+   * @returns {unknown}
+   */
+  get remoteCertificate() {
+    return this.#session?.remoteCertificate ?? null;
+  }
+
   /** Resolves when the current session ends (after reconnection gives up). @returns {Promise<void>} */
   get disconnected() {
     return this.#disconnected;

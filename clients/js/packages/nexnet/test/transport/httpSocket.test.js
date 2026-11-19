@@ -101,6 +101,22 @@ describe('HttpSocket transport', () => {
     expect(t.remoteCertificate).toBeInstanceOf(X509Certificate);
   });
 
+  it('https: a matching pin connects; a mismatch fails before the request is sent', async () => {
+    let requests = 0;
+    const url = await server(({ socket }) => {
+      requests++;
+      socket.write(Buffer.concat([httpSocket101(), PREAMBLE]));
+    }, { secure: true });
+    const t = await connect(url, { tls: { ca: certs.ca, pins: [certs.serverPin] } });
+    cleanup.push(() => t.close());
+    expect(await collect(t).waitFor(8)).toEqual([...PREAMBLE]);
+    expect(requests).toBe(1);
+    await expect(connect(url, { tls: { rejectUnauthorized: false, pins: [Buffer.alloc(32, 1).toString('base64')] } }))
+      .rejects.toMatchObject({ reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests).toBe(1);
+  });
+
   it('https: an untrusted server is an authentication failure', async () => {
     const url = await server(() => {}, { secure: true });
     await expect(connect(url)).rejects.toMatchObject({ reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });

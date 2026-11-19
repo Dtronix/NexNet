@@ -7,7 +7,7 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import { SocketTransport } from './SocketTransport.js';
-import { abortableConnect, connectError, tlsConnectOptions } from './common.js';
+import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins } from './common.js';
 
 /**
  * Opens a plain TCP transport (`ClientConfig.tcp`). Sets `TCP_NODELAY` (§13.2).
@@ -30,7 +30,8 @@ export function tcpTransport(config, { signal }) {
 
 /**
  * Opens a TLS-over-TCP transport (`ClientConfig.tcpTls`). No ALPN (§13.3). A certificate or handshake failure
- * rejects with `transportError` `AuthenticationError` (`DisconnectReason.Authentication`).
+ * rejects with `transportError` `AuthenticationError` (`DisconnectReason.Authentication`), and so does a chain that
+ * matches none of `tls.pins` (checked after the handshake, before the transport is returned).
  * @type {import('../ITransport.js').TransportFactory}
  */
 export function tcpTlsTransport(config, { signal }) {
@@ -38,6 +39,7 @@ export function tcpTlsTransport(config, { signal }) {
   const what = `TLS connect to ${host}:${port}`;
   return abortableConnect(signal, (resolve, reject) => {
     let tcpConnected = false;
+    const pins = tlsPins(tlsOptions);
     const socket = tls.connect({ ...tlsConnectOptions(tlsOptions, host), host, port });
     socket.setNoDelay(true);
     const onError = (/** @type {Error} */ error) => reject(connectError(what, error, { tlsPhase: tcpConnected }));
@@ -45,6 +47,11 @@ export function tcpTlsTransport(config, { signal }) {
     socket.once('connect', () => { tcpConnected = true; });
     socket.once('secureConnect', () => {
       socket.off('error', onError);
+      const pinError = checkPins(socket, pins);
+      if (pinError !== undefined) {
+        reject(connectError(what, pinError, { tlsPhase: true }));
+        return;
+      }
       resolve(new SocketTransport(socket, { name: 'tls', isSecure: true }));
     });
     return () => socket.destroy();

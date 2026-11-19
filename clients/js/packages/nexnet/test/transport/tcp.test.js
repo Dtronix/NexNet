@@ -131,6 +131,53 @@ describe('TLS transport', () => {
       .rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });
   });
 
+  describe('pins', () => {
+    const leafCertSha256 = Buffer.from('F22AF5CF9F7A0B0F99AD73BD2FF784DDE5E98C9F128C0A9F1D834952D903FF11', 'hex');
+    const caCertSha256 = Buffer.from('5E0CE9E1DF8ECD3FA15846770745365E487F4C3B557D0975433F3A2692CF63D7', 'hex');
+    const wrongPin = Buffer.alloc(32, 7).toString('base64');
+
+    /** @param {import('../../src/contract/config.js').TlsOptions} tls */
+    async function connectTo(tls) {
+      const s = await listenSocket((socket) => socket.write(PREAMBLE), { tls: serverTls() });
+      cleanup.push(s.close);
+      const t = await tcpTlsTransport({ tcpTls: { host: 'localhost', port: s.port, tls } }, { signal: noSignal() });
+      cleanup.push(() => t.close());
+      expect(await collect(t).waitFor(8)).toEqual([...PREAMBLE]);
+      return t;
+    }
+
+    it.each([
+      ['the leaf SPKI pin (base64)', { ca: certs.ca, pins: [certs.serverPin] }],
+      ['the leaf certificate SHA-256 (base64)', { ca: certs.ca, pins: [leafCertSha256.toString('base64')] }],
+      ['the leaf certificate SHA-256 (bytes)', { ca: certs.ca, pins: [new Uint8Array(leafCertSha256)] }],
+      ['the CA certificate SHA-256 (chain)', { ca: certs.ca, pins: [caCertSha256.toString('base64')] }],
+      ['one matching pin among others', { ca: certs.ca, pins: [wrongPin, certs.serverPin] }],
+      ['the leaf SPKI pin with rejectUnauthorized: false and no CA', { rejectUnauthorized: false, pins: [certs.serverPin] }],
+      ['an empty pin list', { ca: certs.ca, pins: [] }],
+    ])('accepts %s', async (_name, tls) => {
+      await connectTo(tls);
+    });
+
+    it.each([
+      ['a trusted server', { ca: certs.ca, pins: [wrongPin] }],
+      ['rejectUnauthorized: false (Node skips checkServerIdentity there)', { rejectUnauthorized: false, pins: [wrongPin] }],
+    ])('a pin mismatch on %s is an authentication failure', async (_name, tls) => {
+      const s = await listenSocket(() => {}, { tls: serverTls() });
+      cleanup.push(s.close);
+      await expect(tcpTlsTransport({ tcpTls: { host: 'localhost', port: s.port, tls } }, { signal: noSignal() }))
+        .rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });
+    });
+
+    it.each([
+      ['not base64', ['not base64!']],
+      ['not 32 bytes', [Buffer.alloc(20).toString('base64')]],
+      ['not a string or bytes', [42]],
+    ])('a pin that is %s rejects with TypeError', async (_name, pins) => {
+      await expect(tcpTlsTransport({ tcpTls: { host: 'localhost', port: 1, tls: { pins: /** @type {any} */ (pins) } } }, { signal: noSignal() }))
+        .rejects.toThrow(TypeError);
+    });
+  });
+
   it('rejectUnauthorized: false accepts an untrusted server', async () => {
     const s = await listenSocket((socket) => socket.write(PREAMBLE), { tls: serverTls() });
     cleanup.push(s.close);

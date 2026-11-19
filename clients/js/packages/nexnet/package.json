@@ -24,6 +24,10 @@
       "types": "./dist/node.d.ts",
       "node": "./src/node.js"
     },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "default": "./src/diagnostics.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

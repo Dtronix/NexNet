@@ -295,6 +295,22 @@ describe('Node WebSocket transport', () => {
       expect(/** @type {X509Certificate} */ (t.remoteCertificate).subject).toContain('CN=localhost');
     });
 
+    it('a matching pin connects with rejectUnauthorized: false', async () => {
+      const url = await server(({ req, socket }) => socket.write(Buffer.concat([webSocket101(req), serverFrame(Opcode.Binary, PREAMBLE)])), { secure: true });
+      const t = await connect(url, { tls: { rejectUnauthorized: false, pins: [certs.serverPin] } });
+      cleanup.push(() => t.close());
+      expect(await collect(t).waitFor(8)).toEqual([...PREAMBLE]);
+    });
+
+    it('a pin mismatch fails before the upgrade request is sent, even with rejectUnauthorized: false', async () => {
+      let requests = 0;
+      const url = await server(() => { requests++; }, { secure: true });
+      await expect(connect(url, { headers: { Authorization: 'Bearer secret' }, tls: { rejectUnauthorized: false, pins: [Buffer.alloc(32).toString('base64')] } }))
+        .rejects.toMatchObject({ reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(requests).toBe(0);
+    });
+
     it('an untrusted server certificate is an authentication failure', async () => {
       const url = await server(() => {}, { secure: true });
       await expect(connect(url)).rejects.toMatchObject({ reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });

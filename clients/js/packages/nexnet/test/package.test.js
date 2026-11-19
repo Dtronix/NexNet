@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import * as viaPackage from '@dtronix/nexnet';
 import * as viaNodeSubpath from '@dtronix/nexnet/node';
 import * as nodeEntry from '../src/node.js';
+import { getInvocationCounters } from '../src/invocation/diagnostics.js';
+import { getSessionCounters } from '../src/session/diagnostics.js';
 
 const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(pkgDir, '../../../..');
@@ -30,7 +32,8 @@ describe('package.json', () => {
   it('exports map has the contract shape and its source files exist', () => {
     expect(Object.keys(pkg.exports['.'])).toEqual(['types', 'browser', 'node', 'default']);
     expect(Object.keys(pkg.exports['./node'])).toEqual(['types', 'node']);
-    for (const entry of [pkg.exports['.'], pkg.exports['./node']]) {
+    expect(Object.keys(pkg.exports['./diagnostics'])).toEqual(['types', 'default']);
+    for (const entry of [pkg.exports['.'], pkg.exports['./node'], pkg.exports['./diagnostics']]) {
       for (const [condition, target] of Object.entries(entry)) {
         if (condition === 'types') continue; // produced by npm run build:types
         expect(existsSync(path.join(pkgDir, /** @type {string} */ (target))), target).toBe(true);
@@ -46,5 +49,16 @@ describe('package resolution in Node', () => {
 
   it("'@dtronix/nexnet/node' resolves to the Node entry", () => {
     expect(viaNodeSubpath.NexusClient).toBe(nodeEntry.NodeNexusClient);
+  });
+
+  it("'@dtronix/nexnet/diagnostics' exports the leak-audit counters", async () => {
+    const specifier = '@dtronix/nexnet/diagnostics'; // a variable: tsconfig.test.json maps only the main entries
+    const diagnostics = await import(specifier);
+    expect(Object.keys(diagnostics).sort()).toEqual(['getInvocationCounters', 'getSessionCounters']);
+    expect(diagnostics.getSessionCounters).toBe(getSessionCounters);
+    expect(diagnostics.getInvocationCounters).toBe(getInvocationCounters);
+    expect(Object.keys(diagnostics.getSessionCounters()).sort()).toEqual(['openSessions', 'pendingWrites', 'timers']);
+    expect(Object.keys(diagnostics.getInvocationCounters()).sort())
+      .toEqual(['creditWaiters', 'inboundInvocations', 'largeMessages', 'pendingInvocations', 'reservedInvocationIds']);
   });
 });
