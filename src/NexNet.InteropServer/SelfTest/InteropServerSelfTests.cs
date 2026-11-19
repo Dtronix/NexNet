@@ -11,6 +11,10 @@ public class InteropServerSelfTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
+    // The endpoints a server of this process has: QUIC only where msquic is available.
+    private static readonly InteropEndpointKind[] Available =
+        InteropEndpointKinds.All.Where(k => k.GetUnsupportedReason() == null).ToArray();
+
     private static Task<InteropServer<InteropProbeServerNexus, InteropProbeServerNexus.ClientProxy>> StartDedicated(
         InteropServerOptions? options = null)
         => InteropServerHost.StartAsync<InteropProbeServerNexus, InteropProbeServerNexus.ClientProxy>(
@@ -44,10 +48,10 @@ public class InteropServerSelfTests
         await using var server = await StartDedicated();
 
         await Assert.That(server.Server.Endpoints.Select(e => e.Name).Order(StringComparer.Ordinal))
-            .IsEquivalentTo(InteropEndpointKinds.All.Select(k => k.GetEndpointName()).Order(StringComparer.Ordinal),
+            .IsEquivalentTo(Available.Select(k => k.GetEndpointName()).Order(StringComparer.Ordinal),
                 TUnit.Assertions.Enums.CollectionOrdering.Matching);
 
-        foreach (var kind in InteropEndpointKinds.All)
+        foreach (var kind in Available)
         {
             var client = await Connect(server.CreateClientConfig(kind));
             try
@@ -77,8 +81,33 @@ public class InteropServerSelfTests
         await Assert.That(endpoints.HttpSocket.ToString()).IsEqualTo($"http://127.0.0.1:{server.Host.HttpBaseUri.Port}/hs");
         await Assert.That(endpoints.HttpSocketTls.ToString()).IsEqualTo($"https://127.0.0.1:{server.Host.HttpsBaseUri.Port}/hss");
         await Assert.That(endpoints.GetAddress(InteropEndpointKind.Uds)).IsEqualTo("uds:" + endpoints.UdsPath);
-        await Assert.That(endpoints.ToDictionary().Count).IsEqualTo(InteropEndpointKinds.All.Count);
+        await Assert.That(endpoints.ToDictionary().Count).IsEqualTo(Available.Length);
+        if (InteropEndpointKinds.IsQuicSupported)
+        {
+            await Assert.That(endpoints.Quic).IsNotNull();
+            await Assert.That(endpoints.Quic!.Port).IsNotEqualTo(0);
+            await Assert.That(endpoints.GetAddress(InteropEndpointKind.Quic)).IsEqualTo($"quic://127.0.0.1:{endpoints.Quic.Port}");
+        }
+        else
+        {
+            await Assert.That(endpoints.Quic).IsNull();
+        }
+
         await Assert.That(File.Exists(InteropCertificates.TestCaPemPath)).IsTrue();
+    }
+
+    [Test]
+    public async Task Endpoints_WithoutQuic_LeaveItOut()
+    {
+        var any = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 1);
+        var uri = new Uri("ws://127.0.0.1:1/ws");
+        var endpoints = new InteropEndpoints(any, any, "/tmp/s", uri, uri, uri, uri);
+
+        await Assert.That(endpoints.Has(InteropEndpointKind.Quic)).IsFalse();
+        await Assert.That(endpoints.Has(InteropEndpointKind.Tcp)).IsTrue();
+        await Assert.That(endpoints.ToDictionary().ContainsKey(InteropEndpointKind.Quic)).IsFalse();
+        await Assert.That(endpoints.ToDictionary().Count).IsEqualTo(InteropEndpointKinds.All.Count - 1);
+        await Assert.That(() => endpoints.GetAddress(InteropEndpointKind.Quic)).ThrowsExactly<NotSupportedException>();
     }
 
     [Test]
@@ -95,7 +124,7 @@ public class InteropServerSelfTests
 
         foreach (var (server, prefix) in new[] { (a, "/t/test-a"), (b, "/t/test-b") })
         {
-            foreach (var kind in InteropEndpointKinds.All)
+            foreach (var kind in Available)
             {
                 var client = await Connect(server.CreateClientConfig(kind));
                 await Assert.That(await client.Proxy.GetEndpoint().AsTask().WaitAsync(Wait))
@@ -135,7 +164,7 @@ public class InteropServerSelfTests
             },
         });
 
-        foreach (var kind in InteropEndpointKinds.All)
+        foreach (var kind in Available)
         {
             var good = server.CreateClientConfig(kind);
             good.Authenticate = () => Encoding.UTF8.GetBytes("good");
@@ -153,7 +182,7 @@ public class InteropServerSelfTests
 
         string[] neverAuthenticated;
         lock (seen)
-            neverAuthenticated = InteropEndpointKinds.All.Select(k => k.GetEndpointName()).Where(n => !seen.Contains(n)).ToArray();
+            neverAuthenticated = Available.Select(k => k.GetEndpointName()).Where(n => !seen.Contains(n)).ToArray();
         await Assert.That(neverAuthenticated).IsEmpty();
     }
 
@@ -218,7 +247,7 @@ public class InteropServerSelfTests
 
         await server.StartAsync();
         await Assert.That(server.Endpoints).IsEqualTo(endpoints);
-        foreach (var kind in InteropEndpointKinds.All)
+        foreach (var kind in Available)
         {
             var client = await Connect(server.CreateClientConfig(kind));
             await Assert.That(await client.Proxy.Echo("again").AsTask().WaitAsync(Wait)).IsEqualTo("again");

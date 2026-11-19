@@ -26,6 +26,12 @@ public enum InteropEndpointKind
 
     /// <summary>WebSocket over HTTPS (<c>wss://</c>, Kestrel), named <c>websocket-tls</c>.</summary>
     WebSocketTls,
+
+    /// <summary>
+    /// QUIC listener (NexNet.Quic), named <c>quic</c>. Only present where msquic is available
+    /// (<see cref="InteropEndpointKinds.IsQuicSupported"/>); C#-only, no other client language implements QUIC.
+    /// </summary>
+    Quic,
 }
 
 /// <summary>
@@ -50,6 +56,7 @@ public static class InteropEndpointKinds
         InteropEndpointKind.HttpSocketTls => "httpsocket-tls",
         InteropEndpointKind.WebSocket => "websocket",
         InteropEndpointKind.WebSocketTls => "websocket-tls",
+        InteropEndpointKind.Quic => "quic",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -63,6 +70,7 @@ public static class InteropEndpointKinds
         InteropEndpointKind.Uds => "uds",
         InteropEndpointKind.HttpSocket or InteropEndpointKind.HttpSocketTls => "httpsocket",
         InteropEndpointKind.WebSocket or InteropEndpointKind.WebSocketTls => "websocket",
+        InteropEndpointKind.Quic => "quic",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -70,7 +78,26 @@ public static class InteropEndpointKinds
     /// True when the connection is encrypted (TLS, HTTPS, WSS).
     /// </summary>
     public static bool IsSecure(this InteropEndpointKind kind)
-        => kind is InteropEndpointKind.TcpTls or InteropEndpointKind.HttpSocketTls or InteropEndpointKind.WebSocketTls;
+        => kind is InteropEndpointKind.TcpTls or InteropEndpointKind.HttpSocketTls or InteropEndpointKind.WebSocketTls
+            or InteropEndpointKind.Quic;
+
+    /// <summary>
+    /// True when this process can host and connect over QUIC (msquic is available). Interop servers add their
+    /// <see cref="InteropEndpointKind.Quic"/> endpoint only then.
+    /// </summary>
+    public static bool IsQuicSupported { get; } =
+        (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        && System.Net.Quic.QuicListener.IsSupported
+        && System.Net.Quic.QuicConnection.IsSupported;
+
+    /// <summary>
+    /// Why this process cannot use <paramref name="kind"/>; null when it can. Only
+    /// <see cref="InteropEndpointKind.Quic"/> depends on the platform (msquic).
+    /// </summary>
+    public static string? GetUnsupportedReason(this InteropEndpointKind kind)
+        => kind == InteropEndpointKind.Quic && !IsQuicSupported
+            ? "QUIC (msquic) is not available on this platform."
+            : null;
 
     /// <summary>
     /// True for the endpoints served by Kestrel (HttpSocket and WebSocket).
