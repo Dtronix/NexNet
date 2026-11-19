@@ -82,14 +82,30 @@ export class ClientScripts {
   #waiters = new Map();
   /** Slots that are not reported (pooled clients are not scripted). */
   #silent;
+  /** @type {{ code: number | null, message: string | null } | null} */
+  #invocationError;
 
   /**
    * @param {ScriptOwner} owner
-   * @param {{ silent?: boolean }} [options]
+   * @param {{ silent?: boolean, invocationError?: { code: number | null, message: string | null } | null }} [options]
+   *   `invocationError`: the application error of `ClientSpec.onInvocationException` (§6.4.1), or null.
    */
   constructor(owner, options) {
     this.#owner = owner;
     this.#silent = options?.silent === true;
+    this.#invocationError = options?.invocationError ?? null;
+  }
+
+  /**
+   * `ScriptHost.onInvocationException`: the application error the scriptable nexus sends for a failed client nexus
+   * invocation (`ClientSpec.onInvocationException`), or null for the exception's own detail.
+   * @param {unknown} _error
+   * @param {number} _methodId
+   * @returns {{ code: number | null, message: string | null } | null}
+   */
+  onInvocationException(_error, _methodId) {
+    const error = this.#invocationError;
+    return error ? { code: error.code, message: error.message } : null;
   }
 
   /**

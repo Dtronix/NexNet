@@ -1240,11 +1240,9 @@ export class Host {
         invoke: (method, callArgs) => entry.exp.invokeByName(entry.client.proxy, method, callArgs),
         timer: (callback, ms) => entry.timer(callback, ms),
         lifetime: entry.lifetime.signal,
-      });
+      }, { invocationError: parsed.onInvocationException });
       const client = exp.createClient(entry.config, entry.scripts);
       entry.client = client;
-      const hook = parsed.onInvocationException;
-      if (hook) client.nexus.onInvocationException = () => ({ code: hook.code, message: hook.message });
       client.addEventListener('statechange', (/** @type {Event} */ event) => {
         const detail = /** @type {CustomEvent} */ (event).detail;
         this.#event(entry, 'client.state', { state: stateName(detail?.state ?? client.state) });
