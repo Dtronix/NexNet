@@ -25,6 +25,7 @@
   <Project Path="NexNet.Interop.Abstractions\NexNet.Interop.Abstractions.csproj" />
   <Project Path="NexNet.Interop\NexNet.Interop.csproj" />
   <Project Path="NexNet.Interop\SelfTest\NexNet.Interop.SelfTest.csproj" />
+  <Project Path="NexNet.Interop.Tests\NexNet.Interop.Tests.csproj" />
   <Project Path="NexNet.InteropServer\NexNet.InteropServer.csproj" />
   <Project Path="NexNet.InteropServer\Cli\NexNet.InteropServer.Cli.csproj" />
   <Project Path="NexNet.InteropServer\SelfTest\NexNet.InteropServer.SelfTest.csproj" />
