@@ -14,6 +14,7 @@ import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
+import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.Frame;
@@ -132,6 +133,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     private boolean closed;
 
     private volatile MessageHandler next = MessageHandler.UNHANDLED;
+    private volatile @Nullable PipeManager pipes;
 
     private InvocationRuntime(Builder b) {
         this.session = b.session;
@@ -186,6 +188,69 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         }
         dispatch(normalPool);
         dispatch(separatePool);
+    }
+
+    // ------------------------------------------------------------------ pipes (K08)
+
+    /**
+     * Attaches the pipe runtime of the session: it becomes the {@linkplain #setNextHandler next handler} and serves
+     * pipe and channel invocations in both directions. Called by {@link PipeManager#attach}.
+     *
+     * @param manager the pipe runtime
+     */
+    public void attachPipes(PipeManager manager) {
+        if (manager == null) {
+            throw new NullPointerException("manager");
+        }
+        this.pipes = manager;
+        setNextHandler(manager);
+    }
+
+    /**
+     * The pipe runtime of the session.
+     *
+     * @return the pipe runtime, or null when none is attached
+     */
+    public @Nullable PipeManager pipes() {
+        return pipes;
+    }
+
+    private PipeManager requirePipes() {
+        PipeManager current = pipes;
+        if (current == null) {
+            throw new IllegalStateException("No pipe runtime is attached to the session.");
+        }
+        return current;
+    }
+
+    /** {@code ctx.pipe(id)}: registers the server's pipe; the invocation stops counting against its pool. */
+    NexusDuplexPipe openInboundPipe(InboundInvocation invocation, int initialPipeId) {
+        NexusDuplexPipe pipe = requirePipes().registerPipe(initialPipeId);
+        invocation.addPipe(pipe);
+        releasePipeSlot(invocation);
+        return pipe;
+    }
+
+    /** {@code ctx.channel(id, formatter)}: as {@link #openInboundPipe}, for a typed channel. */
+    <T> NexusDuplexChannel<T> openInboundChannel(InboundInvocation invocation, int initialPipeId,
+                                                 Formatter<T> itemFormatter) {
+        NexusDuplexChannel<T> channel = requirePipes().registerChannel(initialPipeId, itemFormatter);
+        invocation.addPipe(channel.pipe());
+        releasePipeSlot(invocation);
+        return channel;
+    }
+
+    /** Pipe and channel methods stop counting against their pool once their pipe is open (specification 8). */
+    private void releasePipeSlot(InboundInvocation invocation) {
+        Pool pool = invocation.separatePool ? separatePool : normalPool;
+        synchronized (lock) {
+            if (invocation.slotReleased || !running.contains(invocation)) {
+                return;
+            }
+            invocation.slotReleased = true;
+            pool.free++;
+        }
+        dispatch(pool);
     }
 
     /**
@@ -284,13 +349,13 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     @Override
     public CompletableFuture<Void> invokePipe(int methodId, NexusDuplexPipe pipe, PipeArgumentWriter arguments) {
-        throw new UnsupportedOperationException("not implemented");
+        return requirePipes().invokePipe(methodId, pipe, arguments);
     }
 
     @Override
     public <T> CompletableFuture<Void> invokeChannel(int methodId, NexusDuplexChannel<T> channel,
                                                      PipeArgumentWriter arguments) {
-        throw new UnsupportedOperationException("not implemented");
+        return requirePipes().invokeChannel(methodId, channel, arguments);
     }
 
     @Override
@@ -782,6 +847,8 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     private void finish(InboundInvocation invocation, @Nullable Throwable error) {
+        // The method returned: the registering side closes its pipes (specification section 7.6).
+        invocation.closePipes();
         if (invocation.ignoreReturn()) {
             if (error != null) {
                 Throwable cause = unwrap(error);
@@ -796,7 +863,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         }
         Pool pool = invocation.separatePool ? separatePool : normalPool;
         synchronized (lock) {
-            if (running.remove(invocation)) {
+            if (running.remove(invocation) && !invocation.slotReleased) {
                 pool.free++;
             }
             tracked.remove(invocation.invocationId, invocation);

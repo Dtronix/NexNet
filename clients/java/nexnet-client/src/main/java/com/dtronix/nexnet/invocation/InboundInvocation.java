@@ -6,6 +6,8 @@ import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.spi.InvocationContext;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -24,6 +26,9 @@ final class InboundInvocation implements InvocationContext {
     final boolean separatePool;
     private final CancellationTokenSource cancellation;
     private final AtomicBoolean resultClaimed = new AtomicBoolean();
+    /** Set once a pipe argument opened and the invocation stopped counting against its pool; guarded by the runtime. */
+    boolean slotReleased;
+    private final List<NexusDuplexPipe> pipes = new ArrayList<>();
 
     InboundInvocation(InvocationRuntime runtime, int invocationId, int methodId, int flags, byte[] body,
                       int argumentsOffset, int argumentsLength, long reserved, boolean separatePool,
@@ -61,12 +66,33 @@ final class InboundInvocation implements InvocationContext {
 
     @Override
     public NexusDuplexPipe pipe(int initialPipeId) {
-        throw new UnsupportedOperationException("not implemented");
+        return runtime.openInboundPipe(this, initialPipeId);
     }
 
     @Override
     public <T> NexusDuplexChannel<T> channel(int initialPipeId, Formatter<T> itemFormatter) {
-        throw new UnsupportedOperationException("not implemented");
+        if (itemFormatter == null) {
+            throw new NullPointerException("itemFormatter");
+        }
+        return runtime.openInboundChannel(this, initialPipeId, itemFormatter);
+    }
+
+    void addPipe(NexusDuplexPipe pipe) {
+        synchronized (pipes) {
+            pipes.add(pipe);
+        }
+    }
+
+    /** Closes the pipes opened for this invocation's arguments. */
+    void closePipes() {
+        List<NexusDuplexPipe> opened;
+        synchronized (pipes) {
+            opened = new ArrayList<>(pipes);
+            pipes.clear();
+        }
+        for (NexusDuplexPipe pipe : opened) {
+            pipe.close();
+        }
     }
 
     @Override
