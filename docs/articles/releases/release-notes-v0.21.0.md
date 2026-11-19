@@ -2,6 +2,10 @@
 
 *Unreleased*
 
+## Security/correctness
+
+- **Fixed: data from one connection could appear in another connection (HttpSocket and WebSocket).** When an HttpSocket or WebSocket connection closed while a read was still in progress, the transport returned the read's buffer to the shared buffer pool before the read finished. Another connection, on a server another client, could then get that buffer, and the late bytes of the closed connection landed in its incoming data. The other session could receive foreign protocol headers, invocations or pipe data (usually ending with `ProtocolError`), and data could be disclosed across sessions. Affected 0.20.0 and earlier, on both clients and servers (`NexNet.Asp`). Now only the read loop completes a transport's input, after its read has ended: `HttpSocketDuplexPipe.CompleteAsync` no longer completes `Input` (its reader completes it), and `IWebSocketPipe.CompleteAsync` stops the receive loop and waits for it to exit (up to 250 ms) before the input is completed; it no longer completes the input's reader. Upgrading is recommended for every HttpSocket and WebSocket user.
+
 ## Behaviour changes
 
 - **Behavior change: a call canceled before it is sent throws `TaskCanceledException`.** When the `CancellationToken` of a `ValueTask` or `ValueTask<T>` method is already canceled, or is canceled while the call waits for invocation credit, the call now throws `TaskCanceledException`. Before, `ValueTask` completed successfully and `ValueTask<T>` returned `default`, so a canceled call could not be told apart from a real result. As before, nothing is sent and no invocation ID is used. Fire-and-forget (`void`) methods and broadcasts are unchanged. See [Hub Invocations: Cancellation](../hub-invocations.md#cancellation).
