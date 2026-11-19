@@ -25,6 +25,7 @@ So the wire shape, the hashes and every target's code cannot drift apart. Buildi
 | `IrBuilder.BuildAssemblyDeclared(compilation, ct)` | Fragment of the `[assembly: NexusSerializable<T>]` roots. |
 | `IrBuilder.Merge(fragments)` | The compilation's `NexusIr`. Independent of fragment order. |
 | `IrNativeFormatters.Apply(ir, mappings)` | Attaches `[assembly: NexusTargetFormatter<T>]` mappings to the External references of a merged IR. |
+| `IrJsNumbers.Apply(ir, compilation)` | Applies `[assembly: NexusJsNumber]` to every reference of a merged IR (`jsNumber`, C-8). Member, parameter and return-value attributes are applied while the fragments are built. |
 | `IrJson.Write(ir)` / `IrJson.Read(json)` | JSON form (this document). |
 
 Fragments are built in the transform phase (symbol access); every IR record is symbol-free and has value equality, so
@@ -163,6 +164,14 @@ A reference to a serialized type. `kind` selects which other fields are present.
 bit declared with `[assembly: NexusTargetFormatter<T>(target, formatter)]` for the type whose definition's full metadata
 name equals `clr` (a generic user type's mapping applies to every construction). `formatter` is the native class's
 fully qualified name, as written in the attribute (trimmed).
+
+**jsNumber** (C-8; `Prim` with `prim` `Int64` or `UInt64` only; absent = false): the occurrence opted in to the checked
+JavaScript `number` mapping of D13 with `[NexusJsNumber]`, instead of `bigint`. The wire form is unchanged; other targets
+ignore the flag. It is set on every Int64/UInt64 leaf of the type of an attributed `[NexusObject]` member (property or
+field), method parameter (for a channel: its item type), return value (`[return: NexusJsNumber]`) or collection property,
+looking through `Nullable`, `Seq`, `Set`, `Queue`, `Stack`, `Map`, `Tuple` and the `args` of a `Decl`, but not into
+`PrimArray` (ext 78 arrays keep their typed-array mapping) or `External`. `[assembly: NexusJsNumber]` sets it on every such
+leaf of the IR. Enum declarations are not affected. The attribute does not change any hash.
 
 Any occurrence may also carry `refNullable: true` (absent = false): a reference-type occurrence that may be null because it is
 annotated (`string?`) or declared in a nullable-oblivious context. `Nullable<T>` is expressed by `kind: Nullable` instead.

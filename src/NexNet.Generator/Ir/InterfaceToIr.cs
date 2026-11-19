@@ -89,7 +89,7 @@ internal static class InterfaceToIr
             if (returnSymbol.Arity == 1 && returnSymbol.ConstructedFrom.MetadataName == "ValueTask`1")
             {
                 returnKind = ReturnKind.TaskOf;
-                returnType = types.Convert(returnSymbol.TypeArguments[0]);
+                returnType = IrJsNumbers.MarkIf(types.Convert(returnSymbol.TypeArguments[0]), IrJsNumbers.Has(symbol.GetReturnTypeAttributes()));
             }
             else if (returnSymbol.MetadataName == "ValueTask")
             {
@@ -117,14 +117,14 @@ internal static class InterfaceToIr
             {
                 TypeRef? item = null;
                 if (parameterSymbol?.Type is INamedTypeSymbol { TypeArguments.Length: 1 } channel)
-                    item = types.Convert(channel.TypeArguments[0]);
+                    item = IrJsNumbers.MarkIf(types.Convert(channel.TypeArguments[0]), IrJsNumbers.Has(parameterSymbol));
                 parameters.Add(new ParamIr(p.Name, ParamKind.DuplexChannel, item, p.SerializedId, false));
                 pipeKind = PipeKind.Channel;
                 pipeType ??= item;
             }
             else
             {
-                var type = parameterSymbol != null ? types.Convert(parameterSymbol.Type) : null;
+                var type = parameterSymbol != null ? IrJsNumbers.MarkIf(types.Convert(parameterSymbol.Type), IrJsNumbers.Has(parameterSymbol)) : null;
                 parameters.Add(new ParamIr(p.Name, ParamKind.Value, type, p.SerializedId, type?.MayBeNull == true));
             }
         }
@@ -150,7 +150,7 @@ internal static class InterfaceToIr
     {
         TypeRef? item = null;
         if (symbol?.Type is INamedTypeSymbol { Arity: > 0 } propertyType)
-            item = types.Convert(propertyType.TypeArguments[0]);
+            item = IrJsNumbers.MarkIf(types.Convert(propertyType.TypeArguments[0]), IrJsNumbers.Has(symbol));
 
         return new CollectionIr(
             collection.Name,

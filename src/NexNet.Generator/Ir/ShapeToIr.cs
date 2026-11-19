@@ -386,7 +386,7 @@ internal sealed class ShapeToIr
                 var members = new List<MemberIr>(obj.Members.Count);
                 foreach (var m in obj.Members)
                 {
-                    var type = Convert(m.Type, m.DeclaredType);
+                    var type = IrJsNumbers.MarkIf(Convert(m.Type, m.DeclaredType), IrJsNumbers.HasMember(m.Symbol))!;
                     members.Add(new MemberIr(
                         m.Name,
                         m.Key,
