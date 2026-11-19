@@ -184,7 +184,7 @@ Rebuild it: <build command>
 | `openPipes` | Pipes that are neither complete in both directions nor disposed. |
 | `timers` | Timers of the client runtime still scheduled for clients of the scope (ping, reconnect, `afterMs` cancellations, delays of scripts). A disconnected client MUST have none. |
 | `pendingInvocations` | Invocations started and not completed (a fire-and-forget invocation until it is sent). |
-| `subscriptions` | Collections still enabled on a client that is not `Disconnected`, and listeners the host attached for the scope and did not detach (including collection watches, §6.10, not ended by `list.unwatch`). |
+| `subscriptions` | Listeners the host attached for the scope and did not detach: collection watches (§6.10) not ended by `list.unwatch`. A collection that is still enabled is not a subscription: it ends with its client (`openClients` counts a client that is still connected). |
 | `details` | One human-readable line per leak. |
 
 Before counting, a host waits up to 1 s for pending invocations to settle. Any non-zero count fails the test.

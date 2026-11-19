@@ -26,6 +26,8 @@
 /**
  * @typedef {object} ScriptHost
  * @property {(call: ScriptCall) => unknown} call
+ * @property {(error: unknown, methodId: number) => ({ code?: number | null, message?: string | null } | null | undefined)} [onInvocationException]
+ *   The application error the scriptable nexus sends for a failed client nexus invocation.
  */
 
 /**

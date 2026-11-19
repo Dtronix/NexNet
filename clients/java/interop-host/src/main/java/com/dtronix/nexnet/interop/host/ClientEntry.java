@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -43,7 +42,6 @@ final class ClientEntry extends Driven implements ScriptHost {
     private final Map<String, Slot> slots = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<Void>> signals = new ConcurrentHashMap<>();
     private final Map<String, Registration> watches = new ConcurrentHashMap<>();
-    private final Set<String> enabledLists = ConcurrentHashMap.newKeySet();
     final List<PipeEntry> pipes = new CopyOnWriteArrayList<>();
     private volatile NexusSession lastSession;
     /** The reason of the last failed connection attempt; cleared when a session is established. */
@@ -354,24 +352,14 @@ final class ClientEntry extends Driven implements ScriptHost {
 
     CompletableFuture<Map<String, Object>> listEnable(Args args, CancellationToken token) {
         NexusList<Object> list = list(args);
-        String name = args.obj("collection").str("name");
         CompletableFuture<Boolean> enabled = list.enable().thenCompose(ok -> ok
             ? list.ready().thenApply(v -> true)
             : CompletableFuture.completedFuture(false));
-        return Async.withToken(enabled, token).thenApply(ok -> {
-            if (ok) {
-                enabledLists.add(name);
-            }
-            return Protocol.map("ok", ok);
-        });
+        return Async.withToken(enabled, token).thenApply(ok -> Protocol.map("ok", ok));
     }
 
     CompletableFuture<Map<String, Object>> listDisable(Args args) {
-        String name = args.obj("collection").str("name");
-        return list(args).disable().thenApply(v -> {
-            enabledLists.remove(name);
-            return Protocol.empty();
-        });
+        return list(args).disable().thenApply(v -> Protocol.empty());
     }
 
     CompletableFuture<Map<String, Object>> listOp(Args args) {
@@ -491,11 +479,11 @@ final class ClientEntry extends Driven implements ScriptHost {
             leaks.pendingInvocations += pendingCalls;
             leaks.details.add(pendingCalls + " invocation(s) of " + handle + " still running");
         }
-        int subscriptions = watches.size() + (open ? enabledLists.size() : 0);
+        // Watches only (§5.1, as the C# and JS hosts): an enabled collection ends with its client.
+        int subscriptions = watches.size();
         if (subscriptions > 0) {
             leaks.subscriptions += subscriptions;
-            leaks.details.add(watches.size() + " collection watch(es) and " + (open ? enabledLists.size() : 0)
-                + " enabled collection(s) of " + handle);
+            leaks.details.add(subscriptions + " collection watch(es) of " + handle + " not ended");
         }
     }
 }

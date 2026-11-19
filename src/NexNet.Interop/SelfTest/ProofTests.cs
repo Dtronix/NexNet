@@ -1,4 +1,5 @@
 using NexNet.Collections;
+using NexNet.Interop.Hosts;
 using NexNet.Invocation;
 using NexNet.InteropServer;
 using NexNet.TestNexus.Interop;
@@ -9,8 +10,16 @@ namespace NexNet.Interop.SelfTest;
 /// The proof of the harness (H04 step 5): one invocation, one pipe and one collection test written against
 /// <see cref="IClientUnderTest"/>, run on every row of the client matrix (the csharp row when NEXNET_TEST_LANGS is unset).
 /// </summary>
-public class ProofTests
+/// <remarks>
+/// The class takes the <see cref="LanguageHostPool"/> of the session: initializing it launches the hosts of
+/// NEXNET_TEST_LANGS and registers their drivers before the rows are built, so the remote rows (node, browser, java) run.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+public class ProofTests(LanguageHostPool hosts)
 {
+    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
+    protected LanguageHostPool Hosts { get; } = hosts;
+
     private const double Wait = 10;
 
     private static Task<InteropServer<InteropServerNexus, InteropServerNexus.ClientProxy>> StartServer()
