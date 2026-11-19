@@ -962,15 +962,8 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             }
             boolean hasValue = count >= 3;
             handedOff = true;
-            NexusExecutors.execute(callbackExecutor, () -> {
-                try {
-                    completeCall(call, state, body, valueOffset, valueLength, hasValue);
-                } finally {
-                    if (reserved > 0) {
-                        budget.release(reserved);
-                    }
-                }
-            });
+            NexusExecutors.execute(callbackExecutor,
+                () -> completeCall(call, state, body, valueOffset, valueLength, hasValue, reserved));
         } finally {
             if (!handedOff && reserved > 0) {
                 budget.release(reserved);
@@ -979,36 +972,49 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     private <R> void completeCall(OutboundCall<R> call, int state, byte[] body, int offset, int length,
-                                  boolean hasValue) {
-        switch (state) {
-            case STATE_COMPLETED_RESULT: {
-                Formatter<R> formatter = call.formatter;
-                if (formatter == null || !hasValue) {
-                    call.complete(null);
-                    return;
+                                  boolean hasValue, long reserved) {
+        R value = null;
+        Throwable error = null;
+        boolean canceled = false;
+        try {
+            switch (state) {
+                case STATE_COMPLETED_RESULT: {
+                    Formatter<R> formatter = call.formatter;
+                    if (formatter != null && hasValue) {
+                        try {
+                            value = codec.readValue(formatter, body, offset, length);
+                        } catch (RuntimeException e) {
+                            error = new NexusException("The result could not be read: " + e.getMessage(), e);
+                        }
+                    }
+                    break;
                 }
-                R value;
-                try {
-                    value = codec.readValue(formatter, body, offset, length);
-                } catch (RuntimeException e) {
-                    call.completeExceptionally(new NexusException("The result could not be read: " + e.getMessage(), e));
-                    return;
-                }
-                call.complete(value);
-                return;
+                case STATE_EXCEPTION:
+                    error = hasValue ? remoteError(body, offset, length)
+                        : new NexusRemoteInvocationException(null, null, null);
+                    break;
+                case STATE_UNAUTHORIZED:
+                    error = new NexusUnauthorizedException();
+                    break;
+                case STATE_CANCELED:
+                    canceled = true;
+                    break;
+                default:
+                    error = new NexusException("The server returned the invalid result state " + state + ".");
+                    break;
             }
-            case STATE_EXCEPTION:
-                call.completeExceptionally(hasValue ? remoteError(body, offset, length)
-                    : new NexusRemoteInvocationException(null, null, null));
-                return;
-            case STATE_UNAUTHORIZED:
-                call.completeExceptionally(new NexusUnauthorizedException());
-                return;
-            case STATE_CANCELED:
-                call.completeCanceled("The server canceled the invocation.");
-                return;
-            default:
-                call.completeExceptionally(new NexusException("The server returned the invalid result state " + state + "."));
+        } finally {
+            // Released once the result has been read, before user code sees it.
+            if (reserved > 0) {
+                budget.release(reserved);
+            }
+        }
+        if (canceled) {
+            call.completeCanceled("The server canceled the invocation.");
+        } else if (error != null) {
+            call.completeExceptionally(error);
+        } else {
+            call.complete(value);
         }
     }
 
