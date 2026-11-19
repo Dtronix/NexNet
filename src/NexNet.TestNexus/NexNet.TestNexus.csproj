@@ -18,11 +18,19 @@
     <IsPackable>false</IsPackable>
 
     <NexNetInteropArtifactsDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'interop'))</NexNetInteropArtifactsDir>
-    <NexNetJavaOutputDir>$(NexNetInteropArtifactsDir)java/generated</NexNetJavaOutputDir>
-    <NexNetJavaPackage>com.dtronix.nexnet.testnexus</NexNetJavaPackage>
     <NexNetJavaScriptOutputDir>$(NexNetInteropArtifactsDir)javascript/generated</NexNetJavaScriptOutputDir>
     <NexNetJavaScriptModuleName>nexnet-testnexus</NexNetJavaScriptModuleName>
   </PropertyGroup>
+
+  <!--
+    Java (K12): written as an item so it carries EmitTestScaffolding, the scriptable client nexuses, codecs and
+    invokeByName of the JVM interop host (clients/java/interop-host compiles this directory). The package stays
+    com.dtronix.nexnet.testnexus: the zoo's NexusTargetFormatter mapping (InteropTypes.cs) names a class in it.
+  -->
+  <ItemGroup>
+    <NexNetTarget Include="java" OutputDir="$(NexNetInteropArtifactsDir)java/generated" Package="com.dtronix.nexnet.testnexus"
+                  EmitTestScaffolding="true" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />

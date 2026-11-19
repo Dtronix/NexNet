@@ -765,3 +765,37 @@ session. The values are read one at a time, so they are not an atomic picture.
   client never records `nexnet.invocation.credit_drops`.
 - **Listeners** are called synchronously where the event happens, which may be the reader thread. A listener that
   throws is ignored.
+
+## 7. Test scaffolding (K11) and the JVM interop host (K12)
+
+With the target option `EmitTestScaffolding=true` (`<NexNetTarget Include="java" … EmitTestScaffolding="true" />`), the
+generator also writes the `<package>.scaffolding` sub-package: the code the JVM language host of the cross-language
+harness uses to drive clients by name with typed-JSON values (`tests/golden/README.md`, "Typed JSON"). It is test
+infrastructure, not part of the client API; `src/NexNet.TestNexus` enables it, and its output goes to
+`artifacts/interop/java/generated` (package `com.dtronix.nexnet.testnexus`).
+
+Typed-JSON values are plain Java objects: `null`, `Boolean`, `Number` (`Long`; integers beyond ±(2^53 − 1) as decimal
+strings), `String` and `List` (JSON arrays). Floats are bit-pattern strings (`"f32:0x3F800000"`).
+
+| Type | Role |
+|---|---|
+| `Scaffolding` | `SCHEMA_HASH`: the SHA-256 of the `nexnet-ir.json` the code was generated from (the host's hello `schemaHash`). `EXPORTS`, and `find(clientNexus, serverNexus)`: the export of a nexus pair by the full metadata names of its C# interfaces (`client.create`'s `nexus`), or null. |
+| `ScaffoldingExport<TProxy>` | One exported nexus pair: `clientNexus()`, `serverNexus()`, `handshake()`, `proxyFactory()`, `createNexus(ScriptHost)` (a scriptable client nexus), `createClient(config, host[, connector])`; `slots()` (the client nexus methods, then `OnConnected`, `OnDisconnected`); `methods()` / `method(name)` (`Method`: name, wire id, `ReturnKind` `VOID`/`TASK`/`TASK_OF`, `PipeKind` `NONE`/`PIPE`/`CHANNEL`, cancellable, parameter, result and channel item codecs); `collections()` / `collection(name)` (`Collection`: name, wire id, mode, item codec); `invokeByName` / `invokeUnchecked(proxy, method, args, pipe, token)` (a future of the typed-JSON result; a fire-and-forget method's future completes once it is sent, a pipe or channel method's once the invocation is sent; `IllegalArgumentException` for an unknown method or bad arguments); `list` / `listUnchecked(proxy, name)` (the `NexusList`). |
+| `ScriptHost` | Implemented by the host: `call(ScriptCall)` runs the script of one call of a slot and returns a future of the typed-JSON result (null is the .NET default result; a failed future fails the call). The scriptable nexus calls it on the invocation executor and must not be blocked. `onConnected`/`onDisconnected` run their slots without waiting. |
+| `ScriptCall` | `slot()`, `arguments()` (typed JSON, wire order), `cancellationToken()` (`CancellationToken.NONE` for a method without one), `pipe()` (the `NexusDuplexPipe` or `NexusDuplexChannel` argument) and `channelItem()` (its item codec). |
+| `TypedCodec<T>` | `toJson(value)`, `fromJson(json)` (null is the .NET default), `formatter()`, `type()` (a `TypedJson.Type`) and `expression()` (the golden type expression, as the control protocol's `channel.writer`/`channel.reader` `type`). |
+| `TestCodecs` | The codecs of every type the exports use; `forType(expression)` finds one by golden type expression (declared types by full metadata name), or null. |
+| `TypedJson` | The typed-JSON ↔ MessagePack conversion (the Java port of the C# `TypedJson`); `defaultValue`, `base64`, `integer`. |
+
+The scriptable nexus has no `onInvocationException` hook, so a host cannot honor `ClientSpec.onInvocationException`
+(the JVM host refuses it with `NotSupported`).
+
+**The JVM interop host** (`clients/java/interop-host`, K12) implements the control protocol
+(`docs/internals/interop-control-protocol.md`) on top of this API. `clients/java/gradlew -p clients/java
+:interop-host:installInteropHost` installs it and writes `artifacts/interop/java/host.json` (the runner launches the JVM
+of `-Pnexnet.testRuntime=11|21` directly with the installed class path). Two test-only classes of the host live in the
+runtime's packages on its class path (a split package of the unnamed module; never shipped):
+`com.dtronix.nexnet.client.InteropClientFactory` (the package-private `NexusClient.create` overload with
+`SessionTimers` and `SessionOptions`: fake time, `maxMessageSize`, `invocationCredits`) and
+`com.dtronix.nexnet.pipes.InteropChannels` (a typed channel over an existing pipe, as the protocol creates a pipe
+before it is used as a channel). Both depend on runtime internals; a public test hook would replace them.
