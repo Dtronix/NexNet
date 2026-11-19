@@ -15,6 +15,9 @@ import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.pipes.PipeOptions;
+import com.dtronix.nexnet.reconnect.ReconnectController;
+import com.dtronix.nexnet.reconnect.ReconnectableClient;
+import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.session.NexusExecutors;
 import com.dtronix.nexnet.session.NexusSession;
@@ -79,11 +82,13 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     private final @Nullable NexusLogger logger;
     private final CopyOnWriteArrayList<StateListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean plaintextWarningLogged = new AtomicBoolean();
+    private final @Nullable ReconnectController reconnection;
 
     private final Object lock = new Object();
     private ConnectionState state = ConnectionState.DISCONNECTED;
     private @Nullable NexusSession session;
     private @Nullable Attempt attempt;
+    private @Nullable Attempt established;
     private CompletableFuture<Void> disconnected = CompletableFuture.completedFuture(null);
     private boolean closed;
 
@@ -94,6 +99,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         final AtomicBoolean finished = new AtomicBoolean();
         final CompletableFuture<Void> disconnected = new CompletableFuture<>();
         volatile boolean canceled;
+        volatile boolean userDisconnect;
         volatile boolean established;
         volatile @Nullable NexusSession session;
 
@@ -121,6 +127,9 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         this.logger = root == null ? null : root.createLogger("CL" + id);
         this.invoker = new ClientProxyInvoker(callbackExecutor);
         this.proxy = proxyFactory.apply(invoker);
+        ReconnectionPolicy policy = config.reconnectionPolicy();
+        this.reconnection = policy == null ? null
+            : new ReconnectController(new Reconnectable(), policy, timers, callbackExecutor, logger);
     }
 
     /**
@@ -409,6 +418,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             if (!a.canceled && s.isConnected()) {
                 a.established = true;
                 session = s;
+                established = a;
             }
         }
         if (!a.established) {
@@ -477,6 +487,29 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
         ClientNexusHooks.bind(nexus, null);
+        ReconnectController controller = reconnection;
+        boolean userClosed;
+        synchronized (lock) {
+            userClosed = closed || a.userDisconnect;
+        }
+        if (controller != null && !userClosed) {
+            // C#: the state goes to Reconnecting and disconnected() stays pending until the loop gives up.
+            setState(ConnectionState.RECONNECTING);
+            if (controller.onSessionLost(reason)) {
+                controller.idle().whenComplete((v, e) -> {
+                    if (state() != ConnectionState.CONNECTED) {
+                        setState(ConnectionState.DISCONNECTED);
+                    }
+                    CompletableFuture<Void> current = disconnected();
+                    if (current == a.disconnected || current.isDone()) {
+                        NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
+                    } else {
+                        current.whenComplete((x, y) -> a.disconnected.complete(null));
+                    }
+                });
+                return;
+            }
+        }
         setState(ConnectionState.DISCONNECTED);
         NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
     }
@@ -578,6 +611,16 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             s = session;
             a = attempt;
             done = disconnected;
+            if (a != null) {
+                a.userDisconnect = true;
+            }
+            if (s != null && established != null) {
+                established.userDisconnect = true;
+            }
+        }
+        ReconnectController controller = reconnection;
+        if (controller != null) {
+            controller.cancel();
         }
         if (s != null) {
             setState(ConnectionState.DISCONNECTING);
@@ -720,6 +763,10 @@ public final class NexusClient<TProxy> implements AutoCloseable {
      */
     @Override
     public void close() {
+        ReconnectController controller = reconnection;
+        if (controller != null) {
+            controller.close();
+        }
         NexusSession s;
         Attempt a;
         synchronized (lock) {
@@ -760,6 +807,46 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             } catch (RuntimeException ignored) {
                 // A failing logger must not break the client.
             }
+        }
+    }
+
+    /**
+     * The reconnection controller, when the configuration sets a {@link ReconnectionPolicy}.
+     *
+     * @return the controller, or null
+     */
+    public @Nullable ReconnectController reconnection() {
+        return reconnection;
+    }
+
+    /** The client as seen by its reconnection controller. */
+    private final class Reconnectable implements ReconnectableClient {
+        @Override
+        public ConnectionState state() {
+            return NexusClient.this.state();
+        }
+
+        @Override
+        public CompletableFuture<Void> onReconnecting() {
+            return CompletableFuture.supplyAsync(() -> ClientNexusHooks.reconnecting(nexus), invocationExecutor)
+                .thenCompose(f -> f);
+        }
+
+        @Override
+        public CompletableFuture<ConnectionResult> reconnect() {
+            Attempt started;
+            try {
+                started = begin(true, CancellationToken.NONE);
+            } catch (IllegalStateException e) {
+                return CompletableFuture.completedFuture(
+                    new ConnectionResult(ConnectionResult.Status.EXCEPTION, DisconnectReason.NONE, e));
+            }
+            CompletableFuture<ConnectionResult> future = new CompletableFuture<>();
+            started.result.whenComplete((result, error) -> NexusExecutors.execute(callbackExecutor, () -> {
+                settleDisconnected(started, result);
+                future.complete(result);
+            }));
+            return future;
         }
     }
 
