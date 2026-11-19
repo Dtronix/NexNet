@@ -1,180 +1,125 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using System.Diagnostics;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Messages;
-#pragma warning disable CS1998
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexusServerTests_Cancellation : BaseTests
+/// <summary>
+/// Cancellation of invocations the C# server makes on the client under test: the client's methods are scripted to
+/// wait for the cancellation, and the server's frames are observed with <see cref="ServerTaps"/>.
+/// </summary>
+/// <remarks>
+/// The QUIC rows of the C# suite run on WebSocketTls: the interop server has no QUIC endpoint and no other client
+/// language has QUIC.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusServerTests_Cancellation(LanguageHostPool hosts) : CancellationMatrixTests(hosts)
 {
     [Test]
-    [Transports]
-    public async Task SendsCancellationTokenOnTimeout_ClientTaskValueWithParam(Type type)
-    {
-        var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
-            type,
-            nexus => nexus.ClientTaskWithCancellationEvent = async (nexus, token) =>
-            {
-                await Task.Delay(10000, token);
-            },
-            (message, source) =>
-            {
-                CallbackAssert.Equal(message.InvocationId, 1);
-                source.TrySetResult();
-            },
-            async nexus =>
-            {
-                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
-                {
-                    await nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token);
-                });
-            }).Timeout(T(1));
-
-        await tcs.Timeout(T(1));
-    }
-
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public Task SendsCancellationTokenOnTimeout_ClientTaskValueWithParam(ClientTarget target)
+        => ServerSendsCancellationOnTimeout(
+            target,
+            script => script.ClientTaskWithCancellation.AwaitCancel(),
+            caller => caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token));
 
     [Test]
-    [Transports]
-    public async Task SendsCancellationTokenOnTimeout_ServerTaskWithValueAndCancellation(Type type)
-    {
-        var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
-            type,
-            nexus => nexus.ClientTaskWithValueAndCancellationEvent = async (nexus, value, token) =>
-            {
-                await Task.Delay(10000, token);
-            },
-            (message, source) =>
-            {
-                CallbackAssert.Equal(message.InvocationId, 1);
-                source.TrySetResult();
-            },
-            async nexus =>
-            {
-                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
-                {
-                    await nexus.Context.Clients.Caller.ClientTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
-                });
-            }).Timeout(T(1));
-
-        await tcs.Timeout(T(1));
-    }
-
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public Task SendsCancellationTokenOnTimeout_ServerTaskWithValueAndCancellation(ClientTarget target)
+        => ServerSendsCancellationOnTimeout(
+            target,
+            script => script.ClientTaskWithValueAndCancellation.AwaitCancel(),
+            caller => caller.ClientTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
 
     [Test]
-    [Transports]
-    public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithCancellation(Type type)
-    {
-        var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
-            type,
-            nexus => nexus.ClientTaskValueWithCancellationEvent = async (nexus, token) =>
-            {
-                await Task.Delay(10000, token);
-                return 12345;
-            },
-            (message, source) =>
-            {
-                CallbackAssert.Equal(message.InvocationId, 1);
-                source.TrySetResult();
-            },
-            async nexus =>
-            {
-                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async() => await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
-            }).Timeout(T(1));
-
-        await tcs.Timeout(T(1));
-    }
-
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public Task SendsCancellationTokenOnTimeout_ServerTaskValueWithCancellation(ClientTarget target)
+        => ServerSendsCancellationOnTimeout(
+            target,
+            script => script.ClientTaskValueWithCancellation.AwaitCancel().Returns(12345),
+            async caller => await caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
 
     [Test]
-    [Transports]
-    public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithValueAndCancellation(Type type)
-    {
-        var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
-            type,
-            nexus => nexus.ClientTaskValueWithValueAndCancellationEvent = async (nexus, value, token) =>
-            {
-                await Task.Delay(10000, token);
-                return 12345;
-            },
-            (message, source) =>
-            {
-                CallbackAssert.Equal(message.InvocationId, 1);
-                source.TrySetResult();
-            },
-            async nexus =>
-            {
-                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
-            }).Timeout(T(1));
-
-        await tcs.Timeout(T(1));
-    }
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public Task SendsCancellationTokenOnTimeout_ServerTaskValueWithValueAndCancellation(ClientTarget target)
+        => ServerSendsCancellationOnTimeout(
+            target,
+            script => script.ClientTaskValueWithValueAndCancellation.AwaitCancel().Returns(12345),
+            async caller => await caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
 
     [Test]
-    [Transports]
-    public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task ClientDoesNotSendCancellationAfterCompletion(ClientTarget target)
     {
         using var cts = new CancellationTokenSource();
-        var completed = new TaskCompletionSource<ServerNexus>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
-            type,
-            nexus => nexus.ClientTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
-            (message, source) =>
+        var cancellations = 0;
+        var completed = Signal<ServerNexus>();
+        await using var server = await StartServerAsync(
+            nexus => nexus.OnConnectedEvent = connected =>
             {
-                CallbackAssert.Equal(message.InvocationId, 1);
-                source.TrySetResult();
+                _ = CallThenSignal(connected);
+                return ValueTask.CompletedTask;
             },
-            async nexus =>
+            config => ServerTaps.OnSend(config, (_, frame) =>
             {
-                await nexus.Context.Clients.Caller.ClientTaskWithCancellation(cts.Token);
-                completed.TrySetResult(nexus);
-            });
+                if (frame.Type == MessageType.InvocationCancellation)
+                    Interlocked.Increment(ref cancellations);
+            }));
 
+        // Unscripted, the client method completes at once.
+        await using var client = await ConnectAsync(target, server);
         var serverNexus = await completed.Task.Timeout(T(1));
 
         // Canceled after the call completed: there is nothing left to cancel.
-        cts.Cancel();
+        await cts.CancelAsync();
         await Barrier(serverNexus.Context.Clients.Caller);
-        await Assert.That(tcs.IsCompleted).IsFalse().Because("The server must not send a cancellation after the call completed.");
+        await Assert.That(Volatile.Read(ref cancellations)).IsEqualTo(0)
+            .Because("The server must not send a cancellation after the call completed.");
+        await EndAsync(client);
+
+        async Task CallThenSignal(ServerNexus nexus)
+        {
+            try
+            {
+                await nexus.Context.Clients.Caller.ClientTaskWithCancellation(cts.Token);
+                completed.TrySetResult(nexus);
+            }
+            catch (Exception e)
+            {
+                completed.TrySetException(e);
+            }
+        }
     }
 
-
-
-    private async Task<Task> ServerSendsMessage<TMessage>(Type type, Action<ClientNexus> setup, Action<TMessage, TaskCompletionSource> onMessage, Func<ServerNexus, ValueTask> action)
-        where TMessage : class, IMessageBase, new()
+    /// <summary>
+    /// When the client connects, the server calls a client method that waits for its cancellation, with a token that
+    /// cancels after 100 ms; the server's call throws and it sends the cancellation of invocation 1.
+    /// </summary>
+    private async Task ServerSendsCancellationOnTimeout(
+        ClientTarget target,
+        Action<ClientNexusScript> script,
+        Func<ServerNexus.ClientProxy, ValueTask> call)
     {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var cancellation = Signal<ushort>();
+        var serverCall = Signal<Task>();
+        await using var server = await StartServerAsync(
+            nexus => nexus.OnConnectedEvent = connected =>
+            {
+                serverCall.TrySetResult(call(connected.Context.Clients.Caller).AsTask());
+                return ValueTask.CompletedTask;
+            },
+            config => ServerTaps.OnSend(config, (_, frame) =>
+            {
+                if (frame.Type == MessageType.InvocationCancellation)
+                    cancellation.TrySetResult(TestSerialization.DeserializeMessage<InvocationCancellationMessage>(frame.Body).InvocationId);
+            }));
+        await using var client = await ConnectAsync(target, server, script);
 
-        setup.Invoke(clientNexus);
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-
-        ServerTaps.OnSend(serverConfig, (_, frame) =>
-        {
-            if (frame.Type != TMessage.Type)
-                return;
-
-            var message = TestSerialization.DeserializeMessage<TMessage>(frame.Body);
-            Debug.Assert(message != null, nameof(message) + " != null");
-            onMessage(message, tcs);
-        });
-
-
-        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus2 =>
-        {
-            _ = action.Invoke(nexus2);
-            return ValueTask.CompletedTask;
-        };
-
-
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        return tcs.Task;
+        var pending = await serverCall.Task.Timeout(T(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await pending.Timeout(T(1)));
+        await Assert.That(await cancellation.Task.Timeout(T(1))).IsEqualTo((ushort)1);
+        await EndAsync(client);
     }
-
-
 }
