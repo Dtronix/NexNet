@@ -382,17 +382,22 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
             _state = NexusServerState.Running;
 
+            // The accept loops start later on the scheduler. Hand each one this run's listener and token now: by the
+            // time a loop runs, the server may have been stopped and started again with a new listener.
+            var runToken = _cancellationTokenSource?.Token ?? CancellationToken.None;
             foreach (var endpoint in _endpoints)
             {
                 endpoint.State = NexusEndpointState.Running;
-                if (endpoint.IsListener)
+                if (endpoint.IsListener && endpoint.Listener is { } listener)
                 {
                     StartOnScheduler(endpoint.Config.ReceiveSessionPipeOptions.ReaderScheduler,
                         static state =>
                         {
-                            var (server, ep) = ((NexusServer<TServerNexus, TClientProxy>, ServerEndpoint))state!;
-                            ep.AcceptLoop = server.ListenForConnectionsAsync(ep);
-                        }, (this, endpoint));
+                            var (server, ep, l, token) =
+                                ((NexusServer<TServerNexus, TClientProxy>, ServerEndpoint, ITransportListener,
+                                    CancellationToken))state!;
+                            ep.AcceptLoop = server.ListenForConnectionsAsync(ep, l, token);
+                        }, (this, endpoint, listener, runToken));
                 }
             }
 
@@ -960,19 +965,28 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             session.DisconnectIfTimeout(now - session.Config.Timeout);
     }
     
-    private async Task ListenForConnectionsAsync(ServerEndpoint endpoint)
+    /// <summary>
+    /// Accepts connections on one run's listener until that run stops or the listener faults.
+    /// </summary>
+    /// <param name="endpoint">The endpoint the listener belongs to.</param>
+    /// <param name="listener">The listener bound by the start that launched this loop.</param>
+    /// <param name="cancellationToken">Token of the run that launched this loop; a stop cancels it.</param>
+    private async Task ListenForConnectionsAsync(
+        ServerEndpoint endpoint,
+        ITransportListener listener,
+        CancellationToken cancellationToken)
     {
-        var listener = endpoint.Listener;
-        if (listener == null)
+        // A loop scheduled by a start that has already been stopped must not accept on a later run's listener.
+        if (IsStaleAcceptLoop(endpoint, listener, cancellationToken))
             return;
 
         try
         {
-            // Read inside the try: a concurrent stop may already have disposed the source.
-            var cancellationToken = _cancellationTokenSource?.Token ?? CancellationToken.None;
             _logger?.LogInfo($"Listening for connections on endpoint '{endpoint.Name}'");
             var pendingListener = listener as IPendingTransportListener;
-            while (_state == NexusServerState.Running && endpoint.State == NexusEndpointState.Running)
+            while (_state == NexusServerState.Running
+                   && endpoint.State == NexusEndpointState.Running
+                   && !cancellationToken.IsCancellationRequested)
             {
                 if (pendingListener != null)
                 {
@@ -1018,31 +1032,56 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         }
         catch (Exception ex)
         {
-            // A closed listener faults its pending accept once the server is stopping; that is not a fault.
-            if (_state != NexusServerState.Running || endpoint.State != NexusEndpointState.Running)
+            // A closed listener faults its pending accept once the server is stopping; that is not a fault. The
+            // fault may also surface late, after the server was stopped and started again: then it belongs to the
+            // old run and must not touch the new one.
+            if (_state != NexusServerState.Running
+                || endpoint.State != NexusEndpointState.Running
+                || IsStaleAcceptLoop(endpoint, listener, cancellationToken))
                 return;
 
-            endpoint.State = NexusEndpointState.Faulted;
-            _logger?.LogError(ex, $"Endpoint '{endpoint.Name}' faulted and stopped accepting connections.");
-            await StopIfNoEndpointAliveAsync().ConfigureAwait(false);
+            await FaultEndpointAsync(endpoint, listener, cancellationToken, ex).ConfigureAwait(false);
         }
     }
 
     /// <summary>
-    /// Stops the server after an endpoint fault when no listener endpoint is still accepting and there is no
-    /// external path (Receiver mode). Otherwise the server keeps running on what is left.
+    /// True when an accept loop belongs to a run that has been stopped: its run's token is cancelled, or the
+    /// endpoint has since been given another listener (or none).
     /// </summary>
-    private async Task StopIfNoEndpointAliveAsync()
+    private static bool IsStaleAcceptLoop(
+        ServerEndpoint endpoint,
+        ITransportListener listener,
+        CancellationToken cancellationToken)
+    {
+        return cancellationToken.IsCancellationRequested || !ReferenceEquals(endpoint.Listener, listener);
+    }
+
+    /// <summary>
+    /// Marks an endpoint faulted after its accept loop failed, then stops the server when no listener endpoint is
+    /// still accepting and there is no external path (Receiver mode). Otherwise the server keeps running on what
+    /// is left. Everything runs under the lifecycle lock and re-checks that the failed loop still belongs to the
+    /// current run: a stop and restart may have happened while this waited for the lock.
+    /// </summary>
+    private async Task FaultEndpointAsync(
+        ServerEndpoint endpoint,
+        ITransportListener listener,
+        CancellationToken cancellationToken,
+        Exception exception)
     {
         await _lifecycleLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_state != NexusServerState.Running)
+            if (_state != NexusServerState.Running
+                || endpoint.State != NexusEndpointState.Running
+                || IsStaleAcceptLoop(endpoint, listener, cancellationToken))
                 return;
 
-            foreach (var endpoint in _endpoints)
+            endpoint.State = NexusEndpointState.Faulted;
+            _logger?.LogError(exception, $"Endpoint '{endpoint.Name}' faulted and stopped accepting connections.");
+
+            foreach (var other in _endpoints)
             {
-                if (!endpoint.IsListener || endpoint.State == NexusEndpointState.Running)
+                if (!other.IsListener || other.State == NexusEndpointState.Running)
                     return;
             }
 
