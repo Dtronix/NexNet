@@ -28,7 +28,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -69,7 +68,6 @@ public final class PipeManager implements MessageHandler {
     private int openPipes;
     private boolean closed;
     private DisconnectReason closeReason = DisconnectReason.NONE;
-    private Registration stallTimer = Registration.NONE;
     private Registration budgetTimer = Registration.NONE;
 
     private PipeManager(InvocationRuntime runtime, Executor callbackExecutor, SessionTimers timers,
@@ -90,7 +88,7 @@ public final class PipeManager implements MessageHandler {
      *
      * @param runtime the invocation runtime
      * @param callbackExecutor the executor that completes user-visible futures
-     * @param timers the session's timers (the progress timeout)
+     * @param timers the session's timers (retries for session budget)
      * @param options the pipe limits
      * @param logger the logger, or null
      * @return the pipe runtime
@@ -102,7 +100,8 @@ public final class PipeManager implements MessageHandler {
         }
         PipeManager manager = new PipeManager(runtime, callbackExecutor, timers, options, logger);
         runtime.attachPipes(manager);
-        manager.scheduleStallCheck();
+        // The session asks on each keepalive tick and disconnects with Stalled (37), as for large messages.
+        manager.session.addProgressProbe(manager::findStalled);
         return manager;
     }
 
@@ -366,34 +365,25 @@ public final class PipeManager implements MessageHandler {
 
     // ------------------------------------------------------------------ progress timeout
 
-    private void scheduleStallCheck() {
-        long interval = Math.max(1, Math.min(1000, options.progressTimeoutMillis() / 4));
-        synchronized (lock) {
-            if (!closed) {
-                stallTimer = timers.schedule(this::checkStalls, interval);
-            }
-        }
-    }
-
-    private void checkStalls() {
+    /**
+     * The session's progress probe (specification section 9): a pipe whose close the peer never confirms, or a
+     * channel item given extra credit whose data stopped arriving.
+     */
+    private @Nullable String findStalled(long nowNanos, long timeoutNanos) {
         List<PipeImpl> current;
         synchronized (lock) {
             if (closed) {
-                return;
+                return null;
             }
             current = new ArrayList<>(pipes.values());
         }
-        long now = timers.nanoTime();
-        long timeout = TimeUnit.MILLISECONDS.toNanos(options.progressTimeoutMillis());
         for (PipeImpl pipe : current) {
-            String stall = pipe.describeStall(now, timeout);
+            String stall = pipe.describeStall(nowNanos, timeoutNanos);
             if (stall != null) {
-                log(NexusLogLevel.WARNING, "Disconnecting: no progress on " + stall + ".", null);
-                session.disconnect(DisconnectReason.STALLED);
-                return;
+                return stall;
             }
         }
-        scheduleStallCheck();
+        return null;
     }
 
     // ------------------------------------------------------------------ receiving
@@ -478,7 +468,6 @@ public final class PipeManager implements MessageHandler {
             pipes.clear();
             waiters = new ArrayList<>(budgetWaiters);
             budgetWaiters.clear();
-            stallTimer.close();
             budgetTimer.close();
         }
         for (BudgetWaiter waiter : waiters) {
@@ -500,8 +489,9 @@ public final class PipeManager implements MessageHandler {
         }
     }
 
+    /** The session clock, the one the progress probe is given. */
     long nanoTime() {
-        return timers.nanoTime();
+        return session.nanoTime();
     }
 
     PayloadCodec codec() {

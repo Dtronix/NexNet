@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.invocation.InvocationOptions;
-import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.session.SessionOptions;
@@ -315,16 +314,18 @@ class PipeManagerTest extends PipeTestBase {
 
     @Test
     void aClosingPipeThePeerNeverConfirmsStallsTheSession() throws Exception {
-        ManualTimers timers = new ManualTimers();
-        connect(SMALL.withProgressTimeoutMillis(1000), InvocationOptions.defaults(), timers,
-            SessionOptions.defaults());
+        // Checked by the session's progress probe on each keepalive tick.
+        progressTimeoutMillis = 1000;
+        pingIntervalMillis = 250;
+        connect(SMALL);
         PipeImpl pipe = openPipe(10);
         pipe.close();
         peer.expectState(pipe.id(), PipeWire.COMPLETE, 0);
-        timers.advance(900);
+        sessionTimers.advance(900);
         assertTrue(session.isConnected());
-        timers.advance(400);
+        sessionTimers.advance(400);
         assertEquals(DisconnectReason.STALLED.code(), peer.awaitDisconnect());
+        assertEquals(DisconnectReason.STALLED, session.disconnectReason());
     }
 
     @Test
