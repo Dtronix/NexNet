@@ -13,6 +13,7 @@ import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.client.ConnectionResult;
 import com.dtronix.nexnet.client.ConnectionState;
 import com.dtronix.nexnet.diagnostics.Diagnostics;
+import com.dtronix.nexnet.diagnostics.NexusCounters;
 import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
 import com.dtronix.nexnet.session.ManualTimers;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(60)
 class NexusClientPoolTest {
+    private final NexusCounters baseline = Diagnostics.counters();
     private final TestClients.Server server = new TestClients.Server();
     private final ManualTimers timers = new ManualTimers();
     private NexusClientPool<TestProxy> pool;
@@ -46,7 +48,7 @@ class NexusClientPoolTest {
         if (pool != null) {
             pool.close();
         }
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
     }
 
     @Test

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dtronix.nexnet.diagnostics.Diagnostics;
+import com.dtronix.nexnet.diagnostics.NexusCounters;
 import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(30)
 class NexusClientReconnectTest {
+    private final NexusCounters baseline = Diagnostics.counters();
     private static ClientConfig config() {
         return ClientConfig.tcp("h", 1).reconnectionPolicy(new DefaultReconnectionPolicy(new long[] {0, 50}, true))
             .build();
@@ -53,7 +56,7 @@ class NexusClientReconnectTest {
         } finally {
             client.close();
         }
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
     }
 
     @Test
@@ -79,7 +82,7 @@ class NexusClientReconnectTest {
             client.close();
             plain.close();
         }
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
     }
 
     @Test
@@ -101,6 +104,6 @@ class NexusClientReconnectTest {
         } finally {
             client.close();
         }
-        TestClients.awaitIdle();
+        TestClients.awaitBaseline(baseline);
     }
 }

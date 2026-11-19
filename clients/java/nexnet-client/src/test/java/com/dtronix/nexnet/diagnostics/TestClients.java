@@ -97,12 +97,15 @@ public final class TestClients {
         }
     }
 
-    /** Waits up to 5 s for every leak-audit counter to return to 0. */
-    public static void awaitIdle() throws InterruptedException {
+    /**
+     * Waits up to 5 s for every leak-audit counter to return to the baseline taken before the test. The counters are
+     * process-wide, so tests of other layers that leave counts behind must not fail these tests.
+     */
+    public static void awaitBaseline(NexusCounters baseline) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5_000;
-        while (!Diagnostics.isIdle()) {
+        while (!Diagnostics.counters().toString().equals(baseline.toString())) {
             if (System.currentTimeMillis() > deadline) {
-                throw new AssertionError("Not idle: " + Diagnostics.counters());
+                throw new AssertionError("Counters " + Diagnostics.counters() + " did not return to " + baseline);
             }
             Thread.sleep(5);
         }
