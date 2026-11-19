@@ -168,6 +168,21 @@ public class BundleBuildTests
     }
 
     [Test]
+    public async Task RuntimeModulesList_SurvivesTheEditorConfig()
+    {
+        // An MSBuild list ("kotlin;okhttp", here an escaped ';' on the command line): the .editorconfig parser would cut
+        // the value at ';', so the flattening turns it into ','.
+        using var sample = SampleProject.Create();
+        await sample.Build("-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp");
+
+        var runtime = Path.Combine(sample.Directory, "generated", "java", "com", "dtronix", "nexnet");
+        await Assert.That(File.Exists(Path.Combine(runtime, "kotlin", "NexusCoroutines.kt"))).IsTrue();
+        await Assert.That(File.Exists(Path.Combine(runtime, "okhttp", "OkHttpWebSocketConnector.java"))).IsTrue();
+        await Assert.That(System.IO.Directory.Exists(Path.Combine(runtime, "micrometer"))).IsFalse();
+        await Assert.That(System.IO.Directory.Exists(Path.Combine(runtime, "android"))).IsFalse();
+    }
+
+    [Test]
     public async Task NoTargetConfigured_BuildIsUnchanged()
     {
         using var sample = SampleProject.Create();

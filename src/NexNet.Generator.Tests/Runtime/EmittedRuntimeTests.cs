@@ -29,20 +29,26 @@ public class EmittedRuntimeTests
     public async Task EmbeddedSourcesAreTheWorkspaceSources()
     {
         var js = Path.Combine(Repo, "clients", "js", "packages", "nexnet");
-        await AssertEmbedded("javascript", (Path.Combine(js, "src"), "*.js"), (Path.Combine(js, "types"), "*.d.ts"));
-        await AssertEmbedded("java", (Path.Combine(Repo, "clients", "java", "nexnet-client", "src", "main", "java"), "*.java"));
+        await AssertEmbedded("javascript", 50, (Path.Combine(js, "src"), "*.js"), (Path.Combine(js, "types"), "*.d.ts"));
+        await AssertEmbedded("java", 50, (Path.Combine(Repo, "clients", "java", "nexnet-client", "src", "main", "java"), "*.java"));
+        foreach (var module in JavaTarget.RuntimeModuleNames)
+        {
+            var root = Path.Combine(Repo, "clients", "java", "nexnet-client-" + module, "src", "main", module == "kotlin" ? "kotlin" : "java");
+            await AssertEmbedded(JavaTarget.ModuleResourceTarget(module), 0, (root, module == "kotlin" ? "*.kt" : "*.java"));
+        }
+
         await Assert.That(EmbeddedRuntime.License).IsEqualTo(EmbeddedRuntime.Normalize(System.IO.File.ReadAllText(Path.Combine(Repo, "LICENSE"))));
         await Assert.That(EmbeddedRuntime.License).Contains("MIT License");
     }
 
-    /// <summary>The embedded sources of a target are exactly the files of every (root, pattern), merged by relative path.</summary>
-    private static async Task AssertEmbedded(string target, params (string Root, string Pattern)[] sets)
+    /// <summary>The embedded sources of a target are exactly the files of every (root, pattern), merged by relative path; each set has more than <paramref name="minimum"/> files.</summary>
+    private static async Task AssertEmbedded(string target, int minimum, params (string Root, string Pattern)[] sets)
     {
         var onDisk = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var (root, pattern) in sets)
         {
             var files = Directory.GetFiles(root, pattern, SearchOption.AllDirectories);
-            await Assert.That(files.Length).IsGreaterThan(50).Because(root + " " + pattern);
+            await Assert.That(files.Length).IsGreaterThan(minimum).Because(root + " " + pattern);
             foreach (var path in files)
                 onDisk.Add(Path.GetRelativePath(root, path).Replace('\\', '/'), path);
         }
@@ -187,6 +193,80 @@ public class EmittedRuntimeTests
             if (entry.Value is JsonObject conditions && conditions["types"] is { } types)
                 await Assert.That(paths).Contains(JsRuntime + types.GetValue<string>().Substring(2));
         }
+    }
+
+    // ------------------------------------------------------------------ optional Java modules (G10)
+
+    [Test]
+    public async Task RuntimeModulesAreOptIn()
+    {
+        var paths = Bundle(Options()).Select(f => f.Path).ToArray();
+        foreach (var module in JavaTarget.RuntimeModuleNames)
+            await Assert.That(paths.Any(p => p.StartsWith(JavaRuntime + module + "/", StringComparison.Ordinal))).IsFalse().Because(module);
+    }
+
+    [Test]
+    public async Task ListedRuntimeModulesAreEmittedInTheirPackages()
+    {
+        // ';' as an MSBuild list (after flattening it arrives as ','), any case, spaces and duplicates.
+        var files = Bundle(Options(("java_EmitRuntimeModules", "Kotlin, okhttp;okhttp  micrometer,android")));
+        var paths = files.Select(f => f.Path).ToArray();
+        var header = EmbeddedRuntime.HeaderLine("//") + "\n";
+
+        foreach (var module in JavaTarget.RuntimeModuleNames)
+        {
+            var sources = EmbeddedRuntime.Sources(JavaTarget.ModuleResourceTarget(module));
+            await Assert.That(sources.Count).IsGreaterThan(0).Because(module);
+            foreach (var source in sources)
+            {
+                await Assert.That(source.Path.StartsWith(JavaTarget.RuntimePath + module + "/", StringComparison.Ordinal)).IsTrue().Because(source.Path);
+                await Assert.That(FileOf(files, "java/" + source.Path).StartsWith(header, StringComparison.Ordinal)).IsTrue().Because(source.Path);
+            }
+
+            await Assert.That(paths.Count(p => p.StartsWith(JavaRuntime + module + "/", StringComparison.Ordinal))).IsEqualTo(sources.Count).Because(module);
+        }
+
+        await Assert.That(paths).Contains(JavaRuntime + "kotlin/NexusCoroutines.kt");
+        await Assert.That(paths).Contains(JavaRuntime + "okhttp/OkHttpWebSocketConnector.java");
+        await Assert.That(paths).Contains(JavaRuntime + "micrometer/NexusMicrometerBinder.java");
+        await Assert.That(paths).Contains(JavaRuntime + "android/NexusAndroid.java");
+        // The core runtime is unchanged.
+        await Assert.That(paths.Count(p => p.StartsWith(JavaRuntime, StringComparison.Ordinal)))
+            .IsEqualTo(EmbeddedRuntime.Sources("java").Count + 2 + JavaTarget.RuntimeModuleNames.Sum(m => EmbeddedRuntime.Sources(JavaTarget.ModuleResourceTarget(m)).Count));
+
+        // Only the listed modules.
+        paths = Bundle(Options(("java_EmitRuntimeModules", "okhttp"))).Select(f => f.Path).ToArray();
+        await Assert.That(paths).Contains(JavaRuntime + "okhttp/OkHttpWebSocketTransport.java");
+        await Assert.That(paths.Any(p => p.StartsWith(JavaRuntime + "kotlin/", StringComparison.Ordinal))).IsFalse();
+    }
+
+    [Test]
+    public async Task RuntimeModulesFollowTheNullnessOption()
+    {
+        var files = Bundle(Options(("java_EmitRuntimeModules", "android,kotlin,micrometer,okhttp")));
+        var modules = files.Where(f => JavaTarget.RuntimeModuleNames.Any(m => f.Path.StartsWith(JavaRuntime + m + "/", StringComparison.Ordinal))).ToArray();
+        await Assert.That(modules.Where(f => f.Content.Contains("jspecify", StringComparison.Ordinal) || f.Content.Contains("@Nullable", StringComparison.Ordinal)).Select(f => f.Path)).IsEmpty();
+        await Assert.That(FileOf(files, JavaRuntime + "okhttp/OkHttpWebSocketTransport.java")).Contains("private volatile WebSocket webSocket;");
+
+        files = Bundle(Options(("java_EmitRuntimeModules", "okhttp"), ("java_Nullness", "jspecify")));
+        await Assert.That(FileOf(files, JavaRuntime + "okhttp/OkHttpWebSocketTransport.java")).Contains("private volatile @Nullable WebSocket webSocket;");
+    }
+
+    [Test]
+    public async Task InvalidRuntimeModulesAreNexnet045()
+    {
+        var run = BundleTestRunner.Run(Options(("java_EmitRuntimeModules", "kotlin,retrofit,Ktor")), EmittedRuntimeFixture.Source);
+        var messages = run.Diagnostics.Where(d => d.Id == "NEXNET045").Select(d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        await Assert.That(run.Bundle).IsNull();
+        await Assert.That(messages.Any(m => m.Contains("EmitRuntimeModules of the java target lists 'ktor', 'retrofit'; the modules are android, kotlin, micrometer, okhttp", StringComparison.Ordinal)))
+            .IsTrue().Because(string.Join("\n", messages));
+
+        // Modules extend the emitted runtime; without it they have nothing to build on.
+        run = BundleTestRunner.Run(Options(("java_EmitRuntimeModules", "kotlin"), ("java_EmitRuntime", "false")), EmittedRuntimeFixture.Source);
+        messages = run.Diagnostics.Where(d => d.Id == "NEXNET045").Select(d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        await Assert.That(run.Bundle).IsNull();
+        await Assert.That(messages.Any(m => m.Contains("EmitRuntimeModules of the java target needs the emitted runtime", StringComparison.Ordinal)))
+            .IsTrue().Because(string.Join("\n", messages));
     }
 
     // ------------------------------------------------------------------ version, licence, determinism
