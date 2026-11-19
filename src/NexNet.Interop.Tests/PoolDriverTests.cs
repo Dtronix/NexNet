@@ -291,16 +291,8 @@ public class PoolDriverTests
         await Assert.That(report.OpenClients).IsEqualTo(1).Because(report.ToString());
         await Assert.That(report.Timers).IsEqualTo(0).Because(report.ToString());
 
-        try
-        {
-            await held.ReturnAsync();
-        }
-        catch (InvalidOperationException)
-        {
-            // Known C# pool bug (reported with C-6): NexusClientPool.ReturnClient disposes the client of a disposed pool,
-            // then releases the pool's disposed semaphore and throws ObjectDisposedException. The client is gone either
-            // way, which is what the audit below checks.
-        }
+        // Returning a rental after its pool is disposed disposes the client and does not throw.
+        await held.ReturnAsync();
 
         await AssertNoLeaks(pool);
     }

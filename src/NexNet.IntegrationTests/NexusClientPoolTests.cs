@@ -239,6 +239,33 @@ internal class NexusClientPoolTests : BaseTests
     }
 
     [Test]
+    public async Task Dispose_ReturningRentalAfterPoolDisposed_DoesNotThrow()
+    {
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var poolConfig = new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 2 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        var rental = await pool.RentClientAsync().Timeout(T(1));
+        await WaitForState(rental, ConnectionState.Connected);
+        var disconnected = rental.DisconnectedTask;
+
+        await pool.DisposeAsync();
+        await Assert.That(disconnected.IsCompleted).IsFalse(); // A rental is not disposed with its pool.
+
+        // Returning a rental after the pool is disposed disposes its client and must not throw.
+        rental.Dispose();
+        rental.Dispose();
+
+        await Assert.That(pool.AvailableConnections).IsEqualTo(0);
+        await disconnected.Timeout(T(1));
+    }
+
+    [Test]
     public async Task RentClientAsync_ThrowsOnConnectionFailure()
     {
         // Arrange - No server running
