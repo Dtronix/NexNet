@@ -10,8 +10,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "build:types": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "build:types": "node -e \"require('node:fs').rmSync('packages/nexnet/types', { recursive: true, force: true })\" && tsc -p tsconfig.json --outDir packages/nexnet/types",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json && node scripts/check-types.js",
+    "check:types": "node scripts/check-types.js",
     "lint": "eslint .",
     "test": "vitest run --project node",
     "test:browser": "vitest run --project browser",
