@@ -248,7 +248,18 @@ server `INexusList<T>` (protocol specification section 12):
   - `callbackExecutor`, `invocationExecutor` (section 6.1), `reconnectionPolicy`, `logger(NexusLogger)`
     (section 6.2);
   - the timeouts, as in C#: `connectionTimeoutMillis` 50 s, `handshakeTimeoutMillis` 15 s, `timeoutMillis` (receive)
-    30 s, all positive; `pingIntervalMillis(@Nullable Integer)`, null by default (section 6.6).
+    30 s, all positive; `pingIntervalMillis(@Nullable Integer)`, null by default (section 6.6);
+    `progressTimeoutMillis` 30 s (50 ms to 600 s): it bounds large messages, pipes whose close is not confirmed and
+    channel items given extra credit; the session's keepalive tick checks them and disconnects with `Stalled` (37);
+  - `invocationOptions(InvocationOptions)`; `pipeOptions(PipeOptions)`: `maxPipes` 32 and `pipeWindow` 256 KiB by
+    default (C# `MaxPipes`/`PipeWindow`).
+- Channels: `NexusChannelReader<T>`: `read()` (`Optional<T>`, empty at the end; **only for item types that are
+  never null**: a null item fails it with `NullPointerException`), `readItem()` (`ChannelReadResult<T>` with
+  `isCompleted()` and `value()`, which tells a null item apart from the end), `readBatch(max)`,
+  `readUntilComplete()`. `NexusChannelWriter<T>`: `write`, `writeAll`, `complete`, `writeAndComplete`. When an
+  item is larger than the server accepts (`NexusMessageTooLargeException`) or can't be serialized, the items before
+  it in the same call are sent, as in C#; it and the items after it are not, the future fails, and
+  `writeAndComplete` does not complete the channel. The channel stays usable.
 - `TlsOptions`: `sslContext` (takes precedence over the managers), `trustManager`, `trustCaCertificates(byte[],
   includeSystemTrust)` (PEM or DER), `trustCaCertificatesPem(String, includeSystemTrust)`, `keyManager` and
   `clientCertificatePkcs12(byte[], char[])` (client certificate), `pinCertificateSha256(byte[32])`,
@@ -432,7 +443,7 @@ NexusSession s = NexusSession.builder(transport, handshake)
 InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)
     .callbackExecutor(callbacks).invocationExecutor(invocations).logger(logger).build();
 s.setMessageHandler(runtime);                                                     // K07
-PipeManager.attach(runtime, callbacks, timers, PipeOptions.defaults(), logger);   // K08: runtime's next handler
+PipeManager.attach(runtime, callbacks, timers, config.pipeOptions(), logger);   // K08: next handler; K19: progress probe
 s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), onConnected, runtime.startDispatching()
 ```
 
