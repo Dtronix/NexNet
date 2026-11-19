@@ -2,14 +2,13 @@
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.Transports;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
 internal partial class AspClientServerTests : BaseAspTests
 {
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationSucceeds(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -36,12 +35,12 @@ internal partial class AspClientServerTests : BaseAspTests
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
         await server.StartAsync().Timeout(1);
-        await Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(() => client.ConnectAsync().Timeout(1)).ThrowsNothing();
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationFailsWithBadAuth(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -67,12 +66,12 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationFailsWithNoAuth(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -93,12 +92,12 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ServerIgnoresAuthenticationWhenNotEnabled(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -126,8 +125,8 @@ internal partial class AspClientServerTests : BaseAspTests
         await client.ConnectAsync().Timeout(1);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientDoesNotConnectWhenServerSelectsBadAuthScheme(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -153,14 +152,15 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.InternalError));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.InternalError);
     }
 
-    [TestCase(Type.WebSocket, "Token123", true)]
-    [TestCase(Type.HttpSocket, "Token123", true)]
-    [TestCase(Type.WebSocket, "BadToken", false)]
-    [TestCase(Type.HttpSocket, "BadToken", false)]
+    [Test]
+    [Arguments(Type.WebSocket, "Token123", true)]
+    [Arguments(Type.HttpSocket, "Token123", true)]
+    [Arguments(Type.WebSocket, "BadToken", false)]
+    [Arguments(Type.HttpSocket, "BadToken", false)]
     public async Task QueryStringTokenAuthenticatesWhenEnabled(Type type, string token, bool succeeds)
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(type);
@@ -182,17 +182,17 @@ internal partial class AspClientServerTests : BaseAspTests
 
         if (succeeds)
         {
-            await Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
+            await Assert.That(() => client.ConnectAsync().Timeout(1)).ThrowsNothing();
         }
         else
         {
-            var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-            Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+            var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+            await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
         }
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task QueryStringTokenIsDisabledByDefault(Type type)
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(type);
@@ -202,7 +202,7 @@ internal partial class AspClientServerTests : BaseAspTests
         serverConfig.AspEnableAuthentication = true;
         serverConfig.AspAuthenticationScheme = "BearerToken";
 
-        Assert.That(GetAccessTokenQueryParameter(serverConfig), Is.Null);
+        await Assert.That(GetAccessTokenQueryParameter(serverConfig)).IsNull();
 
         var (client, _) = CreateClient(clientConfig);
         var server = CreateServer(
@@ -213,12 +213,12 @@ internal partial class AspClientServerTests : BaseAspTests
 
         await server.StartAsync().Timeout(1);
 
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AuthorizationHeaderWinsOverQueryStringToken(Type type)
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(type);
@@ -239,8 +239,8 @@ internal partial class AspClientServerTests : BaseAspTests
 
         await server.StartAsync().Timeout(1);
 
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
     private static void SetAccessTokenQueryParameter(AspServerConfig config, string? name)

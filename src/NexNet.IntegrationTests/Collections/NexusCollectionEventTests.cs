@@ -1,12 +1,11 @@
 ﻿using NexNet.Collections;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionEventTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task EventRacing_DoesNotCauseTimeout(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -25,12 +24,12 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         await completeTask.Wait();
 
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(40));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(40);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task MultipleEventSubscribers_HandleConcurrency(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -58,13 +57,13 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         await Task.Delay(100); // Allow events to propagate
 
-        Assert.That(subscriber1Events, Is.EqualTo(10));
-        Assert.That(subscriber2Events, Is.EqualTo(10));
-        Assert.That(subscriber3Events, Is.EqualTo(10));
+        await Assert.That(subscriber1Events).IsEqualTo(10);
+        await Assert.That(subscriber2Events).IsEqualTo(10);
+        await Assert.That(subscriber3Events).IsEqualTo(10);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task EventException_DoesNotBreakSystem(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -83,12 +82,12 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         await serverNexus.IntListBi.AddAsync(42);
         await Task.Delay(100);
 
-        Assert.That(goodEventCount, Is.EqualTo(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(goodEventCount).IsEqualTo(1);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerToClientCollection_ServerCanModify(Type type)
     {
         var (server, client, _) = CreateServerClient(
@@ -106,8 +105,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         await Task.Delay(200);
 
-        Assert.That(client.Proxy.IntListSC.Count, Is.EqualTo(1));
-        Assert.That(client.Proxy.IntListSC[0], Is.EqualTo(100));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.Proxy.IntListSC.Count).IsEqualTo(1);
+        await Assert.That(client.Proxy.IntListSC[0]).IsEqualTo(100);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 }

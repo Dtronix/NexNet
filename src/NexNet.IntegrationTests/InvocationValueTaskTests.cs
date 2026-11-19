@@ -1,5 +1,4 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 #pragma warning disable VSTHRD002
@@ -11,8 +10,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationValueTaskTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnAnUnfinishedCall_WaitsForTheResult(Type type)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -33,14 +32,15 @@ internal class InvocationValueTaskTests : BaseTests
         var withResult = Task.Run(() => client.Proxy.ServerTaskValue().GetAwaiter().GetResult());
         var withoutResult = Task.Run(() => client.Proxy.ServerTask().GetAwaiter().GetResult());
         await Task.Delay(100);
-        Assert.That(withResult.IsCompleted || withoutResult.IsCompleted, Is.False);
+        await Assert.That(withResult.IsCompleted || withoutResult.IsCompleted).IsFalse();
 
         release.SetResult();
-        Assert.That(await withResult.Timeout(1), Is.EqualTo(5));
+        await Assert.That(await withResult.Timeout(1)).IsEqualTo(5);
         await withoutResult.Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ConsumingACallTwice_Throws(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -50,14 +50,15 @@ internal class InvocationValueTaskTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var call = client.Proxy.ServerTaskValue();
-        Assert.That(await call, Is.EqualTo(5));
+        await Assert.That(await call).IsEqualTo(5);
 
         // The state behind it has been returned to its pool; reading it again must not observe another call.
-        Assert.Throws<InvalidOperationException>(() => call.GetAwaiter().GetResult());
-        Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(5));
+        Assert.ThrowsExactly<InvalidOperationException>(() => call.GetAwaiter().GetResult());
+        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1)).IsEqualTo(5);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task AwaitWithoutConfigureAwait_ResumesOnTheCallersContext(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -78,17 +79,18 @@ internal class InvocationValueTaskTests : BaseTests
         await Task.Run(async () =>
         {
             SynchronizationContext.SetSynchronizationContext(context);
-            Assert.That(await client.Proxy.ServerTaskValue(), Is.EqualTo(5));
-            Assert.That(context.Posts, Is.EqualTo(1));
+            await Assert.That(await client.Proxy.ServerTaskValue()).IsEqualTo(5);
+            await Assert.That(context.Posts).IsEqualTo(1);
 
             // The base context resumes on the thread pool without itself installed.
             SynchronizationContext.SetSynchronizationContext(context);
             await client.Proxy.ServerTask();
-            Assert.That(context.Posts, Is.EqualTo(2));
+            await Assert.That(context.Posts).IsEqualTo(2);
         }).Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ManySequentialCalls_ReuseStatesWithoutCrossTalk(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -103,7 +105,7 @@ internal class InvocationValueTaskTests : BaseTests
             for (var i = 0; i < 200; i++)
             {
                 var value = worker * 1000 + i;
-                Assert.That(await client.Proxy.ServerTaskValueWithParam(value), Is.EqualTo(value));
+                await Assert.That(await client.Proxy.ServerTaskValueWithParam(value)).IsEqualTo(value);
             }
         }))).Timeout(10);
     }
@@ -150,26 +152,25 @@ internal class InvocationValueTaskTests : BaseTests
         return wait;
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallWaitingToBeSent_WaitsForTheResult(Type type)
     {
         await using var wait = await StartCreditWait(type);
 
         var call = wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-        Assert.That(call.IsCompleted, Is.False);
+        await Assert.That(call.IsCompleted).IsFalse();
         var blocked = Task.Run(() => call.GetAwaiter().GetResult());
         await Task.Delay(50);
-        Assert.That(blocked.IsCompleted, Is.False);
+        await Assert.That(blocked.IsCompleted).IsFalse();
 
         wait.Release.SetResult();
-        Assert.That(await blocked.Timeout(1), Is.EqualTo(1));
-        Assert.That(await wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1),
-            Is.EqualTo(1));
+        await Assert.That(await blocked.Timeout(1)).IsEqualTo(1);
+        await Assert.That(await wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1)).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallCanceledBeforeItIsSent_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
@@ -181,14 +182,14 @@ internal class InvocationValueTaskTests : BaseTests
         cts.Cancel();
 
         // Like any call canceled before it is sent, it throws TaskCanceledException; it was never sent.
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await blocked.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await blocked.Timeout(1));
         wait.Release.SetResult();
         await Task.WhenAll(wait.First, wait.Second).Timeout(1);
-        Assert.That(wait.Received, Is.EqualTo(2));
+        await Assert.That(wait.Received).IsEqualTo(2);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallWhoseSessionEndsBeforeItIsSent_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
@@ -196,27 +197,27 @@ internal class InvocationValueTaskTests : BaseTests
         var call = wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
         var blocked = Task.Run(() => call.GetAwaiter().GetResult());
         await Task.Delay(50);
-        Assert.That(blocked.IsCompleted, Is.False);
+        await Assert.That(blocked.IsCompleted).IsFalse();
 
         await wait.Client.DisconnectAsync().Timeout(1);
-        Assert.That(async () => await blocked.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(async () => await wait.First.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(async () => await wait.Second.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await blocked.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await wait.First.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await wait.Second.Timeout(1));
         wait.First = wait.Second = Task.FromResult(0);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ConsumingACallThatWaitedToBeSentTwice_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
 
         var call = wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
         wait.Release.SetResult();
-        Assert.That(await call, Is.EqualTo(1));
+        await Assert.That(await call).IsEqualTo(1);
 
-        Assert.Throws<InvalidOperationException>(() => call.GetAwaiter().GetResult());
-        Assert.That(await wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1),
-            Is.EqualTo(1));
+        Assert.ThrowsExactly<InvalidOperationException>(() => call.GetAwaiter().GetResult());
+        await Assert.That(await wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1)).IsEqualTo(1);
     }
 
     private sealed class CountingContext : SynchronizationContext

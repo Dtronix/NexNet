@@ -1,7 +1,6 @@
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -36,34 +35,32 @@ internal class ReconnectionPolicyTests : BaseTests
     }
 
     [Test]
-    public void InterfaceDefault_ShouldReconnect_MatchesTodaysList()
+    public async Task InterfaceDefault_ShouldReconnect_MatchesTodaysList()
     {
         IReconnectionPolicy policy = new LegacyPolicy();
 
         foreach (var reason in AllReasons)
         {
-            Assert.That(policy.ShouldReconnect(reason), Is.EqualTo(DefaultReasons.Contains(reason)),
-                $"Default ShouldReconnect for {reason}");
+            await Assert.That(policy.ShouldReconnect(reason)).IsEqualTo(DefaultReasons.Contains(reason)).Because($"Default ShouldReconnect for {reason}");
         }
     }
 
     [Test]
-    public void DefaultPolicy_ReconnectReasons_DefaultsToTodaysList()
+    public async Task DefaultPolicy_ReconnectReasons_DefaultsToTodaysList()
     {
         var policy = new DefaultReconnectionPolicy();
 
-        Assert.That(policy.ReconnectReasons, Is.EquivalentTo(DefaultReasons));
+        await Assert.That(policy.ReconnectReasons).IsEquivalentTo(DefaultReasons);
 
         IReconnectionPolicy asInterface = policy;
         foreach (var reason in AllReasons)
         {
-            Assert.That(asInterface.ShouldReconnect(reason), Is.EqualTo(DefaultReasons.Contains(reason)),
-                $"DefaultReconnectionPolicy.ShouldReconnect for {reason}");
+            await Assert.That(asInterface.ShouldReconnect(reason)).IsEqualTo(DefaultReasons.Contains(reason)).Because($"DefaultReconnectionPolicy.ShouldReconnect for {reason}");
         }
     }
 
     [Test]
-    public void DefaultPolicy_ShouldReconnect_UsesReconnectReasons()
+    public async Task DefaultPolicy_ShouldReconnect_UsesReconnectReasons()
     {
         IReconnectionPolicy policy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) })
         {
@@ -77,21 +74,21 @@ internal class ReconnectionPolicyTests : BaseTests
         foreach (var reason in AllReasons)
         {
             var expected = reason is DisconnectReason.ServerShutdown or DisconnectReason.SocketError;
-            Assert.That(policy.ShouldReconnect(reason), Is.EqualTo(expected), $"ShouldReconnect for {reason}");
+            await Assert.That(policy.ShouldReconnect(reason)).IsEqualTo(expected).Because($"ShouldReconnect for {reason}");
         }
     }
 
     [Test]
-    public void DefaultPolicy_ReconnectReasons_NullThrows()
+    public async Task DefaultPolicy_ReconnectReasons_NullThrows()
     {
-        Assert.Throws<ArgumentNullException>(() => _ = new DefaultReconnectionPolicy
+        Assert.ThrowsExactly<ArgumentNullException>(() => _ = new DefaultReconnectionPolicy
         {
             ReconnectReasons = null!
         });
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ReconnectsAfterServerShutdown_WhenPolicyAllowsIt(Type type)
     {
         var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -125,17 +122,17 @@ internal class ReconnectionPolicyTests : BaseTests
         var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
 
         await server.StopAsync().Timeout(1);
-        Assert.That(await disconnected.Timeout(1), Is.EqualTo(DisconnectReason.ServerShutdown));
+        await Assert.That(await disconnected.Timeout(1)).IsEqualTo(DisconnectReason.ServerShutdown);
 
         // Restart on the same endpoint; the policy keeps retrying every 20 ms until it gets through.
         await server.StartAsync().Timeout(1);
 
         await reconnected.Task.Timeout(2);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task DoesNotReconnectAfterServerShutdown_WithDefaultPolicy(Type type)
     {
         var reconnecting = false;
@@ -165,14 +162,14 @@ internal class ReconnectionPolicyTests : BaseTests
         var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
 
         await server.StopAsync().Timeout(1);
-        Assert.That(await disconnected.Timeout(1), Is.EqualTo(DisconnectReason.ServerShutdown));
+        await Assert.That(await disconnected.Timeout(1)).IsEqualTo(DisconnectReason.ServerShutdown);
 
         await server.StartAsync().Timeout(1);
 
         // Several policy delays pass; no reconnect may start.
         await Task.Delay(300);
-        Assert.That(reconnecting, Is.False, "The default policy must not reconnect after ServerShutdown.");
-        Assert.That(reconnected, Is.False, "The default policy must not reconnect after ServerShutdown.");
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(reconnecting).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
+        await Assert.That(reconnected).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
 }

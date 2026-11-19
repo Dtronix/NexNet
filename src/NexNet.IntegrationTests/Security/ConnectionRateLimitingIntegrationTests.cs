@@ -4,7 +4,6 @@ using System.Net.WebSockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -27,8 +26,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
             await client.ConnectAsync().Timeout(1);
             // If no exception, wait a bit and check state
             await Task.Delay(100);
-            Assert.That(client.State, Is.Not.EqualTo(ConnectionState.Connected),
-                "Connection should not remain connected when rate limited");
+            await Assert.That(client.State).IsNotEqualTo(ConnectionState.Connected).Because("Connection should not remain connected when rate limited");
         }
         catch (Exception ex) when (ex is TransportException or IOException or SocketException or OperationCanceledException or WebSocketException or TimeoutException)
         {
@@ -37,8 +35,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_RejectsConnectionsOverGlobalLimit(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -70,8 +67,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
 
         // Third connection should fail
         var (client3, _) = CreateClient(CreateClientConfig(type));
@@ -79,8 +76,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_ReleasesSlotOnDisconnect(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -106,12 +102,11 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         var (client2, _) = CreateClient(CreateClientConfig(type));
         await client2.ConnectAsync().Timeout(1);
 
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_PerIpLimit_BlocksSameIp(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -138,7 +133,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         await client1.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
 
         // Second connection from same IP should fail
         var (client2, _) = CreateClient(CreateClientConfig(type));
@@ -146,7 +141,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Uds)]
+    [Transports(Type.Uds)]
     public async Task Server_UdsSkipsPerIpLimits(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -179,12 +174,12 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
+    [Transports(Type.Tcp)]
     public async Task Server_NoRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -219,12 +214,12 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         // All should be connected
         foreach (var client in clients)
         {
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         }
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
+    [Transports(Type.Tcp)]
     public async Task Server_DisabledRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -259,13 +254,13 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         // All should be connected
         foreach (var client in clients)
         {
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         }
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    public void Server_RateLimiter_TracksStatistics(Type type)
+    [Transports(Type.Tcp)]
+    public async Task Server_RateLimiter_TracksStatistics(Type type)
     {
         var serverConfig = CreateServerConfig(type);
         var rateLimitConfig = new ConnectionRateLimitConfig
@@ -283,14 +278,13 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         var stats = limiter.GetStats();
 
-        Assert.That(stats.CurrentConnections, Is.EqualTo(2));
-        Assert.That(stats.TotalAccepted, Is.EqualTo(2));
-        Assert.That(stats.UniqueIpCount, Is.EqualTo(2));
+        await Assert.That(stats.CurrentConnections).IsEqualTo(2);
+        await Assert.That(stats.TotalAccepted).IsEqualTo(2);
+        await Assert.That(stats.UniqueIpCount).IsEqualTo(2);
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_MultipleDisconnects_ReleasesAllSlots(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -340,12 +334,12 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         await client3.ConnectAsync().Timeout(1);
         await client4.ConnectAsync().Timeout(1);
 
-        Assert.That(client3.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client4.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client3.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client4.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
-    [TestCase(Type.Uds)]
+    [Transports(Type.Uds)]
     public async Task Server_UdsGlobalLimit_StillApplies(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -377,8 +371,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
 
         // Third connection should fail - global limit applies to UDS too
         var (client3, _) = CreateClient(CreateClientConfig(type));
@@ -388,8 +382,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     #region ASP.NET WebSocket and HttpSocket Tests
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_RejectsConnectionsOverGlobalLimit(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -421,8 +414,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
 
         // Third connection should fail
         var (client3, _) = CreateClient(CreateClientConfig(type));
@@ -430,8 +423,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_ReleasesSlotOnDisconnect(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -457,12 +449,11 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         var (client2, _) = CreateClient(CreateClientConfig(type));
         await client2.ConnectAsync().Timeout(1);
 
-        Assert.That(client2.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_PerIpLimit_BlocksSameIp(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -489,7 +480,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         await client1.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
 
         // Second connection from same IP should fail
         var (client2, _) = CreateClient(CreateClientConfig(type));
@@ -497,8 +488,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_NoRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -533,13 +523,12 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         // All should be connected
         foreach (var client in clients)
         {
-            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         }
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_MultipleDisconnects_ReleasesAllSlots(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -589,8 +578,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         await client3.ConnectAsync().Timeout(1);
         await client4.ConnectAsync().Timeout(1);
 
-        Assert.That(client3.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client4.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client3.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client4.State).IsEqualTo(ConnectionState.Connected);
     }
 
     #endregion

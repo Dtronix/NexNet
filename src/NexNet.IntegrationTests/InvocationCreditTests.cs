@@ -3,7 +3,6 @@ using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -14,9 +13,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationCreditTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task CallerWaitsLocallyForCredit(Type type)
     {
         // Two credits and one slot: one call runs, two wait in the server's queue, the fourth waits on the client.
@@ -39,16 +37,16 @@ internal class InvocationCreditTests : BaseTests
         await Task.Delay(200);
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
-        Assert.That(received, Is.EqualTo(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(received).IsEqualTo(1);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
         release.SetResult();
-        Assert.That(await Task.WhenAll(calls).Timeout(1), Is.All.EqualTo(1));
-        Assert.That(received, Is.EqualTo(4));
+        await Assert.That(await Task.WhenAll(calls).Timeout(1)).All(x => Equals(x, 1));
+        await Assert.That(received).IsEqualTo(4);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CallCanceledWhileWaitingForCredit_IsNeverSent(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -73,16 +71,16 @@ internal class InvocationCreditTests : BaseTests
         // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1), Is.EqualTo(1));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1)).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -104,16 +102,16 @@ internal class InvocationCreditTests : BaseTests
         await Task.Delay(100);
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CancellationAfterCreditIsTaken_StillSendsTheInvocation(Type type)
     {
         // One credit: if the canceled send kept it without writing the invocation, the next call would wait forever.
@@ -138,14 +136,14 @@ internal class InvocationCreditTests : BaseTests
             InvocationId = 0,
             MethodId = 0 // ServerVoid
         };
-        Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1), Is.True);
+        await Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1)).IsTrue();
 
         await voidCalled.Task.Timeout(1);
-        Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1)).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetBurst_StaysWithinCredit(Type type)
     {
         // Fire-and-forget calls use credit too: a burst much larger than the credits is paced, not a violation.
@@ -167,7 +165,7 @@ internal class InvocationCreditTests : BaseTests
             client.Proxy.ServerVoidWithParam(i);
 
         await all.Task.Timeout(10);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
@@ -196,7 +194,7 @@ internal class InvocationCreditTests : BaseTests
         // The first uses the only credit; the second waits ProgressTimeout, is dropped, and the broadcast finishes.
         await context.Proxy.All.ClientTask().Timeout(1);
         await context.Proxy.All.ClientTask().Timeout(2);
-        Assert.That(raw.IsConnected, Is.True);
+        await Assert.That(raw.IsConnected).IsTrue();
     }
 
     [Test]
@@ -235,13 +233,13 @@ internal class InvocationCreditTests : BaseTests
 
         // The healthy clients get it while the broadcast still waits for the stalled ones.
         await Task.WhenAll(received).Timeout(1);
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
-        Assert.That(broadcast.IsCompleted, Is.False);
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
+        await Assert.That(broadcast.IsCompleted).IsFalse();
 
         // Both stalled clients are waited for at the same time: one timeout, not two.
         await broadcast.Timeout(3);
-        Assert.That(elapsed.ElapsedMilliseconds, Is.InRange(900, 1800));
-        Assert.That(stalled1.IsConnected && stalled2.IsConnected, Is.True);
+        await Assert.That(elapsed.ElapsedMilliseconds).IsBetween(900, 1800);
+        await Assert.That(stalled1.IsConnected && stalled2.IsConnected).IsTrue();
     }
 
     [Test]
@@ -275,15 +273,15 @@ internal class InvocationCreditTests : BaseTests
         // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(300 * 1024));
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
+        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 300 * 1024));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
 
         await broadcast.Timeout(3);
-        Assert.That(stalled.IsConnected, Is.True);
+        await Assert.That(stalled.IsConnected).IsTrue();
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Broadcasts_ArriveInOrderAtEachClient(Type type)
     {
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
@@ -324,11 +322,11 @@ internal class InvocationCreditTests : BaseTests
 
         await Task.WhenAll(done).Timeout(5);
         foreach (var order in orders)
-            Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
+            await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Broadcast_WritesOneEncodedFrameToEveryClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -359,13 +357,14 @@ internal class InvocationCreditTests : BaseTests
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
 
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(12345));
+        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 12345));
+        byte[][] sent;
         lock (frames)
-        {
-            Assert.That(frames, Has.Count.EqualTo(3));
-            Assert.That(frames[1], Is.EqualTo(frames[0]));
-            Assert.That(frames[2], Is.EqualTo(frames[0]));
-        }
+            sent = frames.ToArray();
+
+        await Assert.That(sent).Count().IsEqualTo(3);
+        await Assert.That(sent[1]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
+        await Assert.That(sent[2]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
     }
 
     /// <summary>

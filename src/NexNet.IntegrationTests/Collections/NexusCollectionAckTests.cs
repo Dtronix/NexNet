@@ -1,14 +1,13 @@
 ﻿ using System.Diagnostics;
 using NexNet.Collections;
 using NexNet.Pipes.Broadcast;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionAckTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -18,13 +17,13 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var result = await client.Proxy.IntListBi.AddAsync(42);
         stopwatch.Stop();
 
-        Assert.That(result, Is.True);
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(1000));
-        Assert.That(client.Proxy.IntListBi.Contains(42), Is.True);
+        await Assert.That(result).IsTrue();
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsLessThan(1000);
+        await Assert.That(client.Proxy.IntListBi.Contains(42)).IsTrue();
     }
     
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -42,12 +41,12 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var completedTask = await Task.WhenAny(addTask, Task.Delay(100));
         stopwatch.Stop();
 
-        Assert.That(completedTask, Is.Not.EqualTo(addTask));
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.GreaterThan(90));
+        await Assert.That(ReferenceEquals(completedTask, addTask)).IsFalse();
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsGreaterThan(90);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -62,12 +61,12 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
 
         var results = await Task.WhenAll(tasks);
 
-        Assert.That(results, Is.All.True);
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(10));
+        await Assert.That(results).All(x => x);
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(10);
     }
     
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -84,6 +83,6 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         await client.DisconnectAsync();
 
         var result = await addTask;
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 }

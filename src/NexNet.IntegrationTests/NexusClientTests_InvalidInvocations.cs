@@ -1,16 +1,11 @@
-﻿using NUnit.Framework;
-#pragma warning disable VSTHRD200
+﻿#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
 internal partial class NexusClientTests_InvalidInvocations : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientThrowsWhenArgumentTooLarge(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,12 +22,8 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             .Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ResultOverMaxMessageSizeFailsCallAndNextCallSucceeds(Type type)
     {
         var (server, client, clientNexus) = CreateServerClient(
@@ -48,6 +39,6 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             .Timeout(5);
 
         var result = await clientNexus.Context.Proxy.ServerDataResult(10).Timeout(1);
-        Assert.That(result.Length, Is.EqualTo(10));
+        await Assert.That(result.Length).IsEqualTo(10);
     }
 }

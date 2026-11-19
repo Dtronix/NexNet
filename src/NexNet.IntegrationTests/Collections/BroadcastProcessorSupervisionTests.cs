@@ -4,7 +4,6 @@ using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Logging;
 using NexNet.Pipes.Broadcast;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -24,12 +23,12 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         try
         {
             FailNextProcess(list);
-            Assert.That(await list.AddAsync(1).Timeout(1), Is.False);
+            await Assert.That(await list.AddAsync(1).Timeout(1)).IsFalse();
 
             // Rejected while the processor is down, then processed again once it has been restarted.
-            Assert.That(await AddWhenRunning(list, 2), Is.True);
-            Assert.That(list, Is.EquivalentTo([2]));
-            Assert.That(logger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
+            await Assert.That(await AddWhenRunning(list, 2)).IsTrue();
+            await Assert.That(list).IsEquivalentTo([2]);
+            await Assert.That(logger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
         }
         finally
         {
@@ -52,15 +51,15 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             for (var i = 0; i <= NexusBroadcastServer<INexusCollectionListMessage>.MaxProcessorRestartsPerWindow; i++)
             {
                 FailNextProcess(list);
-                Assert.That(await AddWhenRunning(list, i), Is.False);
+                await Assert.That(await AddWhenRunning(list, i)).IsFalse();
             }
 
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (broadcaster.IsRunning && DateTime.UtcNow < deadline)
                 await Task.Delay(10);
 
-            Assert.That(broadcaster.IsRunning, Is.False);
-            Assert.That(logger.Errors.Any(m => m.Contains("stopping the collection")), Is.True);
+            await Assert.That(broadcaster.IsRunning).IsFalse();
+            await Assert.That(logger.Errors.Any(m => m.Contains("stopping the collection"))).IsTrue();
 
             // Stopped for good: the collection rejects changes instead of silently dropping them.
             await Task.Delay(50);
@@ -69,7 +68,7 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             // A new start brings it back.
             list.Stop();
             list.Start();
-            Assert.That(await AddWhenRunning(list, 200), Is.True);
+            await Assert.That(await AddWhenRunning(list, 200)).IsTrue();
         }
         finally
         {
@@ -90,26 +89,26 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         var list = client.Proxy.IntListBi;
 
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
-        Assert.That(await list.AddAsync(1).Timeout(1), Is.True);
+        await Assert.That(await list.AddAsync(1).Timeout(1)).IsTrue();
 
         var disabled = list.DisabledTask;
         FailNextProcess(serverNexus.IntListBi);
 
         // The change is lost with the processor; the client is reset instead of waiting forever for its ack.
-        Assert.That(await list.AddAsync(2).Timeout(2), Is.False);
+        await Assert.That(await list.AddAsync(2).Timeout(2)).IsFalse();
         await disabled.Timeout(2);
-        Assert.That(serverLogger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
+        await Assert.That(serverLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
 
         // Re-enabling resynchronizes against the restarted processor.
         await EnableUntilWorking(list, 3);
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(list, Is.EquivalentTo([1, 3]));
-            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 3]));
-        });
+            await Assert.That(list).IsEquivalentTo([1, 3]);
+            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 3]);
+        }
     }
 
     [Test]
@@ -125,24 +124,24 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         var list = client.Proxy.IntListBi;
 
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
 
         var disabled = list.DisabledTask;
         FailNextProcess(list);
 
         // The broadcast of this change stops the client's processor.
-        Assert.That(await serverNexus.IntListBi.AddAsync(5).Timeout(1), Is.True);
+        await Assert.That(await serverNexus.IntListBi.AddAsync(5).Timeout(1)).IsTrue();
 
         await disabled.Timeout(2);
-        Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
         // Enabling again resynchronizes.
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
-        Assert.That(list, Is.EquivalentTo([5]));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+        await Assert.That(list).IsEquivalentTo([5]);
     }
 
     [Test]
@@ -162,13 +161,13 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         // The first message of the initial synchronization stops the client's processor.
         FailNextProcess(list);
         await AssertThrows<InvalidOperationException>(() => list.EnableAsync().AsTask().Timeout(1));
-        Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
         // A retry is a fresh enable.
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
-        Assert.That(list, Is.EquivalentTo([7]));
+        await Assert.That(list).IsEquivalentTo([7]);
     }
 
     /// <summary>

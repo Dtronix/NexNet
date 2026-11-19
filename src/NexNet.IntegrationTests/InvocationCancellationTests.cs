@@ -1,4 +1,3 @@
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -10,8 +9,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationCancellationTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentCallsToOneMethod_AreCanceledIndividually(Type type)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -51,17 +50,17 @@ internal class InvocationCancellationTests : BaseTests
         await Task.Delay(200);
 
         // Only the canceled call's token fired; the other call is still running.
-        Assert.That(tokens[0].IsCancellationRequested, Is.True);
-        Assert.That(tokens[1].IsCancellationRequested, Is.False);
-        Assert.That(second.IsCompleted, Is.False);
+        await Assert.That(tokens[0].IsCancellationRequested).IsTrue();
+        await Assert.That(tokens[1].IsCancellationRequested).IsFalse();
+        await Assert.That(second.IsCompleted).IsFalse();
 
         release.SetResult();
-        Assert.That(await second.Timeout(1), Is.EqualTo(1));
-        Assert.That(first.IsCanceled || first.IsCompleted, Is.True);
+        await Assert.That(await second.Timeout(1)).IsEqualTo(1);
+        await Assert.That(first.IsCanceled || first.IsCompleted).IsTrue();
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task OverlappingFireAndForgetCalls_ShareTheSessionToken_CanceledOnDisconnect(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -107,16 +106,16 @@ internal class InvocationCancellationTests : BaseTests
         await Task.Delay(100);
 
         // The second finishing does not affect the first.
-        Assert.That(tokens, Has.Count.EqualTo(2));
-        Assert.That(tokens[0].IsCancellationRequested, Is.False);
+        await Assert.That(tokens).Count().IsEqualTo(2);
+        await Assert.That(tokens[0].IsCancellationRequested).IsFalse();
 
         // The session ending cancels it.
         await client.DisconnectAsync().Timeout(1);
         await firstCanceled.Task.Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetCalls_UnaffectedByPreSendCancellation(Type type)
     {
         // Broadcasts and void methods do not wait for a result: an already canceled token neither throws nor stops
@@ -138,7 +137,7 @@ internal class InvocationCancellationTests : BaseTests
         canceled.Cancel();
 
         // A canceled call that waits for its result throws, and leaves the session usable.
-        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
             await client.Proxy.ServerTaskWithCancellation(canceled.Token).AsTask().Timeout(1));
 
         client.Proxy.ServerVoid();
@@ -147,6 +146,6 @@ internal class InvocationCancellationTests : BaseTests
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithCancellation(canceled.Token).Timeout(1);
         await clientCalled.Task.Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 }

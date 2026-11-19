@@ -1,19 +1,14 @@
 ﻿using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_Versioned : BaseTests
 {
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CurrentServerProxy_ConnectsToServerSuccessfully(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -30,12 +25,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CurrentServerProxy_InvokesCurrentAndOlderMethodVersions(Type type)
     {
         var tcsRunTaskNewV2Action = new TaskCompletionSource();
@@ -81,12 +72,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcsVerifyVersionV1Action.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CurrentServerProxy_ConnectToOlderServerFails(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -97,15 +84,11 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OlderServerProxy_ConnectsToServerSuccessfully(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -122,12 +105,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OlderServerProxy_InvokesCurrentAndOlderMethodVersions(Type type)
     {
         var tcsRunTaskV1_1Action = new TaskCompletionSource();
@@ -165,12 +144,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcsVerifyVersionV1Action.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OlderServerProxy_ConnectToOlderServerSucceeds(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -180,15 +155,11 @@ internal class NexusServerTests_Versioned : BaseTests
         
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
-        Assert.That(result.Success, Is.True);
+        await Assert.That(result.Success).IsTrue();
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OlderServerProxy_ConnectToOldestServerFails(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -199,15 +170,11 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OldestServerProxy_ConnectsToServerSuccessfully(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -224,12 +191,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OldestServerProxy_InvokesCurrentAndOlderMethodVersions(Type type)
     {
         var tcsVerifyVersionV1Action = new TaskCompletionSource();
@@ -255,12 +218,8 @@ internal class NexusServerTests_Versioned : BaseTests
         await tcsVerifyVersionV1Action.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CurrentServerProxy_ConnectToOldestServerFails(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -270,15 +229,11 @@ internal class NexusServerTests_Versioned : BaseTests
         
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OldestServerProxy_ConnectToOldestServerFails(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -289,7 +244,6 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.Success, Is.True);
+        await Assert.That(result.Success).IsTrue();
     }
 }
-

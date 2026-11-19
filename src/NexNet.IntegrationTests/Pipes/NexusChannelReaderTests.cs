@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -27,7 +26,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.That(result.Single(), Is.EqualTo(baseObject));
+        await Assert.That(result.Single()).IsEqualTo(baseObject);
 
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
 
@@ -35,7 +34,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.That(result.Single(), Is.EqualTo(baseObject));
+        await Assert.That(result.Single()).IsEqualTo(baseObject);
     }
 
     [Test]
@@ -59,7 +58,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.That(result.Single(), Is.EqualTo(baseObject));
+        await Assert.That(result.Single()).IsEqualTo(baseObject);
 
         //Write the rest of the data
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
@@ -68,7 +67,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.That(result.Single(), Is.EqualTo(baseObject));
+        await Assert.That(result.Single()).IsEqualTo(baseObject);
     }
 
     private static async Task Buffer(NexusPipeReader pipeReader, byte[] data)
@@ -102,11 +101,11 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         await Buffer(pipeReader, bytes[..split]);
         var first = await reader.ReadAsync().Timeout(1);
-        Assert.That(first, Is.EqualTo(small));
+        await Assert.That(first).IsEquivalentTo(small, CollectionOrdering.Matching);
 
         await Buffer(pipeReader, bytes[split..]);
         var second = await reader.ReadAsync().Timeout(1);
-        Assert.That(second, Is.EqualTo(new[] { large }));
+        await Assert.That(second).IsEquivalentTo(new[] { large }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -121,18 +120,18 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         // Partial data: nothing decoded, nothing consumed.
         await Buffer(pipeReader, bytes[..half]);
-        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
-        Assert.That(list, Is.Empty);
+        await Assert.That(reader.ReadAvailable(list, null)).IsEqualTo(0);
+        await Assert.That(list).IsEmpty();
 
         // The rest of the data completes the buffered half into one item.
         await Buffer(pipeReader, bytes[half..]);
-        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(bytes.Length));
-        Assert.That(list.Single(), Is.EqualTo(item));
+        await Assert.That(reader.ReadAvailable(list, null)).IsEqualTo(bytes.Length);
+        await Assert.That(list.Single()).IsEqualTo(item);
 
         // No new data: nothing more to read.
         list.Clear();
-        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
-        Assert.That(list, Is.Empty);
+        await Assert.That(reader.ReadAvailable(list, null)).IsEqualTo(0);
+        await Assert.That(list).IsEmpty();
     }
 
     [Test]
@@ -154,7 +153,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             while (read.Count < items.Length)
                 read.AddRange(await reader.ReadAsync().Timeout(1));
 
-            Assert.That(read, Is.EqualTo(items), $"split {split}");
+            await Assert.That(read).IsEquivalentTo(items, CollectionOrdering.Matching).Because($"split {split}");
         }
     }
 
@@ -169,7 +168,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             .ToArray();
 
         await Buffer(pipeReader, data);
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
     }
 
     [Test]
@@ -182,7 +181,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             .ToArray();
 
         await Buffer(pipeReader, data);
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
     }
 
     [Test]
@@ -195,8 +194,8 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // The prefix alone is enough: the reader does not wait for the item.
         await Buffer(pipeReader, TestSerialization.FrameChannelItem(new byte[101])[..2]);
 
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexusMessageTooLargeException>());
-        Assert.That(stateManager.Resets, Is.EqualTo(1));
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await reader.ReadAsync().Timeout(1));
+        await Assert.That(stateManager.Resets).IsEqualTo(1);
     }
 
     [Test]
@@ -209,8 +208,8 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // The prefix says 2 bytes; the value (fixint 5) is 1.
         await Buffer(pipeReader, [0x02, 0x05, 0x05]);
 
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
-        Assert.That(stateManager.Resets, Is.EqualTo(1));
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
+        await Assert.That(stateManager.Resets).IsEqualTo(1);
     }
 
     [Test]
@@ -222,17 +221,17 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var item = TestSerialization.SerializeChannelItem(new byte[100]);
 
         // The window holds only part of the item; the reader can't consume it, so the writer would stall.
-        Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 0, 64)), Is.EqualTo(NexusPipeBufferResult.Success));
+        await Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 0, 64))).IsEqualTo(NexusPipeBufferResult.Success);
         var read = reader.ReadAsync().AsTask();
         await Task.Delay(50);
 
         // The difference was granted as extra credit, so the rest fits.
-        Assert.That(stateManager.Grants, Is.EqualTo(new[] { item.Length - 64 }));
-        Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 64, item.Length - 64)), Is.EqualTo(NexusPipeBufferResult.Success));
-        Assert.That((await read.Timeout(1)).Single(), Has.Length.EqualTo(100));
+        await Assert.That(stateManager.Grants).IsEquivalentTo(new[] { item.Length - 64 }, CollectionOrdering.Matching);
+        await Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 64, item.Length - 64))).IsEqualTo(NexusPipeBufferResult.Success);
+        await Assert.That((await read.Timeout(1)).Single()).Count().IsEqualTo(100);
 
         // The extra is paid off by consuming the item, not granted back.
-        Assert.That(stateManager.ExtraReleased, Is.EqualTo(item.Length - 64));
+        await Assert.That(stateManager.ExtraReleased).IsEqualTo(item.Length - 64);
     }
 
     private sealed class ResetCountingStateManager : IPipeStateManager
@@ -263,9 +262,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var cts = new CancellationTokenSource(100);
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.That(cts.IsCancellationRequested, Is.True);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.Empty);
+        await Assert.That(cts.IsCancellationRequested).IsTrue();
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result).IsEmpty();
     }
 
     [Test]
@@ -277,9 +276,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         cts.Cancel();
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.That(cts.IsCancellationRequested, Is.True);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.Empty);
+        await Assert.That(cts.IsCancellationRequested).IsTrue();
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result).IsEmpty();
     }
 
     [Test]
@@ -291,9 +290,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         await pipeReader.CompleteAsync();
         var result = await reader.ReadAsync().Timeout(1);
 
-        Assert.That(reader.IsComplete, Is.True);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.Empty);
+        await Assert.That(reader.IsComplete).IsTrue();
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result).IsEmpty();
     }
 
 
@@ -317,7 +316,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         tcs.SetResult();
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.That(result.Single(), Is.EqualTo(baseObject));
+        await Assert.That(result.Single()).IsEqualTo(baseObject);
     }
 
     [Test]
@@ -337,9 +336,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         foreach (var complexMessage in result)
         {
-            Assert.That(complexMessage, Is.EqualTo(baseObject));
+            await Assert.That(complexMessage).IsEqualTo(baseObject);
         }
 
-        Assert.That(result.Count(), Is.EqualTo(iterations));
+        await Assert.That(result.Count()).IsEqualTo(iterations);
     }
 }

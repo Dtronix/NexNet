@@ -5,7 +5,6 @@ using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Serialization;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -36,9 +35,9 @@ internal class RemoteExceptionDetailTests : BaseTests
     }
 
     private static async Task<ProxyRemoteInvocationException> Throws(Func<Task> call)
-        => (await Assert.ThrowsAsync<ProxyRemoteInvocationException>(call))!;
+        => (await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(call))!;
 
-    private static Task<ProxyRemoteInvocationException> ThrowFromBody(byte[] body)
+    private static async Task<ProxyRemoteInvocationException> ThrowFromBody(byte[] body)
     {
         var message = new InvocationResultMessage();
         var reader = new MsgPackReader(new ReadOnlyMemory<byte>(body), NexusSerializerOptions.Untrusted);
@@ -46,10 +45,10 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var state = RegisteredInvocationState<int>.Rent();
         state.Result = message;
-        Assert.That(state.TrySetResult(), Is.True);
+        await Assert.That(state.TrySetResult()).IsTrue();
 
         var valueTask = new ValueTask<int>(state, state.Version);
-        return Throws(async () => await valueTask);
+        return await Throws(async () => await valueTask);
     }
 
     [Test]
@@ -57,11 +56,11 @@ internal class RemoteExceptionDetailTests : BaseTests
     {
         var exception = await ThrowFromBody(ExceptionResultBody(null));
 
-        Assert.That(exception.GetType(), Is.EqualTo(typeof(ProxyRemoteInvocationException)));
-        Assert.That(exception.Message, Is.EqualTo(DefaultMessage));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
+        await Assert.That(exception.GetType()).IsEqualTo(typeof(ProxyRemoteInvocationException));
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
     }
 
     [Test]
@@ -75,11 +74,11 @@ internal class RemoteExceptionDetailTests : BaseTests
             w.Write("boom");
         }));
 
-        Assert.That(exception.RemoteErrorCode, Is.EqualTo(42));
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("boom"));
-        Assert.That(exception.Message, Does.StartWith(DefaultMessage));
-        Assert.That(exception.Message, Does.Contain("boom"));
+        await Assert.That(exception.RemoteErrorCode).IsEqualTo(42);
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
+        await Assert.That(exception.Message).StartsWith(DefaultMessage);
+        await Assert.That(exception.Message).Contains("boom");
     }
 
     [Test]
@@ -93,20 +92,21 @@ internal class RemoteExceptionDetailTests : BaseTests
             w.WriteNil();
         }));
 
-        Assert.That(exception.RemoteErrorCode, Is.EqualTo(7));
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
-        Assert.That(exception.Message, Does.StartWith(DefaultMessage));
+        await Assert.That(exception.RemoteErrorCode).IsEqualTo(7);
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
+        await Assert.That(exception.Message).StartsWith(DefaultMessage);
     }
 
     // Well-formed MessagePack values that are not a valid detail.
-    [TestCase("int instead of array")]
-    [TestCase("two-element array")]
-    [TestCase("four-element array")]
-    [TestCase("string code")]
-    [TestCase("int type")]
-    [TestCase("array message")]
-    [TestCase("nil detail")]
+    [Test]
+    [Arguments("int instead of array")]
+    [Arguments("two-element array")]
+    [Arguments("four-element array")]
+    [Arguments("string code")]
+    [Arguments("int type")]
+    [Arguments("array message")]
+    [Arguments("nil detail")]
     public async Task ExceptionResultWithMalformedDetail_ThrowsPlainException(string shape)
     {
         DetailWriter detail = shape switch
@@ -129,15 +129,16 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await ThrowFromBody(ExceptionResultBody(detail));
 
-        Assert.That(exception.GetType(), Is.EqualTo(typeof(ProxyRemoteInvocationException)));
-        Assert.That(exception.Message, Is.EqualTo(DefaultMessage));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
+        await Assert.That(exception.GetType()).IsEqualTo(typeof(ProxyRemoteInvocationException));
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
     }
 
-    [TestCase(257, 10)]
-    [TestCase(10, 2049)]
+    [Test]
+    [Arguments(257, 10)]
+    [Arguments(10, 2049)]
     public async Task ExceptionResultWithOversizedDetail_ThrowsPlainException(int typeLength, int messageLength)
     {
         var exception = await ThrowFromBody(ExceptionResultBody((ref MsgPackWriter w) =>
@@ -148,47 +149,43 @@ internal class RemoteExceptionDetailTests : BaseTests
             w.Write(new string('m', messageLength));
         }));
 
-        Assert.That(exception.Message, Is.EqualTo(DefaultMessage));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
     }
 
     [Test]
-    public void ExceptionConstructedWithDetail_IncludesRemoteMessage()
+    public async Task ExceptionConstructedWithDetail_IncludesRemoteMessage()
     {
         var exception = new ProxyRemoteInvocationException(42, "System.InvalidOperationException", "boom");
 
-        Assert.That(exception.RemoteErrorCode, Is.EqualTo(42));
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("boom"));
-        Assert.That(exception.Message,
-            Is.EqualTo(DefaultMessage + " System.InvalidOperationException: boom (code 42)"));
+        await Assert.That(exception.RemoteErrorCode).IsEqualTo(42);
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage + " System.InvalidOperationException: boom (code 42)");
 
-        Assert.That(new ProxyRemoteInvocationException(null, "System.InvalidOperationException", "boom").Message,
-            Is.EqualTo(DefaultMessage + " System.InvalidOperationException: boom"));
-        Assert.That(new ProxyRemoteInvocationException(42, null, "denied").Message,
-            Is.EqualTo(DefaultMessage + " denied (code 42)"));
-        Assert.That(new ProxyRemoteInvocationException(7, null, null).Message,
-            Is.EqualTo(DefaultMessage + " (code 7)"));
-        Assert.That(new ProxyRemoteInvocationException(null, null, null).Message, Is.EqualTo(DefaultMessage));
+        await Assert.That(new ProxyRemoteInvocationException(null, "System.InvalidOperationException", "boom").Message).IsEqualTo(DefaultMessage + " System.InvalidOperationException: boom");
+        await Assert.That(new ProxyRemoteInvocationException(42, null, "denied").Message).IsEqualTo(DefaultMessage + " denied (code 42)");
+        await Assert.That(new ProxyRemoteInvocationException(7, null, null).Message).IsEqualTo(DefaultMessage + " (code 7)");
+        await Assert.That(new ProxyRemoteInvocationException(null, null, null).Message).IsEqualTo(DefaultMessage);
 
         var plain = new ProxyRemoteInvocationException();
-        Assert.That(plain.Message, Is.EqualTo(DefaultMessage));
-        Assert.That(plain.RemoteErrorCode, Is.Null);
-        Assert.That(plain.RemoteExceptionType, Is.Null);
-        Assert.That(plain.RemoteMessage, Is.Null);
+        await Assert.That(plain.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(plain.RemoteErrorCode).IsNull();
+        await Assert.That(plain.RemoteExceptionType).IsNull();
+        await Assert.That(plain.RemoteMessage).IsNull();
     }
 
     // ----- End to end -----
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task NoneByDefault_ExceptionResultBytesAreUnchanged(Type type)
     {
         var serverConfig = CreateServerConfig(type);
-        Assert.That(serverConfig.RemoteExceptionDetail, Is.EqualTo(RemoteExceptionDetail.None));
-        Assert.That(CreateClientConfig(type).RemoteExceptionDetail, Is.EqualTo(RemoteExceptionDetail.None));
+        await Assert.That(serverConfig.RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
+        await Assert.That(CreateClientConfig(type).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
 
         var results = new List<byte[]>();
         serverConfig.InternalOnSend = (_, bytes) =>
@@ -206,28 +203,28 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(exception.Message, Is.EqualTo(DefaultMessage));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
+        await Assert.That(exception.Message).IsEqualTo(DefaultMessage);
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
 
-        byte[] frame;
+        byte[][] sent;
         lock (results)
-        {
-            Assert.That(results, Has.Count.EqualTo(1));
-            frame = results[0];
-        }
+            sent = results.ToArray();
+
+        await Assert.That(sent).Count().IsEqualTo(1);
+        var frame = sent[0];
 
         // Header: type (1), body length (u16 LE); body: fixarray(2), invocation id (positive fixint), state 2.
         var body = frame.AsSpan(3).ToArray();
-        Assert.That(BitConverter.ToUInt16(frame, 1), Is.EqualTo(body.Length));
-        Assert.That(body, Has.Length.EqualTo(3));
-        Assert.That(body[0], Is.EqualTo(0x92));
-        Assert.That(body[2], Is.EqualTo((byte)InvocationResultMessage.StateType.Exception));
+        await Assert.That(BitConverter.ToUInt16(frame, 1)).IsEqualTo(body.Length);
+        await Assert.That(body).Count().IsEqualTo(3);
+        await Assert.That(body[0]).IsEqualTo(0x92);
+        await Assert.That(body[2]).IsEqualTo((byte)InvocationResultMessage.StateType.Exception);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -240,19 +237,19 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("boom"));
-        Assert.That(exception.Message, Does.Contain("boom"));
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
+        await Assert.That(exception.Message).Contains("boom");
 
         // The session stays usable.
         server.NexusCreatedQueue.TryPeek(out var serverNexus);
         serverNexus!.ServerTaskValueEvent = _ => ValueTask.FromResult(5);
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(5));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(5);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_TruncatesLongMessage(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -266,12 +263,12 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo(new string('x', 2048)));
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo(new string('x', 2048));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_LimitFailureCarriesItsType(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -284,12 +281,12 @@ internal class RemoteExceptionDetailTests : BaseTests
         // Larger than the client accepts (4 MiB by default): the server fails the call with a limit exception.
         var exception = await Throws(
             async () => await clientNexus.Context.Proxy.ServerDataResult(5 * 1024 * 1024).Timeout(5));
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo(typeof(NexusMessageTooLargeException).FullName));
-        Assert.That(exception.RemoteMessage, Is.Not.Null.And.Not.Empty);
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo(typeof(NexusMessageTooLargeException).FullName);
+        await Assert.That(string.IsNullOrEmpty(exception.RemoteMessage)).IsFalse();
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ResultIsSentWhateverTheSetting(Type type)
     {
         Exception? seen = null;
@@ -310,16 +307,16 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(seen, Is.SameAs(thrown));
-        Assert.That(exception.RemoteErrorCode, Is.EqualTo(42));
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.EqualTo("denied"));
-        Assert.That(exception.Message, Does.Contain("denied"));
-        Assert.That(exception.Message, Does.Not.Contain("secret"));
+        await Assert.That(seen).IsSameReferenceAs(thrown);
+        await Assert.That(exception.RemoteErrorCode).IsEqualTo(42);
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsEqualTo("denied");
+        await Assert.That(exception.Message).Contains("denied");
+        await Assert.That(exception.Message).DoesNotContain("secret");
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ReturningNull_FallsBackToTheSetting(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -336,13 +333,13 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.ArgumentException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("bad"));
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.ArgumentException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("bad");
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -360,17 +357,17 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
-        Assert.That(exception.RemoteErrorCode, Is.Null);
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("boom"));
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("boom");
 
         fail = false;
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(9));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(9);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -384,12 +381,12 @@ internal class RemoteExceptionDetailTests : BaseTests
         using var context = server.Server.ContextProvider.Rent();
         var exception = await Throws(
             async () => await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue().Timeout(1));
-        Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(exception.RemoteMessage, Is.EqualTo("client boom"));
+        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exception.RemoteMessage).IsEqualTo("client boom");
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ServerCallingClient_CarriesApplicationError(Type type)
     {
         var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -402,7 +399,7 @@ internal class RemoteExceptionDetailTests : BaseTests
             try
             {
                 await n.Context.Clients.Caller.ClientTaskValue();
-                tcs.TrySetException(new AssertionException("The call did not fail."));
+                tcs.TrySetException(new InvalidOperationException("The call did not fail."));
             }
             catch (ProxyRemoteInvocationException e)
             {
@@ -414,10 +411,10 @@ internal class RemoteExceptionDetailTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var exception = await tcs.Task.Timeout(1);
-        Assert.That(exception.RemoteErrorCode, Is.EqualTo(7));
-        Assert.That(exception.RemoteExceptionType, Is.Null);
-        Assert.That(exception.RemoteMessage, Is.Null);
-        Assert.That(exception.Message, Does.Not.Contain("client secret"));
+        await Assert.That(exception.RemoteErrorCode).IsEqualTo(7);
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsNull();
+        await Assert.That(exception.Message).DoesNotContain("client secret");
     }
 
     [Test]
@@ -436,8 +433,8 @@ internal class RemoteExceptionDetailTests : BaseTests
             using var rented = await pool.RentClientAsync().Timeout(1);
             var exception = await Throws(
                 async () => await rented.Proxy.ServerTaskValue().Timeout(1));
-            Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
-            Assert.That(exception.RemoteMessage, Is.EqualTo("pooled boom"));
+            await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+            await Assert.That(exception.RemoteMessage).IsEqualTo("pooled boom");
         }
         finally
         {

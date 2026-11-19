@@ -1,7 +1,6 @@
 using System.Net.WebSockets;
 using NexNet.Asp.WebSocket;
 using NexNet.Transports.WebSocket;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -22,7 +21,7 @@ internal class WebSocketPipeTests
         await pipe.CompleteAsync().AsTask().Timeout(1);
         socket.ReleaseReceive.SetResult();
 
-        Assert.That(async () => await run.Timeout(1), Throws.Nothing);
+        await Assert.That(async () => await run.Timeout(1)).ThrowsNothing();
     }
 
     /// <summary>

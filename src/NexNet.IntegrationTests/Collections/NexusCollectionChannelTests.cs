@@ -1,14 +1,13 @@
 ﻿using NexNet.Collections;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 using System.Threading.Channels;
 
 namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerProcessChannel_HandlesCapacityLimit(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -29,12 +28,12 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         await completeTask.Wait();
 
-        Assert.That(serverNexus.IntListBi.Count, Is.EqualTo(60));
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(60));
+        await Assert.That(serverNexus.IntListBi.Count).IsEqualTo(60);
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(60);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientMessageChannel_HandlesSaturation(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -55,13 +54,13 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         await completeTask.Wait(2);
 
 
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(50));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
         //Assert.Fail();
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentOperations_DoNotBlockChannel(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -82,13 +81,14 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         await completeTask.Wait();
 
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(50));
-        Assert.That(serverNexus.IntListBi.Count, Is.EqualTo(50));
-        Assert.That(serverNexus.IntListBi, Is.EqualTo(client.Proxy.IntListBi));
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
+        await Assert.That(serverNexus.IntListBi.Count).IsEqualTo(50);
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(client.Proxy.IntListBi, CollectionOrdering.Matching);
     }
 
     /*[TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task SlowClient_GetsDisconnectedOnChannelFull(Type type)
     {
         var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
@@ -109,6 +109,6 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         // Client should be disconnected due to slow processing
         await Task.Delay(100);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }*/
 }

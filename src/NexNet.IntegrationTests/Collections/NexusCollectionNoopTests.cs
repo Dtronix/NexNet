@@ -1,6 +1,5 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -9,8 +8,8 @@ namespace NexNet.IntegrationTests.Collections;
 /// </summary>
 internal class NexusCollectionNoopTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentRemoveOfSameIndex_LoserCompletesFalse(Type type)
     {
         var (server, client1, _) = await ConnectServerAndClient(type);
@@ -24,8 +23,8 @@ internal class NexusCollectionNoopTests : NexusCollectionBaseTests
 
         var list1 = client1.Proxy.IntListBi;
         var list2 = client2.Proxy.IntListBi;
-        Assert.That(await list1.EnableAsync().Timeout(1), Is.True);
-        Assert.That(await list2.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list1.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(await list2.EnableAsync().Timeout(1)).IsTrue();
 
         using var removed1 = list1.WaitForEvent(NexusCollectionChangedAction.Remove);
         using var removed2 = list2.WaitForEvent(NexusCollectionChangedAction.Remove);
@@ -40,24 +39,26 @@ internal class NexusCollectionNoopTests : NexusCollectionBaseTests
         await removed1.Wait();
         await removed2.Wait();
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(results, Is.EquivalentTo(new[] { true, false }));
-            Assert.That(serverNexus.IntListBi, Is.EqualTo(new[] { 2, 3 }));
-            Assert.That(list1, Is.EqualTo(new[] { 2, 3 }));
-            Assert.That(list2, Is.EqualTo(new[] { 2, 3 }));
-            Assert.That(list1.State, Is.EqualTo(NexusCollectionState.Connected));
-            Assert.That(list2.State, Is.EqualTo(NexusCollectionState.Connected));
-        });
+            await Assert.That(results).IsEquivalentTo(new[] { true, false });
+            await Assert.That(serverNexus.IntListBi).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
+            await Assert.That(list1).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
+            await Assert.That(list2).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
+            await Assert.That(list1.State).IsEqualTo(NexusCollectionState.Connected);
+            await Assert.That(list2.State).IsEqualTo(NexusCollectionState.Connected);
+
+        }
 
         // The collection still works after the Noop.
-        Assert.That(await list2.AddAsync(4).Timeout(1), Is.True);
+        await Assert.That(await list2.AddAsync(4).Timeout(1)).IsTrue();
     }
 
-    [TestCase(Type.Tcp, 5)]
-    [TestCase(Type.Tcp, 1)]
-    [TestCase(Type.Uds, 5)]
-    [TestCase(Type.Uds, 1)]
+    [Test]
+    [Arguments(Type.Tcp, 5)]
+    [Arguments(Type.Tcp, 1)]
+    [Arguments(Type.Uds, 5)]
+    [Arguments(Type.Uds, 1)]
     public async Task MalformedResetValueCount_ClosesPipe(Type type, int announcedValues)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -74,59 +75,60 @@ internal class NexusCollectionNoopTests : NexusCollectionBaseTests
         var enabled = await list.EnableAsync().Timeout(1);
         await list.DisabledTask.Timeout(1);
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(enabled, Is.False);
-            Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
-            Assert.That(list.Count, Is.EqualTo(0));
-        });
+            await Assert.That(enabled).IsFalse();
+            await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+            await Assert.That(list.Count).IsEqualTo(0);
+
+        }
 
         // The session stays up, and a correct reset succeeds.
         ((NexusListServer<int>)serverNexus.IntListBi).TestResetTotalValuesOverride = null;
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
-        Assert.That(list, Is.EqualTo(new[] { 1, 2, 3 }));
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(list).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task State_FollowsEnableAndDisable(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
         var list = client.Proxy.IntListBi;
 
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
 
         await list.DisableAsync().Timeout(1);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
 
         await client.DisconnectAsync().Timeout(1);
         await list.DisabledTask.Timeout(1);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task EnableTokenCanceledAfterEnable_DisableStillCleansUp(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
         var list = client.Proxy.IntListBi;
 
         using var cts = new CancellationTokenSource();
-        Assert.That(await list.EnableAsync(cts.Token).Timeout(1), Is.True);
+        await Assert.That(await list.EnableAsync(cts.Token).Timeout(1)).IsTrue();
 
         // Canceling the enable token must not stop the cleanup that runs when the pipe closes.
         await cts.CancelAsync();
 
         await list.DisableAsync().Timeout(1);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
-        Assert.That(await list.EnableAsync().Timeout(1), Is.True);
-        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
     }
 }

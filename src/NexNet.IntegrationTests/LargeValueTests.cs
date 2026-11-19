@@ -1,5 +1,4 @@
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -10,16 +9,17 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class LargeValueTests : BaseTests
 {
-    private static IEnumerable<TestCaseData> TransportsAndSizes()
+    public static IEnumerable<Func<(Type, int)>> TransportsAndSizes()
     {
         foreach (var type in new[] { Type.Quic, Type.Uds, Type.Tcp, Type.TcpTls, Type.WebSocket, Type.HttpSocket })
         {
             foreach (var size in new[] { 128 * 1024, 1024 * 1024, 4 * 1024 * 1024 - 1024 })
-                yield return new TestCaseData(type, size);
+                yield return () => (type, size);
         }
     }
 
-    [TestCaseSource(nameof(TransportsAndSizes))]
+    [Test]
+    [MethodDataSource(nameof(TransportsAndSizes))]
     public async Task LargeArgumentAndResult_RoundTrip(Type type, int size)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -31,14 +31,14 @@ internal class LargeValueTests : BaseTests
         Random.Shared.NextBytes(data);
 
         var echoed = await client.Proxy.ServerEcho(data).Timeout(10);
-        Assert.That(echoed, Is.EqualTo(data));
+        await Assert.That(echoed).IsEquivalentTo(data, CollectionOrdering.Matching);
 
         // The session is still usable, and nothing stays reserved for the streams.
-        Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1), Has.Length.EqualTo(10));
+        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1)).Count().IsEqualTo(10);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetLargeArgument_IsDelivered(Type type)
     {
         var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -52,11 +52,11 @@ internal class LargeValueTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(5);
-        Assert.That(await received.Task.Timeout(5), Is.EqualTo(1024 * 1024));
+        await Assert.That(await received.Task.Timeout(5)).IsEqualTo(1024 * 1024);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BroadcastLargeArgument_ReachesEveryClient(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -82,11 +82,11 @@ internal class LargeValueTests : BaseTests
         await context.Proxy.All.ClientData(new byte[300 * 1024]).Timeout(5);
 
         foreach (var tcs in received)
-            Assert.That(await tcs.Task.Timeout(5), Is.EqualTo(300 * 1024));
+            await Assert.That(await tcs.Task.Timeout(5)).IsEqualTo(300 * 1024);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task LargeArgumentWithoutBudget_ThrowsBusyAndTheSessionStaysUp(Type type)
     {
         // 1.5 MiB budget; 4 credits reserve 256 KiB of it. A held 900 KiB argument leaves no room for a second.
@@ -115,27 +115,26 @@ internal class LargeValueTests : BaseTests
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(5);
 
-        await Assert.ThatAsync(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5),
-            Throws.InstanceOf<NexusBusyException>());
+        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5));
 
         // The session is fine; once the first call ends its reservation is released.
-        Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1), Has.Length.EqualTo(10));
+        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1)).Count().IsEqualTo(10);
         hold.SetResult();
-        Assert.That(await first.Timeout(5), Has.Length.EqualTo(900 * 1024));
-        Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5), Has.Length.EqualTo(900 * 1024));
+        await Assert.That(await first.Timeout(5)).Count().IsEqualTo(900 * 1024);
+        await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5)).Count().IsEqualTo(900 * 1024);
     }
 
     [Test]
-    public void ConfigResolvesTheElementLimitFromMaxMessageSize()
+    public async Task ConfigResolvesTheElementLimitFromMaxMessageSize()
     {
         var config = CreateServerConfig(Type.Tcp);
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(4 * 1024 * 1024 / 16));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(4 * 1024 * 1024 / 16);
 
         config.MaxMessageSize = 64 * 1024;
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(65536));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(65536);
 
         // An explicit limit is kept.
         config.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Untrusted with { MaxElements = 10 };
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(10));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(10);
     }
 }

@@ -1,5 +1,4 @@
 using NexNet.Pipes;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -51,8 +50,8 @@ internal class DiagnosticLogTests : BaseTests
 
         await MetricsSessionTests.WaitFor(() => logger.Warnings.Any(w => w.Contains("made no progress"))).Timeout(5);
         var warning = logger.Warnings.Single(w => w.Contains("made no progress"));
-        Assert.That(warning, Does.Contain("within 300 ms: pipe P"));
-        Assert.That(warning, Does.Contain("item 10 KiB of 300 KiB, no data for"));
+        await Assert.That(warning).Contains("within 300 ms: pipe P");
+        await Assert.That(warning).Contains("item 10 KiB of 300 KiB, no data for");
 
         await MetricsSessionTests.WaitFor(() => recorder.Events("nexnet.session.disconnects")
             .Any(e => e.Has("nexnet.disconnect.reason", "stalled"))).Timeout(2);
@@ -94,7 +93,7 @@ internal class DiagnosticLogTests : BaseTests
         }
 
         var resets = logger.Warnings.Where(w => w.StartsWith("Reset pipe", StringComparison.Ordinal)).ToList();
-        Assert.That(resets, Has.Count.EqualTo(1));
-        Assert.That(resets[0], Does.Contain("a channel item breaks the framing"));
+        await Assert.That(resets).Count().IsEqualTo(1);
+        await Assert.That(resets[0]).Contains("a channel item breaks the framing");
     }
 }

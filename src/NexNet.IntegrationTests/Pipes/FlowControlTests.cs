@@ -1,6 +1,5 @@
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Pipes;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -11,12 +10,8 @@ namespace NexNet.IntegrationTests.Pipes;
 /// </summary>
 internal class FlowControlTests : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task BurstOfItemsWithASlowReader_ThenACall(Type type)
     {
         // The application's reproduction: 40 items of 40 KiB, read slowly, then a call on the same session. The
@@ -52,18 +47,14 @@ internal class FlowControlTests : BaseTests
         });
 
         // The call is answered while the burst is still being read.
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
 
         await writing.Timeout(10);
         await allReceived.Task.Timeout(10);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OneItemLargerThanTheWindow_IsDelivered(Type type)
     {
         // The application's reproduction: a single 300 KiB item against a 256 KiB window. The reader gets an extra
@@ -88,12 +79,12 @@ internal class FlowControlTests : BaseTests
         var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
         await writer.WriteAsync(new byte[300 * 1024]).Timeout(5);
 
-        Assert.That(await item.Task.Timeout(5), Is.EqualTo(300 * 1024));
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await item.Task.Timeout(5)).IsEqualTo(300 * 1024);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ItemLargerThanThePeerAccepts_ThrowsAndTheChannelStaysUsable(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -115,14 +106,13 @@ internal class FlowControlTests : BaseTests
         var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
 
         // The server accepts 64 KiB; the client checks before sending.
-        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[100 * 1024]), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[100 * 1024]));
         await writer.WriteAsync(new byte[10]).Timeout(1);
-        Assert.That(await received.Task.Timeout(1), Is.EqualTo(10));
+        await Assert.That(await received.Task.Timeout(1)).IsEqualTo(10);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task PipeCompletedWhileThePeersBufferIsFull_SessionStaysUsable(Type type)
     {
         // The application's reproduction: the reader never reads, the writer fills the window and completes.
@@ -142,16 +132,16 @@ internal class FlowControlTests : BaseTests
         // More than the window: the write waits for credit that never comes, in the writer's own task.
         using var cts = new CancellationTokenSource(500);
         var result = await pipe.Output.WriteAsync(new byte[1024 * 1024], cts.Token).AsTask().Timeout(2);
-        Assert.That(result.IsCanceled, Is.True);
+        await Assert.That(result.IsCanceled).IsTrue();
 
         await pipe.CompleteAsync().Timeout(1);
         await pipe.DisposeAsync();
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClosedPipes_FreeTheirIdsAndBudget(Type type)
     {
         // More pipes than there are pipe IDs, one after another: each ID returns once both sides closed it.
@@ -183,11 +173,11 @@ internal class FlowControlTests : BaseTests
         // Every window reserved by the client was released.
         for (var i = 0; i < 50 && budget.Reserved != baseline; i++)
             await Task.Delay(20);
-        Assert.That(budget.Reserved, Is.EqualTo(baseline));
+        await Assert.That(budget.Reserved).IsEqualTo(baseline);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task OpeningMoreThanMaxPipes_IsRefusedAndTheSessionStaysUp(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -213,10 +203,10 @@ internal class FlowControlTests : BaseTests
         // The server's limit is reached: the third open is refused.
         var refused = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(refused).Timeout(1);
-        await Assert.ThrowsAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
+        await Assert.ThrowsExactlyAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
         await refused.DisposeAsync();
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
         foreach (var pipe in pipes)
             await pipe.DisposeAsync();
     }

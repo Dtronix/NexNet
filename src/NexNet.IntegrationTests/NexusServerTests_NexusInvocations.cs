@@ -1,17 +1,12 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_NexusInvocations : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContext(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -30,12 +25,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContextAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -62,15 +53,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await context.Proxy.Clients(context.Proxy.GetIds().ToArray()).ClientTask();
         await context.Proxy.Group("myGroup").ClientTask();
         await context.Proxy.Groups(["myGroup"]).ClientTask();
-        Assert.That(completed, Is.False);
+        await Assert.That(completed).IsFalse();
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -89,7 +76,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 await nexus.Context.Clients.Clients(server!.ContextProvider.Rent().Proxy.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(["myGroup"]).ClientTask();
-                Assert.That(completed, Is.False);
+                await Assert.That(completed).IsFalse();
                 tcs1.SetResult();
             };
         });
@@ -111,12 +98,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
     //Write a C# function which takes a byte array and outputs each byte individually
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -151,15 +134,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         var result = await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue();
 
-        Assert.That(result, Is.EqualTo(54321));
+        await Assert.That(result).IsEqualTo(54321);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnAll(Type type)
     {
         var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -193,12 +172,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await tcs2.Task.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnOthers(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -232,15 +207,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnClient(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -274,15 +245,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnClients(Type type)
     {
         var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

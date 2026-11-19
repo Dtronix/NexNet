@@ -1,6 +1,5 @@
 using NexNet.Diagnostics;
 using NexNet.Pipes;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -11,39 +10,39 @@ namespace NexNet.IntegrationTests.Metrics;
 /// </summary>
 internal class SnapshotTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Snapshot_DescribesTheSession(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), nexus =>
             nexus.ServerTaskValueWithParamEvent = (_, value) => ValueTask.FromResult(value));
         await server.StartAsync().Timeout(1);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        Assert.That(client.GetSnapshot(), Is.Null);
+        await Assert.That(client.GetSnapshot()).IsNull();
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValueWithParam(1).Timeout(1);
 
         var snapshot = client.GetSnapshot()!;
-        Assert.That(snapshot.IsServer, Is.False);
-        Assert.That(snapshot.Transport, Is.EqualTo(type == Type.Uds ? "uds" : "tcp"));
-        Assert.That(snapshot.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(snapshot.IsEstablished, Is.True);
-        Assert.That(snapshot.Connected, Is.GreaterThan(TimeSpan.Zero));
-        Assert.That(snapshot.SinceLastSent, Is.Not.Null);
-        Assert.That(snapshot.FramesSent, Is.GreaterThanOrEqualTo(2));
-        Assert.That(snapshot.Budget.Limit, Is.EqualTo(client.Config.SessionBudget));
-        Assert.That(snapshot.Invocations.MaxExecuting, Is.EqualTo(client.Config.MaxConcurrentConnectionInvocations));
-        Assert.That(snapshot.Pipes, Is.Empty);
-        Assert.That(snapshot.LargeMessages, Is.Empty);
+        await Assert.That(snapshot.IsServer).IsFalse();
+        await Assert.That(snapshot.Transport).IsEqualTo(type == Type.Uds ? "uds" : "tcp");
+        await Assert.That(snapshot.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(snapshot.IsEstablished).IsTrue();
+        await Assert.That(snapshot.Connected).IsGreaterThan(TimeSpan.Zero);
+        await Assert.That(snapshot.SinceLastSent).IsNotNull();
+        await Assert.That(snapshot.FramesSent).IsGreaterThanOrEqualTo(2);
+        await Assert.That(snapshot.Budget.Limit).IsEqualTo(client.Config.SessionBudget);
+        await Assert.That(snapshot.Invocations.MaxExecuting).IsEqualTo(client.Config.MaxConcurrentConnectionInvocations);
+        await Assert.That(snapshot.Pipes).IsEmpty();
+        await Assert.That(snapshot.LargeMessages).IsEmpty();
 
         var serverSnapshot = server.GetSnapshot();
-        Assert.That(serverSnapshot.State, Is.EqualTo(NexusServerState.Running));
-        Assert.That(serverSnapshot.PendingHandshakes, Is.EqualTo(0));
-        Assert.That(serverSnapshot.RateLimiter, Is.Null);
+        await Assert.That(serverSnapshot.State).IsEqualTo(NexusServerState.Running);
+        await Assert.That(serverSnapshot.PendingHandshakes).IsEqualTo(0);
+        await Assert.That(serverSnapshot.RateLimiter).IsNull();
         var session = serverSnapshot.Sessions.Single();
-        Assert.That(session.Id, Is.EqualTo(snapshot.Id));
-        Assert.That(session.IsServer, Is.True);
-        Assert.That(session.Invocations.InboundCredits, Is.EqualTo(server.Config.InvocationCredits));
+        await Assert.That(session.Id).IsEqualTo(snapshot.Id);
+        await Assert.That(session.IsServer).IsTrue();
+        await Assert.That(session.Invocations.InboundCredits).IsEqualTo(server.Config.InvocationCredits);
     }
 
     [Test]
@@ -62,13 +61,13 @@ internal class SnapshotTests : BaseTests
 
         var call = client.Proxy.ServerTask().AsTask();
         var fromContext = await running.Task.Timeout(1);
-        Assert.That(fromContext.IsServer, Is.True);
-        Assert.That(fromContext.Invocations.Executing, Is.EqualTo(1));
-        Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults, Is.EqualTo(1));
+        await Assert.That(fromContext.IsServer).IsTrue();
+        await Assert.That(fromContext.Invocations.Executing).IsEqualTo(1);
+        await Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults).IsEqualTo(1);
 
         release.SetResult();
         await call.Timeout(1);
-        Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults, Is.EqualTo(0));
+        await Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults).IsEqualTo(0);
     }
 
     [Test]
@@ -106,10 +105,10 @@ internal class SnapshotTests : BaseTests
             return serverPipe?.PartialItem?.Received == prefixLength + 10 * 1024;
         }).Timeout(2);
 
-        Assert.That(serverPipe!.PartialItem!.Length, Is.EqualTo(prefixLength + itemLength));
-        Assert.That(serverPipe.Window, Is.EqualTo(serverConfig.PipeWindow));
-        Assert.That(serverPipe.SinceLastData, Is.Not.Null);
-        Assert.That(serverPipe.IsReady, Is.True);
+        await Assert.That(serverPipe!.PartialItem!.Length).IsEqualTo(prefixLength + itemLength);
+        await Assert.That(serverPipe.Window).IsEqualTo(serverConfig.PipeWindow);
+        await Assert.That(serverPipe.SinceLastData).IsNotNull();
+        await Assert.That(serverPipe.IsReady).IsTrue();
     }
 
     [Test]
@@ -135,12 +134,12 @@ internal class SnapshotTests : BaseTests
             return clientPipe?.WaitingForCredit != null;
         }).Timeout(2);
 
-        Assert.That(clientPipe!.WaitingBytes, Is.EqualTo(serverConfig.PipeWindow));
-        Assert.That(clientPipe.SendCredit, Is.LessThanOrEqualTo(0));
+        await Assert.That(clientPipe!.WaitingBytes).IsEqualTo(serverConfig.PipeWindow);
+        await Assert.That(clientPipe.SendCredit).IsLessThanOrEqualTo(0);
 
         var serverPipe = server.GetSnapshot().Sessions.Single().Pipes.Single();
-        Assert.That(serverPipe.Buffered, Is.EqualTo(serverConfig.PipeWindow));
-        Assert.That(serverPipe.ReceiveCredit, Is.EqualTo(0));
+        await Assert.That(serverPipe.Buffered).IsEqualTo(serverConfig.PipeWindow);
+        await Assert.That(serverPipe.ReceiveCredit).IsEqualTo(0);
 
         release.SetResult();
         _ = writing;

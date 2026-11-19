@@ -2,7 +2,6 @@ using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -13,12 +12,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class ReadLoopTests : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ThreePipeMethodsAndACall_WithDefaultSlots(Type type)
     {
         // Two invocation slots by default. Pipe methods used to hold theirs for the pipe's lifetime, and the read loop
@@ -41,7 +36,7 @@ internal class ReadLoopTests : BaseTests
             await pipe.ReadyTask.Timeout(1);
         }
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(42));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(42);
 
         foreach (var pipe in pipes)
             await pipe.DisposeAsync();
@@ -78,7 +73,7 @@ internal class ReadLoopTests : BaseTests
             await client.Stream!.WriteAsync(pings).AsTask().Timeout(5);
 
         // The read loop still reaches this.
-        client.Write((byte)MessageType.DisconnectGraceful);
+        await client.Write((byte)MessageType.DisconnectGraceful);
         await disconnected.Task.Timeout(5);
     }
 
@@ -102,7 +97,7 @@ internal class ReadLoopTests : BaseTests
         await client.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
 
         // One frame header, then its body a byte every 100 ms. Any received byte used to count as activity.
-        client.Write([(byte)MessageType.InvocationCancellation, 0xFF, 0x00]);
+        await client.Write([(byte)MessageType.InvocationCancellation, 0xFF, 0x00]);
         var disconnect = client.AssertDisconnectReason(DisconnectReason.Timeout);
         for (var i = 0; i < 40 && !disconnect.IsCompleted; i++)
         {

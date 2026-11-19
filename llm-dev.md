@@ -12,7 +12,7 @@ src/
 ├── NexNet.Generator/          # Roslyn source generator
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
-├── NexNet.IntegrationTests/  # Integration tests (NUnit)
+├── NexNet.IntegrationTests/  # Integration tests (TUnit, serial)
 ├── NexNet.Generator.Tests/   # Generator tests
 ├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
 ├── NexNet.Fuzz/              # SharpFuzz harnesses (libFuzzer), smoke runner, regression corpora
@@ -32,11 +32,9 @@ dotnet test src/NexNet.Generator.Tests -c Release
 dotnet test src/NexNet.IntegrationTests -c Release
 ```
 Tests run on Microsoft.Testing.Platform (the root `global.json` selects it), so options after the project path go to the
-test app. Filters depend on the suite's framework:
-- NUnit suites: `dotnet test <proj> -c Release --filter "FullyQualifiedName~TestName"`
-  (class: `--filter "FullyQualifiedName~ClassName"`).
-- TUnit suites: `dotnet test <proj> -c Release --treenode-filter "/*/*/*/TestName"` (class: `--treenode-filter "/*/*/ClassName/*"`).
-  The path is `/assembly/namespace/class/test`. NUnit's MTP runner rejects `--treenode-filter` (exit code 5).
+test app. Every suite is TUnit; filter with `--treenode-filter`:
+- `dotnet test <proj> -c Release --treenode-filter "/*/*/*/TestName"` (class: `--treenode-filter "/*/*/ClassName/*"`).
+  The path is `/assembly/namespace/class/test`. `--filter` (VSTest syntax) is not supported.
 
 List tests: `dotnet test <proj> -c Release --list-tests`.
 
@@ -323,7 +321,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.1 Base Classes
 
-- `BaseTests.cs` - Abstract base: lifecycle (SetUp/TearDown), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
+- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger and resets the session id counter, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS socket files in one run-wide temp directory with a static counter, transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
 - `BasePipeTests.cs` - Pipe test base: LogMode enum (None/OnTestFail/Always), Setup() with auto server/client connection
 - `NexusCollectionBaseTests.cs` (Collections/) - Collection base: ConnectServerAndClient(), CreateRelayCollectionClientServers() for relay topology
 - `BaseAspTests.cs` - ASP.NET base: AspCreateAuthServices(), AspAppAuthConfigure()
@@ -411,7 +409,11 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.4 Test Patterns
 
-**Multi-Transport:** `[TestCase(Type.Uds)]`, `[TestCase(Type.Tcp)]`, etc. for cross-transport coverage
+**TUnit:** the suite runs on TUnit in source-gen mode, one test at a time (`[assembly: NotInParallel]` in `GlobalUsings.cs`). TUnit creates a new instance per test, so per-class state goes in static fields set by static `[Before(Class)]`/`[After(Class)]` hooks (see `TlsCertificateTests`).
+
+**Multi-Transport:** `[Test]` plus `[Transports]` (`TransportsAttribute.cs`) runs a test once per transport, passing it as the first `Type` parameter: `[Transports]` is every transport, `[Transports(Type.Uds, Type.Tcp)]` only those, `[Transports(Except = new[] { Type.Quic })]` all but those. Rows with more arguments use `[Arguments(Type.Tcp, true)]`; generated rows use `[MethodDataSource]`.
+
+**Asserts:** every TUnit assert is awaited (`await Assert.That(x).IsEqualTo(y)`). `IsEqualTo` on a collection compares references: compare items with `IsEquivalentTo(expected, CollectionOrdering.Matching)` (in order) or `IsEquivalentTo(expected)` (any order). `ThrowsExactly`/`ThrowsExactlyAsync` match the exact exception type; `Throws`/`ThrowsAsync` accept subtypes. Group asserts with `using (Assert.Multiple()) { await ...; }`. In a callback that cannot await (sync lambda, nexus event handler, transport hook), capture the value and assert after the await, or use the throwing `CallbackAssert` helpers. `[Repeat(n)]` runs n + 1 times, and each run is listed as its own test.
 
 **Async Pattern:** All async ops wrapped with `.Timeout(seconds)` using TaskExtensions
 
@@ -422,7 +424,7 @@ await server.StartAsync().Timeout(1);
 await client.ConnectAsync().Timeout(1);
 ```
 
-**Event Assertions:** Set delegates on test nexus before operations, verify in callbacks
+**Event Assertions:** Set delegates on test nexus before operations; capture values in the callbacks and assert after awaiting them
 
 ---
 
@@ -514,7 +516,7 @@ Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specifi
 
 **Add collection:** Define INexusList<T> property with [NexusCollection(mode)] attribute
 
-**Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); use [TestCase(Type.X)] for transport coverage
+**Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); mark it `[Test]`, add `[Transports]` (or `[Transports(Type.X, ...)]`) for transport coverage, make it `async Task` and await every assert
 
 **Debug generator:** Use Generator.Tests with CSharpGeneratorRunner.RunGenerator(); check Diagnostic[] output
 

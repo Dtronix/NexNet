@@ -4,7 +4,6 @@ using NexNet.Messages;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -14,11 +13,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal partial class NexusClientTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Quic })]
     public async Task AuthenticateAsync_ProvidesAuthenticationToken(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -45,7 +41,8 @@ internal partial class NexusClientTests
         await tcs.Task.Timeout(1);
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_CalledOnEveryConnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -62,10 +59,11 @@ internal partial class NexusClientTests
         await client.DisconnectAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(Volatile.Read(ref calls), Is.EqualTo(2));
+        await Assert.That(Volatile.Read(ref calls)).IsEqualTo(2);
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_CalledOnReconnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -95,20 +93,21 @@ internal partial class NexusClientTests
         await server.StartAsync().Timeout(1);
 
         await reconnected.Task.Timeout(1);
-        Assert.That(Volatile.Read(ref calls), Is.GreaterThanOrEqualTo(2));
+        await Assert.That(Volatile.Read(ref calls)).IsGreaterThanOrEqualTo(2);
     }
 
     [Test]
-    public void AuthenticateAndAuthenticateAsync_BothSet_Throws()
+    public async Task AuthenticateAndAuthenticateAsync_BothSet_Throws()
     {
         var clientConfig = CreateClientConfig(Type.Tcp);
         clientConfig.Authenticate = () => new byte[] { 1 };
         clientConfig.AuthenticateAsync = _ => ValueTask.FromResult<Memory<byte>>(new byte[] { 1 });
 
-        Assert.Throws<InvalidOperationException>(() => ClientNexus.CreateClient(clientConfig, new ClientNexus()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ClientNexus.CreateClient(clientConfig, new ClientNexus()));
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_BothSetAfterConstruction_FailsConnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -119,11 +118,12 @@ internal partial class NexusClientTests
         clientConfig.AuthenticateAsync = _ => ValueTask.FromResult<Memory<byte>>(new byte[] { 1 });
 
         var result = await client.TryConnectAsync().Timeout(1);
-        Assert.That(result.Success, Is.False);
-        Assert.That(result.Exception, Is.TypeOf<InvalidOperationException>());
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(result.Exception).IsTypeOf<InvalidOperationException>();
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_Throws_FailsConnectWithoutConnectingTransport(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -139,17 +139,18 @@ internal partial class NexusClientTests
 
         var result = await client.TryConnectAsync().Timeout(1);
 
-        Assert.That(result.Success, Is.False);
-        Assert.That(result.State, Is.EqualTo(ConnectionResult.StateValue.Exception));
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication));
-        Assert.That(result.Exception, Is.TypeOf<InvalidDataException>());
-        Assert.That(transportConnected, Is.False);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Exception);
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
+        await Assert.That(result.Exception).IsTypeOf<InvalidDataException>();
+        await Assert.That(transportConnected).IsFalse();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => client.ConnectAsync().Timeout(1));
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_ExceedsHandshakeTimeout_FailsConnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -167,14 +168,15 @@ internal partial class NexusClientTests
 
         var result = await client.TryConnectAsync().Timeout(1);
 
-        Assert.That(result.State, Is.EqualTo(ConnectionResult.StateValue.Exception));
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication));
-        Assert.That(result.Exception, Is.TypeOf<TransportException>());
-        Assert.That(((TransportException)result.Exception!).Error, Is.EqualTo(TransportError.AuthenticationError));
+        await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Exception);
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
+        await Assert.That(result.Exception).IsTypeOf<TransportException>();
+        await Assert.That(((TransportException)result.Exception!).Error).IsEqualTo(TransportError.AuthenticationError);
         await tokenCanceled.Task.Timeout(1);
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task AuthenticateAsync_ConnectCanceled_ReturnsCanceled(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -194,51 +196,55 @@ internal partial class NexusClientTests
         await cts.CancelAsync();
         var result = await connect.Timeout(1);
 
-        Assert.That(result.State, Is.EqualTo(ConnectionResult.StateValue.Canceled));
-        Assert.That(result.Exception, Is.InstanceOf<OperationCanceledException>());
+        await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Canceled);
+        await Assert.That(result.Exception).IsAssignableTo<OperationCanceledException>();
     }
 
-    [TestCase(Type.Uds, true)]
-    [TestCase(Type.Tcp, false)]
-    [TestCase(Type.TcpTls, true)]
-    [TestCase(Type.Quic, true)]
-    [TestCase(Type.WebSocket, false)]
-    [TestCase(Type.HttpSocket, false)]
+    [Test]
+    [Arguments(Type.Uds, true)]
+    [Arguments(Type.Tcp, false)]
+    [Arguments(Type.TcpTls, true)]
+    [Arguments(Type.Quic, true)]
+    [Arguments(Type.WebSocket, false)]
+    [Arguments(Type.HttpSocket, false)]
     public async Task IsSecure_ReflectsTransport(Type type, bool expected)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
 
-        Assert.That(client.IsSecure, Is.EqualTo(expected));
-        Assert.That(((INexusClient)client).IsSecure, Is.EqualTo(expected));
+        await Assert.That(client.IsSecure).IsEqualTo(expected);
+        await Assert.That(((INexusClient)client).IsSecure).IsEqualTo(expected);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         var snapshot = client.GetSnapshot();
-        Assert.That(snapshot, Is.Not.Null);
-        Assert.That(snapshot!.IsSecure, Is.EqualTo(expected));
+        await Assert.That(snapshot).IsNotNull();
+        await Assert.That(snapshot!.IsSecure).IsEqualTo(expected);
     }
 
-    [TestCase("wss://localhost/nexus", true)]
-    [TestCase("WSS://localhost/nexus", true)]
-    [TestCase("ws://localhost/nexus", false)]
-    public void IsSecure_WebSocketUrlScheme(string url, bool expected)
+    [Test]
+    [Arguments("wss://localhost/nexus", true)]
+    [Arguments("WSS://localhost/nexus", true)]
+    [Arguments("ws://localhost/nexus", false)]
+    public async Task IsSecure_WebSocketUrlScheme(string url, bool expected)
     {
         var client = ClientNexus.CreateClient(new WebSocketClientConfig { Url = new Uri(url) }, new ClientNexus());
-        Assert.That(client.IsSecure, Is.EqualTo(expected));
+        await Assert.That(client.IsSecure).IsEqualTo(expected);
     }
 
-    [TestCase("https://localhost/nexus", true)]
-    [TestCase("http://localhost/nexus", false)]
-    public void IsSecure_HttpSocketUrlScheme(string url, bool expected)
+    [Test]
+    [Arguments("https://localhost/nexus", true)]
+    [Arguments("http://localhost/nexus", false)]
+    public async Task IsSecure_HttpSocketUrlScheme(string url, bool expected)
     {
         var client = ClientNexus.CreateClient(new HttpSocketClientConfig { Url = new Uri(url) }, new ClientNexus());
-        Assert.That(client.IsSecure, Is.EqualTo(expected));
+        await Assert.That(client.IsSecure).IsEqualTo(expected);
     }
 
-    [TestCase(Type.Tcp, "(tcp)")]
-    [TestCase(Type.WebSocket, "(ws://)")]
-    [TestCase(Type.HttpSocket, "(http://)")]
+    [Test]
+    [Arguments(Type.Tcp, "(tcp)")]
+    [Arguments(Type.WebSocket, "(ws://)")]
+    [Arguments(Type.HttpSocket, "(http://)")]
     public async Task PlaintextTransport_LogsWarningOncePerClient(Type type, string transport)
     {
         var logger = new CapturingLogger();
@@ -251,12 +257,12 @@ internal partial class NexusClientTests
         await client.ConnectAsync().Timeout(1);
 
         var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
-        Assert.That(warnings, Has.Count.EqualTo(1));
-        Assert.That(warnings[0], Is.EqualTo(
-            $"NexNet: unencrypted transport {transport}; credentials and data are visible on the network."));
+        await Assert.That(warnings).Count().IsEqualTo(1);
+        await Assert.That(warnings[0]).IsEqualTo($"NexNet: unencrypted transport {transport}; credentials and data are visible on the network.");
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task PlaintextTransport_LogsWarningPerClientInstance(Type type)
     {
         var logger = new CapturingLogger();
@@ -268,7 +274,7 @@ internal partial class NexusClientTests
         await client2.ConnectAsync().Timeout(1);
         await client2.DisposeAsync();
 
-        Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport")), Is.EqualTo(2));
+        await Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport"))).IsEqualTo(2);
     }
 
     [Test]
@@ -277,16 +283,16 @@ internal partial class NexusClientTests
         var logger = new CapturingLogger();
         var client = ClientNexus.CreateClient(new CustomPlaintextClientConfig { Logger = logger }, new ClientNexus());
 
-        Assert.That(client.IsSecure, Is.False);
+        await Assert.That(client.IsSecure).IsFalse();
 
         var result = await client.TryConnectAsync().Timeout(1);
-        Assert.That(result.Success, Is.False);
+        await Assert.That(result.Success).IsFalse();
 
         var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
-        Assert.That(warnings, Is.EqualTo(new[]
+        await Assert.That(warnings).IsEquivalentTo(new[]
         {
             $"NexNet: unencrypted transport ({nameof(CustomPlaintextClientConfig)}); credentials and data are visible on the network."
-        }));
+        }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -295,11 +301,11 @@ internal partial class NexusClientTests
         var logger = new CapturingLogger();
         var client = ClientNexus.CreateClient(new CustomSecureClientConfig { Logger = logger }, new ClientNexus());
 
-        Assert.That(client.IsSecure, Is.True);
+        await Assert.That(client.IsSecure).IsTrue();
 
         await client.TryConnectAsync().Timeout(1);
 
-        Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport")), Is.False);
+        await Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport"))).IsFalse();
     }
 
     /// <summary>A custom transport that does not say whether it is secure. Its connect always fails.</summary>
@@ -314,9 +320,8 @@ internal partial class NexusClientTests
         protected internal override bool IsSecureTransport => true;
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Type.Uds, Type.TcpTls, Type.Quic)]
     public async Task SecureTransport_DoesNotLogPlaintextWarning(Type type)
     {
         var logger = new CapturingLogger();
@@ -325,6 +330,6 @@ internal partial class NexusClientTests
 
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport")), Is.False);
+        await Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport"))).IsFalse();
     }
 }

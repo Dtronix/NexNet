@@ -1,6 +1,5 @@
 using System.IO.Pipelines;
 using NexNet.Internals.Pipelines;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Sockets;
@@ -14,13 +13,13 @@ internal class StreamSendPipeTests
         var sendPipe = new StreamSendPipe(stream, null);
 
         var flush = Write(sendPipe.Writer, Frame(1, 100));
-        Assert.That(flush.IsCompleted, Is.True);
+        await Assert.That(flush.IsCompleted).IsTrue();
         await stream.WriteStarted.Task.Timeout(1);
-        Assert.That(stream.Writes, Is.Empty);
+        await Assert.That(stream.Writes).IsEmpty();
 
         stream.Release();
         await CompleteAndDrain(sendPipe);
-        Assert.That(stream.Writes, Has.Count.EqualTo(1));
+        await Assert.That(stream.Writes).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -45,9 +44,9 @@ internal class StreamSendPipeTests
         stream.Release();
         await CompleteAndDrain(sendPipe);
 
-        Assert.That(stream.Writes, Has.Count.EqualTo(2));
-        Assert.That(stream.Writes[0], Is.EqualTo(first));
-        Assert.That(stream.Writes[1], Is.EqualTo(expected.ToArray()));
+        await Assert.That(stream.Writes).Count().IsEqualTo(2);
+        await Assert.That(stream.Writes[0]).IsEquivalentTo(first, CollectionOrdering.Matching);
+        await Assert.That(stream.Writes[1]).IsEquivalentTo(expected.ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -70,8 +69,8 @@ internal class StreamSendPipeTests
         stream.Release();
         await CompleteAndDrain(sendPipe);
 
-        Assert.That(stream.Writes.Select(w => w.Length), Has.All.LessThanOrEqualTo(StreamSendPipe.CoalesceSize));
-        Assert.That(stream.Writes.SelectMany(w => w).ToArray(), Is.EqualTo(expected.ToArray()));
+        await Assert.That(stream.Writes.Select(w => w.Length)).All(length => length <= StreamSendPipe.CoalesceSize);
+        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEquivalentTo(expected.ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -94,7 +93,7 @@ internal class StreamSendPipeTests
             completed = true;
         }
 
-        Assert.That(completed, Is.True);
+        await Assert.That(completed).IsTrue();
     }
 
     [Test]
@@ -108,7 +107,7 @@ internal class StreamSendPipeTests
 
         // The session did not complete the output (not a graceful close): nothing is waited for.
         await sendPipe.DrainAsync(TimeSpan.FromSeconds(30)).Timeout(1);
-        Assert.That(stream.Writes, Is.Empty);
+        await Assert.That(stream.Writes).IsEmpty();
     }
 
     [Test]
@@ -123,11 +122,11 @@ internal class StreamSendPipeTests
         await sendPipe.Writer.CompleteAsync();
 
         var drain = sendPipe.DrainAsync(TimeSpan.FromSeconds(30)).AsTask();
-        Assert.That(drain.IsCompleted, Is.False);
+        await Assert.That(drain.IsCompleted).IsFalse();
 
         stream.Release();
         await drain.Timeout(1);
-        Assert.That(stream.Writes.SelectMany(w => w).ToArray(), Is.EqualTo(Frame(1, 10).Concat(Frame(2, 10)).ToArray()));
+        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEquivalentTo(Frame(1, 10).Concat(Frame(2, 10)).ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -141,7 +140,7 @@ internal class StreamSendPipeTests
         await sendPipe.Writer.CompleteAsync();
 
         await sendPipe.DrainAsync(TimeSpan.FromMilliseconds(50)).Timeout(1);
-        Assert.That(sendPipe.Completion.IsCompleted, Is.True);
+        await Assert.That(sendPipe.Completion.IsCompleted).IsTrue();
     }
 
     private static async Task CompleteAndDrain(StreamSendPipe sendPipe)

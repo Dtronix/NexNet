@@ -3,23 +3,21 @@ using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
-
 /// <summary>
 /// Tests for the new parent-child collection relay functionality where a child collection
 /// can connect to a parent collection and relay all changes from the parent.
 /// </summary>
-[TestFixture]
 internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task AccessesCollectionListFromContextProviderSuccessfully(Type type)
     {
         var clSv = await CreateRelayCollectionClientServers(true);
         var list = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
-        Assert.That(list, Is.Not.Null);
+        await Assert.That(list).IsNotNull();
     }
     
     [Test]
@@ -94,7 +92,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -122,7 +120,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await addWait.Wait();
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -140,7 +138,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -191,8 +189,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Without advancing fakeTime, the relay reconnect Task.Delay does not return.
         await Task.Delay(100);
-        Assert.That(relayList.State, Is.Not.EqualTo(NexNet.Collections.NexusCollectionState.Connected),
-            "Relay must not have reconnected yet — its 500 ms delay is awaiting fakeTime.Advance.");
+        await Assert.That(relayList.State).IsNotEqualTo(NexNet.Collections.NexusCollectionState.Connected).Because("Relay must not have reconnected yet — its 500 ms delay is awaiting fakeTime.Advance.");
 
         // Advance past the 500 ms reconnect-loop delay; the relay should now reconnect.
         fakeTime.Advance(TimeSpan.FromMilliseconds(500));
@@ -208,13 +205,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
     }
     
     [Test]
@@ -231,12 +228,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         await clSv.Server1.StopAsync();
 
         await relayList.DisconnectedTask.Timeout(1);
-        Assert.That(relayList, Is.Empty);
+        await Assert.That(relayList).IsEmpty();
     }
 
     [Test]
@@ -246,7 +243,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Server1.StartAsync();
 
         var relayCollection = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        Assert.That(relayCollection, Is.Not.Null);
+        await Assert.That(relayCollection).IsNotNull();
 
         // Create another client pool to try configuring relay again
         var clientConfig = CreateClientConfig(Type.Uds);
@@ -254,7 +251,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var anotherConnector = anotherClientPool.GetCollectionConnector(n => n.IntListBi);
 
         // Try to configure relay again - should throw since it's already configured
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             relayCollection.ConfigureRelay(anotherConnector);
         });
@@ -296,8 +293,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             throw;
         }
         
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child1Relay));
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child1Relay);
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child2Relay);
     }
     
     
@@ -316,8 +313,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSvs.Child1Relay.DisconnectedTask.Timeout(1);
         await clSvs.Child2Relay.DisconnectedTask.Timeout(1);
 
-        Assert.That(clSvs.Child1Relay.State, Is.EqualTo(NexusCollectionState.Disconnected));
-        Assert.That(clSvs.Child2Relay.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(clSvs.Child1Relay.State).IsEqualTo(NexusCollectionState.Disconnected);
+        await Assert.That(clSvs.Child2Relay.State).IsEqualTo(NexusCollectionState.Disconnected);
     }
 
 
@@ -357,7 +354,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(2);
 
         // Verify final state consistency
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -394,9 +391,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await Task.WhenAll(tasks);
         await waitAdd.Wait();
 
-        Assert.That(sourceList.Count, Is.EqualTo(10));
-        Assert.That(relayList.Count, Is.EqualTo(10));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList.Count).IsEqualTo(10);
+        await Assert.That(relayList.Count).IsEqualTo(10);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -407,20 +404,20 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
 
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(relayList.State).IsEqualTo(NexusCollectionState.Connected);
 
         // Disconnect parent
         await clSv.Server1.StopAsync();
         await relayList.DisconnectedTask.Timeout(1);
 
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(relayList.State).IsEqualTo(NexusCollectionState.Disconnected);
 
         var state = relayList.ReadyTask.Status;
         // Reconnect parent
         await clSv.Server1.StartAsync();
         await relayList.ReadyTask.Timeout(2);
 
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(relayList.State).IsEqualTo(NexusCollectionState.Connected);
     }
 
     [Test]
@@ -432,17 +429,17 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(1);
 
         // Test all modification operations are blocked
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
 
         // Verify read operations still work
-        Assert.DoesNotThrow(() => { var count = relayList.Count; });
-        Assert.DoesNotThrow(() => relayList.Contains(1));
+        await Assert.That(() => { var count = relayList.Count; }).ThrowsNothing();
+        await Assert.That(() => relayList.Contains(1)).ThrowsNothing();
     }
 
     [Test]
@@ -469,12 +466,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var sourceItems = sourceList.ToList();
         var relayItems = relayList.ToList();
 
-        Assert.That(sourceItems, Is.EqualTo(relayItems));
+        await Assert.That(sourceItems).IsEquivalentTo(relayItems, CollectionOrdering.Matching);
 
         // Verify items are in correct order
         for (int i = 0; i < 10; i++)
         {
-            Assert.That(relayItems[i], Is.EqualTo(i));
+            await Assert.That(relayItems[i]).IsEqualTo(i);
         }
     }
 
@@ -497,8 +494,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(1);
 
         // Verify relay received all initial data
-        Assert.That(relayList.Count, Is.EqualTo(15));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(15);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         // Test clear operation propagation - relay may fire Reset or Remove events
         var waitReset = relayList.WaitForEvent(NexusCollectionChangedAction.Reset);
@@ -514,8 +511,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             // If Reset event not supported, verify state directly
         }
 
-        Assert.That(relayList.Count, Is.EqualTo(0));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(0);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -541,7 +538,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitEvent.Wait();
 
         // Verify final state consistency
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -572,7 +569,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // Relay should reconnect and sync
         await relayList.ReadyTask.Timeout(2);
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -599,8 +596,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitA.Wait();
         await waitB.Wait();
 
-        Assert.That(relayListA, Is.EquivalentTo(sourceList));
-        Assert.That(relayListB, Is.EquivalentTo(sourceList));
+        await Assert.That(relayListA).IsEquivalentTo(sourceList);
+        await Assert.That(relayListB).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -618,7 +615,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.EnableAsync().Timeout(1);
 
         // Relay should be disconnected (no parent), client collection empty
-        Assert.That(relayList.Count, Is.EqualTo(0));
+        await Assert.That(relayList.Count).IsEqualTo(0);
 
         // Set up wait for events before starting parent
         var waitAdd = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 5);
@@ -638,7 +635,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // Wait for client to receive all updates
         await waitAdd.Wait(5);
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -661,7 +658,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.ConnectAsync().Timeout(1);
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
 
         // Disconnect client
         await relayList.DisableAsync();
@@ -679,8 +676,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ConnectAsync().Timeout(1);
 
         // Should have all data
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
-        Assert.That(relayList.Count, Is.EqualTo(10));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
+        await Assert.That(relayList.Count).IsEqualTo(10);
     }
 
     [Test]
@@ -694,8 +691,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(1);
 
         // Both should be empty
-        Assert.That(sourceList.Count, Is.EqualTo(0));
-        Assert.That(relayList.Count, Is.EqualTo(0));
+        await Assert.That(sourceList.Count).IsEqualTo(0);
+        await Assert.That(relayList.Count).IsEqualTo(0);
 
         // Add items later
         var wait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 3);
@@ -706,7 +703,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await wait.Wait();
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -723,9 +720,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var clientRelay = clSv.Client2.Proxy.IntListRelay;
         await clientRelay.ConnectAsync().Timeout(1);
 
-        Assert.That(clientRelay.Count, Is.EqualTo(0));
+        await Assert.That(clientRelay.Count).IsEqualTo(0);
         // Server relay state is Connected, client collection state depends on implementation
-        Assert.That(serverRelay.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(serverRelay.State).IsEqualTo(NexusCollectionState.Connected);
     }
 
     [Test]
@@ -744,7 +741,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             await sourceList.AddAsync(i);
         await waitAdd.Wait();
 
-        Assert.That(relayList.Count, Is.EqualTo(10));
+        await Assert.That(relayList.Count).IsEqualTo(10);
 
         // Clear parent - relay may fire Reset or Remove events
         var waitReset = relayList.WaitForEvent(NexusCollectionChangedAction.Reset);
@@ -760,8 +757,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             // If Reset event not supported, verify state directly
         }
 
-        Assert.That(relayList.Count, Is.EqualTo(0));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(0);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -789,7 +786,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitAdd.Wait();
         await waitRemove.Wait();
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -822,7 +819,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ConnectAsync().Timeout(1);
 
         // Client should now have all items since it connected to a relay that has them
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -853,8 +850,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await waitFinal.Wait(5);
 
-        Assert.That(relayList.Count, Is.EqualTo(3));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(3);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -873,7 +870,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             await sourceList.AddAsync(cycle);
             await waitAdd.Wait();
 
-            Assert.That(relayList.Contains(cycle), Is.True);
+            await Assert.That(relayList.Contains(cycle)).IsTrue();
 
             // Disconnect parent
             await clSv.Server1.StopAsync();
@@ -884,7 +881,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await relayList.ReadyTask.Timeout(2);
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -904,14 +901,14 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(3);
         await waitInitial.Wait();
 
-        Assert.That(relayList.ToList(), Is.EqualTo(new[] { 1, 2, 3 }));
+        await Assert.That(relayList.ToList()).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
 
         // Stop parent
         await clSv.Server1.StopAsync();
         await relayList.DisconnectedTask.Timeout(1);
 
         // Verify relay is cleared on disconnect
-        Assert.That(relayList.Count, Is.EqualTo(0), "Relay should be empty after disconnect");
+        await Assert.That(relayList.Count).IsEqualTo(0).Because("Relay should be empty after disconnect");
 
         // Restart and add different data
         await clSv.Server1.StartAsync();
@@ -926,7 +923,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitNew.Wait(5);
 
         // Relay should sync with new parent state
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -971,7 +968,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var result = await enumerateTask;
 
         // Should not throw, may have partial results
-        Assert.That(result, Is.Not.Null);
+        await Assert.That(result).IsNotNull();
     }
 
     [Test]
@@ -986,8 +983,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = server.ContextProvider.Rent().Collections.IntListRelay;
 
         // Relay exists but is not connected to any parent
-        Assert.That(relayList, Is.Not.Null);
-        Assert.That(relayList.Count, Is.EqualTo(0));
+        await Assert.That(relayList).IsNotNull();
+        await Assert.That(relayList.Count).IsEqualTo(0);
 
         await server.StopAsync();
     }
@@ -1001,7 +998,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         var relayList = server.ContextProvider.Rent().Collections.IntListRelay;
 
-        Assert.Throws<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
         {
             relayList.ConfigureRelay(null!);
         });
@@ -1017,13 +1014,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
 
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
+        await Assert.That(relayList.State).IsEqualTo(NexusCollectionState.Connected);
 
         // Stop relay server
         await clSv.Server2.StopAsync();
 
         await relayList.DisconnectedTask.Timeout(1);
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
+        await Assert.That(relayList.State).IsEqualTo(NexusCollectionState.Disconnected);
 
         // Cleanup parent
         await clSv.Server1.StopAsync();
@@ -1044,7 +1041,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var stopTask = clSv.Server2.StopAsync();
         var completed = await Task.WhenAny(stopTask, Task.Delay(5000));
 
-        Assert.That(completed, Is.EqualTo(stopTask), "Server stop should not hang");
+        await Assert.That(completed).IsEqualTo(stopTask).Because("Server stop should not hang");
     }
 
     [Test]
@@ -1066,8 +1063,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await relayList.ReadyTask.Timeout(5);
 
-        Assert.That(relayList.Count, Is.EqualTo(itemCount));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(itemCount);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -1091,8 +1088,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await wait.Wait(10);
 
-        Assert.That(relayList.Count, Is.EqualTo(operationCount));
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(operationCount);
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     /// <summary>
@@ -1138,15 +1135,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         // Verify all items were delivered without any drops
-        Assert.That(relayList.Count, Is.EqualTo(itemCount),
-            $"Expected {itemCount} items but got {relayList.Count}. This indicates message drops.");
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(itemCount).Because($"Expected {itemCount} items but got {relayList.Count}. This indicates message drops.");
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         // Verify ordering is preserved
         for (int i = 0; i < itemCount; i++)
         {
-            Assert.That(relayList[i], Is.EqualTo(i),
-                $"Item at index {i} should be {i} but was {relayList[i]}. Ordering not preserved.");
+            await Assert.That(relayList[i]).IsEqualTo(i).Because($"Item at index {i} should be {i} but was {relayList[i]}. Ordering not preserved.");
         }
     }
 
@@ -1201,9 +1196,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             throw;
         }
 
-        Assert.That(relayList.Count, Is.EqualTo(totalItems),
-            $"Expected {totalItems} items but got {relayList.Count}. Concurrent additions caused message drops.");
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(relayList.Count).IsEqualTo(totalItems).Because($"Expected {totalItems} items but got {relayList.Count}. Concurrent additions caused message drops.");
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     /// <summary>
@@ -1251,12 +1245,10 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // The add task should complete within a reasonable time (not hang)
         var completedTask = await Task.WhenAny(addTask, Task.Delay(5000));
 
-        Assert.That(completedTask, Is.EqualTo(addTask),
-            "Add task should complete (via cancellation) when server stops, not hang indefinitely");
+        await Assert.That(completedTask).IsEqualTo(addTask).Because("Add task should complete (via cancellation) when server stops, not hang indefinitely");
 
         // Verify some adds completed before the stop
-        Assert.That(addsCompleted, Is.GreaterThan(0),
-            "Some adds should have completed before the server stopped");
+        await Assert.That(addsCompleted).IsGreaterThan(0).Because("Some adds should have completed before the server stopped");
     }
 
     /// <summary>
@@ -1305,8 +1297,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var stopTask = clSv.Server2.StopAsync();
         var stopCompleted = await Task.WhenAny(stopTask, Task.Delay(5000));
 
-        Assert.That(stopCompleted, Is.EqualTo(stopTask),
-            "Server2 stop should complete within timeout, not hang due to blocked broadcasts");
+        await Assert.That(stopCompleted).IsEqualTo(stopTask).Because("Server2 stop should complete within timeout, not hang due to blocked broadcasts");
 
         // Cancel the add loop
         cts.Cancel();
@@ -1315,8 +1306,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var stop1Task = clSv.Server1.StopAsync();
         var stop1Completed = await Task.WhenAny(stop1Task, Task.Delay(5000));
 
-        Assert.That(stop1Completed, Is.EqualTo(stop1Task),
-            "Server1 stop should complete within timeout");
+        await Assert.That(stop1Completed).IsEqualTo(stop1Task).Because("Server1 stop should complete within timeout");
 
         await addTask.Timeout(1);
     }
@@ -1337,8 +1327,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(30);
         await waitAdd.Wait();
 
-        Assert.That(relayList.IndexOf(20), Is.EqualTo(1));
-        Assert.That(relayList.IndexOf(99), Is.EqualTo(-1));
+        await Assert.That(relayList.IndexOf(20)).IsEqualTo(1);
+        await Assert.That(relayList.IndexOf(99)).IsEqualTo(-1);
     }
 
     [Test]
@@ -1355,8 +1345,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(42);
         await waitAdd.Wait();
 
-        Assert.That(relayList.Contains(42), Is.True);
-        Assert.That(relayList.Contains(99), Is.False);
+        await Assert.That(relayList.Contains(42)).IsTrue();
+        await Assert.That(relayList.Contains(99)).IsFalse();
     }
 
     [Test]
@@ -1377,7 +1367,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var array = new int[5];
         relayList.CopyTo(array, 0);
 
-        Assert.That(array, Is.EqualTo(new[] { 0, 10, 20, 30, 40 }));
+        await Assert.That(array).IsEquivalentTo(new[] { 0, 10, 20, 30, 40 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1396,9 +1386,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(300);
         await waitAdd.Wait();
 
-        Assert.That(relayList[0], Is.EqualTo(100));
-        Assert.That(relayList[1], Is.EqualTo(200));
-        Assert.That(relayList[2], Is.EqualTo(300));
+        await Assert.That(relayList[0]).IsEqualTo(100);
+        await Assert.That(relayList[1]).IsEqualTo(200);
+        await Assert.That(relayList[2]).IsEqualTo(300);
     }
 
     [Test]
@@ -1433,7 +1423,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         // Always verify final state matches
-        Assert.That(relayList.ToList(), Is.EqualTo(sourceList.ToList()));
+        await Assert.That(relayList.ToList()).IsEquivalentTo(sourceList.ToList(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1457,8 +1447,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.ReplaceAsync(1, 999);
         await waitReplace.Wait();
 
-        Assert.That(relayList[1], Is.EqualTo(999));
-        Assert.That(relayList.ToList(), Is.EqualTo(new[] { 1, 999, 3 }));
+        await Assert.That(relayList[1]).IsEqualTo(999);
+        await Assert.That(relayList.ToList()).IsEquivalentTo(new[] { 1, 999, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1482,9 +1472,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relay1 = clSvs.Child1Relay.ToList();
         var relay2 = clSvs.Child2Relay.ToList();
 
-        Assert.That(relay1, Is.EqualTo(source));
-        Assert.That(relay2, Is.EqualTo(source));
-        Assert.That(relay1, Is.EqualTo(relay2));
+        await Assert.That(relay1).IsEquivalentTo(source, CollectionOrdering.Matching);
+        await Assert.That(relay2).IsEquivalentTo(source, CollectionOrdering.Matching);
+        await Assert.That(relay1).IsEquivalentTo(relay2, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1514,7 +1504,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await wait2.Wait();
 
         // Child2 should have all 10 items
-        Assert.That(clSvs.Child2Relay.Count, Is.EqualTo(10));
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
+        await Assert.That(clSvs.Child2Relay.Count).IsEqualTo(10);
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child2Relay);
     }
 }

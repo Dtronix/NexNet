@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -14,12 +13,8 @@ internal class InvocationExecutionContextTests : BaseTests
 {
     private static readonly AsyncLocal<string?> Local = new();
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientInvocation_SeesAsyncLocalOfConnectCaller(Type type)
     {
         var observed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -35,11 +30,11 @@ internal class InvocationExecutionContextTests : BaseTests
         Local.Value = "connect";
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientInvocation_KeepsAsyncLocalAcrossAwait(Type type)
     {
         var observed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -60,11 +55,11 @@ internal class InvocationExecutionContextTests : BaseTests
         Local.Value = "connect";
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientInvocation_AsyncLocalChangeDoesNotReachNextInvocation(Type type)
     {
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -94,13 +89,11 @@ internal class InvocationExecutionContextTests : BaseTests
         using (var owner = server.Server.ContextProvider.Rent())
             owner.Proxy.All.ClientVoidWithParam(2);
 
-        Assert.That(await second.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await second.Task.Timeout(1)).IsEqualTo("connect");
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     public async Task ServerInvocation_SeesAsyncLocalOfStartCaller(Type type)
     {
         string? observed = null;
@@ -117,11 +110,11 @@ internal class InvocationExecutionContextTests : BaseTests
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
-        Assert.That(observed, Is.EqualTo("start"));
+        await Assert.That(observed).IsEqualTo("start");
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ServerInvocation_SeesHttpContextOfUpgradeRequest(Type type)
     {
         var path = "";
@@ -139,6 +132,7 @@ internal class InvocationExecutionContextTests : BaseTests
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
-        Assert.That(path, Is.Not.EqualTo("none").And.Not.Empty);
+        await Assert.That(path).IsNotEqualTo("none");
+        await Assert.That(path).IsNotEmpty();
     }
 }

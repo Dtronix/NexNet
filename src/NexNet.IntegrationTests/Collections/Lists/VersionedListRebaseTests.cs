@@ -1,35 +1,32 @@
 using System.Collections.Immutable;
 using NexNet.Internals.Collections.Versioned;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
-
 /// <summary>
 /// Rebase behavior of <see cref="VersionedList{T}.ProcessOperation"/> across Clears and history wrap (F18).
 /// </summary>
-[TestFixture]
 public class VersionedListRebaseTests
 {
     [Test]
-    public void ConcurrentInsertsAfterClear_AreRebased()
+    public async Task ConcurrentInsertsAfterClear_AreRebased()
     {
         var list = new VersionedList<int>();
-        Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 1), 0, out _), Is.Not.Null);
-        Assert.That(list.ProcessOperation(new ClearOperation<int>(), 1, out _), Is.Not.Null);
-        Assert.That(list.Version, Is.EqualTo(2));
+        await Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 1), 0, out _)).IsNotNull();
+        await Assert.That(list.ProcessOperation(new ClearOperation<int>(), 1, out _)).IsNotNull();
+        await Assert.That(list.Version).IsEqualTo(2);
 
-        Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 10), 2, out var r1), Is.Not.Null);
-        Assert.That(r1, Is.EqualTo(ListProcessResult.Successful));
+        await Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 10), 2, out var r1)).IsNotNull();
+        await Assert.That(r1).IsEqualTo(ListProcessResult.Successful);
 
         // Concurrent with the insert above: also based on version 2.
-        Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 20), 2, out var r2), Is.Not.Null);
-        Assert.That(r2, Is.EqualTo(ListProcessResult.Successful));
+        await Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 20), 2, out var r2)).IsNotNull();
+        await Assert.That(r2).IsEqualTo(ListProcessResult.Successful);
 
-        Assert.That(list, Is.EqualTo(new[] { 10, 20 }));
+        await Assert.That(list).IsEquivalentTo(new[] { 10, 20 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void InsertBasedBeforeClear_IsRebasedFromTheClear()
+    public async Task InsertBasedBeforeClear_IsRebasedFromTheClear()
     {
         var list = new VersionedList<int>();
         list.ProcessOperation(new InsertOperation<int>(0, 1), 0, out _);
@@ -40,13 +37,13 @@ public class VersionedListRebaseTests
         // Based on version 1, before the Clear. It must not close the pipe; Insert survives a Clear at index 0
         // and is then transformed against the insert of 10.
         var op = list.ProcessOperation(new InsertOperation<int>(1, 20), 1, out var result);
-        Assert.That(result, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(op, Is.TypeOf<InsertOperation<int>>());
-        Assert.That(list, Is.EqualTo(new[] { 10, 20 }));
+        await Assert.That(result).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(op).IsTypeOf<InsertOperation<int>>();
+        await Assert.That(list).IsEquivalentTo(new[] { 10, 20 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void RemoveBasedBeforeClear_IsDiscarded()
+    public async Task RemoveBasedBeforeClear_IsDiscarded()
     {
         var list = new VersionedList<int>();
         list.ProcessOperation(new InsertOperation<int>(0, 1), 0, out _);
@@ -54,27 +51,27 @@ public class VersionedListRebaseTests
         list.ProcessOperation(new InsertOperation<int>(0, 10), 2, out _);
 
         var op = list.ProcessOperation(new RemoveOperation<int>(0), 1, out var result);
-        Assert.That(op, Is.SameAs(NoopOperation<int>.Instance));
-        Assert.That(result, Is.EqualTo(ListProcessResult.DiscardOperation));
-        Assert.That(list, Is.EqualTo(new[] { 10 }));
+        await Assert.That(op).IsSameReferenceAs(NoopOperation<int>.Instance);
+        await Assert.That(result).IsEqualTo(ListProcessResult.DiscardOperation);
+        await Assert.That(list).IsEquivalentTo(new[] { 10 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void ClearWithStaleBase_IsApplied()
+    public async Task ClearWithStaleBase_IsApplied()
     {
         var list = new VersionedList<int>(maxVersions: 4);
         for (var i = 0; i < 10; i++)
             list.ProcessOperation(new InsertOperation<int>(0, i), i, out _);
 
         var op = list.ProcessOperation(new ClearOperation<int>(), 0, out var result);
-        Assert.That(op, Is.TypeOf<ClearOperation<int>>());
-        Assert.That(result, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Version, Is.EqualTo(11));
+        await Assert.That(op).IsTypeOf<ClearOperation<int>>();
+        await Assert.That(result).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.Version).IsEqualTo(11);
     }
 
     [Test]
-    public void ConcurrentInsertsAfterHistoryWrap_AreRebased()
+    public async Task ConcurrentInsertsAfterHistoryWrap_AreRebased()
     {
         const int max = 8;
         var list = new VersionedList<int>(max);
@@ -85,53 +82,53 @@ public class VersionedListRebaseTests
         list.ProcessOperation(new InsertOperation<int>(0, 100), baseVersion, out _);
         list.ProcessOperation(new InsertOperation<int>(0, 200), baseVersion, out var result);
 
-        Assert.That(result, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(list[0], Is.EqualTo(100));
-        Assert.That(list[1], Is.EqualTo(200));
+        await Assert.That(result).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(list[0]).IsEqualTo(100);
+        await Assert.That(list[1]).IsEqualTo(200);
     }
 
     [Test]
-    public void RequestOlderThanHistory_ReturnsNoopAndLeavesListUntouched()
+    public async Task RequestOlderThanHistory_ReturnsNoopAndLeavesListUntouched()
     {
         const int max = 8;
         var list = new VersionedList<int>(max);
         for (var i = 0; i < max + 2; i++)
             list.ProcessOperation(new InsertOperation<int>(i, i), i, out _);
 
-        Assert.That(list.MinValidVersion, Is.EqualTo(2));
+        await Assert.That(list.MinValidVersion).IsEqualTo(2);
         var before = list.ToArray();
         var version = list.Version;
 
         var op = list.ProcessOperation(new InsertOperation<int>(0, 99), 1, out var result);
-        Assert.That(op, Is.SameAs(NoopOperation<int>.Instance));
-        Assert.That(result, Is.EqualTo(ListProcessResult.OutOfOperationalRange));
-        Assert.That(list.Version, Is.EqualTo(version));
-        Assert.That(list, Is.EqualTo(before));
+        await Assert.That(op).IsSameReferenceAs(NoopOperation<int>.Instance);
+        await Assert.That(result).IsEqualTo(ListProcessResult.OutOfOperationalRange);
+        await Assert.That(list.Version).IsEqualTo(version);
+        await Assert.That(list).IsEquivalentTo(before, CollectionOrdering.Matching);
 
         // The oldest stored version is still rebasable.
-        Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 99), 2, out result), Is.Not.Null);
-        Assert.That(result, Is.EqualTo(ListProcessResult.Successful));
+        await Assert.That(list.ProcessOperation(new InsertOperation<int>(0, 99), 2, out result)).IsNotNull();
+        await Assert.That(result).IsEqualTo(ListProcessResult.Successful);
     }
 
     [Test]
-    public void ResetTo_AcceptsRequestsAtTheResetVersion()
+    public async Task ResetTo_AcceptsRequestsAtTheResetVersion()
     {
         var list = new VersionedList<int>();
         list.ResetTo(ImmutableList.Create(1, 2, 3), 50);
 
         list.ProcessOperation(new InsertOperation<int>(0, 10), 50, out var r1);
         list.ProcessOperation(new InsertOperation<int>(0, 20), 50, out var r2);
-        Assert.That(r1, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(r2, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(list, Is.EqualTo(new[] { 10, 20, 1, 2, 3 }));
-        Assert.That(list.Version, Is.EqualTo(52));
+        await Assert.That(r1).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(r2).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(list).IsEquivalentTo(new[] { 10, 20, 1, 2, 3 }, CollectionOrdering.Matching);
+        await Assert.That(list.Version).IsEqualTo(52);
 
         list.ProcessOperation(new InsertOperation<int>(0, 30), 49, out var r3);
-        Assert.That(r3, Is.EqualTo(ListProcessResult.OutOfOperationalRange));
+        await Assert.That(r3).IsEqualTo(ListProcessResult.OutOfOperationalRange);
     }
 
     [Test]
-    public void Reset_RestartsHistoryAtVersionZero()
+    public async Task Reset_RestartsHistoryAtVersionZero()
     {
         var list = new VersionedList<int>();
         for (var i = 0; i < 5; i++)
@@ -140,9 +137,9 @@ public class VersionedListRebaseTests
         list.Reset();
         list.ProcessOperation(new InsertOperation<int>(0, 10), 0, out var r1);
         list.ProcessOperation(new InsertOperation<int>(0, 20), 0, out var r2);
-        Assert.That(r1, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(r2, Is.EqualTo(ListProcessResult.Successful));
-        Assert.That(list, Is.EqualTo(new[] { 10, 20 }));
+        await Assert.That(r1).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(r2).IsEqualTo(ListProcessResult.Successful);
+        await Assert.That(list).IsEquivalentTo(new[] { 10, 20 }, CollectionOrdering.Matching);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -150,13 +147,14 @@ public class VersionedListRebaseTests
     // than the history holds, compared with a reference rebaser that keeps the full, unbounded history.
     // ---------------------------------------------------------------------------------------------
 
-    [TestCase(1, 1024, 3000, false, 0.0)]
-    [TestCase(2, 1024, 3000, true, 0.0)]
-    [TestCase(3, 16, 4000, false, 0.01)]
-    [TestCase(4, 16, 4000, true, 0.01)]
-    [TestCase(5, 64, 4000, false, 0.005)]
-    [TestCase(6, 64, 4000, true, 0.005)]
-    public void RandomConcurrentOperations_MatchReferenceAndConverge(
+    [Test]
+    [Arguments(1, 1024, 3000, false, 0.0)]
+    [Arguments(2, 1024, 3000, true, 0.0)]
+    [Arguments(3, 16, 4000, false, 0.01)]
+    [Arguments(4, 16, 4000, true, 0.01)]
+    [Arguments(5, 64, 4000, false, 0.005)]
+    [Arguments(6, 64, 4000, true, 0.005)]
+    public async Task RandomConcurrentOperations_MatchReferenceAndConverge(
         int seed, int maxVersions, int requests, bool withMoves, double clearRate)
     {
         var random = new Random(seed);
@@ -227,9 +225,9 @@ public class VersionedListRebaseTests
             if (processResult == ListProcessResult.OutOfOperationalRange)
             {
                 // Only possible when the base is older than the stored history and no Clear covers it.
-                Assert.That(baseVersion, Is.LessThan(historyStart), $"Request {n}: in-range base {baseVersion} rejected");
-                Assert.That(result, Is.SameAs(NoopOperation<int>.Instance));
-                Assert.That(server.Version, Is.EqualTo(version));
+                await Assert.That((long)baseVersion).IsLessThan((long)historyStart).Because($"Request {n}: in-range base {baseVersion} rejected");
+                await Assert.That(result).IsSameReferenceAs(NoopOperation<int>.Instance);
+                await Assert.That(server.Version).IsEqualTo(version);
                 outOfRange++;
                 continue;
             }
@@ -240,8 +238,8 @@ public class VersionedListRebaseTests
             // In range (or covered by a Clear): the server must decide exactly as the reference does.
             if (reference is null)
             {
-                Assert.That(result, Is.SameAs(NoopOperation<int>.Instance), $"Request {n}: expected discard");
-                Assert.That(processResult, Is.EqualTo(ListProcessResult.DiscardOperation));
+                await Assert.That(result).IsSameReferenceAs(NoopOperation<int>.Instance).Because($"Request {n}: expected discard");
+                await Assert.That(processResult).IsEqualTo(ListProcessResult.DiscardOperation);
                 discarded++;
                 continue;
             }
@@ -249,16 +247,15 @@ public class VersionedListRebaseTests
             if (!IsValid(reference, refState.List.Count))
             {
                 // A transform can make a request invalid (e.g. a Move onto itself); the server rejects it.
-                Assert.That(result, Is.Null, $"Request {n}: expected rejection");
-                Assert.That(processResult, Is.EqualTo(ListProcessResult.BadOperation));
-                Assert.That(server.Version, Is.EqualTo(version));
+                await Assert.That(result).IsNull().Because($"Request {n}: expected rejection");
+                await Assert.That(processResult).IsEqualTo(ListProcessResult.BadOperation);
+                await Assert.That(server.Version).IsEqualTo(version);
                 invalid++;
                 continue;
             }
 
-            Assert.That(processResult, Is.EqualTo(ListProcessResult.Successful),
-                $"Request {n}: {op.GetType().Name} based on {baseVersion} (server {version}) failed");
-            Assert.That(result, Is.EqualTo(reference), $"Request {n}: rebased operation differs from reference");
+            await Assert.That(processResult).IsEqualTo(ListProcessResult.Successful).Because($"Request {n}: {op.GetType().Name} based on {baseVersion} (server {version}) failed");
+            await Assert.That(result).IsEqualTo(reference).Because($"Request {n}: rebased operation differs from reference");
 
             reference.Apply(ref refState);
             refHistory.Add(reference.Clone());
@@ -272,9 +269,9 @@ public class VersionedListRebaseTests
                 maxSinceClear = Math.Max(maxSinceClear, ++sinceClear);
             }
 
-            Assert.That(server.Version, Is.EqualTo(version + 1));
-            Assert.That(refState.Version, Is.EqualTo(server.Version));
-            Assert.That(server, Is.EqualTo(refState.List.ToArray()), $"Request {n}: server diverged from reference");
+            await Assert.That(server.Version).IsEqualTo(version + 1);
+            await Assert.That(refState.Version).IsEqualTo(server.Version);
+            await Assert.That(server).IsEquivalentTo(refState.List.ToArray(), CollectionOrdering.Matching).Because($"Request {n}: server diverged from reference");
 
             broadcasts.Add((result!.Clone(), server.Version));
             snapshots.Add(server.State.List);
@@ -284,18 +281,18 @@ public class VersionedListRebaseTests
         // A client replica applying the broadcast stream serially converges to the server.
         var replica = new VersionedList<int>(maxVersions);
         foreach (var (bop, bversion) in broadcasts)
-            Assert.That(replica.ApplyOperation(bop, bversion), Is.EqualTo(ListProcessResult.Successful));
+            await Assert.That(replica.ApplyOperation(bop, bversion)).IsEqualTo(ListProcessResult.Successful);
 
-        Assert.That(replica.Version, Is.EqualTo(server.Version));
-        Assert.That(replica, Is.EqualTo(server.State.List.ToArray()));
+        await Assert.That(replica.Version).IsEqualTo(server.Version);
+        await Assert.That(replica).IsEquivalentTo(server.State.List.ToArray(), CollectionOrdering.Matching);
 
         // Make sure the scenario actually exercised what it is meant to.
-        Assert.That(maxSinceClear, Is.GreaterThan(maxVersions), "history never wrapped");
-        Assert.That(outOfRange, Is.GreaterThan(0), "no request fell out of the history");
-        Assert.That(rebasedFromClear, Is.GreaterThan(0), "no request based before a Clear was rebased");
-        Assert.That(clears, Is.GreaterThan(0), "no Clear applied");
-        Assert.That(discarded, Is.GreaterThan(0), "no request discarded");
-        TestContext.Out.WriteLine(
+        await Assert.That(maxSinceClear).IsGreaterThan(maxVersions).Because("history never wrapped");
+        await Assert.That(outOfRange).IsGreaterThan(0).Because("no request fell out of the history");
+        await Assert.That(rebasedFromClear).IsGreaterThan(0).Because("no request based before a Clear was rebased");
+        await Assert.That(clears).IsGreaterThan(0).Because("no Clear applied");
+        await Assert.That(discarded).IsGreaterThan(0).Because("no request discarded");
+        Console.Out.WriteLine(
             $"applied={applied} discarded={discarded} invalid={invalid} outOfRange={outOfRange} clears={clears} rebasedFromClear={rebasedFromClear}");
     }
 

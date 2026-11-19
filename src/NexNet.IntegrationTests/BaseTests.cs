@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -19,8 +18,6 @@ using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
 using NexNet.Transports.WebSocket;
-using NUnit.Framework;
-using NUnit.Framework.Interfaces;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NexNet.IntegrationTests;
@@ -37,8 +34,7 @@ internal abstract class BaseTests
         HttpSocket
     }
 
-    private int _counter;
-    private DirectoryInfo? _socketDirectory;
+    private static int _counter;
     private UnixDomainSocketEndPoint? _currentUdsPath;
     private int? _currentTcpPort;
     private int? _currentUdpPort;
@@ -53,7 +49,7 @@ internal abstract class BaseTests
     public RollingLogger Logger => _logger;
 
     /// <summary>
-    /// Servers and ASP.NET apps this test created; the base TearDown stops them without waiting.
+    /// Servers and ASP.NET apps this test created; the base TearDown stops them and waits for them.
     /// </summary>
     protected IReadOnlyList<INexusServer> TrackedServers => Servers;
 
@@ -84,45 +80,75 @@ internal abstract class BaseTests
         set => _loggerMode = value;
     }
 
-    [OneTimeSetUp]
-    public void OneTimeSetUp()
-    {
-        Trace.Listeners.Add(new ConsoleTraceListener());
-        _socketDirectory = Directory.CreateTempSubdirectory("socketTests");
+    /// <summary>
+    /// Directory for the UDS socket files of every test in the run; deleted after the run.
+    /// </summary>
+    private static readonly Lazy<DirectoryInfo> SocketDirectory =
+        new(() => Directory.CreateTempSubdirectory("socketTests"), LazyThreadSafetyMode.ExecutionAndPublication);
 
+    [After(HookType.Assembly)]
+    public static void DeleteSocketDirectory()
+    {
+        if (!SocketDirectory.IsValueCreated)
+            return;
+
+        try
+        {
+            SocketDirectory.Value.Delete(true);
+        }
+        catch (IOException)
+        {
+            // Best effort: a socket file can still be held open.
+        }
     }
 
-    [OneTimeTearDown]
-    public virtual void OneTimeTearDown()
-    {
-        LoggerMode = BasePipeTests.LogMode.None;
-        _socketDirectory?.Delete(true);
-        Trace.Flush();
-    }
-
-    [SetUp]
-    public virtual void SetUp()
+    /// <summary>
+    /// Runs before each test: creates the test's logger and resets the server's session id counter, then calls
+    /// <see cref="SetUp"/>.
+    /// </summary>
+    [Before(HookType.Test)]
+    public void BaseSetUp()
     {
         _logger = new RollingLogger();
         NexusServer<ServerNexus, ServerNexus.ClientProxy>.ResetIdCounter();
+        SetUp();
     }
 
-    [TearDown]
-    public virtual void TearDown()
+    /// <summary>
+    /// Runs after each test: calls <see cref="TearDown"/>, which disconnects the clients and stops the servers this test
+    /// created, then writes the log as <see cref="LoggerMode"/> asks.
+    /// </summary>
+    [After(HookType.Test)]
+    public async Task BaseTearDown(TestContext context)
     {
-        if (LoggerMode == BasePipeTests.LogMode.OnTestFail)
+        try
         {
-            if (TestContext.CurrentContext.Result.Outcome != ResultState.Success)
+            await TearDown();
+        }
+        finally
+        {
+            var failed = context.Execution.Result?.State is TestState.Failed or TestState.Timeout;
+            if (LoggerMode == BasePipeTests.LogMode.Always
+                || (LoggerMode == BasePipeTests.LogMode.OnTestFail && failed))
             {
-                _logger.Flush(TestContext.Out);
+                _logger.Flush(context.Output.StandardOutput);
             }
         }
+    }
 
-        if (LoggerMode == BasePipeTests.LogMode.Always)
-        {
-            _logger.Flush(TestContext.Out);
-        }
+    /// <summary>
+    /// Per-test setup for derived classes; runs after the base setup.
+    /// </summary>
+    protected virtual void SetUp()
+    {
+    }
 
+    /// <summary>
+    /// Per-test cleanup: disconnects the clients and stops the servers and ASP.NET apps this test created, and waits
+    /// for them. Overrides must call the base.
+    /// </summary>
+    protected virtual async Task TearDown()
+    {
         CurrentUdsPath = null;
         AspListenOptions = null;
         _currentTcpPort = null;
@@ -130,12 +156,25 @@ internal abstract class BaseTests
 
         _logger.LogEnabled = false;
 
+        var stops = new List<Task>();
+
+        // The test is over, so nothing needs the disconnect message to reach the peer: skip the DisconnectDelay
+        // (200 ms by default) that every graceful disconnect would otherwise wait out.
+        foreach (var nexusClient in Clients)
+            nexusClient.Config.DisconnectDelay = 0;
+
+        foreach (var nexusServer in Servers.Concat(ServerFactories.Select(f => f.ServerBase)))
+        {
+            if (nexusServer.State == NexusServerState.Running)
+                nexusServer.Config.DisconnectDelay = 0;
+        }
+
         foreach (var nexusClient in Clients)
         {
             if (nexusClient.State != ConnectionState.Connected)
                 continue;
 
-            _ = nexusClient.DisconnectAsync();
+            stops.Add(nexusClient.DisconnectAsync());
         }
 
         Clients.Clear();
@@ -145,20 +184,21 @@ internal abstract class BaseTests
             if (nexusServer.State != NexusServerState.Running)
                 continue;
 
-            _ = nexusServer.StopAsync();
+            stops.Add(nexusServer.StopAsync());
         }
 
         Servers.Clear();
-        
+
         foreach (var nexusServer in ServerFactories)
         {
             if (nexusServer.ServerBase.State != NexusServerState.Running)
                 continue;
 
-            _ = nexusServer.ServerBase.StopAsync();
+            stops.Add(nexusServer.ServerBase.StopAsync());
         }
+
         ServerFactories.Clear();
-        
+
         foreach (var se in AspServers)
         {
             try
@@ -166,16 +206,24 @@ internal abstract class BaseTests
                 if (!se.Lifetime.ApplicationStarted.IsCancellationRequested)
                     continue;
 
-                se.Lifetime.StopApplication();
+                stops.Add(se.StopAsync());
             }
             catch (ObjectDisposedException)
             {
             }
-
         }
 
         AspServers.Clear();
 
+        // Wait for the stops, bounded so that a hung stop cannot hang the run; a failing stop does not fail the test.
+        try
+        {
+            await Task.WhenAll(stops).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception)
+        {
+            // Ignore: the test's own result is what matters here.
+        }
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -183,7 +231,7 @@ internal abstract class BaseTests
         if (type == Type.Uds)
         {
             CurrentUdsPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
+                new UnixDomainSocketEndPoint(Path.Combine(SocketDirectory.Value.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
             return new UdsServerConfig() { EndPoint = CurrentUdsPath, Logger = logger };
@@ -277,7 +325,7 @@ internal abstract class BaseTests
         if (type == Type.Uds)
         {
             CurrentUdsPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
+                new UnixDomainSocketEndPoint(Path.Combine(SocketDirectory.Value.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
             return new UdsClientConfig() { EndPoint = CurrentUdsPath, Logger = logger, };
@@ -765,7 +813,7 @@ internal abstract class BaseTests
             thrown = e;
         }
 
-        Assert.That(thrown?.GetType(), Is.EqualTo(typeof(T)));
+        await Assert.That(thrown?.GetType()).IsEqualTo(typeof(T));
     }
 
     private class AspLoggerProviderBridge : ILoggerProvider
