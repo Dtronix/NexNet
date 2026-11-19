@@ -16,10 +16,11 @@ describe('generated-code shape against the contract', () => {
     expect(Object.isFrozen(SampleHandshake)).toBe(true);
   });
 
-  it('proxy methods reach the runtime invoke members', () => {
-    const proxy = new SampleServerProxy({});
-    expect(() => proxy.echo('x')).toThrow(/not implemented: ProxyBase._invoke/);
-    expect(() => proxy.notify()).toThrow(/not implemented: ProxyBase._invokeVoid/);
+  it('proxy methods reach the runtime invoke members', async () => {
+    const proxy = new SampleServerProxy({ client: { config: {} }, session: null });
+    // J07: invocations need a connected session; fire-and-forget failures are logged, not thrown.
+    await expect(proxy.echo('x')).rejects.toMatchObject({ name: 'NexusTransportError' });
+    expect(proxy.notify()).toBeUndefined();
     expect(() => proxy.names).toThrow(/not implemented: ProxyBase._collection/);
   });
 

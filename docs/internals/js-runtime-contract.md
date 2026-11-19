@@ -191,7 +191,7 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
 | Error | Raised when |
 |---|---|
 | `NexusError` | Base class |
-| `NexusTransportError` (`reason`) | Transport failure, or the session ended while an operation was pending |
+| `NexusTransportError` (`reason`) | Transport failure (for example, not connected). For an invocation pending when the session ends it is the `cause` of an `AbortError` (below) |
 | `NexusRemoteInvocationError` (`code`, `remoteType`, `remoteMessage`) | The remote method threw |
 | `NexusUnauthorizedError` | The server rejected the call as unauthorized |
 | `NexusBusyError` | A pipe, channel or large-message limit refused the operation |
@@ -200,6 +200,11 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
 Cancellation (D17) is not a NexNet error class: operations reject with `cancellationError(signal)`, which is
 `signal.reason` when set and otherwise a `DOMException` named `AbortError`. `isCancellationError(e)` is true for
 `AbortError` and `TimeoutError`.
+
+**Session end (amendment C-2).** An invocation still pending when the session ends (waiting for credit, streaming,
+or waiting for its result) completes as canceled, as in C# (`TaskCanceledException`) and protocol spec §4.5: it
+rejects with a `DOMException` named `AbortError` whose `cause` is a `NexusTransportError` carrying the disconnect
+`reason`. A call made while not connected still rejects with `NexusTransportError` directly.
 
 `ConnectionState`, `ConnectionResultState`, `DisconnectReason` (wire codes 20–38), `RemoteExceptionDetail`,
 `NexusCollectionState` and `DateTimeKind` are frozen objects with the C# values.

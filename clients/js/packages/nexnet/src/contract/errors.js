@@ -19,7 +19,9 @@ export class NexusError extends Error {
 }
 
 /**
- * The transport failed or the session ended while an operation was pending.
+ * The transport failed (for example the client is not connected). An invocation still pending when the session ends
+ * does not reject with this error directly: it rejects as canceled, with a `DOMException` named `AbortError` whose
+ * `cause` is a `NexusTransportError` carrying the disconnect `reason` (amendment C-2, protocol spec §4.5).
  */
 export class NexusTransportError extends NexusError {
   /**
@@ -71,7 +73,8 @@ export class NexusMessageTooLargeError extends NexusError {}
 
 /**
  * Returns the error a cancelled operation rejects with (D17). This is `signal.reason` when the signal has one,
- * otherwise a `DOMException` named `AbortError`.
+ * otherwise a `DOMException` named `AbortError`. Invocations pending when the session ends also reject with an
+ * `AbortError`, whose `cause` is the `NexusTransportError` with the disconnect reason (amendment C-2).
  *
  * @param {AbortSignal} [signal]
  * @returns {unknown}

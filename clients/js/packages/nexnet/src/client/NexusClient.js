@@ -1,6 +1,7 @@
 /**
  * The client (J05): connect, handshake, state machine, events, plaintext warning and disconnect.
- * Reconnection, pooling and full snapshots are J10; invocations J07; pipes and channels J08.
+ * Reconnection, pooling and full snapshots are J10; pipes and channels J08. Invocations (J07) attach to each session
+ * before it starts (`attachSessionLayers`).
  * @module
  */
 
@@ -11,6 +12,8 @@ import { webSocketTransport } from '../transport/WebSocketTransport.js';
 import { NexusSession } from '../session/NexusSession.js';
 import { resolveClientOptions } from '../session/options.js';
 import { MAX_VERSION_LENGTH } from '../session/protocol.js';
+import { attachInvocations } from '../invocation/InvocationManager.js';
+import { bindNexusClient } from './ClientNexusBase.js';
 
 /**
  * Result of {@link NexusClient#tryConnect}. Mirrors C# `ConnectionResult`.
@@ -124,6 +127,7 @@ export class NexusClient extends EventTarget {
     this.config = config;
     this.nexus = nexus;
     this._binding = binding;
+    bindNexusClient(nexus, this);
     const client = this;
     this.#handle = Object.freeze({
       client,
@@ -309,6 +313,7 @@ export class NexusClient extends EventTarget {
     }
 
     const session = new NexusSession({ transport, options, handshake: this._binding.handshake, isReconnecting });
+    this.#attachSessionLayers(session);
     this.#session = session;
     session.onStateChange = (state) => this.#setState(state);
     const disconnected = new Promise((resolve) => {
@@ -341,6 +346,15 @@ export class NexusClient extends EventTarget {
     const nexus = this.nexus;
     queueMicrotask(() => this.#callHook('onConnected', () => nexus.onConnected(isReconnecting)));
     return SUCCESS;
+  }
+
+  /**
+   * Attaches the per-session layers before the session starts, so frames that arrive in the same read as the
+   * ServerGreeting find their handlers. The invocation layer (J07) fails its pending calls when the session closes.
+   * @param {NexusSession} session
+   */
+  #attachSessionLayers(session) {
+    attachInvocations(session, { nexus: this.nexus, handshake: this._binding.handshake });
   }
 
   /**
