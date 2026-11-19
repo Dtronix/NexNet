@@ -242,8 +242,9 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        // The fault stops the server on its own: wait through Running and the transient Stopping state.
         var sw = Stopwatch.StartNew();
-        while (server.State == NexusServerState.Running && sw.Elapsed < TimeSpan.FromSeconds(5))
+        while (server.State != NexusServerState.Stopped && sw.Elapsed < TimeSpan.FromSeconds(5))
             await Task.Delay(10);
 
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
