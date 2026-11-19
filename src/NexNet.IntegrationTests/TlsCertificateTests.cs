@@ -4,6 +4,10 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Interop.InProc;
+using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Quic;
 using NexNet.Transports;
 #pragma warning disable VSTHRD200
@@ -11,22 +15,35 @@ using NexNet.Transports;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Client certificates, server certificate pinning and <see cref="NexNet.Invocation.ISessionContext.RemoteCertificate"/>
-/// over every TLS transport.
+/// Client certificates, server certificate trust (custom CA, host names, SPKI pinning) and
+/// <see cref="NexNet.Invocation.ISessionContext.RemoteCertificate"/> over every TLS transport, on the client matrix
+/// (P01d). The client under test comes from <see cref="Harness"/> with a <see cref="ClientSpec"/>; the server is the C#
+/// server of the test.
 /// </summary>
-internal class TlsCertificateTests : BaseTests
+/// <remarks>
+/// The client matrix has no QUIC transport, so the QUIC rows of each test keep running on the C# client as
+/// <c>Quic_*</c> companion tests until H16 adds them to the matrix. Browsers control none of these TLS settings: their
+/// rows are skipped with the capability they lack.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class TlsCertificateTests(LanguageHostPool hosts) : BaseTests
 {
     // Loaded once for the class; TUnit creates an instance per test.
     private static X509Certificate2 ServerCertificate = null!;
     private static X509Certificate2 ClientCertificate = null!;
     private static X509Certificate2 TestCa = null!;
     private static string ServerFingerprint = null!;
+    private static string ServerSpkiPin = null!;
+
+    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
+    protected LanguageHostPool Hosts { get; } = hosts;
 
     [Before(HookType.Class)]
     public static void LoadCertificates()
     {
         ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass");
         ServerFingerprint = ServerCertificate.GetCertHashString(HashAlgorithmName.SHA256);
+        ServerSpkiPin = Convert.ToBase64String(SHA256.HashData(ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo()));
         ClientCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "client.pfx"), "certPass");
         TestCa = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine("certs", "test-ca.pem")));
     }
@@ -62,19 +79,241 @@ internal class TlsCertificateTests : BaseTests
         await Assert.That(BuildChain(ServerCertificate, "1.3.6.1.5.5.7.3.1")).IsTrue().Because("server leaf must chain to the test CA");
         await Assert.That(BuildChain(ClientCertificate, "1.3.6.1.5.5.7.3.2")).IsTrue().Because("client leaf must chain to the test CA");
 
-        // Later Node, Java and browser pin tests read the SPKI pin from certs/README.md.
-        var pin = Convert.ToBase64String(SHA256.HashData(ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo()));
-        await Assert.That(File.ReadAllText(Path.Combine("certs", "README.md"))).Contains($"`{pin}`");
+        // The Node, Java and browser pin tests read the SPKI pin from certs/README.md.
+        await Assert.That(File.ReadAllText(Path.Combine("certs", "README.md"))).Contains($"`{ServerSpkiPin}`");
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task TrustedTestCa_AcceptsServerCertificate(Type type)
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.CustomCa)]
+    public async Task TrustedTestCa_AcceptsServerCertificate(ClientTarget target)
     {
         // Full validation: chain to the explicitly trusted test CA plus host name checks against the SAN
-        // (the IP SAN 127.0.0.1 for the HTTP transports, the DNS SAN localhost for TcpTls/QUIC). No callback.
-        var targetHost = type is Type.TcpTls ? "localhost" : null;
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), targetHost);
+        // (the IP SAN 127.0.0.1 for the HTTP transports, the DNS SAN localhost for TcpTls). No callback.
+        var spec = await StartTlsServerAsync(target, clientCertificate: false);
+        spec.CaPem = TestCaPem;
+        spec.TlsServerName = target.Transport == ClientTransport.TcpTls ? "localhost" : null;
+        await using var client = await CreateClientAsync(target, spec);
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls], Requires = ClientCapabilities.CustomCa)]
+    public async Task TrustedTestCa_RejectsWrongHostName(ClientTarget target)
+    {
+        var spec = await StartTlsServerAsync(target, clientCertificate: false);
+        spec.CaPem = TestCaPem;
+        spec.TlsServerName = "nexnet.invalid";
+        await using var client = await CreateClientAsync(target, spec);
+
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.ClientCertificate | ClientCapabilities.CustomCa)]
+    public async Task ClientCertificate_ReachesServerSession(ClientTarget target)
+    {
+        var serverSaw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var spec = await StartTlsServerAsync(target, clientCertificate: true, nexus => nexus.OnConnectedEvent = n =>
+        {
+            serverSaw.TrySetResult(n.Context.RemoteCertificate?.Thumbprint);
+            return ValueTask.CompletedTask;
+        });
+        spec.CaPem = TestCaPem;
+        PresentClientCertificate(spec);
+        await using var client = await CreateClientAsync(target, spec);
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await Assert.That(await serverSaw.Task.Timeout(T(1))).IsEqualTo(ClientCertificate.Thumbprint);
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.CustomCa)]
+    public async Task NoClientCertificate_ServerSessionHasNone(ClientTarget target)
+    {
+        var serverSaw = new TaskCompletionSource<X509Certificate2?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var spec = await StartTlsServerAsync(target, clientCertificate: false, nexus => nexus.OnConnectedEvent = n =>
+        {
+            serverSaw.TrySetResult(n.Context.RemoteCertificate);
+            return ValueTask.CompletedTask;
+        });
+        spec.CaPem = TestCaPem;
+        await using var client = await CreateClientAsync(target, spec);
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await Assert.That(await serverSaw.Task.Timeout(T(1))).IsNull();
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.RemoteCertificate | ClientCapabilities.CustomCa)]
+    public async Task ClientSession_SeesServerCertificate(ClientTarget target)
+    {
+        var spec = await StartTlsServerAsync(target, clientCertificate: false);
+        spec.CaPem = TestCaPem;
+        await using var client = await CreateClientAsync(target, spec);
+
+        // IClientUnderTest cannot read the client's remote certificate yet; only the C# client is checked.
+        if (client is not InProcClientDriver<ClientNexus, ClientNexus.ServerProxy> inProc)
+        {
+            Skip.Test("IClientUnderTest has no query for the client's remote certificate yet (P01d follow-up).");
+            return;
+        }
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await Assert.That(inProc.Nexus.Context.RemoteCertificate?.Thumbprint).IsEqualTo(ServerCertificate.Thumbprint);
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.Pinning | ClientCapabilities.ClientCertificate)]
+    public async Task PinnedFingerprint_AcceptsServerCertificate(ClientTarget target)
+    {
+        var spec = await StartTlsServerAsync(target, clientCertificate: true);
+        spec.PinSha256 = ServerSpkiPin;
+        PresentClientCertificate(spec);
+        await using var client = await CreateClientAsync(target, spec);
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.Pinning | ClientCapabilities.ClientCertificate)]
+    public async Task PinnedFingerprint_RejectsWrongCertificate(ClientTarget target)
+    {
+        var sessionCreated = false;
+        var spec = await StartTlsServerAsync(target, clientCertificate: true, nexus => nexus.OnConnectedEvent = _ =>
+        {
+            sessionCreated = true;
+            return ValueTask.CompletedTask;
+        });
+        // The pin alone decides trust: the test CA (trusted by the spec) does not rescue a wrong pin.
+        spec.PinSha256 = Convert.ToBase64String(SHA256.HashData("not the server"u8));
+        PresentClientCertificate(spec);
+        await using var client = await CreateClientAsync(target, spec);
+
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
+        await Assert.That(sessionCreated).IsFalse();
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    // A client that cannot choose what it trusts (a browser: its launcher decides) cannot run this.
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.CustomCa)]
+    public async Task UntrustedServerCertificate_RejectedWithoutCallback(ClientTarget target)
+    {
+        // server.pfx is issued by the test CA, which the system trust store does not hold, so the default chain
+        // validation must reject it.
+        var spec = await StartTlsServerAsync(target, clientCertificate: false);
+        spec.CaPem = null;
+        await using var client = await CreateClientAsync(target, spec);
+
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public async Task HostHeader_IncludesNonDefaultPort(ClientTarget target)
+    {
+        var type = AuthTlsMatrix.ToType(target.Transport);
+        var serverConfig = CreateServerConfig(type);
+
+        var hostSeen = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(serverConfig, null, null, app => app.Use((context, next) =>
+        {
+            hostSeen.TrySetResult(context.Request.Host.Value ?? "");
+            return next(context);
+        }));
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(
+            target, AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger));
+
+        await client.ConnectAsync().Timeout(T(2));
+
+        await Assert.That(await hostSeen.Task.Timeout(T(1))).IsEqualTo($"127.0.0.1:{CurrentTcpPort}");
+        await AuthTlsMatrix.EndAsync(client);
+    }
+
+    /// <summary>Creates (not connects) the client of <paramref name="target"/> of the basic test nexus.</summary>
+    private static Task<IClientUnderTest> CreateClientAsync(ClientTarget target, ClientSpec spec)
+        => Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+
+    private static string TestCaPem => File.ReadAllText(Path.Combine("certs", "test-ca.pem"));
+
+    /// <summary>The client of <paramref name="spec"/> presents certs/client.pem.</summary>
+    private static void PresentClientCertificate(ClientSpec spec)
+    {
+        spec.ClientCertificatePem = File.ReadAllText(Path.Combine("certs", "client.pem"));
+        spec.ClientKeyPem = File.ReadAllText(Path.Combine("certs", "client.key"));
+    }
+
+    /// <summary>
+    /// Starts a <see cref="ServerNexus"/> server for <paramref name="target"/>'s TLS transport that presents server.pfx
+    /// and, with <paramref name="clientCertificate"/>, asks for (TcpTls: requires) a client certificate and accepts any.
+    /// Returns the spec of a client of that server that trusts nothing yet (no CA, no pin) and presents no certificate.
+    /// </summary>
+    private async Task<ClientSpec> StartTlsServerAsync(ClientTarget target, bool clientCertificate, Action<ServerNexus>? nexusCreated = null)
+    {
+        // The HTTPS listener is set up here (with client certificates), so the ASP.NET servers start as plain HTTP ones.
+        var type = target.Transport switch
+        {
+            ClientTransport.TcpTls => Type.TcpTls,
+            ClientTransport.HttpSocketTls => Type.HttpSocket,
+            ClientTransport.WebSocketTls => Type.WebSocket,
+            _ => throw new ArgumentOutOfRangeException(nameof(target), target.Transport, "Not a TLS transport."),
+        };
+        var serverConfig = CreateServerConfig(type);
+        switch (serverConfig)
+        {
+            case AspServerConfig:
+                AspListenOptions = listen => listen.UseHttps(new HttpsConnectionAdapterOptions
+                {
+                    ServerCertificate = ServerCertificate,
+                    ClientCertificateMode = ClientCertificateMode.AllowCertificate,
+                    ClientCertificateValidation = (_, _, _) => true,
+                });
+                break;
+
+            case TcpTlsServerConfig tlsServer:
+                tlsServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate;
+                tlsServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+                break;
+        }
+
+        var server = CreateServer(serverConfig, nexusCreated);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var address = CreateClientConfig(type) switch
+        {
+            HttpClientConfig http => new UriBuilder(http.Url) { Scheme = http.Url.Scheme == "ws" ? "wss" : "https" }.Uri.ToString(),
+            var other => AuthTlsMatrix.Address(other),
+        };
+        return new ClientSpec { Transport = target.Transport, Address = address, Logger = Logger };
+    }
+
+    // --- QUIC: the C# client only (the client matrix has no QUIC transport yet, H16) ---
+
+    [Test]
+    [Transports(Type.Quic)]
+    public async Task Quic_TrustedTestCa_AcceptsServerCertificate(Type type)
+    {
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, null, null, TrustTestCa(), "localhost");
 
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
@@ -85,12 +324,11 @@ internal class TlsCertificateTests : BaseTests
         await WaitForState(client, ConnectionState.Connected);
     }
 
-    // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
     [Test]
-    [Transports(Type.TcpTls, Type.Quic)]
-    public async Task TrustedTestCa_RejectsWrongHostName(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_TrustedTestCa_RejectsWrongHostName(Type type)
     {
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), "nexnet.invalid");
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, null, null, TrustTestCa(), "nexnet.invalid");
 
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
@@ -102,10 +340,10 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task ClientCertificate_ReachesServerSession(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_ClientCertificate_ReachesServerSession(Type type)
     {
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, AcceptAny);
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, ClientCertificate, AcceptAny);
 
         var serverSaw = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.OnConnectedEvent = n =>
@@ -122,10 +360,10 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task NoClientCertificate_ServerSessionHasNone(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_NoClientCertificate_ServerSessionHasNone(Type type)
     {
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, AcceptAny);
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, null, AcceptAny);
 
         var serverSaw = new TaskCompletionSource<X509Certificate2?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.OnConnectedEvent = n =>
@@ -142,10 +380,10 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task ClientSession_SeesServerCertificate(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_ClientSession_SeesServerCertificate(Type type)
     {
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, AcceptAny);
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, null, AcceptAny);
 
         var server = CreateServer(serverConfig, null);
         var (client, clientNexus) = CreateClient(clientConfig);
@@ -157,10 +395,10 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task PinnedFingerprint_AcceptsServerCertificate(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_PinnedFingerprint_AcceptsServerCertificate(Type type)
     {
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, Pin(ServerFingerprint));
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, ClientCertificate, Pin(ServerFingerprint));
 
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
@@ -172,11 +410,11 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task PinnedFingerprint_RejectsWrongCertificate(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_PinnedFingerprint_RejectsWrongCertificate(Type type)
     {
         var wrongPin = Convert.ToHexString(SHA256.HashData("not the server"u8));
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, Pin(wrongPin));
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, ClientCertificate, Pin(wrongPin));
 
         var sessionCreated = false;
         var server = CreateServer(serverConfig, nexus => nexus.OnConnectedEvent = _ =>
@@ -194,12 +432,12 @@ internal class TlsCertificateTests : BaseTests
     }
 
     [Test]
-    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
-    public async Task UntrustedServerCertificate_RejectedWithoutCallback(Type type)
+    [Transports(Type.Quic)]
+    public async Task Quic_UntrustedServerCertificate_RejectedWithoutCallback(Type type)
     {
         // server.pfx is issued by the test CA, which the system trust store does not hold, so the default chain
         // validation must reject it.
-        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null);
+        var (serverConfig, clientConfig) = CreateQuicTlsConfigs(type, null, null);
 
         var server = CreateServer(serverConfig, null);
         var (client, _) = CreateClient(clientConfig);
@@ -208,27 +446,6 @@ internal class TlsCertificateTests : BaseTests
 
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(2)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
-    }
-
-    [Test]
-    [Transports(Type.WebSocket, Type.HttpSocket)]
-    public async Task HostHeader_IncludesNonDefaultPort(Type type)
-    {
-        var serverConfig = CreateServerConfig(type);
-        var clientConfig = CreateClientConfig(type);
-
-        var hostSeen = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, null, null, app => app.Use((context, next) =>
-        {
-            hostSeen.TrySetResult(context.Request.Host.Value ?? "");
-            return next(context);
-        }));
-        var (client, _) = CreateClient(clientConfig);
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(2));
-
-        await Assert.That(await hostSeen.Task.Timeout(T(1))).IsEqualTo($"127.0.0.1:{CurrentTcpPort}");
     }
 
     private X509ChainPolicy TrustTestCa()
@@ -258,65 +475,34 @@ internal class TlsCertificateTests : BaseTests
         && string.Equals(cert.GetCertHashString(HashAlgorithmName.SHA256), sha256Hex, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Creates server and client configs for <paramref name="type"/> where the server presents server.pfx and
-    /// accepts any client certificate, and the client presents <paramref name="clientCertificate"/> and judges the
-    /// server's certificate with <paramref name="validation"/> (null for the default chain validation).
-    /// <paramref name="chainPolicy"/> replaces the client's chain policy (e.g. to trust the test CA) and
-    /// <paramref name="targetHost"/> is the host name the TcpTls/QUIC client validates (QUIC defaults to localhost);
-    /// the HTTP transports always validate against the URL host, 127.0.0.1.
+    /// Creates QUIC server and client configs where the server presents server.pfx and accepts any client
+    /// certificate, and the client presents <paramref name="clientCertificate"/> and judges the server's certificate
+    /// with <paramref name="validation"/> (null for the default chain validation). <paramref name="chainPolicy"/>
+    /// replaces the client's chain policy (e.g. to trust the test CA) and <paramref name="targetHost"/> is the host name
+    /// the client validates (default localhost).
     /// </summary>
-    private (ServerConfig server, ClientConfig client) CreateTlsConfigs(
+    private (ServerConfig server, ClientConfig client) CreateQuicTlsConfigs(
         Type type,
         X509Certificate2? clientCertificate,
         RemoteCertificateValidationCallback? validation,
         X509ChainPolicy? chainPolicy = null,
         string? targetHost = null)
     {
-        var serverConfig = CreateServerConfig(type);
-        var clientConfig = CreateClientConfig(type);
+        var quicServer = (QuicServerConfig)CreateServerConfig(type);
+        var quicClient = (QuicClientConfig)CreateClientConfig(type);
 
-        var clientOptions = new SslClientAuthenticationOptions
+        quicServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate != null;
+        quicServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        quicClient.SslClientAuthenticationOptions = new SslClientAuthenticationOptions
         {
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             RemoteCertificateValidationCallback = validation,
             ClientCertificates = clientCertificate == null ? null : new X509CertificateCollection { clientCertificate },
             CertificateChainPolicy = chainPolicy,
+            TargetHost = targetHost ?? "localhost",
+            EnabledSslProtocols = SslProtocols.Tls13,
         };
 
-        switch (serverConfig, clientConfig)
-        {
-            case (AspServerConfig, HttpClientConfig httpClient):
-                AspListenOptions = listen => listen.UseHttps(new HttpsConnectionAdapterOptions
-                {
-                    ServerCertificate = ServerCertificate,
-                    ClientCertificateMode = ClientCertificateMode.AllowCertificate,
-                    ClientCertificateValidation = (_, _, _) => true,
-                });
-                var builder = new UriBuilder(httpClient.Url) { Scheme = httpClient.Url.Scheme == "ws" ? "wss" : "https" };
-                httpClient.Url = builder.Uri;
-                httpClient.SslClientAuthenticationOptions = clientOptions;
-                break;
-
-            case (TcpTlsServerConfig tlsServer, TcpTlsClientConfig tlsClient):
-                tlsServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate != null;
-                tlsServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-                clientOptions.TargetHost = targetHost;
-                clientOptions.EnabledSslProtocols = SslProtocols.Tls13;
-                tlsClient.SslClientAuthenticationOptions = clientOptions;
-                break;
-
-            case (QuicServerConfig quicServer, QuicClientConfig quicClient):
-                quicServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate != null;
-                quicServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-                clientOptions.TargetHost = targetHost ?? "localhost";
-                clientOptions.EnabledSslProtocols = SslProtocols.Tls13;
-                quicClient.SslClientAuthenticationOptions = clientOptions;
-                break;
-
-            default:
-                throw new ArgumentOutOfRangeException(nameof(type), type, null);
-        }
-
-        return (serverConfig, clientConfig);
+        return (quicServer, quicClient);
     }
 }
