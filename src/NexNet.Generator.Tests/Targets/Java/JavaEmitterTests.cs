@@ -77,10 +77,11 @@ public class JavaEmitterTests
     }
 
     [Test]
-    public async Task TestScaffoldingModeEmitsNothing()
+    public async Task TestScaffoldingModeEmitsOnlyTheScaffoldingPackage()
     {
         var files = JavaTarget.Instance.Emit(Features.Ir!, JavaTestRunner.TargetOptionsFor("com.acme"), EmitMode.TestScaffolding);
-        await Assert.That(files).IsEmpty();
+        await Assert.That(files).IsNotEmpty();
+        await Assert.That(files.All(f => f.Path.StartsWith("com/acme/scaffolding/", StringComparison.Ordinal))).IsTrue();
     }
 
     // ------------------------------------------------------------------ types
