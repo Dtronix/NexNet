@@ -82,11 +82,12 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         var sNexus = server.NexusCreatedQueue.First();
         int count = 0;
         var largeData = new byte[1024 * 32];
-        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
+        // 1000 round trips, each step bounded: under a loaded parallel run one step can stall for over a second, so
+        // the bounds catch a hang rather than a slow step.
         const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            var result = await pipe.Input.ReadAtLeastAsync(largeData.Length).Timeout(1);
+            var result = await pipe.Input.ReadAtLeastAsync(largeData.Length).Timeout(5);
             pipe.Input.AdvanceTo(result.Buffer.End);
             await pipe.CompleteAsync();
 
@@ -97,13 +98,13 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         for (int i = 0; i < iterations; i++)
         {
             await using var pipe = sNexus.Context.CreatePipe();
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-            await pipe.ReadyTask.Timeout(1);
-            await pipe.Output.WriteAsync(largeData).Timeout(1);
-            await pipe.CompleteTask.Timeout(1);
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(5);
+            await pipe.ReadyTask.Timeout(5);
+            await pipe.Output.WriteAsync(largeData).Timeout(5);
+            await pipe.CompleteTask.Timeout(5);
         }
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(10);
     }
 
     [Test]

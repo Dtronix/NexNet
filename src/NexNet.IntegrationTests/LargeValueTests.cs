@@ -118,7 +118,7 @@ internal class LargeValueTests : BaseTests
         await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5));
 
         // The session is fine; once the first call ends its reservation is released.
-        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1)).Count().IsEqualTo(10);
+        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(5)).Count().IsEqualTo(10);
         hold.SetResult();
         await Assert.That(await first.Timeout(5)).Count().IsEqualTo(900 * 1024);
         await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5)).Count().IsEqualTo(900 * 1024);

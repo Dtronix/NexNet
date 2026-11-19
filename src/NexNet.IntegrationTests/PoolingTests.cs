@@ -4,23 +4,31 @@ using NexNet.Pools;
 
 namespace NexNet.IntegrationTests;
 
+// These tests assert exact counts and reuse on process-wide static pools. They use element types private to this class
+// (the library rents ListPool<T> for its own element types, such as channel items) and never run alongside each other.
+[NotInParallel("static-state")]
 internal class PoolingTests
 {
+    private readonly record struct IntItem(int Value);
+    private readonly record struct StringItem(string Value);
+    private readonly record struct DoubleItem(double Value);
+    private readonly record struct ByteItem(byte Value);
+
     [Test]
     public async Task ListPool_Return_RetainsCapacity()
     {
         // Arrange: Rent a list and add items to grow its capacity
-        var list = ListPool<int>.Rent();
+        var list = ListPool<IntItem>.Rent();
         for (int i = 0; i < 100; i++)
         {
-            list.Add(i);
+            list.Add(new IntItem(i));
         }
         var originalCapacity = list.Capacity;
         await Assert.That(originalCapacity).IsGreaterThanOrEqualTo(100);
 
         // Act: Return to pool and rent again
-        ListPool<int>.Return(list);
-        var reusedList = ListPool<int>.Rent();
+        ListPool<IntItem>.Return(list);
+        var reusedList = ListPool<IntItem>.Rent();
 
         // Assert: Should be same instance with retained capacity (not reset to 0)
         await Assert.That(reusedList).IsSameReferenceAs(list);
@@ -32,86 +40,86 @@ internal class PoolingTests
     public async Task ListPool_Return_TrimsOversizedLists()
     {
         // Arrange: Create a list with very large capacity
-        var list = ListPool<int>.Rent();
+        var list = ListPool<IntItem>.Rent();
         for (int i = 0; i < 2000; i++)
         {
-            list.Add(i);
+            list.Add(new IntItem(i));
         }
-        await Assert.That(list.Capacity).IsGreaterThan(ListPool<int>.MaxRetainedCapacity);
+        await Assert.That(list.Capacity).IsGreaterThan(ListPool<IntItem>.MaxRetainedCapacity);
 
         // Act: Return to pool and rent again
-        ListPool<int>.Return(list);
-        var reusedList = ListPool<int>.Rent();
+        ListPool<IntItem>.Return(list);
+        var reusedList = ListPool<IntItem>.Rent();
 
         // Assert: Should be trimmed to DefaultCapacity
         await Assert.That(reusedList).IsSameReferenceAs(list);
-        await Assert.That(reusedList.Capacity).IsEqualTo(ListPool<int>.DefaultCapacity);
+        await Assert.That(reusedList.Capacity).IsEqualTo(ListPool<IntItem>.DefaultCapacity);
     }
 
     [Test]
     public async Task ListPool_Return_NullListDoesNotThrow()
     {
         // Act & Assert: Should not throw for null
-        await Assert.That(() => ListPool<int>.Return(null!)).ThrowsNothing();
+        await Assert.That(() => ListPool<IntItem>.Return(null!)).ThrowsNothing();
     }
 
     [Test]
     public async Task ListPool_PoolCount_TracksPoolSize()
     {
         // Clear the pool first
-        ListPool<int>.Clear();
-        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(0);
+        ListPool<IntItem>.Clear();
+        await Assert.That(ListPool<IntItem>.PoolCount).IsEqualTo(0);
 
         // Rent and return some lists
-        var list1 = ListPool<int>.Rent();
-        var list2 = ListPool<int>.Rent();
+        var list1 = ListPool<IntItem>.Rent();
+        var list2 = ListPool<IntItem>.Rent();
 
-        ListPool<int>.Return(list1);
-        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(1);
+        ListPool<IntItem>.Return(list1);
+        await Assert.That(ListPool<IntItem>.PoolCount).IsEqualTo(1);
 
-        ListPool<int>.Return(list2);
-        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(2);
+        ListPool<IntItem>.Return(list2);
+        await Assert.That(ListPool<IntItem>.PoolCount).IsEqualTo(2);
 
         // Rent one back
-        var rented = ListPool<int>.Rent();
-        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(1);
+        var rented = ListPool<IntItem>.Rent();
+        await Assert.That(ListPool<IntItem>.PoolCount).IsEqualTo(1);
     }
 
     [Test]
     public async Task ListPool_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Clear the pool
-        ListPool<string>.Clear();
+        ListPool<StringItem>.Clear();
 
         // Return more items than the max pool size
-        var lists = new List<List<string>>();
-        for (int i = 0; i < ListPool<string>.MaxPoolSize + 50; i++)
+        var lists = new List<List<StringItem>>();
+        for (int i = 0; i < ListPool<StringItem>.MaxPoolSize + 50; i++)
         {
-            lists.Add(new List<string>());
+            lists.Add(new List<StringItem>());
         }
 
         foreach (var list in lists)
         {
-            ListPool<string>.Return(list);
+            ListPool<StringItem>.Return(list);
         }
 
         // Pool count should not exceed MaxPoolSize
-        await Assert.That(ListPool<string>.PoolCount).IsLessThanOrEqualTo(ListPool<string>.MaxPoolSize);
+        await Assert.That(ListPool<StringItem>.PoolCount).IsLessThanOrEqualTo(ListPool<StringItem>.MaxPoolSize);
     }
 
     [Test]
     public async Task ListPool_Clear_ResetsPoolCount()
     {
         // Add some items
-        var list = ListPool<double>.Rent();
-        ListPool<double>.Return(list);
-        await Assert.That(ListPool<double>.PoolCount).IsGreaterThan(0);
+        var list = ListPool<DoubleItem>.Rent();
+        ListPool<DoubleItem>.Return(list);
+        await Assert.That(ListPool<DoubleItem>.PoolCount).IsGreaterThan(0);
 
         // Clear
-        ListPool<double>.Clear();
+        ListPool<DoubleItem>.Clear();
 
         // Pool count should be 0
-        await Assert.That(ListPool<double>.PoolCount).IsEqualTo(0);
+        await Assert.That(ListPool<DoubleItem>.PoolCount).IsEqualTo(0);
     }
 
     private class TestCacheableObject
@@ -256,7 +264,7 @@ internal class PoolingTests
     [Test]
     public async Task ListPool_ConcurrentRentReturn_MaintainsIntegrity()
     {
-        ListPool<int>.Clear();
+        ListPool<IntItem>.Clear();
         var tasks = new List<Task>();
 
         for (int i = 0; i < 100; i++)
@@ -265,9 +273,9 @@ internal class PoolingTests
             {
                 for (int j = 0; j < 50; j++)
                 {
-                    var list = ListPool<int>.Rent();
-                    list.Add(j);
-                    ListPool<int>.Return(list);
+                    var list = ListPool<IntItem>.Rent();
+                    list.Add(new IntItem(j));
+                    ListPool<IntItem>.Return(list);
                 }
             }));
         }
@@ -275,7 +283,7 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should respect limits even under concurrent access
-        await Assert.That(ListPool<int>.PoolCount).IsLessThanOrEqualTo(ListPool<int>.MaxPoolSize);
+        await Assert.That(ListPool<IntItem>.PoolCount).IsLessThanOrEqualTo(ListPool<IntItem>.MaxPoolSize);
     }
 
     [Test]
@@ -307,20 +315,20 @@ internal class PoolingTests
     public async Task ListPool_CapacityRetention_PerformanceImprovement()
     {
         // This test demonstrates that capacity is retained for reuse
-        ListPool<byte>.Clear();
+        ListPool<ByteItem>.Clear();
 
         // First use: grow the list
-        var list1 = ListPool<byte>.Rent();
+        var list1 = ListPool<ByteItem>.Rent();
         for (int i = 0; i < 500; i++)
         {
-            list1.Add((byte)(i % 256));
+            list1.Add(new ByteItem((byte)(i % 256)));
         }
         var capacityAfterGrow = list1.Capacity;
 
-        ListPool<byte>.Return(list1);
+        ListPool<ByteItem>.Return(list1);
 
         // Second use: should have retained capacity
-        var list2 = ListPool<byte>.Rent();
+        var list2 = ListPool<ByteItem>.Rent();
         await Assert.That(list2).IsSameReferenceAs(list1);
         await Assert.That(list2.Capacity).IsEqualTo(capacityAfterGrow);
         await Assert.That(list2.Count).IsEqualTo(0); // But content is cleared
@@ -328,7 +336,7 @@ internal class PoolingTests
         // Adding items shouldn't require reallocation up to the retained capacity
         for (int i = 0; i < capacityAfterGrow; i++)
         {
-            list2.Add((byte)(i % 256));
+            list2.Add(new ByteItem((byte)(i % 256)));
             await Assert.That(list2.Capacity).IsEqualTo(capacityAfterGrow).Because("Capacity should not change - no reallocation needed");
         }
     }

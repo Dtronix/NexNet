@@ -4,6 +4,9 @@ using NexNet.Internals.Threading;
 
 namespace NexNet.IntegrationTests;
 
+// Every test rents from and returns to the same process-wide pool, and several assert which instance comes back or that a
+// returned instance stays returned; they never run alongside each other.
+[NotInParallel("static-state")]
 internal class PooledResettableValueTaskCompletionSourceTests
 {
     [Test]
