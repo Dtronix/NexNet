@@ -162,12 +162,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.Authentication, e);
         }
 
-        // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
-        // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
-        var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var disconnectedTaskCompletionSource = new TaskCompletionSource<DisconnectReason>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = disconnectedTaskCompletionSource.Task.ContinueWith(ConnectionClosed, cancellationToken);
-        _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
         ITransport transport;
 
         try
@@ -185,6 +179,15 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         {
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.SocketError, e);
         }
+
+        // The disconnected task of this attempt is published only once the transport is connected: from here on the
+        // session completes it. A failed transport connect leaves DisconnectedTask on the previous, completed session
+        // (or Task.CompletedTask) instead of on a task nothing would complete.
+        // These TCSs need to run continuations asynchronously to avoid deadlocks on the receiving end.
+        var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnectedTaskCompletionSource = new TaskCompletionSource<DisconnectReason>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = disconnectedTaskCompletionSource.Task.ContinueWith(ConnectionClosed, cancellationToken);
+        _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
