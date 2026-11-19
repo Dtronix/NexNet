@@ -36,7 +36,8 @@ import org.junit.jupiter.api.TestFactory;
  * by the Gradle build.
  */
 class GoldenVectorTests {
-    static final List<String> FILES = Arrays.asList(
+    /** The files every format-v1 directory has; any other {@code *.jsonl} (except schemas) is replayed too. */
+    static final List<String> REQUIRED_FILES = Arrays.asList(
         "primitives", "containers", "ext78", "objects", "unions", "messages", "frames", "reject");
 
     private static final Set<String> FIELDS = new HashSet<>(Arrays.asList(
@@ -116,10 +117,24 @@ class GoldenVectorTests {
         return schemas;
     }
 
+    /** Every vector file of the directory, sorted, without {@code schemas.jsonl}. */
+    static List<String> files() {
+        List<String> files = new ArrayList<>();
+        try (Stream<Path> paths = Files.list(DIRECTORY)) {
+            paths.map(p -> p.getFileName().toString())
+                .filter(n -> n.endsWith(".jsonl") && !n.equals("schemas.jsonl"))
+                .forEach(n -> files.add(n.substring(0, n.length() - ".jsonl".length())));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        files.sort(null);
+        return files;
+    }
+
     @SuppressWarnings("unchecked")
     static List<Vector> load() {
         List<Vector> vectors = new ArrayList<>();
-        for (String file : FILES) {
+        for (String file : files()) {
             for (String line : lines(file + ".jsonl")) {
                 vectors.add(new Vector(file, (Map<String, Object>) Json.parse(line)));
             }
@@ -139,7 +154,8 @@ class GoldenVectorTests {
         for (Vector v : vectors) {
             assertTrue(ids.add(v.id), "duplicate id " + v.id);
         }
-        for (String file : FILES) {
+        assertTrue(files().containsAll(REQUIRED_FILES), "files " + files());
+        for (String file : files()) {
             assertTrue(vectors.stream().anyMatch(v -> v.file.equals(file)), file + ".jsonl has vectors");
         }
         long rejects = vectors.stream().filter(v -> v.mode.equals("reject")).count();
