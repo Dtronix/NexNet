@@ -373,6 +373,104 @@ describe('disconnect (§5.6)', () => {
   });
 });
 
+describe('stuck transport write (J20)', () => {
+  /**
+   * Connects over a transport whose writes are held: the preamble and greeting are released, every later write never
+   * resolves.
+   * @param {Partial<import('../../src/contract/config.js').ClientConfig>} config
+   */
+  async function stuck(config) {
+    const h = harness({ config, transport: { holdWrites: true } });
+    void h.client.tryConnect();
+    await tick();
+    h.transport.releaseWrites();
+    h.transport.serverSend(serverHello());
+    await tick();
+    expect(h.client.state).toBe(ConnectionState.Connected);
+    return h;
+  }
+
+  /** @param {ReturnType<typeof createHarness>} h */
+  function closedReason(h) {
+    return h.nexus.calls.find(([name]) => name === 'disconnected')?.[1];
+  }
+
+  it('a graceful close behind a stuck write ends once that write has run for progressTimeout', async () => {
+    const h = await stuck({ pingInterval: 60_000, progressTimeout: 300, disconnectDelay: 50 });
+    void h.client._session?.send(encodeHeaderOnly(MessageType.Ping));
+    await tick();
+    h.clock.advance(100); // the write has been stuck for 100 ms
+    const done = h.client.disconnect();
+    await tick();
+    h.clock.advance(199);
+    await tick();
+    expect(h.transport.closed).toBe(false);
+    expect(h.client.state).toBe(ConnectionState.Disconnecting);
+    h.clock.advance(1);
+    await done;
+    expect(h.transport.closed).toBe(true);
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+    expect(closedReason(h)).toBe(DisconnectReason.Graceful);
+  });
+
+  it('a graceful close whose disconnect byte write never resolves ends after progressTimeout', async () => {
+    const h = await stuck({ pingInterval: 60_000, progressTimeout: 300, disconnectDelay: 50 });
+    const done = h.client.disconnect();
+    await tick();
+    expect(afterHello(h)).toEqual([DisconnectReason.Graceful]); // handed to the transport, never acknowledged
+    h.clock.advance(299);
+    await tick();
+    expect(h.transport.closed).toBe(false);
+    h.clock.advance(1);
+    await done;
+    expect(h.transport.closed).toBe(true);
+    expect(closedReason(h)).toBe(DisconnectReason.Graceful);
+  });
+
+  it('the close wait never exceeds the 5 s disconnect write timeout', async () => {
+    const h = await stuck({ pingInterval: 60_000, timeout: 300_000, progressTimeout: 600_000 });
+    const done = h.client.disconnect();
+    await tick();
+    h.clock.advance(4_999);
+    await tick();
+    expect(h.transport.closed).toBe(false);
+    h.clock.advance(1);
+    await done;
+    expect(closedReason(h)).toBe(DisconnectReason.Graceful);
+  });
+
+  it('an idle timeout behind a stuck ping write ends within progressTimeout of the write start, as Timeout', async () => {
+    const h = await stuck({ pingInterval: 100, timeout: 250, progressTimeout: 1_000, disconnectDelay: 50 });
+    h.clock.advance(100); // first ping: its write never resolves
+    await tick();
+    h.clock.advance(200); // tick at 300: nothing received for 300 ms > timeout
+    await tick();
+    expect(h.client.state).toBe(ConnectionState.Disconnecting);
+    h.clock.advance(799); // 1,099: the ping write has run 999 ms
+    await tick();
+    expect(h.transport.closed).toBe(false);
+    h.clock.advance(1);
+    await h.client.disconnected;
+    expect(h.transport.closed).toBe(true);
+    expect(closedReason(h)).toBe(DisconnectReason.Timeout);
+  });
+
+  it('a write stall closes at once, without waiting for a disconnect byte it can never write, as Stalled', async () => {
+    const h = await stuck({ pingInterval: 100, timeout: 60_000, progressTimeout: 300, disconnectDelay: 50 });
+    h.clock.advance(100); // first ping: its write never resolves
+    await tick();
+    for (let i = 0; i < 4; i++) {
+      h.transport.serverSend(Uint8Array.of(MessageType.Ping));
+      h.clock.advance(100);
+      await tick();
+    }
+    // The tick at 500 saw the write running for 400 ms > progressTimeout; the clock does not move again.
+    await h.client.disconnected;
+    expect(h.transport.closed).toBe(true);
+    expect(closedReason(h)).toBe(DisconnectReason.Stalled);
+  });
+});
+
 describe('write path', () => {
   it('frames queued in one tick go out in one transport write', async () => {
     const h = harness();
