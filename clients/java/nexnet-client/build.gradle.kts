@@ -2,6 +2,7 @@
 
 plugins {
     id("nexnet.java-library")
+    `maven-publish`
 }
 
 description = "NexNet client runtime for Java 11+ and Android API 24+"
@@ -12,9 +13,27 @@ java {
 }
 
 dependencies {
-    // Nullness annotations only; not needed at run time.
-    compileOnly(libs.jspecify)
+    // Nullness annotations: not needed at run time, but part of the API. Generated code imports them, so consumers
+    // must get them on their compile classpath without declaring JSpecify themselves (K28).
+    compileOnlyApi(libs.jspecify)
     testCompileOnly(libs.jspecify)
+}
+
+// The Maven publication: JSpecify is compile scope in the POM and only in the API variant of the Gradle module metadata.
+val consumerTestRepo = layout.buildDirectory.dir("consumer-test/repo")
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven {
+            name = "consumerTest"
+            url = uri(consumerTestRepo)
+        }
+    }
 }
 
 // The runtime version constant (NexusRuntime.VERSION), generated from the lockstep NexNet version.
