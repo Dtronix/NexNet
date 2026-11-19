@@ -52,4 +52,35 @@ internal class NexusCollectionDisableFreesPipeTests : BaseTests
         await Assert.That(client.Session!.PipeManager.OpenPipes).IsZero();
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
+
+    /// <summary>
+    /// S25: the server also has a single pipe slot. The client frees its pipe once the server confirmed the close,
+    /// which can be before the server's collection handler released the server's side; the next enable must not be
+    /// refused for that.
+    /// </summary>
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
+    public async Task EnableDisableCycles_WithOnePipeSlotOnBothSides_AllSucceed(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.MaxPipes = 1;
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.MaxPipes = 1;
+        var (client, _) = CreateClient(clientConfig);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+
+        var list = client.Proxy.IntListBi;
+
+        for (var i = 0; i < Cycles; i++)
+        {
+            await Assert.That(await list.EnableAsync().Timeout(5)).IsTrue();
+            await list.DisableAsync().Timeout(5);
+        }
+
+        await Assert.That(client.Session!.PipeManager.OpenPipes).IsZero();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+    }
 }
