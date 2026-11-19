@@ -33,12 +33,13 @@ A collection takes time proportional to the number of sessions and allocates a f
 
 ### Tags
 
-Every instrument carries two tags. Their values are fixed by the program, so the number of time series does not grow with connections.
+Every instrument carries the first two tags below, and a server's instruments also carry `nexnet.endpoint`. Their values are fixed by the program, so the number of time series does not grow with connections.
 
 | Tag | Values |
 |-----|--------|
 | `nexnet.role` | `server`, `client` |
 | `nexnet.transport` | `tcp`, `tls`, `uds`, `websocket`, `httpsocket`, `quic`; `custom` for a configuration type that does not set `ConfigBase.TransportName` |
+| `nexnet.endpoint` | Server only: the name of the endpoint that accepted the session. The primary endpoint is named after its transport (for example `tcp`); added endpoints use the name given to `AddListener`, `AddExternalEndpoint` or the NexNet.Asp `MapNexus*` methods. See [Transports: Multiple Endpoints](transports.md#multiple-endpoints). |
 
 Some instruments carry one more tag, named in their row below: `nexnet.direction`, a reason, or `nexnet.invocation.pool` (`normal` for plain methods, `separate` for `[NexusMethod(SeparatePool = true)]` methods).
 
@@ -89,19 +90,21 @@ See [Limits and Flow Control](limits-and-flow-control.md) for what these quantit
 
 - `SessionContext.GetSnapshot()` inside a nexus method, for the calling session.
 - `NexusClient.GetSnapshot()`, or null when the client is not connected.
-- `NexusServer.GetSnapshot()` returns a `NexusServerSnapshot` with a snapshot of every authenticated session, the pending handshake count and the rate limiter statistics.
+- `NexusServer.GetSnapshot()` returns a `NexusServerSnapshot` with a snapshot of every authenticated session, the pending handshake count, the rate limiter statistics, and `Endpoints`: one `NexusEndpointSnapshot` per endpoint, the primary one first.
 
 A snapshot holds:
 
 | Part | Contents |
 |------|----------|
-| Session | ID, role, transport, state, time connected, time since data was last received and sent, whether an outbound flush is in progress and for how long. |
+| Session | ID, role, transport, endpoint (`Endpoint`: on a server session, the name of the endpoint that accepted it; null on a client), state, time connected, time since data was last received and sent, whether an outbound flush is in progress and for how long. |
 | Budget | Limit and reserved bytes. |
 | Invocations | Queued, executing, credits the peer has left here, credits this side may still spend, calls waiting for credit, calls waiting for a result, invocations dropped for lack of credit, how long the oldest queued invocation has waited for an execution slot (`OldestQueuedWait`, measured on `ConfigBase.Time`; null when none is queued). `Queued`, `Executing`, `MaxExecuting` and `OldestQueuedWait` cover the normal pool; `SeparatePoolQueued`, `SeparatePoolExecuting`, `SeparatePoolMaxExecuting` (`MaxSeparatePoolInvocations`) and `SeparatePoolOldestQueuedWait` cover `[NexusMethod(SeparatePool = true)]` methods. |
 | Pipes | Per pipe: ID, state, receive window, credit the peer still has, bytes buffered, bytes consumed and not yet granted back, extra credit outstanding, time since data last arrived, partial channel item (bytes received of its total), send credit, how long the writer has waited for credit and how many bytes it holds, how long the pipe has been closing. |
 | Large messages | Per value: direction, kind (argument or result), invocation ID, bytes transferred of the total, time since the last chunk. |
 | Transport | Frames and bytes sent and received. |
 | Security | `IsSecure`: on a client, true when the transport is encrypted or local (TLS, `wss://`, `https://`, QUIC, UDS) and false for plain TCP, `ws://`, `http://` and custom transports that do not override `ClientConfig.IsSecureTransport`; the same value as `INexusClient.IsSecure`. Null on server sessions. See [Authentication: Plaintext Transports](authentication.md#plaintext-transports). |
+
+Each `NexusEndpointSnapshot` holds the endpoint's `Name`, `Transport`, `State` (`Stopped`, `Running`, or `Faulted` when its listener failed while the server keeps running on the other endpoints), `Address` (the socket end point of a TCP, TLS, QUIC or UDS listener, the request path of an ASP.NET endpoint; null when unknown), `IsListener` (false for an external endpoint fed by ASP.NET or the application) and `Sessions`, the number of authenticated sessions it accepted.
 
 The values are read one at a time from a running session, so they are not an atomic picture: two values in one snapshot can come from moments microseconds apart. Taking a snapshot takes the per-pipe buffer lock briefly and allocates; it is meant for diagnostics, not for every request.
 
