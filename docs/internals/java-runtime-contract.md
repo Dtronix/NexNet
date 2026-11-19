@@ -37,6 +37,10 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 | `com.dtronix.nexnet.serialization` | `Formatter<T>`, `MsgPackWriter`, `MsgPackReader`, `MsgPackType`, `MsgPackException`, `FormatterRegistry` | K02 |
 | `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` | K01 (bases); K07 (`ProxyInvoker`, `InvocationContext` implementations) |
 | `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` | K05 (session), K06 (transports) |
+| `com.dtronix.nexnet.logging` | `NexusLogger`, `NexusLogLevel` (section 6.2) | K05 |
+| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`. Runtime-internal (section 6.5) | K05 |
+| `com.dtronix.nexnet.transport` | `Transport`, `Transport.Connector`, `NexusConnector`, `TlsTrust` (sections 6.3, 6.4, 6.8) | K06 |
+| `com.dtronix.nexnet.invocation` | `InvocationRuntime`, `ClientProxyInvoker`, `InvocationOptions`, `NexusRemoteError`, `RemoteExceptionDetail`, `InvocationCounters`, `SessionBudget`, `PayloadCodec` (section 6.7) | K07 |
 | `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` | K08 |
 | `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState` | K09 |
 | `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) | K01 (done); K10 wires it |
@@ -194,14 +198,28 @@ public final class ChatClient {
 
 - `NexusClient<TProxy>`: `connect()`/`connect(token)`, `tryConnect()`/`tryConnect(token)` (a
   `ConnectionResult`), `disconnect()`, `state()`, `addStateListener`, `disconnected()`, `proxy()`, `isSecure()`,
-  `config()`, `createPipe()`, `createChannel(formatter)`, `close()`.
+  `config()`, `session()` (the current `NexusSession`, or null), `createPipe()`, `createChannel(formatter)`,
+  `close()`.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
-  `tcpTls(host, port)`; builder options `tls(TlsOptions)`, `authenticate(Supplier<byte[]>)` or
-  `authenticateAsync(Supplier<CompletableFuture<byte[]>>)` (mutually exclusive), `callbackExecutor`,
-  `invocationExecutor`, `reconnectionPolicy`, and the timeouts (C# defaults: connection 50 s, handshake 15 s,
-  receive 30 s, ping 10 s). UDS and QUIC are not available on Java (D4).
-- `TlsOptions`: `sslContext`, `trustManager`, `keyManager` (client certificate), `pinCertificateSha256`,
-  `hostnameVerification` (on by default), `serverName`.
+  `tcpTls(host, port)`. UDS and QUIC are not available on Java (D4). Builder options:
+  - `tls(TlsOptions)`;
+  - `authenticate(Supplier<byte[]>)` or `authenticateAsync(Supplier<CompletableFuture<byte[]>>)` (mutually
+    exclusive; `build()` throws `IllegalStateException` when both are set);
+  - WebSocket and HttpSocket only (a TCP transport throws `IllegalStateException`): `header(name, value)` adds an
+    upgrade request header (setting a name again, ignoring case, replaces it; Host, Connection, Upgrade,
+    `Sec-WebSocket-*`, Content-Length and Transfer-Encoding are reserved; CR, LF and other control characters are
+    rejected), `authorization(value)` sets `Authorization` (the C# `AuthenticationHeader`), and
+    `queryToken(name, value)` appends `name=value`, URL-encoded, to the request target. Read back with
+    `upgradeHeaders()` (unmodifiable, in insertion order), `queryTokenName()` and `queryTokenValue()`;
+  - `callbackExecutor`, `invocationExecutor` (section 6.1), `reconnectionPolicy`, `logger(NexusLogger)`
+    (section 6.2);
+  - the timeouts, as in C#: `connectionTimeoutMillis` 50 s, `handshakeTimeoutMillis` 15 s, `timeoutMillis` (receive)
+    30 s, all positive; `pingIntervalMillis(@Nullable Integer)`, null by default (section 6.6).
+- `TlsOptions`: `sslContext` (takes precedence over the managers), `trustManager`, `trustCaCertificates(byte[],
+  includeSystemTrust)` (PEM or DER), `trustCaCertificatesPem(String, includeSystemTrust)`, `keyManager` and
+  `clientCertificatePkcs12(byte[], char[])` (client certificate), `pinCertificateSha256(byte[32])`,
+  `hostnameVerification` (on by default), `serverName` (SNI and host name verification). A pin is the SHA-256 of a
+  chain certificate's DER encoding **or** of its DER SubjectPublicKeyInfo (section 6.4).
 - Exceptions: `NexusException` (base, unchecked), `NexusTransportException` (with `TransportError`),
   `NexusRemoteInvocationException` (`remoteErrorCode`, `remoteExceptionType`, `remoteMessage`),
   `NexusUnauthorizedException` (a remote invocation exception), `NexusBusyException`,
@@ -209,7 +227,7 @@ public final class ChatClient {
 
 ## 5. Behavior both sides rely on
 
-- **Threads.** One reader and one writer thread per connection (`nexnet-<id>-reader`, `nexnet-<id>-writer`). No IO on
+- **Threads.** One reader and one writer thread per connection (`nexnet-<id>-reader`, `nexnet-<id>-writer`; section 6.1). No IO on
   the caller thread. **Never complete a user-visible future on the reader thread**: complete it through the callback
   executor.
 - **Security (F05, D7).** `isSecure()` is true only for `tcpTls`, `wss://` and `https://`. A plaintext client logs
@@ -223,3 +241,294 @@ public final class ChatClient {
 - **Version check.** `NexusClient.create` refuses a `HandshakeDescriptor.runtimeVersion()` whose major.minor differs
   from `NexusRuntime.VERSION`.
 - **Flow control.** Pipe and channel credit is granted only when the consumer reads.
+
+## 6. Runtime internals and extension points
+
+Sections 3 to 5 are what generated code and applications use. This section covers the rest of the public surface:
+the runtime's own layers, custom transports, and the options that tune them. Everything in
+`com.dtronix.nexnet.session` and most of `com.dtronix.nexnet.invocation` is runtime-internal. It is public only
+because the layers live in different packages. Generated code never uses it.
+
+### 6.1 Threading model
+
+| Thread or executor | Name | Runs |
+|---|---|---|
+| Reader, one per connection (daemon) | `nexnet-<client id>-reader` | Blocking reads of `Transport.input()`. Parses frames and dispatches them synchronously to the `MessageHandler`, in wire order. It never waits on a send: its control messages go through the `ControlSender`, and `send` does not block it when the queue is full |
+| Writer, one per connection (daemon) | `nexnet-<client id>-writer` | Drains the bounded frame queue (`SessionOptions.writeQueueCapacity`, 1024 frames), then the `ControlSender`, and writes and flushes `Transport.output()`. Other senders block while the queue is full |
+| Shared pool, `NexusExecutors.shared()` | `nexnet-pool-<n>` | A cached pool of daemon threads; idle threads retire after 60 s. Runs every connection attempt (token supplier, `Transport.Connector.connect`, handshake wait), so no IO happens on the thread that calls `connect()`. Also runs each session's outbound send lane (a `SerialExecutor`, which keeps calls from one thread in order). It is the default callback and invocation executor |
+| Timer, `SessionTimers.system()` | `nexnet-timer` | Handshake timeout, receive (idle) timeout and the ping tick. Tasks are short and never block. Tests pass a manual `SessionTimers` |
+| Callback executor, `ClientConfig.callbackExecutor` | default: shared pool | Completes every user-visible future: `connect`/`tryConnect`, call results and failures (including "not connected"), `disconnected()` and `NexusSession.closed()`. Also runs `StateListener`s, through a `SerialExecutor`, so they see changes in order even on a multi-threaded executor. On Android, pass the main-thread executor |
+| Invocation executor, `ClientConfig.invocationExecutor` | default: shared pool | Runs the client nexus: `dispatch` (server-to-client invocations) and the lifecycle hooks `onConnected`, `onDisconnected` and `onReconnecting`. Also cancels running invocations when the session ends. `InvocationOptions` bounds how many invocations run at once (section 6.7), not the executor |
+
+Rules:
+
+- **Never complete a user-visible future on the reader, writer or timer thread.** `NexusSession.start()`,
+  `send(Frame)` and `closedInternal()` are runtime-internal futures that complete on those threads. A layer must
+  hop to an executor before it hands anything to user code.
+- **Rejected tasks.** `NexusExecutors.execute(executor, task)` runs the task on the shared pool when the executor
+  rejects it (one that was shut down, say), so no completion is lost.
+- **Connect order.** `onConnected` runs on the invocation executor, and the attempt waits for its future. The proxy
+  works from `onConnected` on. The server's invocations are dispatched only after `onConnected` completes.
+- **`close()`** is the only `NexusClient` method that blocks: it waits up to
+  `SessionOptions.threadJoinTimeoutMillis` (5 s) for the reader and writer threads (`NexusSession.awaitThreads()`).
+
+### 6.2 Logging
+
+`ClientConfig.Builder.logger(NexusLogger)` sets the logger. Without one the runtime logs nothing, and that includes
+the plaintext warning (D7). It mirrors the C# `INexusLogger`:
+
+```java
+@FunctionalInterface
+public interface NexusLogger {
+    void log(NexusLogLevel level, @Nullable String category, @Nullable Throwable exception, String message);
+    default boolean isEnabled(NexusLogLevel level) { return level != NexusLogLevel.NONE; }
+    default NexusLogger createLogger(@Nullable String pathSegment) { return this; }
+}
+```
+
+- **Levels.** `NexusLogLevel` is `TRACE`, `DEBUG`, `INFORMATION`, `WARNING`, `ERROR`, `CRITICAL` and `NONE`,
+  as in C#. `NONE` is not a message level: a logger at that level writes nothing.
+- **Per-client logger.** Each client logs through `logger.createLogger("CL<id>")`, where `<id>` is a process-wide
+  counter. The client, its sessions and its invocation and pipe runtimes all use that logger.
+- **Categories.** The `category` argument names the layer: `Client`, `Session`, `Invocation` and so on.
+- **What the runtime expects from a logger.** It checks `isEnabled` before it builds a message, and it ignores a
+  `RuntimeException` thrown by `log`. Implementations must be thread-safe and must not block: the runtime logs from
+  the reader, writer and timer threads.
+- **Notable messages:**
+  - the plaintext warning (`WARNING`, once per client, on the first connect; section 5);
+  - the ping-interval warning (`WARNING`, section 6.6);
+  - `Disconnected: <reason>.` (`INFORMATION`);
+  - a failed client nexus method: `ERROR` with the exception, or `WARNING` for `NexusBusyException` and
+    `NexusMessageTooLargeException`;
+  - a failed token supplier or `onConnected`/`onDisconnected` hook (`ERROR`).
+
+### 6.3 Custom transports
+
+```java
+NexusClient<P> client = NexusClient.create(config, Handshake.DESCRIPTOR, nexus, ServerProxy::new, connector);
+```
+
+The generated factory (section 3.5) calls the four-argument overload, which uses `NexusConnector.defaults()`. The
+five-argument overload takes any `Transport.Connector`, for a test transport, a proxy tunnel, or OkHttp (K13).
+
+- **`Transport.Connector.connect(ClientConfig config, int timeoutMillis)`** is called once per connection attempt,
+  reconnects included. It runs on a runtime thread, never on the caller of `connect()`, after the token supplier has
+  run. `timeoutMillis` is what is left of `connectionTimeoutMillis`. It returns a `Transport` that is ready for
+  the NexNet preamble. To fail, it throws an `IOException`, mapped as in section 6.8, or a
+  `NexusTransportException` carrying its `TransportError`.
+- **`Transport` members:**
+  - `input()`: blocking reads, end of stream when the connection closes. Only the reader thread reads it.
+  - `output()`: blocking writes; `flush()` pushes buffered bytes to the network. Only the writer thread writes it.
+    The streams therefore need not be thread-safe.
+  - `name()`: used in logs, for example `tcp` or `wss://`.
+  - Defaults: `isSecure()` false, `remoteCertificate()` null, `remoteAddress()` null, `remotePort()` -1.
+  - `close(DisconnectReason)`: idempotent, never throws, callable from any thread, and must unblock a read or write
+    in progress. When a disconnect byte is due, the session has already written it.
+- **Byte stream, not messages.** NexNet frames may span any number of reads and writes. Bytes that arrived with an
+  upgrade response (HTTP `101`) belong to the session: `input()` returns them first.
+- **What a transport does not control.** The plaintext warning, `NexusClient.isSecure()` and
+  `ClientSessionContext.isSecure()` come from `ClientConfig.isSecureTransport()` (the configured scheme or kind),
+  not from `Transport.isSecure()`. `ClientSessionContext.remoteCertificate()`, `remoteAddress()` and
+  `remotePort()` report the transport's values.
+
+### 6.4 Default connector, TLS trust and pins
+
+**`NexusConnector`** (`com.dtronix.nexnet.transport`) implements the built-in transports (D4):
+
+| Transport | Behavior |
+|---|---|
+| TCP and TCP with TLS | Plain socket, or TLS on it |
+| HttpSocket (`http://`, `https://`) | Sends an HTTP/1.1 upgrade with `Connection: Upgrade` and `Upgrade: nexnet-httpsockets`, expects `101`, then carries the raw stream |
+| WebSocket (`ws://`, `wss://`) | RFC 6455, version 13. Binary messages, no subprotocol and no extension requested. The response must carry `Upgrade: websocket`, `Connection: Upgrade` and the right `Sec-WebSocket-Accept`, and must select no subprotocol or extension |
+
+Every connection:
+
+- sets `TCP_NODELAY`;
+- for TLS, sends SNI for host names, negotiates no ALPN, and verifies the host name unless
+  `TlsOptions.hostnameVerification(false)` turns that off;
+- fits the socket connect, the TLS handshake and the upgrade into the connection timeout;
+- for the upgrade transports, accepts a response head of at most 16 KiB.
+
+`NexusConnector.defaults()` is the shared connector without extra headers. `NexusConnector.builder()` adds
+upgrade-request data on top of the `ClientConfig` options:
+
+```java
+Transport.Connector connector = NexusConnector.builder()
+    .header("X-Tenant", "a")              // reserved names and control characters are rejected, as in ClientConfig
+    .authorization("Bearer " + jwt)       // header("Authorization", ...)
+    .queryToken("access_token", token)    // appended URL-encoded; prefer a header, query strings are often logged
+    .build();
+```
+
+The upgrade request carries the `ClientConfig` headers, then the connector's headers. If both set the same header
+(ignoring case), the connector's value wins. If both set a query-string token, the connector's replaces the
+configuration's.
+
+**`TlsTrust`** builds what `TlsOptions` takes:
+
+| Method | Result |
+|---|---|
+| `systemTrustManager()` | The platform trust manager |
+| `fromCaCertificates(InputStream, includeSystemTrust)` | Trusts the CA certificates in the stream: PEM (one or more `BEGIN CERTIFICATE` blocks) or DER. It fails when the stream holds none |
+| `fromKeyStore(KeyStore, includeSystemTrust)` | Trusts the certificate entries of a key store |
+| `keyManagerFromPkcs12(InputStream, char[])` | A client certificate and its key from a `.pfx`/`.p12` |
+| `keyManagerFromKeyStore(KeyStore, char[])` | Client certificates from the key entries of a key store |
+| `certificateSha256(X509Certificate)` | SHA-256 of the certificate's DER encoding (a certificate pin) |
+| `spkiSha256(X509Certificate)` | SHA-256 of its DER SubjectPublicKeyInfo (an SPKI pin; its base64 is the HPKP `pin-sha256` form, and it survives renewal with the same key) |
+
+- **`includeSystemTrust`.** When true, a chain is accepted if either the custom CAs or the platform accepts it.
+- **`TlsOptions` shortcuts.** `trustCaCertificates`, `trustCaCertificatesPem` and `clientCertificatePkcs12` call
+  these methods for you.
+- **Pins.** Each pin is 32 bytes (`pinCertificateSha256`). It matches a chain certificate (the leaf or any
+  certificate the server sent) when it equals either form above, and both forms are accepted for every pin. With pins
+  set, the connection is accepted only when some pin matches some chain certificate. Pins apply **in addition to**
+  the trust manager's verification. With no pins, there is no pinning.
+
+### 6.5 Session attachment points (`com.dtronix.nexnet.session`)
+
+`NexusClient` creates one `NexusSession` per connection attempt and attaches the layers **before** `start()`,
+so frames that arrive in the same read as the `ServerGreeting` find their handler:
+
+```java
+NexusSession s = NexusSession.builder(transport, handshake)
+    .name(clientId).authenticationToken(token).reconnecting(isReconnect)
+    .options(sessionOptions).handshakeTimeoutMillis(..).timeoutMillis(..).pingIntervalMillis(..)
+    .callbackExecutor(callbacks).timers(timers).logger(logger)
+    .build();
+InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)
+    .callbackExecutor(callbacks).invocationExecutor(invocations).logger(logger).build();
+s.setMessageHandler(runtime);                                                     // K07
+PipeManager.attach(runtime, callbacks, timers, PipeOptions.defaults(), logger);   // K08: runtime's next handler
+s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), onConnected, runtime.startDispatching()
+```
+
+| Member | Contract |
+|---|---|
+| `setMessageHandler(MessageHandler)` | Receives every message after the handshake except `Ping`, disconnects and `ServerGreeting`. Delivery is on the reader thread, in wire order. `onMessage(InboundFrame)` must not block. To end the session for a protocol violation it throws `SessionProtocolException(reason)`. `onClosed(reason)` is called once, on the thread that closed the session. The default handler, `MessageHandler.UNHANDLED`, ends the session with `PROTOCOL_ERROR`. Handlers chain: `InvocationRuntime.setNextHandler` passes on the types it does not handle (pipes, then collections), together with `onClosed` |
+| `send(Frame)` | Queues a frame (`Frame.of(type, body)`, `Frame.of(type, postHeader, body, offset, length)`, `Frame.headerOnly(type)`; `Frame.MAX_BODY_LENGTH` is 0xFFFF). The runtime-internal future completes on the writer thread once the frame is written and flushed. It fails with `SessionClosedException` (carrying the `DisconnectReason`) when the session has closed, or with `IllegalStateException` before the handshake completes. While the queue is full, callers block, except the reader thread |
+| `controlSender()` | The coalescing `ControlSender` (C# `SessionControlSender`). `requestPing()` keeps at most one ping pending. `returnInvocationCredit(n)` batches credit until half the advertised credits are pending. `requestInvocationCancellation(id)`, `requestAbort(id, kind, reason)` (kind 0 argument or 1 result; reason 0 Busy, 1 TooLarge, 2 Cancelled, 3 Ack) and `requestControl(ControlSource)` (pipe control) complete the set. Requests only record what is owed and wake the writer, which appends the pending frames after the queued frames of each batch |
+| `disconnect(reason)` / `abort(reason)` | Close with a disconnect byte, or at once without one (an abandoned attempt) |
+| `closed()` / `closedInternal()` | Complete with the `DisconnectReason`, on the callback executor or on the closing thread |
+| Read-only state | `id()`, `name()`, `transport()`, `isConnected()`, `isClosing()`, `disconnectReason()`, `isSecure()`, `remoteCertificate()`, `options()`, `peerMaxMessageSize()`, `sendMaxMessageSize()` (the smaller of both sides' limits), `peerInvocationCredits()`, `advertisedIdleTimeoutMillis()` (-1 when none), `pingIntervalMillis()`. The peer values are -1 before the handshake completes |
+
+`InboundFrame` exposes `type()`, `body()` and the post-header fields `postHeader()`, `pipeId()`,
+`chunkInvocationId()` and `chunkKind()`. `SessionTimers` has `nanoTime()` and
+`schedule(task, delayMillis)`, which returns a `Registration` that cancels the task.
+
+**`SessionOptions`** holds the limits this client advertises in its greeting and the session timings. They are not
+on `ClientConfig`: `NexusClient` uses `SessionOptions.defaults()`, the C# untrusted defaults (protocol
+specification section 9). The package-private `create` overload that tests use takes others. The options are
+immutable; each `withX(value)` returns a copy:
+
+| Option | Default | Range | Meaning |
+|---|---|---|---|
+| `maxMessageSize` | 4 MiB | at least 65 526 (`MIN_MAX_MESSAGE_SIZE`, one frame) | Largest argument, result or channel item this client accepts. Advertised |
+| `invocationCredits` | 32 | 1–65535 | How many invocations the server may have queued at this client. Advertised |
+| `disconnectDelayMillis` | 200 | 0–10000 | Wait after writing a disconnect byte before closing the transport |
+| `writeQueueCapacity` | 1024 | at least 1 | Frames that may wait for the writer before senders block |
+| `threadJoinTimeoutMillis` | 5000 | at least 0 | How long closing waits for the reader and writer threads |
+
+The server's advertised limits are checked at the handshake: a `maxMessageSize` below 65 526 or
+`invocationCredits` below 1 ends the session with `PROTOCOL_ERROR`. Other fixed limits:
+
+- `NexusSession.MAX_PRE_AUTH_BODY_LENGTH` (16 KiB): the largest body accepted before the connection completes;
+- `MAX_AUTHENTICATION_TOKEN_LENGTH` (8192): the largest token the server accepts.
+
+`SessionCounters` (`openSessions`, `liveThreads`, `activeTimers`, `pendingWrites`) and `InvocationCounters`
+(`pendingCalls`, `inboundInvocations`, `largeMessages`) are process-wide. Every counter returns to 0 once every
+client has closed, which is what the leak audit (H05) checks.
+
+### 6.6 Ping interval (S04)
+
+`ClientConfig.pingIntervalMillis()` is an `@Nullable Integer`. It is null by default; set values must be
+positive. The effective interval (`NexusSession.pingIntervalMillis()`, C# `ClientConfig.GetEffectivePingInterval`)
+is:
+
+1. a configured interval, used as is. If it is not below the server's advertised idle timeout, the client logs a
+   `WARNING` on connect, because the server may time the session out between pings;
+2. otherwise, a third of the `idleTimeoutMs` the server advertises in `ServerGreeting`, at least
+   `NexusSession.MIN_DERIVED_PING_INTERVAL_MILLIS` (1000 ms);
+3. otherwise, when the server advertises no idle timeout, `ClientConfig.DEFAULT_PING_INTERVAL_MILLIS` (10 s).
+
+Only the client pings. The receive timeout (`timeoutMillis`, 30 s) is checked on each ping tick, before the ping.
+
+### 6.7 Invocation runtime (`com.dtronix.nexnet.invocation`)
+
+`InvocationRuntime` is the per-session `ProxyInvoker` and `MessageHandler`. It handles both directions,
+invocation credit, cancellation, and large (streamed) arguments and results (protocol specification sections 4.3 to
+4.10, 6 and 8). The proxy's `ClientProxyInvoker` lasts as long as the client:
+
+- `attach(runtime)` routes calls to a session once it is connected; `detach(runtime)` stops when that session
+  closes;
+- without a runtime, calls fail with `IllegalStateException("The client is not connected.")`. Futures fail on the
+  callback executor; `invokeVoid` throws.
+
+Public types:
+
+| Type | Use |
+|---|---|
+| `NexusRemoteError(int code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError` |
+| `RemoteExceptionDetail` | `NONE` (default): the server sees a failure without detail. `TYPE_AND_MESSAGE`: the class name and message, truncated to 256 and 2048 chars. Use `TYPE_AND_MESSAGE` only with a trusted peer |
+| `InvocationOptions` | Immutable `withX` copies of `defaults()`, the C# untrusted defaults: `maxConcurrentInvocations` 2 (1–1000), `maxSeparatePoolInvocations` 4 (1–1000), `sessionBudget` 16 MiB (at least 64 KiB), `remoteExceptionDetail` `NONE`. Set through `InvocationRuntime.Builder.options`. `NexusClient` uses the defaults |
+| `SessionBudget` | The session's receive memory (`tryReserve`, `release`, `reserved`, `limit`; thread-safe). The invocation queue (`invocationCredits` x 64 KiB) is reserved up front. A large argument or result that does not fit the rest is refused with `Busy`. The pipe runtime reserves its windows from it. `InvocationRuntime.budget()` |
+| `PayloadCodec` | Turns argument writers and result formatters into bytes and back. `PayloadCodec.MSGPACK` is the default; tests substitute their own through `InvocationRuntime.Builder.codec`. The runtime writes the message envelopes itself |
+| `InvocationCounters` | Diagnostic counters (section 6.5) |
+| `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe (K08) and collection (K09) runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()` |
+| `ClientProxyInvoker` | The proxy's invoker, described above |
+
+**Failed client nexus methods.** When a method that returns a result fails, the runtime calls
+`ClientNexusBase.onInvocationException(Throwable exception, int methodId)`, through
+`ClientNexusHooks.invocationException`, on a runtime thread:
+
+- a non-null `NexusRemoteError` is sent as the remote error code and message, whatever `remoteExceptionDetail`
+  says;
+- null (the default) sends what `remoteExceptionDetail` selects;
+- a hook that throws is logged and treated as null.
+
+The hook is not called for canceled invocations (the result is `Canceled`) or for fire-and-forget methods. A
+result larger than the server's `maxMessageSize` is sent as a failure with `NexusMessageTooLargeException`
+passed to the hook.
+
+**Session end (C-2).** When the session closes, for any reason:
+
+- every outbound call still pending completes **canceled**, on the callback executor. This covers calls waiting for
+  credit, calls being sent and calls awaiting their result. `future.get()` then throws a
+  `java.util.concurrent.CancellationException` ("The session closed.").
+- `invokeIgnoreReturn` futures still waiting for credit fail with the same exception.
+- outgoing large messages are aborted. Server invocations still queued are dropped, and their budget is released.
+- the `CancellationToken` of every running client nexus method is canceled, on the invocation executor.
+- the next handler (pipes) receives `onClosed(reason)`.
+
+### 6.8 Transport error mapping
+
+A failed connect completes `connect()` exceptionally, with a `NexusTransportException` whose `error()` is the
+`TransportError`. `tryConnect()` returns a `ConnectionResult` with `DISCONNECTED` status and the exception
+instead. The `DisconnectReason` is `AUTHENTICATION` for `AUTHENTICATION_ERROR` and `SOCKET_ERROR` for
+everything else, as in the C# client.
+
+| Failure | `TransportError` |
+|---|---|
+| Upgrade answered `401` or `403` (HttpSocket, WebSocket) | `AUTHENTICATION_ERROR` |
+| Upgrade answered `500` | `INTERNAL_ERROR` |
+| Upgrade answered any other status except `101` | `PROTOCOL_ERROR` |
+| Server closed the connection in the middle of the upgrade response head | `CONNECTION_ABORTED` |
+| Malformed or oversized (above 16 KiB) response head; wrong WebSocket `Upgrade`/`Connection`/`Sec-WebSocket-Accept`; a subprotocol or extension selected | `PROTOCOL_ERROR` |
+| TLS: no X.509 server certificate, host name mismatch, no pin matches, or any `SSLException` (untrusted chain, handshake failure) | `AUTHENTICATION_ERROR` |
+| TLS context cannot be built from the options | `INTERNAL_ERROR` |
+| `ConnectException` | `CONNECTION_REFUSED` |
+| `SocketTimeoutException` (connect, TLS or upgrade past the connection timeout) | `CONNECTION_TIMEOUT` |
+| `NoRouteToHostException` | `UNREACHABLE` |
+| `UnknownHostException`; a configuration without a host or URI | `INVALID_ADDRESS` |
+| Any other `IOException` | `INTERNAL_ERROR` |
+
+Two failures sit outside this table:
+
+- A server that refuses the handshake (a disconnect byte such as `CLIENT_MISMATCH`) fails `connect()` with a
+  `NexusException` naming the `DisconnectReason`. `tryConnect()` reports it in the result.
+- A connection that does not complete its handshake within `connectionTimeoutMillis` fails with
+  `CONNECTION_TIMEOUT` and `DisconnectReason.TIMEOUT`.
+- A token supplier that throws, or an async supplier that times out (`AUTHENTICATION_ERROR`), fails the attempt with
+  `DisconnectReason.AUTHENTICATION` before any connection is opened.
+
+After the handshake, transport failures end the session with a `DisconnectReason` and are not reported as
+`TransportError`. A WebSocket transport closes with code 1002 for `PROTOCOL_ERROR` and 1000 otherwise.
