@@ -1,0 +1,86 @@
+/// <reference types="node" />
+/**
+ * HTTP/1.1 upgrade request shared by the HttpSocket and WebSocket transports. Node only.
+ * @module
+ */
+
+import http from 'node:http';
+import https from 'node:https';
+import { upgradeRefused } from '../TransportBase.js';
+import { abortableConnect, connectError, tlsConnectOptions, urlHost } from './common.js';
+
+/**
+ * @typedef {object} UpgradeResult
+ * @property {import('node:http').IncomingMessage} response The `101` response.
+ * @property {import('node:net').Socket} socket The upgraded connection (a `TLSSocket` for `https:`/`wss:`).
+ * @property {Buffer} head Bytes received after the response headers; they belong to the upgraded stream.
+ */
+
+/**
+ * Sends `GET <path>` with `Connection: Upgrade` on a fresh connection (no agent, no pooling) and resolves on the
+ * `101`. Any other status rejects with the mapped `NexusTransportError` (`upgradeRefused`). Over TLS it offers
+ * ALPN `http/1.1` only (§13.6), so the server cannot pick HTTP/2.
+ *
+ * @param {object} init
+ * @param {'HttpSocket' | 'WebSocket'} init.transport For messages and status mapping.
+ * @param {URL} init.url `http:`/`https:` (`ws:`/`wss:` are mapped by the caller).
+ * @param {boolean} init.secure
+ * @param {Record<string, string>} init.headers Upgrade headers (`Upgrade`, `Connection`, …) and the user's headers.
+ * @param {import('../../contract/config.js').TlsOptions} [init.tls]
+ * @param {AbortSignal} init.signal
+ * @returns {Promise<UpgradeResult>}
+ */
+export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
+  const host = urlHost(url);
+  const what = `${transport} connect to ${url.href}`;
+  return abortableConnect(signal, (resolve, reject) => {
+    /** @type {import('node:https').RequestOptions} */
+    const options = {
+      method: 'GET',
+      host,
+      port: url.port === '' ? (secure ? 443 : 80) : Number(url.port),
+      path: `${url.pathname}${url.search}`,
+      headers,
+      agent: false,
+    };
+    if (secure) Object.assign(options, tlsConnectOptions(tls, host), { ALPNProtocols: ['http/1.1'] });
+    const request = (secure ? https : http).request(options);
+    let tcpConnected = false;
+    let tlsDone = !secure;
+    request.once('socket', (socket) => {
+      socket.setNoDelay(true);
+      socket.once('connect', () => { tcpConnected = true; });
+      if (secure) socket.once('secureConnect', () => { tlsDone = true; });
+    });
+    request.on('error', (error) => reject(connectError(what, error, { tlsPhase: tcpConnected && !tlsDone })));
+    request.once('response', (response) => {
+      response.resume();
+      reject(upgradeRefused(transport, response.statusCode ?? 0, url.href));
+    });
+    request.once('upgrade', (response, socket, head) => {
+      if (response.statusCode !== 101) {
+        socket.destroy();
+        reject(upgradeRefused(transport, response.statusCode ?? 0, url.href));
+        return;
+      }
+      // Keep the bytes that arrive between now and the transport taking the socket.
+      socket.pause();
+      resolve({ response, socket, head });
+    });
+    request.end();
+    return () => request.destroy();
+  });
+}
+
+/**
+ * True when the comma-separated header value contains `token` (case-insensitive).
+ * @param {string | string[] | undefined} value
+ * @param {string} token
+ * @returns {boolean}
+ */
+export function headerHasToken(value, token) {
+  if (value === undefined) return false;
+  const text = Array.isArray(value) ? value.join(',') : value;
+  const wanted = token.toLowerCase();
+  return text.split(',').some((part) => part.trim().toLowerCase() === wanted);
+}
