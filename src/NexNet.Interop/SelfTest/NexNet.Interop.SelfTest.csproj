@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Self-test of NexNet.Interop (H04): the matrix, error mapping and script semantics, and the proof tests (one
+    invocation, one pipe, one collection) on the client matrix against a dedicated interop server. With
+    NEXNET_TEST_LANGS unset only the csharp (in-process) rows run.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet.Interop.csproj" />
+  </ItemGroup>
+
+</Project>
