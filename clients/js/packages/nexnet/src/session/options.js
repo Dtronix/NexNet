@@ -19,7 +19,7 @@ import { systemClock } from './clock.js';
  * @property {number} connectionTimeout
  * @property {number} handshakeTimeout
  * @property {number} timeout
- * @property {number | null} pingInterval Null: derived from the server's `idleTimeoutMs`, else 10,000.
+ * @property {number | null} pingInterval Null: a third of the server's `idleTimeoutMs` (at least 1,000), else 10,000.
  * @property {number} disconnectDelay
  * @property {number} maxConcurrentConnectionInvocations
  * @property {number} maxSeparatePoolInvocations
@@ -34,8 +34,25 @@ import { systemClock } from './clock.js';
  * @property {import('../contract/codec.js').SerializerOptions} serializerOptions
  */
 
-/** Ping interval when neither the config nor the server sets one (C# `ClientConfig.PingInterval`). */
+/** Ping interval when neither the config nor the server sets one (C# `ClientConfig.DefaultPingInterval`). */
 export const DEFAULT_PING_INTERVAL = 10_000;
+
+/** Shortest ping interval derived from the server's advertised idle timeout (C# `ClientConfig.MinimumDerivedPingInterval`). */
+export const MIN_DERIVED_PING_INTERVAL = 1_000;
+
+/**
+ * The ping interval for a server that advertised `idleTimeoutMs` (S04; C# `ClientConfig.GetEffectivePingInterval`).
+ * An explicit interval is used as is. Otherwise a third of the advertised idle timeout, at least
+ * {@link MIN_DERIVED_PING_INTERVAL}; {@link DEFAULT_PING_INTERVAL} when the server advertised none (null or 0).
+ * @param {number | null} configured The resolved `pingInterval` option; null to derive it.
+ * @param {number | null} idleTimeoutMs The advertised idle timeout (uint32), or null/0 when none.
+ * @returns {number}
+ */
+export function effectivePingInterval(configured, idleTimeoutMs) {
+  if (configured !== null) return configured;
+  if (idleTimeoutMs === null || idleTimeoutMs <= 0) return DEFAULT_PING_INTERVAL;
+  return Math.max(MIN_DERIVED_PING_INTERVAL, Math.floor(idleTimeoutMs / 3));
+}
 
 const KiB = 1024;
 const MiB = 1024 * KiB;

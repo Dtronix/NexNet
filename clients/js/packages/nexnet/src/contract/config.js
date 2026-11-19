@@ -119,7 +119,9 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  * @property {number} [connectionTimeout] Default 50,000.
  * @property {number} [handshakeTimeout]
  * @property {number} [timeout] Receive timeout.
- * @property {number} [pingInterval] Overrides the interval derived from the server's `idleTimeoutMs` (1/3 of it).
+ * @property {number} [pingInterval] Milliseconds between pings; must be a positive integer. Default: a third of the
+ *   server's advertised `idleTimeoutMs`, at least 1,000, or 10,000 when the server advertises none. A value set here
+ *   is used as is; if it is not below the advertised idle timeout, the client logs a warning on connect.
  * @property {number} [disconnectDelay]
  * @property {number} [maxConcurrentConnectionInvocations]
  * @property {number} [maxSeparatePoolInvocations]

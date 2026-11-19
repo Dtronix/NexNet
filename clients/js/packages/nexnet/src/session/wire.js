@@ -459,7 +459,7 @@ export function encodeServerGreeting(greeting) {
 }
 
 /**
- * Decodes a server greeting body. Four elements are required; a fifth is `idleTimeoutMs` (int or nil); any further
+ * Decodes a server greeting body. Four elements are required; a fifth is `idleTimeoutMs` (uint32 or nil); any further
  * trailing elements are skipped (trailing-field rule, train §4.5).
  * @param {Uint8Array} body
  * @returns {ServerGreeting}
@@ -473,7 +473,7 @@ export function decodeServerGreeting(body) {
   const maxMessageSize = r.readInt32();
   const invocationCredits = r.readInt32();
   let idleTimeoutMs = null;
-  if (n >= 5) idleTimeoutMs = r.tryReadNil() ? null : r.readInt32();
+  if (n >= 5) idleTimeoutMs = r.tryReadNil() ? null : r.readUInt32();
   for (let i = 5; i < n; i++) r.skip();
   r.end();
   return { version, clientId, maxMessageSize, invocationCredits, idleTimeoutMs };

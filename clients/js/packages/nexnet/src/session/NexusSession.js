@@ -15,7 +15,7 @@ import { FrameReader } from './FrameReader.js';
 import { countSession } from './diagnostics.js';
 import { encodeFrame, encodeHeaderOnly, encodePreamble } from './frames.js';
 import { startIntervalTimer } from './clock.js';
-import { DEFAULT_PING_INTERVAL } from './options.js';
+import { effectivePingInterval } from './options.js';
 import { MIN_PEER_MAX_MESSAGE_SIZE, MessageType } from './protocol.js';
 import { WriteQueue } from './WriteQueue.js';
 import { decodeServerGreeting, encodeClientGreeting } from './wire.js';
@@ -411,8 +411,11 @@ export class NexusSession {
     this.peerMaxMessageSize = greeting.maxMessageSize;
     this.peerInvocationCredits = greeting.invocationCredits;
     this.idleTimeoutMs = greeting.idleTimeoutMs !== null && greeting.idleTimeoutMs > 0 ? greeting.idleTimeoutMs : null;
-    this.pingInterval = this.#options.pingInterval
-      ?? (this.idleTimeoutMs !== null ? Math.max(1, Math.floor(this.idleTimeoutMs / 3)) : DEFAULT_PING_INTERVAL);
+    this.pingInterval = effectivePingInterval(this.#options.pingInterval, this.idleTimeoutMs);
+    if (this.#options.pingInterval !== null && this.idleTimeoutMs !== null && this.pingInterval >= this.idleTimeoutMs) {
+      this.#log('warning', `PingInterval (${this.pingInterval} ms) is not below the server's idle timeout (${this.idleTimeoutMs} ms); `
+        + 'the server may time the session out between pings.');
+    }
 
     this.#handshakeComplete = true;
     this.#reader.handshakeComplete = true;
