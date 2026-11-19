@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The C# side of the cross-language test harness (H04): IClientUnderTest and its supporting types, the script
+    interpreter, the in-process C# driver and the [ClientMatrix] TUnit data source. Remote drivers and language hosts
+    (H05) build on it. Test infrastructure; not packaged.
+
+    The C# test scaffolding (remote proxies, script facades and their typed-JSON codecs) of the shared test nexuses is
+    generated into this assembly (Scaffolding.cs), so every test project that references it shares one copy.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The self-test lives in a sub-folder and is a separate project. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);SelfTest/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit.Core" Version="$(TUnitVersion)" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Interop.Abstractions\NexNet.Interop.Abstractions.csproj" />
+    <ProjectReference Include="..\NexNet.TestNexus\NexNet.TestNexus.csproj" />
+    <ProjectReference Include="..\NexNet.InteropServer\NexNet.InteropServer.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+</Project>
