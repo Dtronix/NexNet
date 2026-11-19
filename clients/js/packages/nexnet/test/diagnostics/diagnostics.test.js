@@ -45,6 +45,7 @@ describe('snapshot fields', () => {
       transport: 'tcp',
       endpoint: null,
       isSecure: false,
+      pingInterval: 10_000,
       state: ConnectionState.Connected,
       isEstablished: true,
       sinceLastReceived: 1500,

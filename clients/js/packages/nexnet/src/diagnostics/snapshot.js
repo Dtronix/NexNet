@@ -79,6 +79,7 @@ import { transportTagOf } from '../metrics/instruments.js';
  * @property {string} transport As in the `nexnet.transport` metric tag.
  * @property {string | null} endpoint Always null on a client.
  * @property {boolean | null} isSecure
+ * @property {number | null} pingInterval Milliseconds between pings (the configured or the derived interval).
  * @property {import('../contract/enums.js').ConnectionStateValue} state
  * @property {boolean} isEstablished
  * @property {number | null} connected Milliseconds since the transport connected.
@@ -161,6 +162,7 @@ export function getClientSnapshot(client) {
     transport: transportTagOf(client.config),
     endpoint: null,
     isSecure: client.isSecure,
+    pingInterval: session.pingInterval > 0 ? session.pingInterval : null,
     state: session.state,
     isEstablished: session.isHandshakeComplete,
     connected: part.connected ?? null,
@@ -182,7 +184,7 @@ export function getClientSnapshot(client) {
  * Field names of each snapshot record, in C# declaration order, for the cross-language field check.
  */
 export const SnapshotFields = Object.freeze({
-  NexusSessionSnapshot: Object.freeze(['id', 'isServer', 'transport', 'endpoint', 'isSecure', 'state', 'isEstablished', 'connected',
+  NexusSessionSnapshot: Object.freeze(['id', 'isServer', 'transport', 'endpoint', 'isSecure', 'pingInterval', 'state', 'isEstablished', 'connected',
     'sinceLastReceived', 'sinceLastSent', 'flushInProgress', 'budget', 'invocations', 'pipes', 'largeMessages', 'framesSent',
     'bytesSent', 'framesReceived', 'bytesReceived']),
   NexusBudgetSnapshot: Object.freeze(['limit', 'reserved']),
