@@ -36,6 +36,28 @@ publishing {
     }
 }
 
+// A stand-alone Gradle build (consumer-test/) compiles generated code against the published artifact with no other
+// declared dependency, once from the Gradle module metadata and once from the POM alone (K28).
+val publishForConsumerTest = tasks.named("publishMavenPublicationToConsumerTestRepository") {
+    // A clean repository each time, so a stale artifact never passes the check.
+    val repo = consumerTestRepo
+    doFirst { repo.get().asFile.deleteRecursively() }
+}
+
+val consumerTest = tasks.register<GradleBuild>("consumerTest") {
+    group = "verification"
+    description = "Compiles and runs generated code in a separate build that depends only on nexnet-client."
+    dependsOn(publishForConsumerTest)
+    dir = layout.projectDirectory.dir("consumer-test").asFile
+    tasks = listOf("consumerCheck")
+    startParameter.projectProperties = mapOf(
+        "nexnet.consumer.repo" to consumerTestRepo.get().asFile.absolutePath,
+        "nexnet.consumer.version" to project.version.toString(),
+        "nexnet.consumer.snapshot" to rootProject.layout.projectDirectory
+            .file("../../src/NexNet.Generator.Tests/Targets/Java/Snapshots/zoo.txt").asFile.absolutePath,
+    )
+}
+
 // The runtime version constant (NexusRuntime.VERSION), generated from the lockstep NexNet version.
 val generateRuntimeVersion = tasks.register("generateRuntimeVersion") {
     val outputDir = layout.buildDirectory.dir("generated/sources/nexnet-version/java")
@@ -83,5 +105,5 @@ tasks.test {
 
 // Javadoc is part of the published artifact; build it in check so broken docs fail early.
 tasks.check {
-    dependsOn(tasks.javadoc)
+    dependsOn(tasks.javadoc, consumerTest)
 }
