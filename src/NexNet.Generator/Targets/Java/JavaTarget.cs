@@ -325,7 +325,7 @@ internal sealed class JavaTarget : TargetLanguageBase
         _ => name,
     };
 
-    /// <summary>Report §3.5 and 01-context §5, Java column.</summary>
+    /// <summary>The type mapping (docs/articles/multi-language-clients.md), Java column.</summary>
     private sealed class JavaTypeMapper : ITypeMapper
     {
         private const string Rt = RuntimePackage + ".";

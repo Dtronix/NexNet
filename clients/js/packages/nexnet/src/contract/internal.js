@@ -4,7 +4,7 @@
  */
 
 /**
- * Creates the error every skeleton body throws until its implementation card lands.
+ * Creates the error thrown by a member that is not available (for example a missing transport or pipe layer).
  * Call sites use `throw notImplemented('Class.member')` so control-flow analysis sees the throw.
  *
  * @param {string} member Qualified member name, e.g. `'MsgPackWriter.writeInt32'`.

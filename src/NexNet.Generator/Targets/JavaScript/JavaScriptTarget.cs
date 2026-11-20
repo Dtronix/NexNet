@@ -298,7 +298,7 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         }).ToArray();
     }
 
-    /// <summary>Report §3.5, JS column. Only primitives (boolean, number, bigint, string) compare by value in a Map/Set.</summary>
+    /// <summary>The type mapping (docs/articles/multi-language-clients.md), JS column. Only primitives (boolean, number, bigint, string) compare by value in a Map/Set.</summary>
     private sealed class JavaScriptTypeMapper : ITypeMapper
     {
         private readonly JavaScriptTarget _target;

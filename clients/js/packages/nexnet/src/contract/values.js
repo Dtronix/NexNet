@@ -1,5 +1,5 @@
 /**
- * Value types for C# primitives that have no exact JS equivalent (01-context §5, D14).
+ * Value types for C# primitives that have no exact JS equivalent (design decision D14, docs/internals/multilang-decisions.md).
  * Implemented in `src/values/` (J02); this file re-exports them.
  * @module
  */

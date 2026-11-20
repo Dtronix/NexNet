@@ -1,6 +1,6 @@
 /**
- * Error classes and the cancellation mapping. These are complete (not skeletons): implementation cards
- * throw them as they are.
+ * Error classes and the cancellation mapping. These are defined here, not re-exported; the runtime
+ * throws them as they are.
  * @module
  */
 /**

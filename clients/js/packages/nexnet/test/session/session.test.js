@@ -280,7 +280,7 @@ describe('timers', () => {
     expect(h.nexus.calls.at(-1)).toEqual(['disconnected', DisconnectReason.Stalled]);
   });
 
-  it('progress probes from later cards are checked on the ping tick', async () => {
+  it('progress probes from other layers are checked on the ping tick', async () => {
     const h = harness({ config: { pingInterval: 100, disconnectDelay: 0 } });
     await connected(h);
     h.client._session?.addProgressProbe((now, limit) => (now > 250 ? `pipe 3 closing for ${now} ms (limit ${limit})` : null));

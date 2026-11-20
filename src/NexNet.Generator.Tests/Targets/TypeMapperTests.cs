@@ -6,7 +6,7 @@ using NexNet.Generator.Targets.JavaScript;
 
 namespace NexNet.Generator.Tests.Targets;
 
-/// <summary>Every row of the normative type mapping (report §3.5, 01-context §5) for Java and JavaScript.</summary>
+/// <summary>Every row of the normative type mapping (docs/articles/multi-language-clients.md, "Type mapping") for Java and JavaScript.</summary>
 public class TypeMapperTests
 {
     private static readonly TypeScope Scope = new(new NexusIr(

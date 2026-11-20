@@ -9,7 +9,7 @@ namespace NexNet.IntegrationTests.Pipes;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    private const string NoReadCancel = "a remote channel read cannot be canceled (follow-up card)";
+    private const string NoReadCancel = "a remote channel read cannot be canceled";
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

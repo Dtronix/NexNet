@@ -22,7 +22,7 @@ namespace NexNet.IntegrationTests.Pipes;
 internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     private const string NoPipeHandler =
-        "no host handler can write to a pipe the server opened or report what the client's pipe saw (follow-up card)";
+        "no host handler can write to a pipe the server opened or report what the client's pipe saw";
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

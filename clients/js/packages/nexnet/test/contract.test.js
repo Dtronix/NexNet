@@ -11,7 +11,7 @@ const {
   cancellationError, isCancellationError, tuple,
 } = core;
 
-/** The public runtime surface (01-context §3). Adding a name here is additive; removing one is a contract change. */
+/** The public runtime surface (docs/internals/js-runtime-contract.md). Adding a name here is additive; removing one is a contract change. */
 const coreExports = [
   'ClientNexusBase', 'ConnectionResultState', 'ConnectionState', 'DateTimeKind', 'DisconnectReason',
   'FormatterRegistry', 'MsgPackReader', 'MsgPackWriter', 'NexusBusyError', 'NexusChannelReader',
