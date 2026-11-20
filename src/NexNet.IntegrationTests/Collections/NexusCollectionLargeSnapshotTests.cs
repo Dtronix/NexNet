@@ -220,7 +220,16 @@ internal class NexusCollectionLargeSnapshotTests : NexusCollectionBaseTests
     public async Task ClientFallsBehindDuringSnapshot_PipeClosesAndReEnableSyncs(Type type)
     {
         const int count = 100_000;
-        var (server, client, _) = await ConnectServerAndClient(type);
+        // The client may hold up to two receive windows of the snapshot while it is stalled: the window itself, plus
+        // the batch its channel reader decoded before the stall. Keep both far below the snapshot (about 400 KB), so
+        // the server can never finish writing it and every change waits in the client's buffer until it overflows.
+        // With the default window (256 KB) a late first read could take in the whole snapshot, then the changes
+        // drained into the free window and the client never fell behind.
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.PipeWindow = 64 * 1024;
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var serverList = (NexusListServer<int>)server.NexusCreatedQueue.First().IntListBi;
         serverList.TestResetTo(Enumerable.Range(0, count));
 
