@@ -145,7 +145,7 @@ nothing is generated for that language.
 
 ### The emitted runtime
 
-Each output directory receives the client runtime of its language next to the generated code (D31). Both come from
+Each output directory receives the client runtime of its language next to the generated code. Both come from
 the same generator, so they always match; upgrading `NexNet.Generator` rewrites both.
 
 - **JavaScript** goes to `<OutputDir>/nexnet-runtime/`: the runtime's ES modules, a `package.json` named
