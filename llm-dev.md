@@ -9,16 +9,26 @@ Token-condensed architecture reference for LLM navigation and modification.
 ```
 src/
 ├── NexNet/                    # Core library
-├── NexNet.Generator/          # Roslyn source generator
+├── NexNet.Generator/          # Roslyn source generator (C#; Java/JS targets: Ir/, Targets/, Runtime/, Bundle/, build/)
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
-├── NexNet.IntegrationTests/  # Integration tests (TUnit, parallel)
-├── NexNet.TestNexus/         # Shared test nexuses + interop type zoo (not packaged)
-├── NexNet.Generator.Tests/   # Generator tests
+├── NexNet.IntegrationTests/  # Integration tests (TUnit, parallel; [ClientMatrix] rows run per client language)
+├── NexNet.TestNexus/         # Shared test nexuses + interop type zoo (not packaged); writes the Java/JS host clients
+├── NexNet.Generator.Tests/   # Generator tests (incl. Java/JS emitter snapshots and SDK-gated compile checks)
 ├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
 ├── NexNet.Fuzz/              # SharpFuzz harnesses (libFuzzer), smoke runner, regression corpora
+├── NexNet.Interop/           # Cross-language harness: IClientUnderTest, drivers, language host pool (test-only)
+├── NexNet.Interop.Abstractions/ # Harness types generated scaffolding uses (typed JSON, remote descriptors)
+├── NexNet.Interop.Tests/     # Harness unit tests (control protocol, host supervision)
+├── NexNet.InteropServer/     # Test server exposing every endpoint kind at once
+├── NexNet.GoldenVectors/     # Writes tests/golden/*.jsonl (byte vectors every language checks)
+├── NexNet.Generator.IntegrationSample/ # Builds a sample nexus through the real build targets
 ├── NexNetBenchmarks/         # BenchmarkDotNet
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
+clients/
+├── js/                       # npm workspace: packages/nexnet (@dtronix/nexnet runtime), interop-host-node, interop-host-browser
+└── java/                     # Gradle build: nexnet-client (com.dtronix.nexnet runtime), optional -android/-kotlin/-okhttp/-micrometer, interop-host, build-logic
+tests/golden/                 # Golden vectors (checked in; format in tests/golden/README.md)
 ```
 
 Release: follow [llm-release.md](llm-release.md).
@@ -527,6 +537,59 @@ Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying i
 
 ---
 
+## 5c. Java and JavaScript Clients (clients/)
+
+Client-only runtimes; the server stays .NET. User docs: `docs/articles/multi-language-clients.md`,
+`javascript-client.md`, `java-client.md`. Contracts (frozen; changes need a contract amendment):
+`docs/internals/js-runtime-contract.md`, `java-runtime-contract.md`, `nexnet-ir.md`, `interop-control-protocol.md`,
+`tests/golden/README.md`.
+
+**Pipeline.** The generator builds a language-neutral IR (`NexNet.Generator/Ir/`, also written as `nexnet-ir.json`),
+validates it per target (`Validation/TargetValidator.cs`: NEXNET040-048), and each `Targets/<Lang>/` emitter
+(`ITargetLanguage`, `TargetRegistry`) writes proxies, client nexus bases, types and formatters. The runtime sources
+under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`, D31) and emitted beside the
+generated code. Everything travels in the comment-only `NexNet.Targets.g.cs` bundle (`Bundle/`), unpacked after
+`CoreCompile` by `build/NexNet.Generator.targets` (task in `build/NexNet.Generator.Tasks.cs`; the bundle parser is
+duplicated in `Bundle/TargetBundle.cs`). `docs/internals/generator-emitted-runtime.md` covers the emitted runtime.
+
+**JavaScript** (`clients/js`, npm workspace): `packages/nexnet` is the runtime: ESM, JSDoc, zero dependencies,
+entries `src/index.js` (neutral), `src/browser.js` (WebSocket only, never imports `node:`) and `src/node.js` (adds
+HttpSocket/TCP/TLS/UDS). `src/contract/` is the generated-code API. Tests: Vitest (`test/`, Node; browser mode with
+Playwright). Gate: `npm ci --prefix clients/js`, `npm test --prefix clients/js`, `npm run typecheck --prefix clients/js`.
+
+**Java** (`clients/java`, Gradle Kotlin DSL, wrapper committed): `nexnet-client` is the runtime (package
+`com.dtronix.nexnet`, `--release 11`, Android API 24 via Animal Sniffer, no runtime dependencies; `spi` is the
+generated-code API). Gate: `clients/java/gradlew -p clients/java check` (JDK 21).
+
+Both runtimes version in lockstep with `src/NexNet/NexNet.csproj`. Editing a runtime file changes what the generator
+emits, so it rebuilds the generator. Language gates run when a change touches `clients/<lang>/**`,
+`Ir/**` or `Targets/<Lang>/**`.
+
+## 5d. Cross-language Test Harness (src/NexNet.Interop/)
+
+C#-authored TUnit tests run against every client language. `dotnet build src`/`dotnet test` never invoke npm,
+Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set (D27).
+
+- **Rows.** `[ClientMatrix(Transports = [...], CSharpTransports = [...], Requires = ClientCapabilities.X)]` makes one
+  row per language of `NEXNET_TEST_LANGS` (`csharp` always, first) times transport; the test takes a `ClientTarget`.
+  A row whose language lacks the transport or capability is generated and skipped with the reason
+  (`ClientLanguages.cs` holds each language's transports and `ClientCapabilities`). Filtering: see the top of this file.
+- **Tests.** Derive from `IntegrationTests/MatrixTestBase.cs` (takes the `LanguageHostPool`): start an
+  `InteropServer` (`NexNet.InteropServer`: one server with every endpoint kind), create the client with
+  `Harness.CreateClientAsync(target, spec)` → `IClientUnderTest`, and assert on the server or through the client
+  under test (invoke, pipes, channels, lists, scripted client nexus, `IPoolUnderTest` for pools).
+- **Drivers.** `InProc/`: the C# client in process. `Remote/`: drives a language host over the JSON control protocol
+  (`docs/internals/interop-control-protocol.md`); `Hosts/`: launches, pools, supervises and restarts host processes
+  (`host.json` launch config, `HostBuildCommands`), with a per-test leak audit (`LeakReport`).
+- **Hosts.** `clients/js/packages/interop-host-node`, `interop-host-browser` (Playwright: Chromium, Firefox, WebKit),
+  `clients/java/interop-host`. They run clients generated by `src/NexNet.TestNexus` with `EmitTestScaffolding` into
+  `artifacts/interop/<lang>/generated` (gitignored) and the workspace runtime.
+- **Golden vectors.** `NexNet.GoldenVectors` writes `tests/golden/*.jsonl`; Serialization.Tests, the JS Vitest suite
+  and the Java JUnit suite all check them. Regenerate after a serializer or message change.
+- `src/NexNet.Interop.Tests` tests the harness itself (framing, hello, host launch and crash handling, drivers).
+
+---
+
 ## 6. Key Architectural Concepts
 
 ### Protocol
@@ -570,6 +633,10 @@ Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specifi
 **Add collection:** Define INexusList<T> property with [NexusCollection(mode)] attribute
 
 **Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); mark it `[Test]`, add `[Transports]` (or `[Transports(Type.X, ...)]`) for transport coverage, make it `async Task` and await every assert
+
+**Change the JS/Java runtime:** edit `clients/<lang>/`, keep the contract doc in step, run the language gate; the generator re-embeds the sources on its next build
+
+**Add a cross-language test:** `[Test, ClientMatrix(...)]` on a `MatrixTestBase` subclass, taking `ClientTarget`; run other languages with `NEXNET_TEST_LANGS=node,java`
 
 **Debug generator:** Use Generator.Tests with CSharpGeneratorRunner.RunGenerator(); check Diagnostic[] output
 

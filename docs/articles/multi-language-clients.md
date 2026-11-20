@@ -1,11 +1,26 @@
 # Multi-language Clients
 
-> [!NOTE]
-> Java and JavaScript client generation is in development. The opt-in and the output configuration below are
-> available now; the build writes `nexnet-ir.json`, but the Java and JavaScript emitters do not produce files yet.
+NexNet servers stay .NET. Clients can be generated for **Java** and **JavaScript** from the same nexus interfaces, so
+they use the same method ids, hashes and handshake as the C# client. The generator writes everything a client needs:
+the proxies, the client nexus bases, the serializers of your types **and the client runtime itself**. There is no npm
+or Maven package to install. Nothing changes for a project that does not opt in.
 
-NexNet servers stay .NET. Clients can be generated for other languages from the same nexus interfaces, so they use the
-same method ids, hashes and handshake as the C# client. Nothing changes for a project that does not opt in.
+| Language | Runs on | Transports | Guide |
+|---|---|---|---|
+| JavaScript | Node 22+, browsers (ESM) | Node: WebSocket, HttpSocket, TCP, TLS, UDS. Browser: WebSocket only | [JavaScript Client](javascript-client.md) |
+| Java | Java 11+ (built with JDK 21), Android API 24+ | WebSocket, HttpSocket, TCP, TLS | [Java Client](java-client.md) |
+
+> [!NOTE]
+> The Java and JavaScript clients are distributed only through the generator (the `NexNet.Generator` NuGet package).
+> They are not published to npm or Maven Central. `@dtronix/nexnet` and `com.dtronix.nexnet` are the names of the
+> runtime inside the generated output, not registry packages.
+
+## Overview
+
+1. Opt a server nexus in to one or more languages with `Targets` (or `[assembly: NexusClientExport]`).
+2. Tell the build where each language's files go (`NexNetJavaOutputDir`, `NexNetJavaScriptOutputDir`).
+3. Build. The output directories receive the generated client and the runtime.
+4. Use them from a Gradle/Maven/Android project or a Node/browser project, as the language guides show.
 
 ## Choosing languages
 
@@ -14,8 +29,8 @@ same method ids, hashes and handshake as the C# client. Nothing changes for a pr
 | Value | Language |
 |---|---|
 | `None` (0) | C# only (the default) |
-| `Java` (1) | Java (`com.dtronix:nexnet-client`) |
-| `JavaScript` (2) | JavaScript (`@dtronix/nexnet`), browsers and Node |
+| `Java` (1) | Java |
+| `JavaScript` (2) | JavaScript, browsers and Node |
 
 ## Exporting a server nexus
 
@@ -31,6 +46,10 @@ public partial class ChatServerNexus
 ```
 
 `Targets` on a client nexus is an error (NEXNET043): the server nexus describes both sides of the connection.
+
+The generated names drop a trailing `ServerNexus` (or `Nexus`) from the export name: `ChatServerNexus` gives
+`ChatServerProxy`, `ChatClientNexusBase`, `ChatHandshake` and the factories `createChatClient` (JavaScript) and
+`ChatClient.create` (Java).
 
 ## Exporting interfaces without a class
 
@@ -54,23 +73,59 @@ version, or when the server class lives in another assembly:
 ## Configuring output
 
 Generated files are written by the build, into directories you choose. Configure each language in the project that
-holds the exported nexus (the one referencing `NexNet.Generator`):
+holds the exported nexus (the one referencing `NexNet.Generator`).
+
+### Worked example: one project, Java and JavaScript
 
 ```xml
-<PropertyGroup>
-  <NexNetJavaOutputDir>../clients/java/src/main/java</NexNetJavaOutputDir>
-  <NexNetJavaPackage>com.example.chat</NexNetJavaPackage>
-  <NexNetJavaScriptOutputDir>../clients/js/src/generated</NexNetJavaScriptOutputDir>
-  <NexNetJavaScriptModuleName>chat-client</NexNetJavaScriptModuleName>
-</PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <!-- Java: sources for a Gradle/Maven/Android source root -->
+    <NexNetJavaOutputDir>../clients/chat-java/src/generated/java</NexNetJavaOutputDir>
+    <NexNetJavaPackage>com.example.chat</NexNetJavaPackage>
+
+    <!-- JavaScript: an ES module folder for Node or a bundler -->
+    <NexNetJavaScriptOutputDir>../clients/chat-web/src/generated</NexNetJavaScriptOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NexNet" Version="0.21.0" />
+    <PackageReference Include="NexNet.Generator" Version="0.21.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>
 ```
+
+With `ChatServerNexus` above (`Targets = NexusTargets.Java | NexusTargets.JavaScript`), `dotnet build` writes:
+
+```
+clients/chat-java/src/generated/java/
+  com/example/chat/ChatClient.java, ChatServerProxy.java, ChatClientNexusBase.java, ChatHandshake.java, …
+  com/example/chat/formatters/…            serializers of your [NexusObject] types
+  com/dtronix/nexnet/**                    the Java client runtime (with LICENSE.txt)
+clients/chat-web/src/generated/
+  ChatServerNexus.js, ChatServerNexus.d.ts, formatters.js, <one module per type>.js/.d.ts, …
+  nexnet-runtime/                          the JavaScript client runtime (package.json, LICENSE, *.js)
+```
+
+The language guides show how a Gradle or npm project picks these up.
+
+### Properties
 
 | Property | Meaning |
 |---|---|
 | `NexNetJavaOutputDir` | Java output directory, relative to the project. Enables the Java target |
 | `NexNetJavaPackage` | Java package of the generated code. Required for Java (NEXNET045 otherwise) |
+| `NexNetJavaEmitRuntime` | `true` (default) or `false`: also write the Java runtime (`com/dtronix/nexnet/**`) |
+| `NexNetJavaNullness` | `none` (default when the runtime is emitted) or `jspecify`: keep the JSpecify `@Nullable` annotations |
 | `NexNetJavaScriptOutputDir` | JavaScript output directory, relative to the project. Enables the JavaScript target |
-| `NexNetJavaScriptModuleName` | JavaScript module name. Optional |
+| `NexNetJavaScriptEmitRuntime` | `true` (default) or `false`: also write the JavaScript runtime (`nexnet-runtime/`) |
+| `NexNetJavaScriptRuntimeImport` | `package` (default) or `relative`: how generated modules import the runtime (below) |
+| `NexNetJavaScriptModuleName` | Module specifier generated code imports the runtime from. Optional; setting it turns `EmitRuntime` off by default |
 | `NexNetIrOutputPath` | Where `nexnet-ir.json` is written. Default `obj/nexnet-ir.json` |
 
 The properties are shorthand for `NexNetTarget` items, which you can also write directly. Every metadata other than
@@ -78,13 +133,44 @@ The properties are shorthand for `NexNetTarget` items, which you can also write 
 
 ```xml
 <ItemGroup>
-  <NexNetTarget Include="java" OutputDir="../clients/java/src/main/java" Package="com.example.chat" />
+  <NexNetTarget Include="java" OutputDir="../clients/chat-java/src/generated/java" Package="com.example.chat"
+                Nullness="jspecify" />
+  <NexNetTarget Include="javascript" OutputDir="../clients/chat-web/src/generated" RuntimeImport="relative" />
 </ItemGroup>
 ```
 
-A nexus that opts in to a language with no output directory gets NEXNET044 and nothing is generated for that language.
+An invalid option value is NEXNET045. A nexus that opts in to a language with no output directory gets NEXNET044 and
+nothing is generated for that language.
 
-How the files get to disk:
+### The emitted runtime
+
+Each output directory receives the client runtime of its language next to the generated code (D31). Both come from
+the same generator, so they always match; upgrading `NexNet.Generator` rewrites both.
+
+- **JavaScript** goes to `<OutputDir>/nexnet-runtime/`: the runtime's ES modules, a `package.json` named
+  `@dtronix/nexnet` (with the `browser`/`node` conditional exports) and the `LICENSE`.
+  - `RuntimeImport=package` (default): generated modules import `@dtronix/nexnet`. Add the folder as a local
+    dependency, `"@dtronix/nexnet": "file:src/generated/nexnet-runtime"`, and run `npm install` (nothing is
+    downloaded), or alias it in your bundler. In Node, the generated factory then gets the Node client with every Node
+    transport.
+  - `RuntimeImport=relative`: generated modules import `./nexnet-runtime/index.js` directly. No install step, which
+    suits plain browser ES modules. The import is the platform-neutral entry, so the generated factory knows only
+    WebSocket; Node code that needs the other transports uses `NodeNexusClient` from
+    `./nexnet-runtime/node.js` (see the [JavaScript guide](javascript-client.md#node-transports-with-relative-imports)).
+  - TypeScript: the generated code has `.d.ts` files; the runtime is typed through its JSDoc, so compile with
+    `allowJs` until the runtime's own `.d.ts` are emitted.
+- **Java** goes to `<OutputDir>/com/dtronix/nexnet/**` (package `com.dtronix.nexnet`) with a `LICENSE.txt`. Add
+  `<OutputDir>` as a source root. The runtime has no dependencies. With `Nullness=none` (the default) neither the
+  runtime nor the generated code carries JSpecify annotations; `Nullness=jspecify` keeps them for Kotlin and NullAway
+  users, who then add `compileOnly("org.jspecify:jspecify:1.0.0")`.
+- Every runtime file starts with a header line naming the NexNet version and the MIT license.
+- `EmitRuntime=false` writes only the generated code. Use it when several output directories share one runtime copy
+  (a JavaScript workspace package, a Java library module), and point the others at it (`ModuleName` for JavaScript).
+
+How the runtime travels inside the generator is described in
+[the internals page](../internals/generator-emitted-runtime.md).
+
+### How the files get to disk
 
 - The generator does no file IO. It adds `NexNet.Targets.g.cs` to the compilation: a file made only of comments that
   carries every generated file (base64, with a sha256 each) and `nexnet-ir.json`. It compiles to nothing.
@@ -101,8 +187,138 @@ How the files get to disk:
 
 Without any `NexNetTarget`, none of this runs and the build is unchanged.
 
-Treat the output directories as generated: the unpack target owns the files it writes, so do not edit them by hand.
-If you delete a generated file yourself, rebuild after a change or run `dotnet clean` first to get it back.
+Treat the output directories as generated: the unpack target owns the files it writes, so do not edit them by hand and
+do not put your own files in them. If you delete a generated file yourself, rebuild after a change or run
+`dotnet clean` first to get it back. Whether to commit the output is your choice: committing it lets Java and
+JavaScript developers build without the .NET SDK.
+
+## Feature parity
+
+Every client feature of the C# client is available in Java and JavaScript, with the same behavior, unless listed
+below. The cross-language test harness runs the C# client tests against every language and transport the language
+supports (see [Contributing (Java & JS)](contributing-multilang.md)). The table follows the capability flags of that
+harness (`src/NexNet.Interop/ClientLanguages.cs`).
+
+| Feature | C# | Java | JavaScript (Node) | JavaScript (browser) |
+|---|---|---|---|---|
+| Invocations (void, result, cancellation), client nexus methods | Yes | Yes | Yes | Yes |
+| Duplex pipes, channels | Yes | Yes | Yes | Yes |
+| Synchronized collections (all modes) | Yes | Yes | Yes | Yes |
+| Greeting token authentication (`Authenticate`) | Yes | Yes | Yes | Yes |
+| Reconnection, client pool | Yes | Yes | Yes | Yes |
+| Logging, metrics instruments, snapshots | Yes | Yes | Yes | Yes |
+| WebSocket `ws://` / `wss://` | Yes | Yes | Yes | Yes |
+| HttpSocket `http://` / `https://` | Yes | Yes | Yes | No |
+| TCP, TCP + TLS | Yes | Yes | Yes | No |
+| Unix domain sockets | Yes | **No** | Yes | No |
+| QUIC | Yes | **No** | **No** | No |
+| HTTP headers on the upgrade (`Authorization`, custom) | Yes | Yes | Yes | **No** |
+| TLS client certificate | Yes | Yes | Yes | **No** |
+| Custom CA, certificate pinning | Yes | Yes | Yes | **No** |
+| Server certificate (`RemoteCertificate`) | Yes | Yes | Yes | **No** |
+| `AsyncLocal` flow into nexus methods | Yes | No | No | No |
+
+### Documented exceptions and workarounds
+
+| Exception | Workaround |
+|---|---|
+| **Browsers: WebSocket only.** No HttpSocket, TCP or UDS (platform limit) | Expose a WebSocket endpoint (NexNet.Asp `MapNexusWebSocket`); one server can serve every transport (see [Multiple endpoints](#serving-several-languages-from-one-server)) |
+| **Browsers: no upgrade headers.** A browser WebSocket cannot send `Authorization` or other headers | Use the NexNet greeting token (`authenticate`), the canonical mechanism for every client. For ASP.NET authentication, cookies or the opt-in `AccessTokenQueryParameter` ([ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients)); restrict `AllowedOrigins` when cookies are used |
+| **Browsers: TLS is the platform's.** No client certificate, custom CA, pinning or access to the server certificate | Use a certificate the browser trusts; authenticate with the greeting token. These rows are skipped (never silently passed) in the browser test matrix |
+| **Browsers: background tabs** throttle timers | The runtime runs its keepalive in a Web Worker (needs `worker-src blob:` under a Content-Security-Policy) and reconnects on `visibilitychange`/`online`. See the [JavaScript guide](javascript-client.md#browser-notes) |
+| **Java has no Unix domain sockets** (Android and Java 11 portability) | Use TCP on loopback, or TLS |
+| **QUIC is .NET-only** (msquic) | Use TCP + TLS or WSS for Java and JavaScript clients, on another endpoint of the same server |
+| **`AsyncLocal` flow is platform-specific.** C# nexus methods run in the execution context of the code that connected ([Hub Invocations: Execution Context](hub-invocations.md#execution-context)); Java and JavaScript have no equivalent | Pass context explicitly (fields of your client nexus, method arguments). In Node, wrap your own code in `AsyncLocalStorage` if needed |
+| **Reconnection defaults.** C# and Java: off unless a policy is set. JavaScript: off in Node, the default policy in browsers | Set `reconnectionPolicy` explicitly (`null` turns it off) |
+| **JS `void` client methods are awaited.** The JS runtime holds the execution slot until a fire-and-forget method settles; C# and Java free it at once | Keep `void` client methods short, or start long work without awaiting it |
+| **Java `decimal` negative zero.** `BigDecimal` has no `-0`; `-0m` reads as `0` (equal in .NET) | Use `NexusDecimal` (`Formatters.NEXUS_DECIMAL`) when the exact bits matter |
+| **JS `Half` NaN payload.** Any binary16 NaN reads as `NaN` and is written back as `0x7E00` | None needed for normal use: it is still NaN in .NET |
+| **Java generic unions** are emitted without type relationships to their cases | Cast to the case class |
+| **Java `equals` on a list holding `Stack`/`Queue` values** compares those deques by reference (`ArrayDeque` has no value equality) | Avoid them as `NexusList` items or compare contents yourself |
+| **Default values of members an older peer did not send.** C# runs the member initializer. Java and JavaScript apply initializers that are simple constants; any other initializer gives `null`/`0`/`undefined` | Use constant initializers on members added in a later version |
+| **JS `Map`/`Set` keys compare by identity** | Use primitive keys (`string`, `number`, `bigint`); object keys are flagged by NEXNET046 |
+| **Queued frames at disconnect.** Under backpressure, Java and JavaScript send frames already queued when `disconnect()` is called; C# may drop them | None needed |
+
+## Type mapping
+
+This table is normative: the generator maps every type an export uses as shown, and reports a type it cannot map as
+NEXNET040.
+
+General rules:
+
+- **The declared C# type decides the wire encoding**, never the runtime value.
+- **Narrow integers are range-checked on write.** JavaScript also rejects non-integral numbers.
+- **Struct values are never null on the wire**: a null struct fails on write and on read.
+- **`[NexusObject]` types** become generated classes with value equality (`equals`/`hashCode` in Java, an
+  `equals` method in JavaScript). Struct copy semantics are not reproduced.
+
+| .NET | Java | JavaScript |
+|---|---|---|
+| `bool` | `boolean` | `boolean` |
+| `sbyte`, `short`, `int` | `byte`, `short`, `int` | `number` (checked) |
+| `byte`, `ushort` | `int` (checked) | `number` (checked) |
+| `uint` | `long` (checked) | `number` (checked) |
+| `long` | `long` | `bigint`; `number` (checked) with `[NexusJsNumber]` |
+| `ulong` | `long` (raw bits; `UnsignedLongs` helpers) | `bigint`; `number` (checked) with `[NexusJsNumber]` |
+| `float`, `double` | `float`, `double` | `number` |
+| `Half` | `float` | `number` |
+| `char` | `char` | `string` (one UTF-16 code unit) |
+| `string` | `String` | `string` |
+| `decimal` | `java.math.BigDecimal` | `NexusDecimal` |
+| `DateTime`, `DateTimeOffset`, `TimeSpan`, `DateOnly`, `TimeOnly` | `NexusDateTime`, `NexusDateTimeOffset`, `NexusTimeSpan`, `NexusDateOnly`, `NexusTimeOnly` (ticks; epoch converters, no `java.time` needed) | `NexusDateTime`, `NexusDateTimeOffset`, `NexusTimeSpan`, `NexusDateOnly`, `NexusTimeOnly` (`bigint` ticks; `Date` converters) |
+| `Guid` | `java.util.UUID` | `string` (lower case) |
+| `BigInteger` | `java.math.BigInteger` | `bigint` |
+| `Uri` | `String` | `string` |
+| `Version` | `NexusVersion` | `Version` (`NexusVersion`) |
+| `byte[]`, `Memory<byte>`, … | `byte[]` | `Uint8Array` |
+| Primitive arrays written as a whole (`int[]`, `List<long>`, …) | `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, `char[]` (`ushort`, `char`); unsigned as raw bits; `Half[]` as `float[]` | `Int8Array` … `Float64Array`, `BigInt64Array`/`BigUint64Array`; `char`/`ushort` as `Uint16Array`; `Half[]` as `Float32Array` |
+| `T[]`, `List<T>`, `IList<T>`, … | `java.util.List<T>` | `T[]` |
+| `HashSet<T>` | `java.util.Set<T>` | `Set<T>` |
+| `Dictionary<K, V>` | `java.util.Map<K, V>` | `Map<K, V>` (never a plain object) |
+| `Stack<T>`, `Queue<T>` | `java.util.ArrayDeque<T>` | `T[]` (a stack's index 0 is its top) |
+| `ValueTuple`, `Tuple` (1 to 7 elements) | `Tuple1` … `Tuple7` | `[a, b, …]` |
+| `KeyValuePair<K, V>` | `java.util.Map.Entry<K, V>` | `[key, value]` |
+| `Nullable<T>`, nullable references | boxed type (`@Nullable` with `Nullness=jspecify`) | `T \| null` |
+| `enum` | generated open value class (keeps unknown and `[Flags]` values) | `number` constants (`bigint` for 64-bit enums) |
+| `[NexusObject]` class, struct, record | generated class | generated class + `.d.ts` |
+| Union (`[NexusUnion]`) | abstract base class and case classes | base class and case classes |
+| Generic `[NexusObject]` | generic class; formatter factory taking the argument formatters | the same |
+| `[NexusFormatter]` user type | your class, mapped with `NexusTargetFormatter` (below) | the same |
+| `INexusDuplexPipe` | `NexusDuplexPipe` | `NexusDuplexPipe` (Web Streams) |
+| `INexusDuplexChannel<T>` | `NexusDuplexChannel<T>` | `NexusDuplexChannel<T>` (async iterable reader) |
+| `INexusList<T>` | `NexusList<T>` (a read-only `java.util.List`) | `NexusList<T>` |
+| `CancellationToken` | `CancellationToken` (runtime) | `{ signal }` (`AbortSignal`) |
+| `ValueTask`, `ValueTask<T>` | `CompletableFuture<Void>`, `CompletableFuture<T>` | `Promise<void>`, `Promise<T>` |
+
+### `[NexusJsNumber]`: `number` instead of `bigint`
+
+C# `long` and `ulong` are `bigint` in JavaScript by default, because a `number` holds integers exactly only up to
+±(2^53 − 1). `[NexusJsNumber]` (namespace `NexNet.Serialization`) maps them to a checked `number` instead:
+
+```csharp
+[NexusObject]
+public partial class Order
+{
+    [NexusKey(0), NexusJsNumber] public long Id { get; set; }
+}
+
+public interface IOrderServer
+{
+    [return: NexusJsNumber] ValueTask<long> Count([NexusJsNumber] long since);
+}
+
+// Or every long/ulong of the assembly's exports and types:
+[assembly: NexusJsNumber]
+```
+
+- Applies on a `[NexusObject]` member, a nexus method parameter or return value, a channel parameter, a collection
+  property, or the assembly. It covers the `long`/`ulong` values inside nullables, sequences, sets, dictionaries,
+  tuples and generic type arguments of that place.
+- Writing or reading a value beyond ±(2^53 − 1) (or a negative `ulong`) fails.
+- Primitive arrays written as a whole (`long[]`, `List<long>`) stay `BigInt64Array`/`BigUint64Array`, and enums
+  with a 64-bit underlying type stay `bigint`.
+- The wire format, the C# and Java APIs and the nexus hashes are unchanged.
+- On a member that is not 64-bit the attribute is silently ignored: there is no diagnostic for it.
 
 ## Types with a custom formatter
 
@@ -117,11 +333,25 @@ using NexNet.Serialization;
 [assembly: NexusTargetFormatter<Money>(NexusTargets.JavaScript, "./money-formatter.js#MoneyFormatter")]
 ```
 
-The native formatter must write exactly the bytes the C# formatter writes. Declare one mapping per (type, language);
-combined flags apply the same name to each language.
+- Java: the fully qualified name of a class with a public no-argument constructor that implements
+  `com.dtronix.nexnet.serialization.Formatter<T>` (`write(MsgPackWriter, T)` and `read(MsgPackReader)`) for
+  your Java representation of the type. Generated signatures type such values as `Object`.
+- JavaScript: `<module>#<export>` (or `<module>` for its default export): a module path relative to the output
+  directory and an exported `{ write(writer, value), read(reader) }` formatter. Generated `.d.ts` type such
+  values as `unknown`.
+- The native formatter must write exactly the bytes the C# formatter writes. Declare one mapping per (type, language);
+  combined flags apply the same name to each language. A type with no mapping for an opted-in language is NEXNET040.
 
 NEXNET048 reports an invalid mapping: a `None` or undefined target, an empty formatter name, or a second mapping for the
 same type and language.
+
+## Serving several languages from one server
+
+One `NexusServer` can listen on several transports at once, so C#, Java, Node and browser clients all connect to the
+same server and see each other in broadcasts, groups and collections: for example TCP + TLS for Java and Node services,
+WebSocket over HTTPS for browsers and QUIC for .NET clients. See [Transports: Multiple Endpoints](transports.md#multiple-endpoints)
+and [ASP.NET Integration: Multiple Endpoints](asp-net-integration.md#multiple-endpoints). A server nexus can tell the
+endpoints apart through `Context.Endpoint`.
 
 ## Diagnostics
 
@@ -132,9 +362,9 @@ same type and language.
 | NEXNET042 | Error | A nexus interface declares two methods with the same name, including one inherited from another interface. Applies to every nexus, exported or not; a `NexusClientExport` with duplicate names is skipped |
 | NEXNET043 | Error | `Targets` is set on a client nexus |
 | NEXNET044 | Warning | A nexus opts in to a language that has no output directory (`NexNet<Lang>OutputDir` or a `NexNetTarget` with `OutputDir`); nothing is generated for it |
-| NEXNET045 | Error | Invalid target configuration: an unknown target, a missing or invalid option (such as `NexNetJavaPackage`), or an unknown `NexusTargets` value |
+| NEXNET045 | Error | Invalid target configuration: an unknown target, a missing or invalid option (such as `NexNetJavaPackage`, `EmitRuntime`, `RuntimeImport` or `Nullness`), or an unknown `NexusTargets` value |
 | NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language, so a lookup with an equal value does not find the entry |
-| NEXNET047 | Error | Two exports or types would write the same output file (paths compared ignoring case) |
+| NEXNET047 | Error | Two exports or types would write the same output file (paths compared ignoring case), or a generated file would overwrite a runtime file |
 | NEXNET048 | Error | Invalid `NexusTargetFormatter` |
 
 The unpack target reports these build messages:

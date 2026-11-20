@@ -32,6 +32,10 @@
   href: benchmarks.md
 - name: Multi-language Clients
   href: multi-language-clients.md
+- name: JavaScript Client
+  href: javascript-client.md
+- name: Java Client
+  href: java-client.md
 - name: Contributing (Java & JS)
   href: contributing-multilang.md
 - name: Release Notes
