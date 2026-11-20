@@ -281,8 +281,8 @@ class PoolEntry {
   }
 }
 
-/** A pipe of `pipe.create`. */
-class PipeEntry {
+/** A pipe of `pipe.create`. Exported for tests. */
+export class PipeEntry {
   /**
    * @param {string} h
    * @param {Scope} scope
@@ -306,8 +306,8 @@ class PipeEntry {
     this.buffered = [];
     this.bufferedLength = 0;
     this.inputDone = false;
-    /** @type {NexusDuplexChannel<any> | null} */
-    this.channel = null;
+    /** Channel views of the pipe by item type: a pipe can read one type and write another. @type {Map<string, NexusDuplexChannel<any>>} */
+    this.channels = new Map();
     /** @type {any} */
     this.channelWriter = null;
     /** @type {import('./types.js').TypedCodec | null} */
@@ -335,13 +335,18 @@ class PipeEntry {
   }
 
   /**
-   * The channel view of the pipe (one per pipe).
+   * The channel view of the pipe for an item type (one per type). The reader and the writer of a pipe can use
+   * different item types, as in C# (`GetChannelReaderAsync<int>` with `GetChannelWriterAsync<string>`).
    * @param {import('./types.js').TypedCodec} codec
    * @returns {NexusDuplexChannel<any>}
    */
   channelFor(codec) {
-    this.channel ??= new NexusDuplexChannel(this.pipe, codec.formatter);
-    return this.channel;
+    let channel = this.channels.get(codec.expression);
+    if (!channel) {
+      channel = new NexusDuplexChannel(this.pipe, codec.formatter);
+      this.channels.set(codec.expression, channel);
+    }
+    return channel;
   }
 
   /**
