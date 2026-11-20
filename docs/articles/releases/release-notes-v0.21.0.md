@@ -318,7 +318,7 @@ These change how NexNet is built and tested, not the packages.
 - **Emitted runtime compile check.** `gradlew check` compiles the Java runtime in the form the generator emits it,
   with the `kotlin`, `okhttp` and `micrometer` modules against their own libraries (warnings are errors), whenever the
   integration sample's Java output exists; the nightly Android job builds that output with every module and also
-  compiles the `android` module in an Android library build.
+  compiles the `android` module in an Android library build ([#315](https://github.com/Dtronix/NexNet/pull/315)).
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 
 ## Full change log
