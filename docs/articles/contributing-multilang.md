@@ -63,7 +63,7 @@ The libraries compile with `--release 11` and target Android API 24 and later.
 
 ### Android module only
 
-The Android SDK is needed only for work on `nexnet-client-android` and for reproducing the nightly CI job. That job builds the AAR, runs D8/R8 at `--min-api 24`, and smoke-tests on an API-24 emulator.
+The Android SDK is needed only for work on `nexnet-client-android` and for reproducing the Android CI job. That job builds the AAR, runs D8/R8 at `--min-api 24`, and smoke-tests on an API-24 emulator. It runs on every pull request that touches `clients/java`, the generator, the interop server or the test nexuses, and weekly on master.
 
 1. Install the [Android command-line tools](https://developer.android.com/studio#command-line-tools-only).
 2. Set `ANDROID_HOME` to the SDK root.
@@ -106,7 +106,7 @@ The runtime's `.d.ts` files are checked in (`packages/nexnet/types/`). After a c
 npx playwright install chromium
 ```
 
-Every PR runs the browser suites in Chromium. To reproduce the nightly parity run, install all three engines:
+Every PR runs the browser suites in Chromium. To reproduce the weekly parity run, install all three engines:
 
 ```
 npx playwright install chromium firefox webkit

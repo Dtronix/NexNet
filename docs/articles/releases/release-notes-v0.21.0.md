@@ -303,7 +303,8 @@ These change how NexNet is built and tested, not the packages.
   synchronization; the C#, Java and JavaScript codecs are all checked against them ([#181](https://github.com/Dtronix/NexNet/pull/181), [#202](https://github.com/Dtronix/NexNet/pull/202), [#237](https://github.com/Dtronix/NexNet/pull/237), [#203](https://github.com/Dtronix/NexNet/pull/203), [#205](https://github.com/Dtronix/NexNet/pull/205), [#243](https://github.com/Dtronix/NexNet/pull/243)).
 - **CI.** Pull requests into any branch run CI ([#124](https://github.com/Dtronix/NexNet/pull/124)). The C# job fails if `dotnet build` or `dotnet test` ever
   starts a Java or JavaScript tool; new jobs run the golden vectors, the JavaScript and Java gates, the interop matrix,
-  and a nightly run with every browser and an Android build, D8/R8 check and emulator smoke test
+  an Android build, D8/R8 check and emulator smoke test on pull requests that touch the Java client, the generator
+  or the interop server, and a weekly run with every browser and transport that skips itself when nothing changed
   ([#213](https://github.com/Dtronix/NexNet/pull/213), [#250](https://github.com/Dtronix/NexNet/pull/250), [#296](https://github.com/Dtronix/NexNet/pull/296)). The doc samples of the Java and JavaScript guides are compiled ([#305](https://github.com/Dtronix/NexNet/pull/305)).
 - **.NET SDK pin.** `global.json` pins the SDK to major 10 (`rollForward: latestFeature`), so a newer SDK on the build
   machine (SDK 11 reported CA2252 for NexNet.Quic) does not change the build ([#122](https://github.com/Dtronix/NexNet/pull/122)).
@@ -317,11 +318,11 @@ These change how NexNet is built and tested, not the packages.
   no longer skips a missing language host. The Generator test count floor in `dotnet.yml` rises to the current 606.
 - **Emitted runtime compile check.** `gradlew check` compiles the Java runtime in the form the generator emits it,
   with the `kotlin`, `okhttp` and `micrometer` modules against their own libraries (warnings are errors), whenever the
-  integration sample's Java output exists; the nightly Android job builds that output with every module and also
+  integration sample's Java output exists; the Android CI job builds that output with every module and also
   compiles the `android` module in an Android library build ([#315](https://github.com/Dtronix/NexNet/pull/315)).
 - **Emitted modules in pull-request CI.** The `generator-sdks` job builds the integration sample with the `kotlin`,
   `okhttp` and `micrometer` modules and runs the emitted runtime compile check, and fails if it is skipped, so a pull
-  request that breaks an emitted Java module fails CI. The nightly Android job also dexes the emitted runtime and
+  request that breaks an emitted Java module fails CI. The Android CI job also dexes the emitted runtime and
   `android` module with D8 at `--min-api 24`.
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 

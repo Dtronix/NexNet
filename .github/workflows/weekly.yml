@@ -1,11 +1,18 @@
-name: Nightly (full interop matrix, browsers, Android, stress)
+name: Weekly (full interop matrix, browsers, Android, stress)
 
 # Everything too slow or too heavy for every PR: the full transport matrix on every language host, the three browsers,
-# the Android checks (D26) and a repeated interop run that shakes out flaky tests. clients.yml runs the per-PR subset.
+# a repeated interop run that shakes out flaky tests, and the Android job of clients.yml (D26) as a drift check of the
+# Android SDK, emulator and Gradle plugin. clients.yml runs the per-PR subset, and the Android job on every pull request
+# that touches the Java client, generator, interop server or test nexuses (H30).
+#
+# Scheduled weekly (H30; it was nightly). Scheduled workflows run on the default branch only. The changes job skips the
+# run when nothing landed since the last one: it compares the current commit with the head commit of the last successful
+# scheduled run of this workflow, and every other job needs it. A scheduled run with no earlier successful run, or a
+# failed lookup, runs everything. workflow_dispatch always runs everything.
 
 on:
   schedule:
-    - cron: '17 3 * * *'  # 03:17 UTC daily
+    - cron: '17 3 * * 1'  # 03:17 UTC every Monday
   workflow_dispatch:
 
 permissions:
@@ -16,14 +23,49 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
   # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
-  # limits). Pushes to master and train/** (and the nightly on master) write; pull requests and tags only restore.
+  # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
   NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
+  # Skips a scheduled run when the commit is the one the last successful scheduled run tested.
+  changes:
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Anything new since the last successful scheduled run?
+        id: decide
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != schedule ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          workflow=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
+          if ! last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?event=schedule&status=success&branch=${GITHUB_REF_NAME}&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // ""'); then
+            echo "::warning::Could not look up the last successful scheduled run; running everything."
+            last=
+          fi
+          if [ -n "$last" ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "::notice::$GITHUB_SHA was tested by the last successful scheduled run; nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Last successful scheduled run: ${last:-none}; now $GITHUB_SHA."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Bucket-A interop rows on every transport: plaintext and TLS, TCP, TcpTls, HttpSocket, WebSocket, and UDS on Node
   # (Linux runners only; Node cannot use AF_UNIX on Windows). Browsers run their WebSocket rows; the rest are visible
   # capability skips. Firefox and WebKit run only here (D29).
   interop:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 90
     strategy:
@@ -122,7 +164,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: nightly-interop-${{ matrix.lang }}
+          name: weekly-interop-${{ matrix.lang }}
           path: |
             TestResults/
             /tmp/nexnet-interop-transcripts/
@@ -133,6 +175,8 @@ jobs:
   # The interop suite ten times in a row on the per-PR transports. Every run's failures are kept; the job fails when
   # any run failed, and the TRX files show which tests are flaky.
   stress:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 180
     strategy:
@@ -228,7 +272,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: nightly-stress-${{ matrix.lang }}
+          name: weekly-stress-${{ matrix.lang }}
           path: |
             TestResults/
             /tmp/nexnet-interop-transcripts/
@@ -236,155 +280,11 @@ jobs:
             !artifacts/interop/*/generated/**
           if-no-files-found: ignore
 
-  # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
-  # D8 and R8, compiles the runtime and every optional module in the form the generator emits them (K37) and dexes
-  # that form at --min-api 24 (K38), and smoke-tests on an API-24 emulator against the interop server, reachable from
-  # it at 10.0.2.2: connect, invoke and pipe echo through the generated client of the interop test nexus (K36).
+  # The Android job of clients.yml (AAR, D8/R8, emitted android module, API-24 emulator smoke test), called rather than
+  # duplicated so the two cannot drift apart. On schedule it always runs, whatever the change.
   android:
-    runs-on: ubuntu-26.04
-    timeout-minutes: 60
-    env:
-      ANDROID_BUILD_TOOLS: '35.0.0'
-      # compileSdk of nexnet-client-android. Installed up front so the build does not depend on the Android Gradle
-      # plugin downloading it.
-      ANDROID_COMPILE_SDK: '36'
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
-
-      - uses: android-actions/setup-android@v4
-
-      - name: Install the API 24 and compile SDK platforms and build tools
-        run: sdkmanager --install "platforms;android-24" "platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
-
-      - name: Build the core JAR
-        run: clients/java/gradlew -p clients/java :nexnet-client:jar
-
-      - name: D8 and R8 at --min-api 24
-        shell: bash
-        run: |
-          jar=$(ls clients/java/nexnet-client/build/libs/nexnet-client*.jar | grep -v -e sources -e javadoc | head -n 1)
-          tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
-          android_jar="$ANDROID_HOME/platforms/android-24/android.jar"
-          echo "Dexing $jar"
-          mkdir -p "$RUNNER_TEMP/d8" "$RUNNER_TEMP/r8"
-          "$tools/d8" --release --min-api 24 --lib "$android_jar" --output "$RUNNER_TEMP/d8" "$jar"
-          # R8 fails on a reference to a class or member that API 24 lacks. JSpecify annotations are compile-only.
-          printf '%s\n' '-keep class com.dtronix.nexnet.** { *; }' '-dontwarn org.jspecify.**' > "$RUNNER_TEMP/keep.pro"
-          java -cp "$tools/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 24 --lib "$android_jar" \
-            --pg-conf "$RUNNER_TEMP/keep.pro" --output "$RUNNER_TEMP/r8" "$jar"
-          ls -l "$RUNNER_TEMP/d8" "$RUNNER_TEMP/r8"
-
-      - name: Does the Android module exist yet?
-        id: module
-        shell: bash
-        run: |
-          if [ -d clients/java/nexnet-client-android ]; then aar=true; else aar=false
-            echo "::notice::nexnet-client-android does not exist yet (K13); AAR build and emulator smoke test skipped."; fi
-          if [ -d clients/java/nexnet-client-android/src/androidTest ]; then smoke=true; else smoke=false; fi
-          echo "aar=$aar" >> "$GITHUB_OUTPUT"
-          echo "smoke=$smoke" >> "$GITHUB_OUTPUT"
-
-      - name: Build the AAR
-        if: steps.module.outputs.aar == 'true'
-        run: clients/java/gradlew -p clients/java :nexnet-client-android:assembleRelease
-
-      - uses: actions/setup-dotnet@v6
-        if: steps.module.outputs.aar == 'true'
-        with:
-          dotnet-version: '10.*'
-
-      # K37: the generator emits the runtime and the listed modules into the integration sample's Java output (D31).
-      # emittedConsumerTest compiles them in a consumer build: core and generated code alone, kotlin, okhttp and
-      # micrometer against their libraries, and with -Pnexnet.emittedConsumer.android=true the core plus the android
-      # module in an Android library build. The Android Gradle plugin does not work in the nested build of
-      # :nexnet-client:emittedConsumerTest, so this runs the consumer build on its own (K39).
-      - name: Emit the runtime with every optional module
-        if: steps.module.outputs.aar == 'true'
-        shell: bash
-        run: |
-          dotnet build src/NexNet.Generator.IntegrationSample -c Release "-p:NexNetJavaEmitRuntimeModules=android%3Bkotlin%3Bokhttp%3Bmicrometer"
-          test -f src/NexNet.Generator.IntegrationSample/generated/java/com/dtronix/nexnet/android/NexusAndroid.java
-
-      - name: Compile the emitted runtime and modules (JVM and Android)
-        if: steps.module.outputs.aar == 'true'
-        shell: bash
-        run: >-
-          clients/java/gradlew -p clients/java/nexnet-client/emitted-consumer-test consumerCheck
-          "-Pnexnet.emitted.dir=$GITHUB_WORKSPACE/src/NexNet.Generator.IntegrationSample/generated/java"
-          -Pnexnet.emittedConsumer.android=true
-
-      # K38: the emitted core runtime (Nullness=none: no JSpecify) and android module, as the consumer build's AAR holds
-      # them, dexed at --min-api 24 the way an app build does.
-      - name: D8 the emitted runtime and android module at --min-api 24
-        if: steps.module.outputs.aar == 'true'
-        shell: bash
-        run: |
-          aar=$(ls clients/java/nexnet-client/emitted-consumer-test/android/build/outputs/aar/*-release.aar | head -n 1)
-          tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
-          android_jar="$ANDROID_HOME/platforms/android-24/android.jar"
-          mkdir -p "$RUNNER_TEMP/emitted-aar" "$RUNNER_TEMP/emitted-d8"
-          unzip -o -q "$aar" classes.jar -d "$RUNNER_TEMP/emitted-aar"
-          echo "Dexing classes.jar of $aar"
-          "$tools/d8" --release --min-api 24 --lib "$android_jar" --output "$RUNNER_TEMP/emitted-d8" "$RUNNER_TEMP/emitted-aar/classes.jar"
-          ls -l "$RUNNER_TEMP/emitted-d8"
-
-      # Builds src/NexNet.TestNexus too: the generator writes the Java client of the interop test nexus, which the
-      # device tests compile, to artifacts/interop/java/generated.
-      - name: Build the interop server
-        if: steps.module.outputs.smoke == 'true'
-        run: dotnet build src/NexNet.InteropServer/Cli -c Release
-
-      - name: Start the interop server
-        if: steps.module.outputs.smoke == 'true'
-        # Prints "<endpoint> <address>" per endpoint. Addresses use 127.0.0.1; the emulator reaches the host's loopback
-        # at 10.0.2.2. They become instrumentation arguments nexnet.endpoint.<name>, plus nexnet.token.
-        shell: bash
-        run: |
-          log="$RUNNER_TEMP/interop-server.log"
-          nohup dotnet run --project src/NexNet.InteropServer/Cli -c Release --no-build -- --token nightly-android > "$log" 2>&1 &
-          for _ in $(seq 1 180); do grep -q '^Running' "$log" && break; sleep 1; done
-          grep -q '^Running' "$log" || { cat "$log"; echo "::error::The interop server did not start."; exit 1; }
-          cat "$log"
-          args="-Pandroid.testInstrumentationRunnerArguments.nexnet.token=nightly-android"
-          while read -r name address; do
-            case "$name" in Running*|test-ca|"") continue ;; esac
-            args="$args -Pandroid.testInstrumentationRunnerArguments.nexnet.endpoint.$name=${address//127.0.0.1/10.0.2.2}"
-          done < "$log"
-          echo "NEXNET_ANDROID_ARGS=$args" >> "$GITHUB_ENV"
-
-      - name: Enable KVM
-        if: steps.module.outputs.smoke == 'true'
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Smoke test on an API 24 emulator (connect, invoke, pipe)
-        if: steps.module.outputs.smoke == 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 24
-          arch: x86_64
-          target: default
-          disable-animations: true
-          script: clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
-
-      - name: Upload Android results
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: nightly-android
-          path: |
-            ${{ runner.temp }}/interop-server.log
-            clients/java/**/build/outputs/androidTest-results/
-            clients/java/**/build/reports/
-          if-no-files-found: ignore
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    uses: ./.github/workflows/clients.yml
+    with:
+      only-android: true

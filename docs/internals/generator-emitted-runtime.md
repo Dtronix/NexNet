@@ -258,28 +258,30 @@ but adds a build step and a decompression on first use; not worth it now.
   an Android library (minSdk 24), only with `-Pnexnet.emittedConsumer.android=true`. `ANDROID_HOME` alone does not
   include it: CI runners set it in jobs that have no use for it. `emittedConsumerTest` cannot build it either: it
   replaces the parent build's `-P` properties, so the flag never reaches the nested build, and the Android Gradle
-  plugin fails in a nested build ("Included builds are not yet available for this build"). The nightly Android job
-  runs the consumer build in a separate Gradle invocation instead:
+  plugin fails in a nested build ("Included builds are not yet available for this build"). The Android job of
+  `clients.yml` runs the consumer build in a separate Gradle invocation instead:
   `clients/java/gradlew -p clients/java/nexnet-client/emitted-consumer-test consumerCheck
   -Pnexnet.emitted.dir=<emitted dir> -Pnexnet.emittedConsumer.android=true`.
 - **CI (K38):** the `generator-sdks` job of `clients.yml` builds the sample with
   `NexNetJavaEmitRuntimeModules=kotlin;okhttp;micrometer` and runs `emittedConsumerTest` on every pull request; it
-  fails if the task is skipped. The nightly Android job (`nightly.yml`) emits every module, including `android`,
+  fails if the task is skipped. The `android` job of `clients.yml` (H30) emits every module, including `android`,
   runs `consumerCheck` in the separate invocation above with the Android SDK, and dexes the resulting library
-  classes with D8 at `--min-api 24`.
+  classes with D8 at `--min-api 24`. It runs on pull requests and pushes that touch `clients/java`, the generator,
+  the interop server or the test nexuses, and weekly on master (`weekly.yml`).
 
 ## 12. Follow-ups
 
 - **Docs:** user-facing documentation of the options (`llm-usage.md`, `docs/articles/multi-language-clients.md`,
   release notes).
-- **Android consumer build:** done (K37, K38, K39). The nightly Android job compiles the emitted core and `android`
+- **Android consumer build:** done (K37, K38, K39). The Android job of `clients.yml` compiles the emitted core and `android`
   module in an Android library build (minSdk 24), in its own Gradle invocation with
   `-Pnexnet.emittedConsumer.android=true` (§11), and dexes them with D8 at `--min-api 24`, which covers
   `Nullness=none` under D8. Not covered: R8 shrinking of the emitted form and running it on a device.
-- **Nightly watch item (K39):** the separate invocation's root project is
+- **Android job watch item (K39):** the separate invocation's root project is
   `clients/java/nexnet-client/emitted-consumer-test`, so Gradle does not read `clients/java/gradle.properties`;
-  only the user's Gradle home and the `-P` flags apply. A property the Android build comes to depend on there (for
-  example `android.useAndroidX`, or the JVM arguments, caching and configuration-cache settings it holds today) is
-  missing from this build, and the failure shows up only in the nightly job. Pass it with `-P` in `nightly.yml`, or
-  give the consumer build a `gradle.properties` of its own.
+  only the user's Gradle home and the command-line flags apply. The Android job passes the H29 download retries with
+  `-D`. Another property the Android build comes to depend on there (for example `android.useAndroidX`, or the JVM
+  arguments, caching and configuration-cache settings of `clients/java/gradle.properties`) is missing from this build,
+  and the failure shows up only in the Android job. Pass it on the command line in `clients.yml`, or give the
+  consumer build a `gradle.properties` of its own.
 - **Module compile proof:** done (K37, §11); CI runs it on every pull request (K38).
