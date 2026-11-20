@@ -28,24 +28,44 @@ public class EmittedRuntimeTests
     [Test]
     public async Task EmbeddedSourcesAreTheWorkspaceSources()
     {
-        await AssertEmbedded("javascript", Path.Combine(Repo, "clients", "js", "packages", "nexnet", "src"), "*.js");
-        await AssertEmbedded("java", Path.Combine(Repo, "clients", "java", "nexnet-client", "src", "main", "java"), "*.java");
+        var js = Path.Combine(Repo, "clients", "js", "packages", "nexnet");
+        await AssertEmbedded("javascript", (Path.Combine(js, "src"), "*.js"), (Path.Combine(js, "types"), "*.d.ts"));
+        await AssertEmbedded("java", (Path.Combine(Repo, "clients", "java", "nexnet-client", "src", "main", "java"), "*.java"));
         await Assert.That(EmbeddedRuntime.License).IsEqualTo(EmbeddedRuntime.Normalize(System.IO.File.ReadAllText(Path.Combine(Repo, "LICENSE"))));
         await Assert.That(EmbeddedRuntime.License).Contains("MIT License");
     }
 
-    private static async Task AssertEmbedded(string target, string root, string pattern)
+    /// <summary>The embedded sources of a target are exactly the files of every (root, pattern), merged by relative path.</summary>
+    private static async Task AssertEmbedded(string target, params (string Root, string Pattern)[] sets)
     {
-        var onDisk = Directory.GetFiles(root, pattern, SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .ToArray();
-        var embedded = EmbeddedRuntime.Sources(target);
+        var onDisk = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (root, pattern) in sets)
+        {
+            var files = Directory.GetFiles(root, pattern, SearchOption.AllDirectories);
+            await Assert.That(files.Length).IsGreaterThan(50).Because(root + " " + pattern);
+            foreach (var path in files)
+                onDisk.Add(Path.GetRelativePath(root, path).Replace('\\', '/'), path);
+        }
 
-        await Assert.That(onDisk.Length).IsGreaterThan(50);
-        await Assert.That(embedded.Select(f => f.Path).ToArray()).IsEquivalentTo(onDisk);
+        var embedded = EmbeddedRuntime.Sources(target);
+        await Assert.That(embedded.Select(f => f.Path).ToArray()).IsEquivalentTo(onDisk.Keys.ToArray());
         foreach (var file in embedded)
-            await Assert.That(file.Content).IsEqualTo(EmbeddedRuntime.Normalize(System.IO.File.ReadAllText(Path.Combine(root, file.Path))));
+            await Assert.That(file.Content).IsEqualTo(EmbeddedRuntime.Normalize(System.IO.File.ReadAllText(onDisk[file.Path])));
+    }
+
+    [Test]
+    public async Task EveryJavaScriptModuleHasItsDeclarations()
+    {
+        // J27: the committed tsc output has one .d.ts per runtime module, emitted beside it.
+        var paths = EmbeddedRuntime.Sources("javascript").Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        var modules = paths.Where(p => p.EndsWith(".js", StringComparison.Ordinal)).ToArray();
+        await Assert.That(modules.Where(p => !paths.Contains(p.Substring(0, p.Length - 3) + ".d.ts"))).IsEmpty();
+        await Assert.That(paths.Count).IsEqualTo(modules.Length * 2);
+
+        var emitted = Bundle(Options()).Select(f => f.Path).ToArray();
+        await Assert.That(emitted).Contains(JsRuntime + "index.d.ts");
+        await Assert.That(emitted).Contains(JsRuntime + "node.d.ts");
+        await Assert.That(emitted).Contains(JsRuntime + "diagnostics.d.ts");
     }
 
     // ------------------------------------------------------------------ layout and options
@@ -131,20 +151,25 @@ public class EmittedRuntimeTests
     }
 
     [Test]
-    public async Task PackageJsonHasTheWorkspaceExportsWithoutTypes()
+    public async Task PackageJsonHasTheWorkspaceExportsAndTypes()
     {
         var emitted = JsonNode.Parse(FileOf(Bundle(Options()), JsRuntime + "package.json"))!;
         var workspace = JsonNode.Parse(System.IO.File.ReadAllText(Path.Combine(Repo, "clients", "js", "packages", "nexnet", "package.json")))!;
 
-        // The workspace exports, with the dist/ types dropped (J27) and src/ as the root.
+        // The workspace exports with src/ and the declaration folder as the root: the emitted runtime has each .d.ts
+        // beside its .js (J27).
         var expected = workspace["exports"]!.DeepClone().AsObject();
         foreach (var entry in expected.ToArray())
         {
             if (entry.Value is JsonObject conditions)
             {
-                conditions.Remove("types");
                 foreach (var condition in conditions.ToArray())
-                    conditions[condition.Key] = condition.Value!.GetValue<string>().Replace("./src/", "./", StringComparison.Ordinal);
+                {
+                    conditions[condition.Key] = condition.Value!.GetValue<string>()
+                        .Replace("./src/", "./", StringComparison.Ordinal)
+                        .Replace("./dist/", "./", StringComparison.Ordinal)
+                        .Replace("./types/", "./", StringComparison.Ordinal);
+                }
             }
         }
 
@@ -153,6 +178,15 @@ public class EmittedRuntimeTests
         await Assert.That(emitted["name"]!.GetValue<string>()).IsEqualTo(workspace["name"]!.GetValue<string>());
         await Assert.That(emitted["type"]!.GetValue<string>()).IsEqualTo("module");
         await Assert.That(emitted["private"]!.GetValue<bool>()).IsTrue();
+        await Assert.That(emitted["types"]!.GetValue<string>()).IsEqualTo("./index.d.ts");
+
+        // Every types condition names an emitted declaration file.
+        var paths = Bundle(Options()).Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in emitted["exports"]!.AsObject())
+        {
+            if (entry.Value is JsonObject conditions && conditions["types"] is { } types)
+                await Assert.That(paths).Contains(JsRuntime + types.GetValue<string>().Substring(2));
+        }
     }
 
     // ------------------------------------------------------------------ version, licence, determinism
@@ -172,7 +206,7 @@ public class EmittedRuntimeTests
         await Assert.That(header).Contains(EmbeddedRuntime.Version);
         await Assert.That(header).Contains("MIT License");
         foreach (var file in files.Where(f => (f.Path.StartsWith(JavaRuntime, StringComparison.Ordinal) && f.Path.EndsWith(".java", StringComparison.Ordinal))
-                                              || (f.Path.StartsWith(JsRuntime, StringComparison.Ordinal) && f.Path.EndsWith(".js", StringComparison.Ordinal))))
+                                              || (f.Path.StartsWith(JsRuntime, StringComparison.Ordinal) && (f.Path.EndsWith(".js", StringComparison.Ordinal) || f.Path.EndsWith(".d.ts", StringComparison.Ordinal)))))
             await Assert.That(file.Content.StartsWith(header, StringComparison.Ordinal)).IsTrue().Because(file.Path);
 
         await Assert.That(FileOf(files, JavaRuntime + "NexusRuntimeVersion.java")).Contains("static final String VALUE = \"" + EmbeddedRuntime.Version + "\";");
@@ -300,7 +334,7 @@ public class EmittedRuntimeTests
 
     /// <summary>
     /// <c>RuntimeImport=relative</c>: the JavaScript output alone, with no node_modules, type-checks with <c>tsc</c>
-    /// (<c>allowJs</c>, until J27 ships the runtime's .d.ts) and runs in Node.
+    /// (strict, no <c>allowJs</c>: the runtime's declarations, J27) and runs in Node.
     /// </summary>
     [Test]
     public async Task JavaScriptOutputRunsAloneWithRelativeImports()
@@ -357,9 +391,8 @@ public class EmittedRuntimeTests
                 ["types"] = Array.Empty<string>(),
                 ["strict"] = true,
                 ["noEmit"] = true,
-                ["allowJs"] = true,
-                ["checkJs"] = false,
-                ["maxNodeModuleJsDepth"] = 1,
+                // J27: the emitted declarations type the runtime; no JavaScript is read.
+                ["allowJs"] = false,
                 ["skipLibCheck"] = false,
             },
             files = declarations.Append("usage.ts").ToArray(),
