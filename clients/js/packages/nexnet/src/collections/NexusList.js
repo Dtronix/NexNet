@@ -21,6 +21,14 @@ import { NexusCollectionMode } from './mode.js';
  */
 
 /**
+ * The events of a {@link NexusList}, for `addEventListener`.
+ *
+ * @template T
+ * @typedef {object} NexusListEventMap
+ * @property {CustomEvent<NexusListChange<T>>} changed Follows each change.
+ */
+
+/**
  * How the runtime builds a list. Supplied by `ProxyBase._collection` from the generated proxy.
  *
  * @template T
@@ -421,6 +429,56 @@ export class NexusList extends EventTarget {
     const equals = this.#equals;
     for (let i = 0; i < items.length; i++) if (equals(items[i], item)) return i;
     return -1;
+  }
+
+  /**
+   * Typed for the events of {@link NexusListEventMap}; any other type takes a plain listener.
+   * @template {keyof NexusListEventMap<T>} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   */
+  addEventListener(type, listener, options) {
+    super.addEventListener(type, listener, options);
+  }
+
+  /**
+   * Typed like {@link NexusList#addEventListener}.
+   * @template {keyof NexusListEventMap<T>} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   */
+  removeEventListener(type, listener, options) {
+    super.removeEventListener(type, listener, options);
   }
 
   /** @param {NexusListChange<T>} change */

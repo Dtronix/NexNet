@@ -3,6 +3,12 @@
  * @module
  */
 export type NexusListChange<T> = import('./ListReplica.js').NexusListChange<T>;
+export type NexusListEventMap<T> = {
+    /**
+     * Follows each change.
+     */
+    changed: CustomEvent<NexusListChange<T>>;
+};
 export type NexusListOptions<T> = {
     /**
      * The `[NexusCollection]` mode of the server
@@ -24,6 +30,13 @@ export type NexusListOptions<T> = {
 /**
  * @template T
  * @typedef {import('./ListReplica.js').NexusListChange<T>} NexusListChange
+ */
+/**
+ * The events of a {@link NexusList}, for `addEventListener`.
+ *
+ * @template T
+ * @typedef {object} NexusListEventMap
+ * @property {CustomEvent<NexusListChange<T>>} changed Follows each change.
  */
 /**
  * How the runtime builds a list. Supplied by `ProxyBase._collection` from the generated proxy.
@@ -155,4 +168,92 @@ export declare class NexusList<T> extends EventTarget {
     move(fromIndex: number, toIndex: number): Promise<boolean>;
     /** @returns {Promise<boolean>} */
     clear(): Promise<boolean>;
+    /**
+     * Typed for the events of {@link NexusListEventMap}; any other type takes a plain listener.
+     * @template {keyof NexusListEventMap<T>} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     */
+    addEventListener<K extends keyof NexusListEventMap<T>>(type: K, listener: (this: NexusList<T>, event: NexusListEventMap<T>[K]) => void, options?: boolean | AddEventListenerOptions): void;
+    /**
+     * Typed for the events of {@link NexusListEventMap}; any other type takes a plain listener.
+     * @template {keyof NexusListEventMap<T>} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     */
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void;
+    /**
+     * Typed like {@link NexusList#addEventListener}.
+     * @template {keyof NexusListEventMap<T>} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     */
+    removeEventListener<K extends keyof NexusListEventMap<T>>(type: K, listener: (this: NexusList<T>, event: NexusListEventMap<T>[K]) => void, options?: boolean | EventListenerOptions): void;
+    /**
+     * Typed like {@link NexusList#addEventListener}.
+     * @template {keyof NexusListEventMap<T>} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusList<T>, event: NexusListEventMap<T>[K]) => void} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     */
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void;
 }

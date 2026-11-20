@@ -40,6 +40,13 @@ import { getClientSnapshot } from '../diagnostics/snapshot.js';
  */
 
 /**
+ * The events of a {@link NexusClient}, for `addEventListener`.
+ * @typedef {object} NexusClientEventMap
+ * @property {CustomEvent<StateChangeDetail>} statechange
+ * @property {CustomEvent<DisconnectedDetail>} disconnected
+ */
+
+/**
  * The opaque session handle passed to the generated proxy. It follows the client's current session.
  * @typedef {{ readonly client: NexusClient<any, any>, readonly session: NexusSession | null }} ClientSessionHandle
  */
@@ -236,6 +243,56 @@ export class NexusClient extends EventTarget {
       if (this.#connecting === attempt) this.#connecting = null;
     });
     return attempt;
+  }
+
+  /**
+   * Typed for the events of {@link NexusClientEventMap}; any other type takes a plain listener.
+   * @template {keyof NexusClientEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   */
+  addEventListener(type, listener, options) {
+    super.addEventListener(type, listener, options);
+  }
+
+  /**
+   * Typed like {@link NexusClient#addEventListener}.
+   * @template {keyof NexusClientEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   */
+  removeEventListener(type, listener, options) {
+    super.removeEventListener(type, listener, options);
   }
 
   /** Disconnects gracefully and stops reconnection. @returns {Promise<void>} */

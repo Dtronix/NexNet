@@ -25,6 +25,10 @@ export type StateChangeDetail = {
 export type DisconnectedDetail = {
     reason: import('../contract/enums.js').DisconnectReasonValue;
 };
+export type NexusClientEventMap = {
+    statechange: CustomEvent<StateChangeDetail>;
+    disconnected: CustomEvent<DisconnectedDetail>;
+};
 export type ClientSessionHandle = {
     readonly client: NexusClient<any, any>;
     readonly session: NexusSession | null;
@@ -123,6 +127,94 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
     tryConnect(options?: {
         signal?: AbortSignal;
     }): Promise<ConnectionResult>;
+    /**
+     * Typed for the events of {@link NexusClientEventMap}; any other type takes a plain listener.
+     * @template {keyof NexusClientEventMap} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     */
+    addEventListener<K extends keyof NexusClientEventMap>(type: K, listener: (this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void, options?: boolean | AddEventListenerOptions): void;
+    /**
+     * Typed for the events of {@link NexusClientEventMap}; any other type takes a plain listener.
+     * @template {keyof NexusClientEventMap} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | AddEventListenerOptions} [options]
+     */
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void;
+    /**
+     * Typed like {@link NexusClient#addEventListener}.
+     * @template {keyof NexusClientEventMap} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     */
+    removeEventListener<K extends keyof NexusClientEventMap>(type: K, listener: (this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void, options?: boolean | EventListenerOptions): void;
+    /**
+     * Typed like {@link NexusClient#addEventListener}.
+     * @template {keyof NexusClientEventMap} K
+     * @overload
+     * @param {K} type
+     * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @overload
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     * @returns {void}
+     */
+    /**
+     * @param {string} type
+     * @param {EventListenerOrEventListenerObject | null} listener
+     * @param {boolean | EventListenerOptions} [options]
+     */
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void;
     /** Disconnects gracefully and stops reconnection. @returns {Promise<void>} */
     disconnect(): Promise<void>;
     /** The reconnection controller, or null before the first connect and when reconnection is off. @returns {ReconnectController | null} */
