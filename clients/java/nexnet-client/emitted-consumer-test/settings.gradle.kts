@@ -4,8 +4,13 @@
 //
 //   jvm      the core runtime and the generated code with no dependency, then the okhttp, micrometer and kotlin
 //            modules (G10), each against its own third-party library only
-//   android  the core runtime plus the android module in an Android library build; included only when ANDROID_HOME is
-//            set (D26), as in the main build
+//   android  the core runtime plus the android module in an Android library build; included only with
+//            -Pnexnet.emittedConsumer.android=true, which only the nightly Android job passes (D26, K39). It does not
+//            work in the nested build of emittedConsumerTest (the Android Gradle plugin fails there with "Included
+//            builds are not yet available for this build"), so the nightly job runs this build on its own:
+//              clients/java/gradlew -p clients/java/nexnet-client/emitted-consumer-test consumerCheck \
+//                -Pnexnet.emitted.dir=<emitted dir> -Pnexnet.emittedConsumer.android=true
+//            ANDROID_HOME alone does not include it: CI runners set it in jobs that have no use for it.
 
 pluginManagement {
     repositories {
@@ -45,11 +50,11 @@ rootProject.name = "nexnet-emitted-consumer-test"
 
 include("jvm")
 
-val androidHome = providers.environmentVariable("ANDROID_HOME")
-    .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
-    .orNull
-if (androidHome.isNullOrBlank()) {
-    logger.lifecycle("Emitted android module skipped: ANDROID_HOME is not set (only the nightly Android job builds it).")
-} else {
+val androidRequested = providers.gradleProperty("nexnet.emittedConsumer.android")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+if (androidRequested) {
     include("android")
+} else {
+    logger.lifecycle("Emitted android module skipped: -Pnexnet.emittedConsumer.android=true not set (only the nightly Android job builds it).")
 }
