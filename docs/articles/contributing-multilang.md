@@ -5,7 +5,7 @@ NexNet is gaining client-only libraries for Java and JavaScript. Their sources l
 | Path | Contents |
 |---|---|
 | `clients/js/` | npm workspace for `@dtronix/nexnet` and the Node and browser interop hosts |
-| `clients/java/` | Gradle multi-project for `com.dtronix:nexnet-client` and the JVM interop host |
+| `clients/java/` | Gradle multi-project for `com.dtronix:nexnet-client`, its optional modules and the JVM interop host |
 
 This page lists the tools each kind of contributor needs. Run the toolchain check to see what is installed:
 
@@ -73,6 +73,21 @@ The Android SDK is needed only for work on `nexnet-client-android` and for repro
    sdkmanager "platforms;android-24" "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-24;default;x86_64"
    ```
 
+### Optional modules
+
+Besides the core runtime (`nexnet-client`), `clients/java` builds four optional modules. Each has its own Gradle project and third-party dependencies (versions in `clients/java/gradle/libs.versions.toml`):
+
+| Module | Adds | Dependencies |
+|---|---|---|
+| `nexnet-client-android` | `NexusAndroid`, `NexusConnectionKeeper`, `AndroidNexusLogger`, `NexusJavaTime` | AndroidX `lifecycle-process`, `annotation`; the Android Gradle plugin |
+| `nexnet-client-kotlin` | Coroutine and `Flow` adapters (`.kt` sources, `explicitApi()`) | `kotlinx-coroutines-core`; the Kotlin Gradle plugin |
+| `nexnet-client-okhttp` | `OkHttpWebSocketConnector` | `okhttp` |
+| `nexnet-client-micrometer` | `NexusMicrometerBinder` | `micrometer-core` |
+
+`nexnet-client-android` is part of the build only when `ANDROID_HOME` is set (see [Android module only](#android-module-only)); `check` builds and tests the other modules everywhere.
+
+The generator embeds each module's sources (`src/main/java`, or `src/main/kotlin` for Kotlin) and emits a module only when a consumer lists it in `EmitRuntimeModules` ([Java guide](java-client.md#optional-modules)). Only the sources are emitted: a module's resources and manifest (the Android module's permissions) are not, and neither is anything its Gradle build generates. Anything they provide, and any new third-party dependency of a module, is a step for every consumer that emits the module: list it in the Java guide.
+
 ## JavaScript
 
 **Node.js:** version 22 or later. 24 LTS is recommended. npm ships with Node.
@@ -82,6 +97,8 @@ npm ci --prefix clients/js
 npm test --prefix clients/js
 npm run typecheck --prefix clients/js
 ```
+
+The runtime's `.d.ts` files are checked in (`packages/nexnet/types/`). After a change to its JSDoc or exports, run `npm run build:types --prefix clients/js` and commit the result: `typecheck` fails while they are out of date.
 
 **Playwright browsers** are needed for the browser test suites (Vitest browser mode) and the browser interop host:
 
@@ -106,10 +123,10 @@ When neither variable is set, nothing under `src/` invokes `gradle`, `java`, `ja
 
 Generated interop test-host code is written to `artifacts/interop/<lang>/generated`, which is gitignored.
 
-## Publishing prerequisites
+## How the clients reach users
 
-Maintainers who publish releases need the following. Contributors do not.
+The Java and JavaScript clients are **not published** to npm or Maven Central. NuGet is the only published channel: `NexNet.Generator` embeds the runtime sources under `clients/` and writes them, with the generated code, into the consumer's output directories. `@dtronix/nexnet` and `com.dtronix:nexnet-client` are names inside the repository, not registry packages.
 
-- **Maven Central:** a [Sonatype Central Portal](https://central.sonatype.com/) account with the `com.dtronix` namespace, verified by a DNS TXT record on `dtronix.com`.
-- **Signing:** a GPG signing key, with its public key published to a keyserver. Maven Central requires signed artifacts.
-- **npm:** membership with publish rights in the npm organization `@dtronix`.
+- Releasing needs nothing beyond the NuGet release; there are no npm or Maven credentials or signing keys to set up.
+- The JS and Java builds are still built and tested in CI, and their versions move in lockstep with the NuGet packages.
+- A change to a runtime source under `clients/` changes what the generator emits, so it ships with the next NuGet release of `NexNet.Generator`. See [the internals page](../internals/generator-emitted-runtime.md).

@@ -95,9 +95,8 @@ Without npm (plain `<script type="module">` pages, quick scripts), build with
 `<NexNetJavaScriptRuntimeImport>relative</NexNetJavaScriptRuntimeImport>`: generated modules then import
 `./nexnet-runtime/index.js` directly.
 
-**TypeScript.** Import the generated modules as usual; their `.d.ts` describe the API. The runtime is typed by its
-JSDoc, so set `"allowJs": true` (with `checkJs` off) in `tsconfig.json`, and, when the runtime is linked into
-`node_modules` (`RuntimeImport=package`), `"maxNodeModuleJsDepth": 1` so TypeScript reads it.
+**TypeScript.** Import the generated modules as usual; their `.d.ts` describe the API. The emitted runtime has a
+`.d.ts` beside each of its modules (and `types` conditions in its `package.json`), so no `allowJs` is needed.
 
 ## 4. Connect
 
@@ -218,6 +217,8 @@ to the server; override `onInvocationException(error, methodId)` to send your ow
 A C# `CancellationToken` parameter becomes a trailing `{ signal }` option:
 
 ```js
+import { isCancellationError } from '@dtronix/nexnet';
+
 try {
   const history = await client.proxy.history(1000, { signal: AbortSignal.timeout(5000) });
 } catch (error) {
