@@ -178,8 +178,6 @@ public partial class DocSampleTests
     {
         new("TS2339", "const { action, index, item } = e.detail;",
             "NexusList.addEventListener('changed') is typed with Event, not CustomEvent: no typed event map"),
-        new("TS18047", "console.log(message.user, message.text);",
-            "J32: a generated class formatter is Formatter<T | null>, so channel items are T | null"),
     };
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^(.+?)\((\d+),\d+\): error (TS\d+):")]
