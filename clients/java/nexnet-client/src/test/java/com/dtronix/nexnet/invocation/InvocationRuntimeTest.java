@@ -595,10 +595,15 @@ class InvocationRuntimeTest {
             }
             return ctx.result(result, TestCodec.BYTES);
         });
+        // An outbound call whose result is sent last: frames are handled in order, so once its result is in, the
+        // reader has handled the invocation and its cancellation too.
+        CompletableFuture<Void> barrier = runtime.invokeTask(2, ArgumentWriter.NONE, null);
+        assertEquals(1, idOf(peer.expect(MessageTypes.INVOCATION)));
         peer.send(MessageTypes.INVOCATION, invocation(5, 0, 0, SMALL_ARGS));
         peer.send(MessageTypes.INVOCATION_CANCELLATION, array(5));
+        peer.send(MessageTypes.INVOCATION_RESULT, array(1, 1));
+        await(barrier);
         // Nothing runs before dispatching starts (after onConnected).
-        Thread.sleep(100);
         assertTrue(nexus.threads.isEmpty());
         assertEquals(1, runtime.inboundInvocations());
         runtime.startDispatching();
@@ -700,7 +705,9 @@ class InvocationRuntimeTest {
         Peer.Msg msg = peer.expect(MessageTypes.INVOCATION);
         peer.send(MessageTypes.INVOCATION_RESULT, array(idOf(msg), 1));
         await(next);
-        assertEquals(0, runtime.pendingCalls());
+        // The refused (or canceled) call's id is released by the stream's pump thread after it queues the abort,
+        // which the peer can read first.
+        waitFor(() -> runtime.pendingCalls() == 0);
     }
 
     @Test
@@ -719,7 +726,9 @@ class InvocationRuntimeTest {
         Peer.Msg msg = peer.expect(MessageTypes.INVOCATION);
         peer.send(MessageTypes.INVOCATION_RESULT, array(idOf(msg), 1));
         await(next);
-        assertEquals(0, runtime.pendingCalls());
+        // The refused (or canceled) call's id is released by the stream's pump thread after it queues the abort,
+        // which the peer can read first.
+        waitFor(() -> runtime.pendingCalls() == 0);
     }
 
     @Test
