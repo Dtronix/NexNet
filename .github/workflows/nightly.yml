@@ -229,7 +229,7 @@ jobs:
           if-no-files-found: ignore
 
   # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
-  # D8 and R8, compiles the runtime and every optional module in the form the generator emits them (K37), and
+  # D8 and R8, compiles the runtime and every optional module in the form the generator emits them (K37) and dexes that form at --min-api 24 (K38), and
   # smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2: connect, invoke and
   # pipe echo through the generated client of the interop test nexus (K36).
   android:
@@ -306,6 +306,21 @@ jobs:
       - name: Compile the emitted runtime and modules (JVM and Android)
         if: steps.module.outputs.aar == 'true'
         run: clients/java/gradlew -p clients/java :nexnet-client:emittedConsumerTest
+
+      # K38: the emitted core runtime (Nullness=none: no JSpecify) and android module, as the consumer build's AAR holds
+      # them, dexed at --min-api 24 the way an app build does.
+      - name: D8 the emitted runtime and android module at --min-api 24
+        if: steps.module.outputs.aar == 'true'
+        shell: bash
+        run: |
+          aar=$(ls clients/java/nexnet-client/emitted-consumer-test/android/build/outputs/aar/*-release.aar | head -n 1)
+          tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS"
+          android_jar="$ANDROID_HOME/platforms/android-24/android.jar"
+          mkdir -p "$RUNNER_TEMP/emitted-aar" "$RUNNER_TEMP/emitted-d8"
+          unzip -o -q "$aar" classes.jar -d "$RUNNER_TEMP/emitted-aar"
+          echo "Dexing classes.jar of $aar"
+          "$tools/d8" --release --min-api 24 --lib "$android_jar" --output "$RUNNER_TEMP/emitted-d8" "$RUNNER_TEMP/emitted-aar/classes.jar"
+          ls -l "$RUNNER_TEMP/emitted-d8"
 
       # Builds src/NexNet.TestNexus too: the generator writes the Java client of the interop test nexus, which the
       # device tests compile, to artifacts/interop/java/generated.
