@@ -200,10 +200,13 @@ jobs:
             clients/java/**/build/reports/
           if-no-files-found: ignore
 
-  # H25: the code samples of docs/articles/java-client.md and javascript-client.md compile against what the generator
-  # emits for the guides' example API (javac --release 11 -Werror; tsc strict with checkJs). NEXNET_REQUIRE_SDKS turns
-  # a missing tool into a failure instead of a skip.
-  doc-samples:
+  # D27: the SDK-gated Generator tests compile and run what the generator emits for Java and JavaScript (javac
+  # --release 11 -Werror, tsc strict with checkJs): JavaCompileTests, JavaScaffoldingCompileTests, JsCompileTests,
+  # JsProxyCompileTests, JsScaffoldingCompileTests, the EmittedRuntimeTests proofs and H25's DocSampleTests (the samples
+  # of docs/articles/java-client.md and javascript-client.md). dotnet.yml hides both toolchains, so there they skip.
+  # NEXNET_REQUIRE_SDKS turns a missing tool into a failure, and the last step fails on any skipped test, so a PR that
+  # breaks generated Java or JavaScript compilation fails here.
+  generator-sdks:
     runs-on: ubuntu-26.04
     env:
       NEXNET_REQUIRE_SDKS: '1'
@@ -232,13 +235,39 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # The tests build the nexnet-client jar with the wrapper (and read JSpecify from the Gradle cache).
+      - uses: gradle/actions/setup-gradle@v6
+
       - name: Install the TypeScript compiler
         run: npm ci --prefix clients/js
 
-      - name: Compile the guides' samples (DocSampleTests)
+      - name: Build the nexnet-client jar
+        run: clients/java/gradlew -p clients/java :nexnet-client:jar
+
+      # --minimum-expected-tests guards against discovering fewer tests; raise it when tests are added.
+      - name: Generator tests with javac and tsc (NEXNET_REQUIRE_SDKS=1)
         run: >-
-          dotnet test src/NexNet.Generator.Tests -c Release
-          --treenode-filter "/*/*/DocSampleTests/*" --minimum-expected-tests 5
+          dotnet test src/NexNet.Generator.Tests -c Release --minimum-expected-tests 606
+          --results-directory TestResults -- --report-trx
+
+      - name: No test skipped
+        # Every skip in this suite is an SDK gate, so with the SDKs installed nothing may be skipped.
+        shell: bash
+        run: |
+          counters=$(grep -ho '<Counters [^>]*>' TestResults/*.trx)
+          echo "$counters"
+          if echo "$counters" | grep -qv 'notExecuted="0"'; then
+            echo "::error::Generator tests were skipped with NEXNET_REQUIRE_SDKS=1; an SDK-gated check did not run."
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: generator-sdks-results
+          path: TestResults/
+          if-no-files-found: ignore
 
   # Bucket-A interop rows (D23/D24) against each language host. Not required until J12 (node, browser) and K12 (java)
   # provide the hosts: until then a missing host build is a visible notice and the job reports success.
