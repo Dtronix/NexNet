@@ -10,6 +10,9 @@ val libs = the<VersionCatalogsExtension>().named("libs")
 group = "com.dtronix"
 version = nexnetVersion()
 
+// Built and tested, never published (D30): no signing or Central plugin, no remote publishing repository.
+forbidRemotePublishing()
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)

@@ -130,3 +130,11 @@ The Java and JavaScript clients are **not published** to npm or Maven Central. N
 - Releasing needs nothing beyond the NuGet release; there are no npm or Maven credentials or signing keys to set up.
 - The JS and Java builds are still built and tested in CI, and their versions move in lockstep with the NuGet packages.
 - A change to a runtime source under `clients/` changes what the generator emits, so it ships with the next NuGet release of `NexNet.Generator`. See [the internals page](../internals/generator-emitted-runtime.md).
+
+### Release guards
+
+- The clients are versioned in lockstep with NuGet. `src/NexNet/NexNet.csproj` is the version source: Gradle reads it, and `pwsh .github/scripts/release-guard.ps1 -StampVersion` writes it into the npm workspace.
+- `@dtronix/nexnet` is `"private"` and its `prepublishOnly` script fails, so even `npm publish --dry-run` stops. The Java build fails if a signing or Maven Central plugin, or a remote publishing repository, is added (`clients/java/build-logic/src/main/kotlin/NoRemotePublishing.kt`). `nexnet-client` publishes only to a local repository under its `build/` folder, for the consumer test.
+- `.github/scripts/release-guard.ps1` checks all of this on every CI run. A release tag also runs the client gates, uploads the `npm pack` tarball and the Java jars as workflow artifacts, and checks that `NexNet.Generator` embeds the current runtime.
+
+The release steps are in [llm-release.md](https://github.com/Dtronix/NexNet/blob/master/llm-release.md).

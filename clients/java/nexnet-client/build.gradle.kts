@@ -20,6 +20,8 @@ dependencies {
 }
 
 // The Maven publication: JSpecify is compile scope in the POM and only in the API variant of the Gradle module metadata.
+// It is published only to the local consumer-test repository below. Nothing goes to a remote repository (D30); the
+// nexnet.java-library convention fails the build if one is added (NoRemotePublishing.kt).
 val consumerTestRepo = layout.buildDirectory.dir("consumer-test/repo")
 
 publishing {

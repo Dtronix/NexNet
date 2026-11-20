@@ -1,6 +1,7 @@
 {
   "name": "@dtronix/nexnet",
   "version": "0.20.0",
+  "private": true,
   "description": "NexNet client for JavaScript: browser (WebSocket) and Node (WebSocket, HttpSocket, TCP, TLS, UDS).",
   "license": "MIT",
   "repository": {
@@ -29,6 +30,9 @@
       "default": "./src/diagnostics.js"
     },
     "./package.json": "./package.json"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"console.error('@dtronix/nexnet is never published to npm (D30): NuGet is the only release channel, and NexNet.Generator emits this runtime.'); process.exit(1)\""
   },
   "files": [
     "src",
