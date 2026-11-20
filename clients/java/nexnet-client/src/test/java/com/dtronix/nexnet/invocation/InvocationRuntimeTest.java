@@ -454,7 +454,9 @@ class InvocationRuntimeTest {
         assertArrayEquals(array(9, 1, new byte[] {(byte) 0xA1, 0x78}), peer.expect(MessageTypes.INVOCATION_RESULT).body);
         assertArrayEquals(SMALL_ARGS, received.get(0));
         assertEquals("test-invocations", nexus.threads.get(0));
-        // The credit was returned when the invocation was dequeued for execution.
+        // The credit was returned when the invocation was dequeued for execution. The writer sends pending control
+        // frames after the queued frames of its batch, so the credit can follow the result on the wire: wait for it.
+        peer.awaitCredits(1);
         assertEquals(1, peer.creditsReturned);
         // The result can reach the server before the runtime retires the invocation.
         awaitInboundInvocations(0);
@@ -741,6 +743,8 @@ class InvocationRuntimeTest {
         peer.stream(4, 0, MessageTypes.INVOCATION, invocation(4, 0, 0, args));
         byte[] result = peer.readStream(4, 1, MessageTypes.INVOCATION_RESULT);
         assertArrayEquals(array(4, 1, Arrays.copyOfRange(args, 1, args.length)), result);
+        // The credit can follow the result on the wire (control frames go after a batch's queued frames).
+        peer.awaitCredits(1);
         assertEquals(1, peer.creditsReturned);
     }
 
