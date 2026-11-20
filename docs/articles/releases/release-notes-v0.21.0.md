@@ -313,6 +313,8 @@ These change how NexNet is built and tested, not the packages.
 - **SDK-gated generator tests in CI.** A `generator-sdks` job runs the whole Generator test suite with JDK 21, Node 24
   and `NEXNET_REQUIRE_SDKS=1`, so the javac and tsc checks of the emitted Java and JavaScript (proxies, scaffolding, the
   emitted runtime, the guides' samples) run on every pull request, and the job fails if any of them is skipped ([#312](https://github.com/Dtronix/NexNet/pull/312)).
+- **Interop rows are required.** A failing Node, Java or Chromium interop row now fails the `interop` CI job; the job
+  no longer skips a missing language host. The Generator test count floor in `dotnet.yml` rises to the current 606.
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 
 ## Full change log
