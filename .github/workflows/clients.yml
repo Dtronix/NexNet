@@ -196,6 +196,46 @@ jobs:
             clients/java/**/build/reports/
           if-no-files-found: ignore
 
+  # H25: the code samples of docs/articles/java-client.md and javascript-client.md compile against what the generator
+  # emits for the guides' example API (javac --release 11 -Werror; tsc strict with checkJs). NEXNET_REQUIRE_SDKS turns
+  # a missing tool into a failure instead of a skip.
+  doc-samples:
+    runs-on: ubuntu-26.04
+    env:
+      NEXNET_REQUIRE_SDKS: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.*'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/js/package-lock.json
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install the TypeScript compiler
+        run: npm ci --prefix clients/js
+
+      - name: Compile the guides' samples (DocSampleTests)
+        run: >-
+          dotnet test src/NexNet.Generator.Tests -c Release
+          --treenode-filter "/*/*/DocSampleTests/*" --minimum-expected-tests 5
+
   # Bucket-A interop rows (D23/D24) against each language host. Not required until J12 (node, browser) and K12 (java)
   # provide the hosts: until then a missing host build is a visible notice and the job reports success.
   interop:
