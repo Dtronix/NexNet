@@ -15,23 +15,23 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./types/index.d.ts",
       "browser": "./src/browser.js",
       "node": "./src/node.js",
       "default": "./src/index.js"
     },
     "./node": {
-      "types": "./dist/node.d.ts",
+      "types": "./types/node.d.ts",
       "node": "./src/node.js"
     },
     "./diagnostics": {
-      "types": "./dist/diagnostics.d.ts",
+      "types": "./types/diagnostics.d.ts",
       "default": "./src/diagnostics.js"
     },
     "./package.json": "./package.json"
   },
   "files": [
     "src",
-    "dist"
+    "types"
   ]
 }
