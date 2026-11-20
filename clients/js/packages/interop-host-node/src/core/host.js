@@ -16,7 +16,7 @@ import {
   isCancellationError,
 } from '@dtronix/nexnet';
 import { encodeFrame, ControlProtocolError } from './framing.js';
-import { HostError, badRequest, notSupported, unknownHandle, invalidOperation, toWireError, nativeError, messageOf, NOT_CONNECTED } from './errors.js';
+import { HostError, ThrowingWatchError, badRequest, notSupported, unknownHandle, invalidOperation, toWireError, nativeError, messageOf, NOT_CONNECTED } from './errors.js';
 import { stateName, stateValue, reasonName, resultStateName, levelOrder, levelName, runtimeLevel } from './names.js';
 import { parseSpec, parsePoolOptions } from './spec.js';
 import { FakeClock, TrackingClock, systemClock } from './clock.js';
@@ -529,6 +529,8 @@ export class Host {
    * @param {unknown} error
    */
   hostError(error) {
+    // A throwing list.watch listener (§6.10) reaches the platform's uncaught-error path by design.
+    if (error instanceof ThrowingWatchError) return;
     this.#send({
       t: 'evt',
       test: null,
@@ -1600,8 +1602,11 @@ export class Host {
       const watch = requireString(args.watch, 'watch');
       if (entry.watches.has(watch)) throw badRequest('The watch ' + watch + ' exists.');
       const { list, codec } = this.#list(entry, args.collection);
+      if (args.throws !== undefined && args.throws !== null && typeof args.throws !== 'boolean') throw badRequest('throws must be a boolean.');
+      const throwing = args.throws === true;
       const listener = (/** @type {Event} */ event) => {
         this.#event(entry, 'list.changed', listChangedData(watch, /** @type {CustomEvent} */ (event).detail, codec));
+        if (throwing) throw new ThrowingWatchError();
       };
       list.addEventListener('changed', listener);
       entry.watches.set(watch, { list, listener });

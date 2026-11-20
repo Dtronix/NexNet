@@ -5,7 +5,7 @@
 
 export { Host, PROTOCOL_VERSION, listChangedData } from './host.js';
 export { FrameDecoder, encodeFrame, ControlProtocolError, MAX_FRAME_LENGTH } from './framing.js';
-export { HostError, toWireError, nativeError } from './errors.js';
+export { HostError, ThrowingWatchError, toWireError, nativeError } from './errors.js';
 export { parseSpec, parsePoolOptions } from './spec.js';
 export { Sha256, toBase64, fromBase64, pattern } from './encoding.js';
 export { FakeClock, TrackingClock, systemClock } from './clock.js';
