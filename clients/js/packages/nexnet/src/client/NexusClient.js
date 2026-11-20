@@ -8,6 +8,7 @@
 import { ConnectionResultState, ConnectionState, DisconnectReason } from '../contract/enums.js';
 import { NexusTransportError, cancellationError } from '../contract/errors.js';
 import { webSocketTransport } from '../transport/WebSocketTransport.js';
+import { transportError } from '../transport/TransportBase.js';
 import { NexusSession } from '../session/NexusSession.js';
 import { resolveClientOptions } from '../session/options.js';
 import { MAX_VERSION_LENGTH } from '../session/protocol.js';
@@ -188,7 +189,9 @@ export class NexusClient extends EventTarget {
 
   /**
    * Connects and completes the handshake. Rejects with `NexusTransportError` on failure and the abort reason
-   * when `signal` aborts.
+   * when `signal` aborts. A connect the server refuses for its authentication (`DisconnectReason.Authentication`
+   * during the handshake), or an `authenticate` that exceeds `handshakeTimeout`, rejects with `transportError`
+   * `AuthenticationError`, as C# `ConnectAsync` throws `TransportException(AuthenticationError)`.
    *
    * @param {{ signal?: AbortSignal }} [options]
    * @returns {Promise<void>}
@@ -199,6 +202,9 @@ export class NexusClient extends EventTarget {
     if (result.state === ConnectionResultState.Canceled) throw cancellationError(options?.signal);
     const reason = result.disconnectReason || DisconnectReason.SocketError;
     if (result.error instanceof NexusTransportError) throw result.error;
+    if (result.state === ConnectionResultState.Disconnected && reason === DisconnectReason.Authentication) {
+      throw transportError('Authentication failed.', { kind: 'AuthenticationError' });
+    }
     const message = result.state === ConnectionResultState.Exception
       ? `Connection failed (${describeReason(reason)}).`
       : `Server disconnected during the handshake (${describeReason(reason)}).`;
@@ -435,7 +441,7 @@ export class NexusClient extends EventTarget {
       const token = await new Promise((resolve, reject) => {
         const onAbort = () => {
           if (signal?.aborted) reject(cancellationError(signal));
-          else reject(new NexusTransportError(`authenticate did not complete within handshakeTimeout (${ms} ms).`, { reason: DisconnectReason.Authentication }));
+          else reject(transportError(`authenticate did not complete within handshakeTimeout (${ms} ms).`, { kind: 'AuthenticationError' }));
         };
         if (signal?.aborted || timeout.signal.aborted) return onAbort();
         signal?.addEventListener('abort', onAbort, { once: true });
