@@ -687,10 +687,9 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task InsertAsync_NegativeIndex_Throws(ClientTarget target)
     {
-        RequireInProc(target, NoArgumentErrorKind);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
@@ -751,10 +750,9 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task RemoveAttAsync_NegativeIndex_Throws(ClientTarget target)
     {
-        RequireInProc(target, NoArgumentErrorKind);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();

@@ -5,8 +5,8 @@ using NexNet.Interop.Hosts;
 namespace NexNet.IntegrationTests.Collections.Lists;
 
 /// <summary>
-/// The change events a list raises on the server and on the client under test. Events of the client's list are only
-/// observable on the C# client until the harness reports them (<see cref="MatrixTestBase.NoListEvents"/>).
+/// The change events a list raises on the server and on the client under test. The client's events are observed through
+/// a list watch (<see cref="IRemoteList{T}.WatchAsync"/>), on every client language.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(hosts)
@@ -28,16 +28,16 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerAddAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.AddAsync(77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Add);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([77], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -58,16 +58,16 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerInsertAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.InsertAsync(0, 77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Add);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([77], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -89,17 +89,17 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(77).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.RemoveAsync(77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Remove);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -121,17 +121,17 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRemoveAtAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(77).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.RemoveAtAsync(0).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Remove);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -154,18 +154,18 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerMoveAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Move);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(1).Timeout(T(1));
         await s.ServerList.AddAsync(2).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.MoveAsync(0, 1).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Move);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([2, 1], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -188,18 +188,18 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerReplaceAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(1).Timeout(T(1));
         await s.ServerList.AddAsync(2).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.ReplaceAsync(0, 3).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Replace);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([3, 2], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -223,16 +223,16 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientAddAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.AddAsync(77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Add);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([77], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -256,16 +256,16 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientInsertAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.InsertAsync(0, 77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Add);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([77], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -290,17 +290,17 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(77).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.RemoveAsync(77).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Remove);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -325,17 +325,17 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientRemoveAtAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(77).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await s.ServerList.RemoveAtAsync(0).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Remove);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -361,18 +361,18 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientMoveAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Move);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(1).Timeout(T(1));
         await s.ServerList.AddAsync(2).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.MoveAsync(0, 1).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Move);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([2, 1], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -398,18 +398,18 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReplaceAsync_NotifiesClient(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+        await using var watch = await WatchAsync(list);
 
         await s.ServerList.AddAsync(1).Timeout(T(1));
         await s.ServerList.AddAsync(2).Timeout(T(1));
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.ReplaceAsync(0, 3).Timeout(T(1));
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Replace);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo([3, 2], CollectionOrdering.Matching);
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -417,15 +417,15 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnConnection(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Reset);
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>());
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -433,16 +433,16 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnDisconnection(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 2);
+        await using var watch = await WatchAsync(list);
 
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
         await list.DisableAsync().Timeout(T(1));
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Reset, 2);
 
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>());
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -450,10 +450,9 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientReceivesResetNoticeOnReConnection(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        using var eventReg = InProc(s.Client).Client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 3);
+        await using var watch = await WatchAsync(list);
 
         // Each step is a pipe opened or closed in round trips. With 1 s bounds this test failed on QUIC in parallel
         // gates, where the load, not the code, sets how long a step takes. The re-enable must succeed (not be refused while
@@ -463,9 +462,10 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
         await Assert.That(await list.EnableAsync().Timeout(T(TestTimeouts.CollectionEnable))).IsTrue()
             .Because("The re-enable was refused.");
 
-        await eventReg.Wait();
+        await WaitForChangesAsync(watch, NexusCollectionChangedAction.Reset, 3);
 
         await Assert.That(await ItemsAsync(list)).IsEquivalentTo(Array.Empty<int>());
+        await watch.DisposeAsync();
         await s.EndAsync();
     }
 

@@ -507,6 +507,30 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
         await EndAsync(client);
     }
 
+    /// <summary>An application error with a message and no code (C-10): the code stays null on every client.</summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Hook_ServerCallingClient_MessageOnlyApplicationError(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.OnInvocationException = new NexusRemoteError(null, "app denied"));
+        Script(client).ClientTaskValue.Throws(ErrorKind.InvalidOperation, "client secret");
+
+        ProxyRemoteInvocationException exception;
+        using (var context = server.Server.ContextProvider.Rent())
+        {
+            exception = await Throws(
+                async () => await context.Proxy.Client(FirstSessionId(server)).ClientTaskValue().Timeout(T(1)));
+        }
+
+        await Assert.That(exception.RemoteErrorCode).IsNull();
+        await Assert.That(exception.RemoteExceptionType).IsNull();
+        await Assert.That(exception.RemoteMessage).IsEqualTo("app denied");
+        await Assert.That(exception.Message).Contains("app denied");
+        await Assert.That(exception.Message).DoesNotContain("client secret");
+        await EndAsync(client);
+    }
+
     /// <summary>C#-only: the C# client pool (client pools are ported by P01g).</summary>
     [Test]
     public async Task TypeAndMessage_ThroughClientPool_CarriesTypeAndMessage()

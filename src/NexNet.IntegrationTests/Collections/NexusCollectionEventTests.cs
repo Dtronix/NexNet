@@ -38,22 +38,14 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task MultipleEventSubscribers_HandleConcurrency(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        var clientList = InProc(s.Client).Client.Proxy.IntListBi;
         await list.EnableAsync().Timeout(T(1));
 
-        var subscriber1Events = 0;
-        var subscriber2Events = 0;
-        var subscriber3Events = 0;
-
         // Multiple event subscribers
-        using var subscription1 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber1Events));
-        using var subscription2 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber2Events));
-        using var subscription3 = clientList.Changed.Subscribe(args => Interlocked.Increment(ref subscriber3Events));
-
-        using var waitEvent = clientList.WaitForEvent(NexusCollectionChangedAction.Add, 10);
+        await using var subscriber1 = await WatchAsync(list);
+        await using var subscriber2 = await WatchAsync(list);
+        await using var subscriber3 = await WatchAsync(list);
 
         // Perform operations
         for (int i = 0; i < 10; i++)
@@ -61,16 +53,16 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
             await s.ServerList.AddAsync(i).Timeout(T(1));
         }
 
-        await waitEvent.Wait();
+        // Every subscriber sees each event.
+        foreach (var subscriber in new[] { subscriber1, subscriber2, subscriber3 })
+        {
+            await WaitForChangesAsync(subscriber, NexusCollectionChangedAction.Add, 10);
+            await Assert.That(subscriber.Changes.Count(c => c.Action == NexusCollectionChangedAction.Add)).IsEqualTo(10);
+        }
 
-        // Every subscriber sees each event; the waiter may complete before the others ran for the last one.
-        await WaitUntil(() => Volatile.Read(ref subscriber1Events) == 10
-                              && Volatile.Read(ref subscriber2Events) == 10
-                              && Volatile.Read(ref subscriber3Events) == 10);
-
-        await Assert.That(subscriber1Events).IsEqualTo(10);
-        await Assert.That(subscriber2Events).IsEqualTo(10);
-        await Assert.That(subscriber3Events).IsEqualTo(10);
+        await subscriber1.DisposeAsync();
+        await subscriber2.DisposeAsync();
+        await subscriber3.DisposeAsync();
         await s.EndAsync();
     }
 
@@ -78,7 +70,7 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task EventException_DoesNotBreakSystem(ClientTarget target)
     {
-        RequireInProc(target, NoListEvents);
+        RequireInProc(target, ThrowingListHandler);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         var clientList = InProc(s.Client).Client.Proxy.IntListBi;
