@@ -36,6 +36,16 @@ import { attachBrowserLifecycle } from './lifecycle.js';
  *   (`visibilitychange`, `online`, `freeze`/`resume`): true for the global `document` and `window`. Default false.
  */
 
+/**
+ * The events of a {@link ReconnectController}, for `addEventListener`.
+ * @typedef {object} ReconnectControllerEventMap
+ * @property {CustomEvent<{ reason: import('../contract/enums.js').DisconnectReasonValue }>} reconnecting A loop starts.
+ * @property {CustomEvent<{ attempt: number }>} reconnectattempt Before each attempt (1-based).
+ * @property {CustomEvent<{ attempts: number }>} reconnected
+ * @property {CustomEvent<{ reason: import('../contract/enums.js').DisconnectReasonValue, attempts: number }>} reconnectfailed
+ *   The policy stopped (a null delay).
+ */
+
 /** @param {number} reason @returns {string} */
 function reasonName(reason) {
   const names = /** @type {Record<string, number>} */ (DisconnectReason);
@@ -84,6 +94,56 @@ export class ReconnectController extends EventTarget {
     if (options.lifecycle) {
       this.#detachLifecycle = attachBrowserLifecycle(this, options.lifecycle === true ? undefined : options.lifecycle);
     }
+  }
+
+  /**
+   * Typed for the events of {@link ReconnectControllerEventMap}; any other type takes a plain listener.
+   * @template {keyof ReconnectControllerEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: ReconnectController, event: ReconnectControllerEventMap[K]) => void} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   */
+  addEventListener(type, listener, options) {
+    super.addEventListener(type, listener, options);
+  }
+
+  /**
+   * Typed like {@link ReconnectController#addEventListener}.
+   * @template {keyof ReconnectControllerEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: ReconnectController, event: ReconnectControllerEventMap[K]) => void} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   */
+  removeEventListener(type, listener, options) {
+    super.removeEventListener(type, listener, options);
   }
 
   /** The policy in use. @returns {import('../contract/config.js').ReconnectionPolicy} */
