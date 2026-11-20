@@ -2,7 +2,7 @@
 
   <!--
     Console entry point: starts a dedicated interop server with the interop test nexus (src/NexNet.TestNexus), for manual
-    debugging and the nightly Android emulator smoke test. Building it builds TestNexus, which writes the Java client the
+    debugging and the Android CI emulator smoke test. Building it builds TestNexus, which writes the Java client the
     smoke test compiles to artifacts/interop/java/generated.
   -->
   <PropertyGroup>

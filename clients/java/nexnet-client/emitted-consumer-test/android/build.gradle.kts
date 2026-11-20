@@ -1,7 +1,7 @@
 // Compiles the generator-emitted core runtime plus its android module (G10) in an Android library build, as an Android
 // consumer gets them (docs/internals/generator-emitted-runtime.md §3.3): compileSdk 36, minSdk 24, AndroidX lifecycle
 // and annotation, no NexNet artifact and no JSpecify (Nullness=none). Warnings are errors, as in nexnet-client-android.
-// Included only with -Pnexnet.emittedConsumer.android=true, in a build of its own (the nightly Android job, D26, K39).
+// Included only with -Pnexnet.emittedConsumer.android=true, in a build of its own (the Android CI job, D26, K39).
 
 plugins {
     alias(libs.plugins.android.library)
@@ -35,7 +35,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDir(stagedDir.get().asFile)
+            java.directories.add(stagedDir.get().asFile.path)
         }
     }
 }

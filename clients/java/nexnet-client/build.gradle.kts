@@ -63,7 +63,7 @@ val consumerTest = tasks.register<GradleBuild>("consumerTest") {
 // A second stand-alone build (emitted-consumer-test/) compiles the runtime in the form NexNet.Generator emits it (D31):
 // the core runtime and generated code with nothing on the class path, and the optional modules (G10) against their
 // third-party libraries. The android module is not built here: the Android Gradle plugin does not work in this nested
-// build, so the nightly Android job runs that build on its own (emitted-consumer-test/settings.gradle.kts, K39).
+// build, so the Android CI job runs that build on its own (emitted-consumer-test/settings.gradle.kts, K39).
 // It reads the Java output of src/NexNet.Generator.IntegrationSample (or -Pnexnet.emittedSample=<dir>, relative to clients/java), which only a .NET build writes (D27):
 //   dotnet build src/NexNet.Generator.IntegrationSample "-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp%3Bmicrometer"
 // Without that output the check is skipped.

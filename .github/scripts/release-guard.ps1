@@ -133,7 +133,7 @@ foreach ($workflow in Get-ChildItem (RepoPath '.github/workflows') -File -Includ
 }
 
 # Gradle: the build-logic guard (NoRemotePublishing.kt) fails configuration at run time; these checks also cover the
-# Android module, which only the nightly job configures, and a guard that was removed.
+# Android module, which only the Android CI job configures, and a guard that was removed.
 $conventionPlugin = 'clients/java/build-logic/src/main/kotlin/nexnet.java-library.gradle.kts'
 if ((ReadText $conventionPlugin) -notmatch 'forbidRemotePublishing\(\)') { Fail "$conventionPlugin no longer calls forbidRemotePublishing()." }
 $gradleRules = [ordered]@{

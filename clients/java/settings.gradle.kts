@@ -48,7 +48,7 @@ include("nexnet-client-kotlin")
 include("nexnet-client-okhttp")
 include("nexnet-client-micrometer")
 
-// The Android AAR needs the Android SDK (D26): only the nightly CI job and Android work set ANDROID_HOME. Without it the
+// The Android AAR needs the Android SDK (D26): only the Android CI job and Android work set ANDROID_HOME. Without it the
 // module is left out, so check needs no SDK.
 val androidHome = providers.environmentVariable("ANDROID_HOME")
     .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))

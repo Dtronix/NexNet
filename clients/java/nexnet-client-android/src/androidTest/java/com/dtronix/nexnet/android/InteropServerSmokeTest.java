@@ -27,7 +27,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 /**
- * Network smoke test against the interop server of the nightly job (src/NexNet.InteropServer/Cli), reached from the
+ * Network smoke test against the interop server of the Android CI job (src/NexNet.InteropServer/Cli), reached from the
  * emulator at 10.0.2.2. The job passes the instrumentation arguments {@code nexnet.token} and
  * {@code nexnet.endpoint.<name>} (tcp, websocket, httpsocket, ...); without them the tests are skipped.
  *
@@ -38,7 +38,7 @@ import org.junit.runner.RunWith;
 public class InteropServerSmokeTest {
     private static final long TIMEOUT_SECONDS = 30;
 
-    /** The identity the nightly server's token validator gives a client with the right token. */
+    /** The identity the CI interop server's token validator gives a client with the right token. */
     private static final String IDENTITY = "cli";
 
     /** The client nexus. The smoke test makes no call that reaches it; each method answers as the interop host would. */
