@@ -319,6 +319,10 @@ These change how NexNet is built and tested, not the packages.
   with the `kotlin`, `okhttp` and `micrometer` modules against their own libraries (warnings are errors), whenever the
   integration sample's Java output exists; the nightly Android job builds that output with every module and also
   compiles the `android` module in an Android library build ([#315](https://github.com/Dtronix/NexNet/pull/315)).
+- **Emitted modules in pull-request CI.** The `generator-sdks` job builds the integration sample with the `kotlin`,
+  `okhttp` and `micrometer` modules and runs the emitted runtime compile check, and fails if it is skipped, so a pull
+  request that breaks an emitted Java module fails CI. The nightly Android job also dexes the emitted runtime and
+  `android` module with D8 at `--min-api 24`.
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 
 ## Full change log

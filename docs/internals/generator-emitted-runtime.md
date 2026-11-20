@@ -247,17 +247,24 @@ but adds a build step and a decompression on first use; not worth it now.
 - SDK-free tests check the layout, the options, NEXNET045/047, determinism, the version stamp and the JSpecify rewrite,
   and for the optional modules (G10): embedding, opt-in, layout, header, `Nullness` and NEXNET045. A real build of
   the integration sample (`BundleBuildTests`) checks that a `;` list reaches the generator.
-- The modules are not compiled by a test: that needs their third-party jars, which only Gradle resolves (D27). When
-  G10 landed they were checked by hand: the emitted core runtime plus the `okhttp` and `micrometer` modules compiled
-  with `javac --release 11 -Xlint:all -Werror` against the jars of §3.3, and the `kotlin` module with `kotlinc
-  -Werror -Xexplicit-api=strict` against the emitted runtime and `kotlinx-coroutines-core`. The `android` module is
-  unverified in emitted form until an Android consumer build exists (§12).
+- **Optional modules (K37):** the modules need their third-party jars, which only Gradle resolves (D27), so a Gradle
+  consumer build compiles them: `clients/java/nexnet-client/emitted-consumer-test`, run by
+  `:nexnet-client:emittedConsumerTest` (part of `gradlew check`). It reads the Java output of
+  `src/NexNet.Generator.IntegrationSample` and compiles the core runtime and generated code with nothing on the class
+  path, then the `okhttp` and `micrometer` modules (`javac --release 11 -Xlint:all -Werror`) and the `kotlin`
+  module (explicit API, warnings as errors) each against the emitted core and its own library of §3.3. With
+  `ANDROID_HOME` set it also builds the core plus the `android` module as an Android library (minSdk 24). The task
+  is skipped when the sample was never built.
+- **CI (K38):** the `generator-sdks` job of `clients.yml` builds the sample with
+  `NexNetJavaEmitRuntimeModules=kotlin;okhttp;micrometer` and runs `emittedConsumerTest` on every pull request; it
+  fails if the task is skipped. The nightly Android job (`nightly.yml`) emits every module, including `android`,
+  runs the same task with the Android SDK and dexes the resulting library classes with D8 at `--min-api 24`.
 
 ## 12. Follow-ups
 
 - **Docs:** user-facing documentation of the options (`llm-usage.md`, `docs/articles/multi-language-clients.md`,
   release notes).
-- **CI:** a nightly job that builds an Android app from an emitted Java runtime (D26) would also cover `Nullness=none`
-  under D8, and should list `EmitRuntimeModules="android"` so the emitted Android module compiles too.
-- **Module compile proof:** a Gradle-driven consumer check (in `clients/java`, e.g. beside `consumer-test`) that
-  compiles the emitted modules against their real dependencies, so the hand check of §11 becomes automatic.
+- **Android consumer build:** done (K37, K38). The nightly Android job compiles the emitted core and `android`
+  module in an Android library build (minSdk 24) and dexes them with D8 at `--min-api 24`, which covers
+  `Nullness=none` under D8. Not covered: R8 shrinking of the emitted form and running it on a device.
+- **Module compile proof:** done (K37, §11); CI runs it on every pull request (K38).
