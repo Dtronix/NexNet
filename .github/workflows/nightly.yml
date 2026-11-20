@@ -229,8 +229,9 @@ jobs:
           if-no-files-found: ignore
 
   # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
-  # D8 and R8, and smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2: connect,
-  # invoke and pipe echo through the generated client of the interop test nexus (K36).
+  # D8 and R8, compiles the runtime and every optional module in the form the generator emits them (K37), and
+  # smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2: connect, invoke and
+  # pipe echo through the generated client of the interop test nexus (K36).
   android:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -287,9 +288,24 @@ jobs:
         run: clients/java/gradlew -p clients/java :nexnet-client-android:assembleRelease
 
       - uses: actions/setup-dotnet@v6
-        if: steps.module.outputs.smoke == 'true'
+        if: steps.module.outputs.aar == 'true'
         with:
           dotnet-version: '10.*'
+
+      # K37: the generator emits the runtime and the listed modules into the integration sample's Java output (D31).
+      # emittedConsumerTest compiles them in a consumer build: core and generated code alone, kotlin, okhttp and
+      # micrometer against their libraries, and (ANDROID_HOME is set) the core plus the android module in an Android
+      # library build. gradlew check runs the same task, but skips it when the sample was never built.
+      - name: Emit the runtime with every optional module
+        if: steps.module.outputs.aar == 'true'
+        shell: bash
+        run: |
+          dotnet build src/NexNet.Generator.IntegrationSample -c Release "-p:NexNetJavaEmitRuntimeModules=android%3Bkotlin%3Bokhttp%3Bmicrometer"
+          test -f src/NexNet.Generator.IntegrationSample/generated/java/com/dtronix/nexnet/android/NexusAndroid.java
+
+      - name: Compile the emitted runtime and modules (JVM and Android)
+        if: steps.module.outputs.aar == 'true'
+        run: clients/java/gradlew -p clients/java :nexnet-client:emittedConsumerTest
 
       # Builds src/NexNet.TestNexus too: the generator writes the Java client of the interop test nexus, which the
       # device tests compile, to artifacts/interop/java/generated.
