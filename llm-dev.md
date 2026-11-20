@@ -57,7 +57,7 @@ and carries the TUnit properties `Lang` (`csharp`, `node`, `java`, `browser-chro
 `browser-webkit`) and `Transport` (a `ClientTransport` name such as `WebSocketTls`). Select rows by property:
 - `--treenode-filter "/*/*/*/*[Lang=node]"` runs one language's rows; `[Transport=Tcp]` one transport's.
 - `NEXNET_TEST_LANGS` (comma list) picks the languages. `csharp` (in process) always runs first; `browser` means
-  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked (D27).
+  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked ([D27](docs/internals/multilang-decisions.md#d27)).
 - `NEXNET_TEST_TRANSPORTS` picks the transports of tests that name none of their own. Unset: HttpSocketTls and
   WebSocketTls. `all`: every transport the language supports. A comma list of `ClientTransport` names
   (case-insensitive) is used for every language; a transport a language lacks is a visible skip on its row, and an
@@ -295,7 +295,7 @@ Per-frame counts (`_framesSent`/`_bytesSent` under the write mutex, `_framesRece
 ### 2.3 Utilities
 
 - `IncrementalHasher.cs` - FNV-1a hasher used for method, collection, interface and shape hashes
-- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization; NEXNET039 is the `SeparatePool` warning on a pipe/channel method. NEXNET040-049 are pre-allocated for the multi-language train (plan 00-index §4.5); add descriptors append-only with those IDs: 040 type not representable in a target, 041 target name collision, 042 duplicate/overloaded method names (any nexus interface, inherited ones included; nexus not generated), 043 `Targets` on a client nexus, 044 target without output dir (warning), 045 invalid target configuration, 046 reference-equality set/dictionary key (warning), 047 output file collision, 048 invalid `NexusTargetFormatter`, 049 reserved (H06). `FindTargetDescriptor` maps the IDs `Validation/TargetValidator.cs` reports
+- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization; NEXNET039 is the `SeparatePool` warning on a pipe/channel method. NEXNET040-049 are reserved for the multi-language targets; add descriptors append-only with those IDs: 040 type not representable in a target, 041 target name collision, 042 duplicate/overloaded method names (any nexus interface, inherited ones included; nexus not generated), 043 `Targets` on a client nexus, 044 target without output dir (warning), 045 invalid target configuration, 046 reference-equality set/dictionary key (warning), 047 output file collision, 048 invalid `NexusTargetFormatter`, 049 reserved. `FindTargetDescriptor` maps the IDs `Validation/TargetValidator.cs` reports
 - `SymbolUtilities.cs` - Symbol inspection helpers
 
 ### 2.4 Serialization (Serialization/)
@@ -547,7 +547,7 @@ Client-only runtimes; the server stays .NET. User docs: `docs/articles/multi-lan
 **Pipeline.** The generator builds a language-neutral IR (`NexNet.Generator/Ir/`, also written as `nexnet-ir.json`),
 validates it per target (`Validation/TargetValidator.cs`: NEXNET040-048), and each `Targets/<Lang>/` emitter
 (`ITargetLanguage`, `TargetRegistry`) writes proxies, client nexus bases, types and formatters. The runtime sources
-under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`, D31) and emitted beside the
+under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`, [D31](docs/internals/multilang-decisions.md#d31)) and emitted beside the
 generated code. Everything travels in the comment-only `NexNet.Targets.g.cs` bundle (`Bundle/`), unpacked after
 `CoreCompile` by `build/NexNet.Generator.targets` (task in `build/NexNet.Generator.Tasks.cs`; the bundle parser is
 duplicated in `Bundle/TargetBundle.cs`). `docs/internals/generator-emitted-runtime.md` covers the emitted runtime.
@@ -568,7 +568,7 @@ emits, so it rebuilds the generator. Language gates run when a change touches `c
 ## 5d. Cross-language Test Harness (src/NexNet.Interop/)
 
 C#-authored TUnit tests run against every client language. `dotnet build src`/`dotnet test` never invoke npm,
-Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set (D27).
+Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set ([D27](docs/internals/multilang-decisions.md#d27)).
 
 - **Rows.** `[ClientMatrix(Transports = [...], CSharpTransports = [...], Requires = ClientCapabilities.X)]` makes one
   row per language of `NEXNET_TEST_LANGS` (`csharp` always, first) times transport; the test takes a `ClientTarget`.

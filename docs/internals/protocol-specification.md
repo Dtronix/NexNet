@@ -1086,7 +1086,7 @@ from version `v` to `v+1`. A Clear empties the history and becomes its first ent
   (§12.5), but the changes broadcast while it is being written do. The client sees the collection go to Disabled
   (§12.4); enabling it again resynchronizes it with a full reset;
 - the server stops (`NexusBroadcastConnectionManager.cs:276-291`);
-- the collection's message processor restarts or gives up after an unexpected error (S11). An item may have been
+- the collection's message processor restarts or gives up after an unexpected error ([#150](https://github.com/Dtronix/NexNet/pull/150)). An item may have been
   lost with the stopped processor, so no client's replica can be trusted.
   - The server restarts the processor after a backoff: 100 ms, doubled for each earlier restart within the last
     minute, at most 5 s. It then closes **every** client's collection pipe (`NexusBroadcastServer.cs:216-328`).

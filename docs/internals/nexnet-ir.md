@@ -1,6 +1,6 @@
 # NexNet generator IR (`nexnet-ir.json`)
 
-Status: introduced by the multi-language train (unit G01), schema version **1**. Owner: `src/NexNet.Generator/Ir/`.
+Status: introduced in [#113](https://github.com/Dtronix/NexNet/pull/113), schema version **1**. Owner: `src/NexNet.Generator/Ir/`.
 
 The IR is a language-neutral description of everything a client in another language needs to talk to a NexNet server:
 the exported nexus pairs (methods, ids, hashes, handshake values) and every serialized type they reach. Target-language
@@ -25,13 +25,13 @@ So the wire shape, the hashes and every target's code cannot drift apart. Buildi
 | `IrBuilder.BuildAssemblyDeclared(compilation, ct)` | Fragment of the `[assembly: NexusSerializable<T>]` roots. |
 | `IrBuilder.Merge(fragments)` | The compilation's `NexusIr`. Independent of fragment order. |
 | `IrNativeFormatters.Apply(ir, mappings)` | Attaches `[assembly: NexusTargetFormatter<T>]` mappings to the External references of a merged IR. |
-| `IrJsNumbers.Apply(ir, compilation)` | Applies `[assembly: NexusJsNumber]` to every reference of a merged IR (`jsNumber`, C-8). Member, parameter and return-value attributes are applied while the fragments are built. |
+| `IrJsNumbers.Apply(ir, compilation)` | Applies `[assembly: NexusJsNumber]` to every reference of a merged IR (`jsNumber`, [#259](https://github.com/Dtronix/NexNet/pull/259)). Member, parameter and return-value attributes are applied while the fragments are built. |
 | `IrJson.Write(ir)` / `IrJson.Read(json)` | JSON form (this document). |
 
 Fragments are built in the transform phase (symbol access); every IR record is symbol-free and has value equality, so
 fragments and the merged IR are cacheable incremental pipeline values.
 
-**Pipeline (G02).** `NexusGenerator` produces the IR as an `IncrementalValueProvider<NexusIr?>` (tracking name
+**Pipeline.** `NexusGenerator` produces the IR as an `IncrementalValueProvider<NexusIr?>` (tracking name
 `NexusIr`), built by `Extraction/TargetExtractor`:
 
 - a server `[Nexus]` class with `Targets` set contributes its export fragment (built in its transform, `targets` set
@@ -158,15 +158,15 @@ A reference to a serialized type. `kind` selects which other fields are present.
 | `Nullable` | `args[0]` inner | Nil or the inner value. |
 | `Decl` | `id`, `args` (type arguments of a generic declaration) | See TypeDecl. |
 | `TypeParam` | `ordinal` | Type parameter of the enclosing generic declaration. |
-| `External` | `clr` (full .NET name), `args`, `nativeFormatters` | No language-neutral form: a `[NexusFormatter]` user type (needs a `NexusTargetFormatter` mapping, D12), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). G03 turns these into NEXNET040 per target that has no native formatter. |
+| `External` | `clr` (full .NET name), `args`, `nativeFormatters` | No language-neutral form: a `[NexusFormatter]` user type (needs a `NexusTargetFormatter` mapping, [D12](multilang-decisions.md#d12)), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). The target validator turns these into NEXNET040 per target that has no native formatter. |
 
 **nativeFormatters** (External only; absent when empty): `{target, formatter}[]` ordered by `target`, one entry per target
 bit declared with `[assembly: NexusTargetFormatter<T>(target, formatter)]` for the type whose definition's full metadata
 name equals `clr` (a generic user type's mapping applies to every construction). `formatter` is the native class's
 fully qualified name, as written in the attribute (trimmed).
 
-**jsNumber** (C-8; `Prim` with `prim` `Int64` or `UInt64` only; absent = false): the occurrence opted in to the checked
-JavaScript `number` mapping of D13 with `[NexusJsNumber]`, instead of `bigint`. The wire form is unchanged; other targets
+**jsNumber** ([#259](https://github.com/Dtronix/NexNet/pull/259); `Prim` with `prim` `Int64` or `UInt64` only; absent = false): the occurrence opted in to the checked
+JavaScript `number` mapping of [D13](multilang-decisions.md#d13) with `[NexusJsNumber]`, instead of `bigint`. The wire form is unchanged; other targets
 ignore the flag. It is set on every Int64/UInt64 leaf of the type of an attributed `[NexusObject]` member (property or
 field), method parameter (for a channel: its item type), return value (`[return: NexusJsNumber]`) or collection property,
 looking through `Nullable`, `Seq`, `Set`, `Queue`, `Stack`, `Map`, `Tuple` and the `args` of a `Decl`, but not into
@@ -230,8 +230,8 @@ declaration order). `value` holds the raw 64 bits as a signed integer: reinterpr
 
 - `irVersion` (`NexusIr.CurrentVersion`) is bumped on **any breaking change**: a removed or renamed field, a changed meaning or
   encoding, a new enum value that existing readers would misread, or a new required field.
-- Adding an optional field that readers may ignore is not breaking, but it is still a contract change: after G01 merges,
-  the IR schema is frozen and every change goes through a `C-<n>` amendment card that updates this document, the
+- Adding an optional field that readers may ignore is not breaking, but it is still a contract change: the IR schema is frozen,
+  and every change goes through one PR that updates this document, the
   snapshots in `src/NexNet.Generator.Tests/Ir/Snapshots/` and every consumer in one PR.
 - `IrJson.Read` rejects any `irVersion` other than the one it was built for.
 
