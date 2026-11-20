@@ -373,7 +373,7 @@ future (`join()`, `get()`) blocks.
 - Keep `invocationExecutor` on a background executor unless your client nexus methods only touch the UI.
 - Tie the client to a lifecycle: connect when the app comes to the foreground and `disconnect()` when it goes to the
   background, and set a `reconnectionPolicy` so the client recovers after the system drops the network. The optional
-  `nexnet-client-android` module (below) does this with `NexusConnectionKeeper`.
+  `android` module (below) does this with `NexusConnectionKeeper`.
 - R8/ProGuard needs no keep rules: the runtime and the generated code use no reflection.
 
 ## Kotlin
@@ -388,19 +388,58 @@ val history = client.proxy().history(20).await()
 ```
 
 Build with `Nullness=jspecify` to get Kotlin nullable types instead of platform types. The optional
-`nexnet-client-kotlin` module (below) adds suspend functions with cancellation and `Flow` adapters.
+`kotlin` module (below) adds suspend functions with cancellation and `Flow` adapters.
 
 ## Optional modules
 
-The repository's Java build (`clients/java`) has four optional modules on top of the core runtime:
+Four optional modules add platform integrations on top of the core runtime. The generator emits none of them by
+default, because each needs third-party libraries that your build supplies. List the ones you want in
+`EmitRuntimeModules`; each is written beside the core runtime, in its own package, under the same source root:
 
-| Module | Adds |
-|---|---|
-| `nexnet-client-android` | `NexusAndroid.mainThreadExecutor()` and `NexusAndroid.configure(builder)`, `NexusConnectionKeeper` (connects in the foreground, disconnects in the background, reconnects on network changes), `AndroidNexusLogger` (Logcat), `NexusJavaTime` (`java.time` converters on API 26+) |
-| `nexnet-client-kotlin` | `connectAwait()`, `nexusCall { token -> … }` (coroutine cancellation cancels the call), `states()`, `NexusChannelReader.asFlow()`, `NexusList.changes()` |
-| `nexnet-client-okhttp` | `OkHttpWebSocketConnector`: the WebSocket transport over an `OkHttpClient` (pass it to `ChatClient.create(config, nexus, connector)`) |
-| `nexnet-client-micrometer` | `NexusMicrometerBinder`: the client metrics as Micrometer meters with the C# names |
+```xml
+<NexNetTarget Include="java" OutputDir="../chat-java/src/generated/java" Package="com.example.chat"
+              EmitRuntimeModules="kotlin;okhttp" />
+<!-- or, with the properties of section 2: -->
+<NexNetJavaEmitRuntimeModules>kotlin;okhttp</NexNetJavaEmitRuntimeModules>
+```
 
-The generator does not emit these modules yet: it emits only the core runtime. To use one, build with
-`<NexNetJavaEmitRuntime>false</NexNetJavaEmitRuntime>` and take the core runtime and the module from a checkout of
-the repository (Gradle `includeBuild("<repo>/clients/java")`), so the runtime classes exist only once.
+| Module | Adds | Package |
+|---|---|---|
+| `android` | `NexusAndroid.mainThreadExecutor()` and `NexusAndroid.configure(builder)`, `NexusConnectionKeeper` (connects in the foreground, disconnects in the background, reconnects on network changes), `AndroidNexusLogger` (Logcat), `NexusJavaTime` (`java.time` converters on API 26+) | `com.dtronix.nexnet.android` |
+| `kotlin` | `connectAwait()`, `nexusCall { token -> … }` (coroutine cancellation cancels the call), `states()`, `NexusChannelReader.asFlow()`, `NexusList.changes()` | `com.dtronix.nexnet.kotlin` |
+| `okhttp` | `OkHttpWebSocketConnector`: the WebSocket transport over an `OkHttpClient` (pass it to `ChatClient.create(config, nexus, connector)`) | `com.dtronix.nexnet.okhttp` |
+| `micrometer` | `NexusMicrometerBinder`: the client metrics as Micrometer meters with the C# names | `com.dtronix.nexnet.micrometer` |
+
+Add each module's dependencies to your build. The versions are the ones the modules are built and tested with; any
+later compatible version works.
+
+| Module | Third-party dependencies | Build requirements |
+|---|---|---|
+| `android` | `androidx.lifecycle:lifecycle-process:2.11.0`, `androidx.annotation:annotation:1.11.0` | An Android build (Android Gradle plugin, `compileSdk` 36, `minSdk` 24): the sources use `android.*` classes, so a plain JVM project cannot compile them. The app's manifest needs `android.permission.INTERNET` and, for `NexusConnectionKeeper`, `android.permission.ACCESS_NETWORK_STATE` |
+| `kotlin` | `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0` (and the Kotlin standard library, which the Kotlin plugin adds) | The Kotlin Gradle plugin (`org.jetbrains.kotlin.jvm` or `org.jetbrains.kotlin.android`, Kotlin 2.x), which compiles the `.kt` files in the Java source root |
+| `okhttp` | `com.squareup.okhttp3:okhttp:5.5.1` (brings Okio and the Kotlin standard library) | None beyond Java 11 |
+| `micrometer` | `io.micrometer:micrometer-core:1.17.2` | None beyond Java 11 |
+
+For example, a Gradle project that emits `kotlin` and `okhttp`:
+
+```kotlin
+plugins {
+    java
+    kotlin("jvm") version "2.4.21"
+}
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
+}
+
+sourceSets {
+    main { java.srcDir("src/generated/java") }
+}
+```
+
+- `Nullness` applies to the modules' Java sources as to the core runtime; the Kotlin sources carry no JSpecify
+  annotations.
+- The modules need the emitted core runtime: listing one with `EmitRuntime=false` is NEXNET045, as is an unknown
+  module name.
+- No R8/ProGuard rules are needed: the modules use no reflection.

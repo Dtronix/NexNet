@@ -122,6 +122,7 @@ The language guides show how a Gradle or npm project picks these up.
 | `NexNetJavaPackage` | Java package of the generated code. Required for Java (NEXNET045 otherwise) |
 | `NexNetJavaEmitRuntime` | `true` (default) or `false`: also write the Java runtime (`com/dtronix/nexnet/**`) |
 | `NexNetJavaNullness` | `none` (default when the runtime is emitted) or `jspecify`: keep the JSpecify `@Nullable` annotations |
+| `NexNetJavaEmitRuntimeModules` | Optional Java runtime modules to write beside the runtime: any of `android`, `kotlin`, `micrometer`, `okhttp`, separated by `;`, `,` or spaces. Default none (below) |
 | `NexNetJavaScriptOutputDir` | JavaScript output directory, relative to the project. Enables the JavaScript target |
 | `NexNetJavaScriptEmitRuntime` | `true` (default) or `false`: also write the JavaScript runtime (`nexnet-runtime/`) |
 | `NexNetJavaScriptRuntimeImport` | `package` (default) or `relative`: how generated modules import the runtime (below) |
@@ -157,12 +158,21 @@ the same generator, so they always match; upgrading `NexNet.Generator` rewrites 
     suits plain browser ES modules. The import is the platform-neutral entry, so the generated factory knows only
     WebSocket; Node code that needs the other transports uses `NodeNexusClient` from
     `./nexnet-runtime/node.js` (see the [JavaScript guide](javascript-client.md#node-transports-with-relative-imports)).
-  - TypeScript: the generated code has `.d.ts` files; the runtime is typed through its JSDoc, so compile with
-    `allowJs` until the runtime's own `.d.ts` are emitted.
+  - TypeScript: the generated code and the runtime both come with `.d.ts` files, so no `allowJs` is needed.
 - **Java** goes to `<OutputDir>/com/dtronix/nexnet/**` (package `com.dtronix.nexnet`) with a `LICENSE.txt`. Add
   `<OutputDir>` as a source root. The runtime has no dependencies. With `Nullness=none` (the default) neither the
   runtime nor the generated code carries JSpecify annotations; `Nullness=jspecify` keeps them for Kotlin and NullAway
   users, who then add `compileOnly("org.jspecify:jspecify:1.0.0")`.
+- **Optional Java modules** are emitted only when listed in `EmitRuntimeModules` (`NexNetJavaEmitRuntimeModules`).
+  Each goes beside the core runtime in its own package (`com.dtronix.nexnet.<module>`) and needs third-party
+  libraries that your build adds (the versions the modules are tested with):
+  - `android`: `androidx.lifecycle:lifecycle-process:2.11.0` and `androidx.annotation:annotation:1.11.0`; compiles
+    only in an Android build (`minSdk` 24);
+  - `kotlin`: `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0`, compiled by the Kotlin Gradle plugin;
+  - `okhttp`: `com.squareup.okhttp3:okhttp:5.5.1`;
+  - `micrometer`: `io.micrometer:micrometer-core:1.17.2`.
+
+  What each module adds is in the [Java guide](java-client.md#optional-modules).
 - Every runtime file starts with a header line naming the NexNet version and the MIT license.
 - `EmitRuntime=false` writes only the generated code. Use it when several output directories share one runtime copy
   (a JavaScript workspace package, a Java library module), and point the others at it (`ModuleName` for JavaScript).
@@ -362,7 +372,7 @@ endpoints apart through `Context.Endpoint`.
 | NEXNET042 | Error | A nexus interface declares two methods with the same name, including one inherited from another interface. Applies to every nexus, exported or not; a `NexusClientExport` with duplicate names is skipped |
 | NEXNET043 | Error | `Targets` is set on a client nexus |
 | NEXNET044 | Warning | A nexus opts in to a language that has no output directory (`NexNet<Lang>OutputDir` or a `NexNetTarget` with `OutputDir`); nothing is generated for it |
-| NEXNET045 | Error | Invalid target configuration: an unknown target, a missing or invalid option (such as `NexNetJavaPackage`, `EmitRuntime`, `RuntimeImport` or `Nullness`), or an unknown `NexusTargets` value |
+| NEXNET045 | Error | Invalid target configuration: an unknown target, a missing or invalid option (such as `NexNetJavaPackage`, `EmitRuntime`, `RuntimeImport`, `Nullness` or `EmitRuntimeModules`), an optional Java module listed without the emitted runtime, or an unknown `NexusTargets` value |
 | NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language, so a lookup with an equal value does not find the entry |
 | NEXNET047 | Error | Two exports or types would write the same output file (paths compared ignoring case), or a generated file would overwrite a runtime file |
 | NEXNET048 | Error | Invalid `NexusTargetFormatter` |

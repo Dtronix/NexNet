@@ -744,6 +744,7 @@ Output (MSBuild, in the project that holds the exported nexus):
   <NexNetJavaPackage>com.example.chat</NexNetJavaPackage>                    <!-- required for Java (NEXNET045) -->
   <NexNetJavaEmitRuntime>true</NexNetJavaEmitRuntime>                        <!-- default true: write com/dtronix/nexnet/** -->
   <NexNetJavaNullness>none</NexNetJavaNullness>                              <!-- none (default with runtime) | jspecify -->
+  <NexNetJavaEmitRuntimeModules>kotlin;okhttp</NexNetJavaEmitRuntimeModules> <!-- optional modules; default none -->
   <NexNetJavaScriptOutputDir>../chat-web/src/generated</NexNetJavaScriptOutputDir> <!-- enables JavaScript -->
   <NexNetJavaScriptEmitRuntime>true</NexNetJavaScriptEmitRuntime>            <!-- default true: write nexnet-runtime/ -->
   <NexNetJavaScriptRuntimeImport>package</NexNetJavaScriptRuntimeImport>     <!-- package (default) | relative -->
@@ -760,11 +761,18 @@ Emitted runtime (each file has a version + MIT header line; regenerated with the
   `"@dtronix/nexnet": "file:<OutputDir>/nexnet-runtime"` + `npm install` (or a bundler alias); in Node the factory
   gets every Node transport. `relative`: imports `./nexnet-runtime/index.js`, no install, factory knows WebSocket
   only (Node: `NodeNexusClient.create(config, nexus, XClientBinding)` from `./nexnet-runtime/node.js`). TypeScript:
-  generated `.d.ts` + `allowJs` (and `maxNodeModuleJsDepth: 1` with `package`) for the runtime.
+  generated code and runtime both ship `.d.ts` (each beside its `.js`); no `allowJs` needed.
 - Java: `<OutputDir>/com/dtronix/nexnet/**` + `LICENSE.txt`; add `<OutputDir>` as a source root (Gradle
   `sourceSets.main { java.srcDir(...) }`, Android `sourceSets["main"].java.srcDir(...)`, Maven build-helper).
   `Nullness=none` strips JSpecify `@Nullable` from runtime and generated code; `jspecify` keeps them (consumer adds
   `compileOnly("org.jspecify:jspecify:1.0.0")`). Invalid option values: NEXNET045.
+- Java optional modules (`EmitRuntimeModules` / `NexNetJavaEmitRuntimeModules`, list of `android`, `kotlin`,
+  `micrometer`, `okhttp`, separated by `;`, `,` or spaces; default none): each is emitted beside the core runtime as
+  `<OutputDir>/com/dtronix/nexnet/<module>/**`. Needs the emitted core runtime (else NEXNET045). The consumer adds
+  the third-party deps: `android` → `androidx.lifecycle:lifecycle-process:2.11.0`,
+  `androidx.annotation:annotation:1.11.0` (Android build only, minSdk 24); `kotlin` →
+  `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0` + Kotlin Gradle plugin (compiles the `.kt` in the source
+  root); `okhttp` → `com.squareup.okhttp3:okhttp:5.5.1`; `micrometer` → `io.micrometer:micrometer-core:1.17.2`.
 
 Build mechanics:
 - The generator does no file IO: it adds `NexNet.Targets.g.cs`, comments only, carrying every file (base64 + sha256) and
@@ -786,7 +794,7 @@ Build mechanics:
 | NEXNET042 | Error | Duplicate method names (see Method Signatures); also reported for a `NexusClientExport` interface (the export is skipped) |
 | NEXNET043 | Error | `Targets` set on a client nexus; set it on the server nexus or use `NexusClientExport` |
 | NEXNET044 | Warning | A nexus opts in to a language but no output directory is configured for it (`NexNet<Lang>OutputDir` or a `NexNetTarget` item with `OutputDir`); nothing is generated for it |
-| NEXNET045 | Error | Invalid target configuration: unknown target in `NexNetTargets`, a missing or invalid option (`Package`, `EmitRuntime`, `RuntimeImport`, `Nullness`), or an unknown `NexusTargets` value |
+| NEXNET045 | Error | Invalid target configuration: unknown target in `NexNetTargets`, a missing or invalid option (`Package`, `EmitRuntime`, `RuntimeImport`, `Nullness`, `EmitRuntimeModules`), an optional Java module without the emitted runtime, or an unknown `NexusTargets` value |
 | NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language |
 | NEXNET047 | Error | Two exports or types (or a generated and a runtime file) would write the same output file (paths compared ignoring case) |
 | NEXNET048 | Error | Invalid `NexusTargetFormatter`: `None` or undefined target, empty formatter name, or a second one for the same (T, language) |
@@ -879,10 +887,10 @@ client.disconnect().join(); client.close();                // close() waits for 
   `BigDecimal`, `DateTime`/… → runtime `NexusDateTime`/… (no `java.time`), `Guid` → `UUID`, collections →
   `List`/`Set`/`Map`, `Stack`/`Queue` → `ArrayDeque`, tuples → `Tuple1..7`; objects: POJO with value `equals`.
 - Android: `callbackExecutor(ContextCompat.getMainExecutor(ctx))`; never `join()` on the main thread; API 24 safe.
-- Optional modules in `clients/java` (not emitted by the generator; use `EmitRuntime=false` + Gradle `includeBuild`):
-  `nexnet-client-android` (`NexusAndroid.mainThreadExecutor()`, `NexusConnectionKeeper`, `AndroidNexusLogger`,
-  `NexusJavaTime`), `-kotlin` (`connectAwait()`, `nexusCall { token -> }`, `asFlow()`, `changes()`), `-okhttp`
-  (`OkHttpWebSocketConnector`), `-micrometer` (`NexusMicrometerBinder`).
+- Optional modules (opt-in with `EmitRuntimeModules`, deps above): `android` (`NexusAndroid.mainThreadExecutor()`,
+  `NexusConnectionKeeper`, `AndroidNexusLogger`, `NexusJavaTime`), `kotlin` (`connectAwait()`,
+  `nexusCall { token -> }`, `asFlow()`, `changes()`), `okhttp` (`OkHttpWebSocketConnector`), `micrometer`
+  (`NexusMicrometerBinder`).
 
 Parity exceptions (everything else matches C#): browser = WebSocket only, no headers/client cert/custom CA/pinning/
 `RemoteCertificate` (use the greeting token; ASP `AccessTokenQueryParameter`, `AllowedOrigins`); Java has no UDS;
