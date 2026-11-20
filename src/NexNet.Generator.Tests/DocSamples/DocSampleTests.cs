@@ -174,11 +174,7 @@ public partial class DocSampleTests
     /// Errors that come from gaps in the runtime's declarations, not from the guide. Each one fails the test once it is
     /// fixed, so the entry goes with the fix.
     /// </summary>
-    private static readonly KnownJsError[] KnownJsErrors =
-    {
-        new("TS2339", "const { action, index, item } = e.detail;",
-            "NexusList.addEventListener('changed') is typed with Event, not CustomEvent: no typed event map"),
-    };
+    private static readonly KnownJsError[] KnownJsErrors = Array.Empty<KnownJsError>();
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^(.+?)\((\d+),\d+\): error (TS\d+):")]
     private static partial System.Text.RegularExpressions.Regex TscError();
