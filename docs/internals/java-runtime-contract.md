@@ -816,3 +816,28 @@ of `-Pnexnet.testRuntime=11|21` directly with the installed class path). The hos
 has no classes in the runtime's packages (C-9): fake time, `maxMessageSize` and `invocationCredits` go through the
 public `NexusClient.create` overload with `SessionTimers` and `SessionOptions`, and a pipe of `pipe.create` that is
 later used as a channel (`channel.writer`/`channel.reader`) goes through `NexusDuplexChannel.over` (section 4).
+
+## 8. Optional modules (K13, G10)
+
+Four optional modules sit on top of the core runtime. Each is a separate Gradle project in `clients/java` with its own
+package and third-party dependencies, and the generator emits it beside the emitted core runtime when a consumer
+lists it in `EmitRuntimeModules` (`docs/internals/generator-emitted-runtime.md` §3.3).
+
+| Module (emitted name) | Package | Third-party dependencies | Uses from the core runtime |
+|---|---|---|---|
+| `nexnet-client-android` (`android`) | `com.dtronix.nexnet.android` | `androidx.lifecycle:lifecycle-process`, `androidx.annotation:annotation`; Android `compileSdk` 36, `minSdk` 24 | `ClientConfig` builder, `NexusClient` and `ConnectionState`, `ReconnectController`, `NexusLogger`, the value types |
+| `nexnet-client-kotlin` (`kotlin`) | `com.dtronix.nexnet.kotlin` | `kotlinx-coroutines-core` (Kotlin sources, `explicitApi()`) | `NexusClient`, `CancellationToken`/`CancellationTokenSource`, `NexusChannelReader`/`Writer`, `NexusList` |
+| `nexnet-client-okhttp` (`okhttp`) | `com.dtronix.nexnet.okhttp` | `com.squareup.okhttp3:okhttp` | `Transport` and `Transport.Connector` (section 6.3), `ClientConfig`, `TransportError`, `NexusTransportException` |
+| `nexnet-client-micrometer` (`micrometer`) | `com.dtronix.nexnet.micrometer` | `io.micrometer:micrometer-core` | `NexusClient`, `NexusMetrics`, `NexusMetricsListener` (section 6.10) |
+
+Rules:
+
+- Versions are in `gradle/libs.versions.toml`; the Java guide lists them as the consumer's dependencies.
+- A module uses only the public runtime API listed in its row: no classes in the runtime's packages and nothing
+  runtime-internal, so the emitted core runtime compiles it unchanged.
+- The modules are not part of the contract between generated code and the runtime. Generated code never references
+  them, and a module can change without a contract amendment as long as the runtime API it uses stays.
+- Only a module's sources are emitted (`src/main/java`, or `src/main/kotlin`). Its manifest and resources are not:
+  the Android module's permissions (`INTERNET`, `ACCESS_NETWORK_STATE`) are a consumer step in the Java guide.
+- `Nullness=none` strips JSpecify annotations from the modules' Java sources as from the core runtime; the Kotlin
+  sources carry none.

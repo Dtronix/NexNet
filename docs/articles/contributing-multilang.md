@@ -86,7 +86,7 @@ Besides the core runtime (`nexnet-client`), `clients/java` builds four optional 
 
 `nexnet-client-android` is part of the build only when `ANDROID_HOME` is set (see [Android module only](#android-module-only)); `check` builds and tests the other modules everywhere.
 
-The generator embeds each module's sources (`src/main/java`, or `src/main/kotlin` for Kotlin) and emits a module only when a consumer lists it in `EmitRuntimeModules` ([Java guide](java-client.md#optional-modules)). Keep a module's sources free of anything that only its Gradle build provides (generated sources, resources, a manifest), since the emitted copy gets none of it. A new dependency of a module is a new requirement for every consumer that emits it: list it in the Java guide.
+The generator embeds each module's sources (`src/main/java`, or `src/main/kotlin` for Kotlin) and emits a module only when a consumer lists it in `EmitRuntimeModules` ([Java guide](java-client.md#optional-modules)). Only the sources are emitted: a module's resources and manifest (the Android module's permissions) are not, and neither is anything its Gradle build generates. Anything they provide, and any new third-party dependency of a module, is a step for every consumer that emits the module: list it in the Java guide.
 
 ## JavaScript
 
