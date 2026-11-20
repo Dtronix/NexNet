@@ -315,6 +315,10 @@ These change how NexNet is built and tested, not the packages.
   emitted runtime, the guides' samples) run on every pull request, and the job fails if any of them is skipped ([#312](https://github.com/Dtronix/NexNet/pull/312)).
 - **Interop rows are required.** A failing Node, Java or Chromium interop row now fails the `interop` CI job; the job
   no longer skips a missing language host. The Generator test count floor in `dotnet.yml` rises to the current 606.
+- **Emitted runtime compile check.** `gradlew check` compiles the Java runtime in the form the generator emits it,
+  with the `kotlin`, `okhttp` and `micrometer` modules against their own libraries (warnings are errors), whenever the
+  integration sample's Java output exists; the nightly Android job builds that output with every module and also
+  compiles the `android` module in an Android library build ([#315](https://github.com/Dtronix/NexNet/pull/315)).
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 
 ## Full change log
