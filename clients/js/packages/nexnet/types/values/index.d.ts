@@ -1,5 +1,5 @@
 /**
- * Value types for C# primitives that have no exact JS equivalent (01-context §5, D14), and the Guid helpers.
+ * Value types for C# primitives that have no exact JS equivalent (design decision D14, docs/internals/multilang-decisions.md), and the Guid helpers.
  * @module
  */
 export { NexusDecimal } from './NexusDecimal.js';

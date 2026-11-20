@@ -460,7 +460,7 @@ export function encodeServerGreeting(greeting) {
 
 /**
  * Decodes a server greeting body. Four elements are required; a fifth is `idleTimeoutMs` (uint32 or nil); any further
- * trailing elements are skipped (trailing-field rule, train §4.5).
+ * trailing elements are skipped (trailing-field rule, protocol specification).
  * @param {Uint8Array} body
  * @returns {ServerGreeting}
  */

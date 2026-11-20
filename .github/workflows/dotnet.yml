@@ -34,7 +34,7 @@ permissions:
 env:
   # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
   # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
-  # limits). Pushes to master and train/** (and the nightly on master) write; pull requests and tags only restore.
+  # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
   NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:

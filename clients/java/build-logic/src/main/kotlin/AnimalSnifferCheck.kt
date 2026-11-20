@@ -67,7 +67,7 @@ abstract class AnimalSnifferCheck : DefaultTask() {
             throw GradleException(
                 "${violations.size} Android API-24 violation(s) (signature ${signatures.files.joinToString { it.name }}):\n" +
                     violations.joinToString("\n") { "  $it" } +
-                    "\nThese JDK APIs are missing on Android 7.0; see 01-context / contributing-multilang for the forbidden list."
+                    "\nThese JDK APIs are missing on Android 7.0; see docs/articles/contributing-multilang.md for the forbidden list."
             )
         }
     }

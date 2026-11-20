@@ -302,7 +302,7 @@ internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Server_PipeWriterCompletesUponWriterCompletion(ClientTarget target)
     {
-        RequireInProc(target, "a remote pipe cannot complete its reading side alone (follow-up card)");
+        RequireInProc(target, "a remote pipe cannot complete its reading side alone");
         var tcs = Signal();
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
@@ -362,7 +362,7 @@ internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Server_PipeReaderRemainsOpenUponOtherReaderCompletion(ClientTarget target)
     {
-        RequireInProc(target, "a remote pipe cannot complete its reading side alone (follow-up card)");
+        RequireInProc(target, "a remote pipe cannot complete its reading side alone");
         var tcs = Signal();
         var outputComplete = Signal();
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>

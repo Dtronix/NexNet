@@ -720,8 +720,8 @@ Attribute options: `[NexusMethod(Ignore = true)]`, `[NexusCollection(Id = 1)]`, 
 ## Multi-language Clients (opt-in)
 
 Java and JavaScript clients are generated from the same nexus interfaces (same method ids, hashes, handshake). The
-generator also emits each client **runtime** (D31), so consumers install nothing: the runtimes are **not published** to
-npm or Maven (D30); `@dtronix/nexnet` and `com.dtronix.nexnet` name the emitted runtime. Without any of the below,
+generator also emits each client **runtime**, so consumers install nothing: the runtimes are **not published** to
+npm or Maven; `@dtronix/nexnet` and `com.dtronix.nexnet` name the emitted runtime. Without any of the below,
 the generator's output and the build are unchanged. Docs: docs/articles/multi-language-clients.md,
 javascript-client.md, java-client.md.
 

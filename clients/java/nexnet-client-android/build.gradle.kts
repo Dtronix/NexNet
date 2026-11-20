@@ -1,10 +1,11 @@
 // com.dtronix:nexnet-client-android: Android integration for the NexNet Java client (K13): main-thread callbacks,
 // android.util.Log logging, a lifecycle- and network-aware connection keeper and java.time converters. An AAR built with
 // the Android Gradle plugin; settings.gradle.kts includes it only when ANDROID_HOME is set (D26), so the gate
-// (check) needs no Android SDK. The nightly CI job builds it and runs src/androidTest on an API-24 emulator.
+// (check) needs no Android SDK. The Android CI job (pull requests that touch the Java client, and weekly) builds it
+// and runs src/androidTest on an API-24 emulator.
 // Built and tested, not published (D30).
 //
-// The device tests also compile the Java client of the interop test nexus (src/NexNet.TestNexus), which the nightly job's
+// The device tests also compile the Java client of the interop test nexus (src/NexNet.TestNexus), which the Android job's
 // interop server (src/NexNet.InteropServer/Cli) hosts. The generator writes it to artifacts/interop/java/generated when
 // TestNexus builds, so run "dotnet build src/NexNet.InteropServer/Cli" before the device tests. The AAR does not need it.
 

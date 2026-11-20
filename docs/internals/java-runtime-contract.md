@@ -1,7 +1,7 @@
 # Java runtime contract (generated code ↔ runtime)
 
-Owner: K01. Consumers: the Java emitters (K03, K04, K11) and the runtime implementations (K02, K05–K10).
-Frozen when K01 merges; a change needs a `C-<n>` amendment card (merge-train rules).
+Introduced in [#137](https://github.com/Dtronix/NexNet/pull/137). Consumers: the Java emitters in `src/NexNet.Generator/Targets/Java/` and the runtime in
+`clients/java/nexnet-client`. This is a stable contract: a change must update every consumer in one PR.
 
 The Java client is `com.dtronix:nexnet-client`, package `com.dtronix.nexnet`, built in `clients/java`. This page
 describes the API that generated code compiles against and the rules both sides follow. The JavaScript counterpart is
@@ -19,7 +19,7 @@ describes the API that generated code compiles against and the rules both sides 
 | Tests | JUnit 5 (5.14.x, which still runs on Java 11). Test JVM: `-Pnexnet.testJava=11` or `21` (default 21); Gradle provisions a missing JDK through the Foojay resolver |
 | Version | Read from `<Version>` in `src/NexNet/NexNet.csproj` (lockstep with NuGet and npm); exposed as `NexusRuntime.VERSION` |
 | Jar | `Automatic-Module-Name: com.dtronix.nexnet`; sources and javadoc jars |
-| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is a `compileOnlyApi` dependency (K28): it reaches consumers' compile classpath, so generated code and user code that see its `@Nullable` compile without declaring it, but it is not needed at run time |
+| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is a `compileOnlyApi` dependency: it reaches consumers' compile classpath, so generated code and user code that see its `@Nullable` compile without declaring it, but it is not needed at run time |
 
 The convention plugin `nexnet.java-library` (`clients/java/build-logic`) applies all of the above to every library.
 Animal Sniffer is called through the `org.codehaus.mojo:animal-sniffer` library by the `AnimalSnifferCheck` task
@@ -31,24 +31,24 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 
 ## 2. Packages
 
-| Package | Contents | Implemented by |
-|---|---|---|
-| `com.dtronix.nexnet` | `CancellationToken`, `CancellationTokenSource`, `Registration`, `DisconnectReason`, `TransportError`, exceptions, value types (`NexusDateTime`, `NexusDateTimeKind`, `NexusDateTimeOffset`, `NexusTimeSpan`, `NexusDateOnly`, `NexusTimeOnly`, `NexusDecimal`, `NexusVersion`, `Tuple1`..`Tuple7`, `UnsignedLongs`), `NexusRuntime` | K01 (data, cancellation); K02 (conversions) |
-| `com.dtronix.nexnet.serialization` | `Formatter<T>`, `MsgPackWriter`, `MsgPackReader`, `MsgPackType`, `MsgPackException`, `FormatterRegistry` | K02 |
-| `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` | K01 (bases); K07 (`ProxyInvoker`, `InvocationContext` implementations) |
-| `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` | K05 (session), K06 (transports) |
-| `com.dtronix.nexnet.logging` | `NexusLogger`, `NexusLogLevel` (section 6.2) | K05 |
-| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`, `ProgressProbe` (K17), `SessionObserver`, `SessionObservers`, `SessionMetricsSink` (K20). Runtime-internal (sections 6.5, 6.9 and 6.10) | K05 |
-| `com.dtronix.nexnet.transport` | `Transport`, `Transport.Connector`, `NexusConnector`, `TlsTrust` (sections 6.3, 6.4, 6.8) | K06 |
-| `com.dtronix.nexnet.invocation` | `InvocationRuntime`, `ClientProxyInvoker`, `InvocationOptions`, `NexusRemoteError`, `RemoteExceptionDetail`, `InvocationCounters`, `SessionBudget`, `PayloadCodec` (section 6.7) | K07 |
-| `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` | K08 |
-| `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState`, `NexusCollectionMode` (C-4), `NexusListClient<T>` (the runtime implementation) | K09 |
-| `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) | K01 (done); K10 wires it |
-| `com.dtronix.nexnet.pool` | `NexusClientPool`, `NexusClientPoolConfig`, `RentedNexusClient` | K10 |
-| `com.dtronix.nexnet.diagnostics` | `Diagnostics` (leak-audit counters, `snapshot(client)`), `NexusSessionSnapshot`, `NexusInvocationSnapshot`, `NexusBudgetSnapshot`, `NexusPipeSnapshot`, `NexusLargeMessageSnapshot` and the other snapshot types (section 6.10) | K10, K20 |
-| `com.dtronix.nexnet.metrics` | `NexusMetrics`, `NexusMetricsListener`, `MeasurementObserver`, `NexusInstruments`, `NexusInstrument`, `InstrumentKind`, `MetricTags` (section 6.10) | K10, K20 |
+| Package | Contents |
+|---|---|
+| `com.dtronix.nexnet` | `CancellationToken`, `CancellationTokenSource`, `Registration`, `DisconnectReason`, `TransportError`, exceptions, value types (`NexusDateTime`, `NexusDateTimeKind`, `NexusDateTimeOffset`, `NexusTimeSpan`, `NexusDateOnly`, `NexusTimeOnly`, `NexusDecimal`, `NexusVersion`, `Tuple1`..`Tuple7`, `UnsignedLongs`), `NexusRuntime` |
+| `com.dtronix.nexnet.serialization` | `Formatter<T>`, `MsgPackWriter`, `MsgPackReader`, `MsgPackType`, `MsgPackException`, `FormatterRegistry` |
+| `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` |
+| `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` |
+| `com.dtronix.nexnet.logging` | `NexusLogger`, `NexusLogLevel` (section 6.2) |
+| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`, `ProgressProbe`, `SessionObserver`, `SessionObservers`, `SessionMetricsSink`. Runtime-internal (sections 6.5, 6.9 and 6.10) |
+| `com.dtronix.nexnet.transport` | `Transport`, `Transport.Connector`, `NexusConnector`, `TlsTrust` (sections 6.3, 6.4, 6.8) |
+| `com.dtronix.nexnet.invocation` | `InvocationRuntime`, `ClientProxyInvoker`, `InvocationOptions`, `NexusRemoteError`, `RemoteExceptionDetail`, `InvocationCounters`, `SessionBudget`, `PayloadCodec` (section 6.7) |
+| `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` |
+| `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState`, `NexusCollectionMode`, `NexusListClient<T>` (the runtime implementation) |
+| `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) |
+| `com.dtronix.nexnet.pool` | `NexusClientPool`, `NexusClientPoolConfig`, `RentedNexusClient` |
+| `com.dtronix.nexnet.diagnostics` | `Diagnostics` (leak-audit counters, `snapshot(client)`), `NexusSessionSnapshot`, `NexusInvocationSnapshot`, `NexusBudgetSnapshot`, `NexusPipeSnapshot`, `NexusLargeMessageSnapshot` and the other snapshot types (section 6.10) |
+| `com.dtronix.nexnet.metrics` | `NexusMetrics`, `NexusMetricsListener`, `MeasurementObserver`, `NexusInstruments`, `NexusInstrument`, `InstrumentKind`, `MetricTags` (section 6.10) |
 
-The value types and tuples live in the root package because the generator's type mapper (G03, `JavaTarget`) emits
+The value types and tuples live in the root package because the generator's type mapper (`JavaTarget`) emits
 `com.dtronix.nexnet.NexusDateTime`, `com.dtronix.nexnet.Tuple2` and so on. C# `decimal` maps to
 `java.math.BigDecimal`; `NexusDecimal` is the codec's four-integer form. `BigDecimal` loses the sign of a negative
 zero (section 5).
@@ -60,7 +60,7 @@ tuples, value-type storage and equality, `HandshakeDescriptor`, `ClientConfig`, 
 ## 3. What generated code uses
 
 Generated code may use only the members listed here. Implementations may add public members (additive), but must
-not change or remove these without an amendment card.
+not change or remove these without a contract change that updates every consumer.
 
 ### 3.1 Formatters
 
@@ -71,7 +71,7 @@ public interface Formatter<T> {
 }
 ```
 
-- K02 provides the built-ins (`com.dtronix.nexnet.serialization.Formatters`). Formatters are stateless and
+- The runtime provides the built-ins (`com.dtronix.nexnet.serialization.Formatters`). Formatters are stateless and
   thread-safe. The generated formatters are described in section 3.1.1.
 - `MsgPackWriter`: `writeNil`, `writeBoolean`, `writeInt(long)`, `writeUInt64(long bits)`, `writeFloat`,
   `writeDouble`, `writeString`, `writeBinary`, `writeArrayHeader`, `writeMapHeader`, `writeExtHeader(type, length)`,
@@ -79,9 +79,9 @@ public interface Formatter<T> {
 - `MsgPackReader(byte[], offset, length)`: `peekType`, `tryReadNil`, `readBoolean`, `readLong`, `readInt`,
   `readUInt64`, `readFloat`, `readDouble`, `readString`, `readBinary`, `readArrayHeader`, `readMapHeader`,
   `readExtHeader`, `lastExtType`, `readRaw`, `skip`, `remaining`. Malformed input throws `MsgPackException`.
-- K02 finalizes this API (it owns the formatter contract) and may add methods.
+- Adding methods to this API is not a contract change; changing or removing them is.
 
-### 3.1.1 Generated types and formatters (K03)
+### 3.1.1 Generated types and formatters
 
 The Java emitter writes one file per declared .NET type, and the formatters in a sub-package:
 
@@ -89,7 +89,7 @@ The Java emitter writes one file per declared .NET type, and the formatters in a
 |---|---|
 | `<package>/<Type>.java` | One flat package (`NexNetJavaPackage`). Nested .NET types are flattened to `Outer_Inner` |
 | `<package>/formatters/Formatters.java` | A `public static final Formatter<X>` constant per non-generic type, named as the type (`Formatters.InteropItem`), and a factory per generic type (`Formatters.InteropBox(Formatter<T>)`). Abstract objects have none |
-| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists (D12): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
+| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists ([D12](multilang-decisions.md#d12)): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
 
 `Formatters`, `UserFormatters` and `formatters` are reserved type names (NEXNET041).
 
@@ -112,7 +112,7 @@ Type shapes:
 
 ### 3.2 Handshake
 
-The emitter (K04) writes one constant per export from the IR (`handshake`, `clientAcceptedIds`):
+The emitter writes one constant per export from the IR (`handshake`, `clientAcceptedIds`):
 
 ```java
 public static final HandshakeDescriptor DESCRIPTOR = new HandshakeDescriptor(
@@ -176,7 +176,7 @@ public final class ChatServerProxy extends ProxyBase {
   wire position. Pipe and channel methods are sent with `IgnoreReturn | DuplexPipe`.
 - The token argument is null or `CancellationToken.NONE` when the method takes no token.
 - Returned futures complete on the callback executor. `future.cancel(true)` sends `InvocationCancellation`.
-- **Collections (amendment C-4).** `list(collectionId, mode, itemFormatter)` takes the collection's mode from the IR
+- **Collections ([#188](https://github.com/Dtronix/NexNet/pull/188), [#189](https://github.com/Dtronix/NexNet/pull/189)).** `list(collectionId, mode, itemFormatter)` takes the collection's mode from the IR
   (`CollectionIr`, from the server nexus's `[NexusCollection(mode)]`): `UNSET`, `SERVER_TO_CLIENT`, `BI_DIRECTIONAL`
   or `RELAY`. The mode is not sent on the wire (specification section 12.2). The runtime returns the same instance
   for a collection id on every call, for the life of the client. See section 3.6.
@@ -211,7 +211,7 @@ public abstract class ChatClientNexusBase extends ClientNexusBase<ChatServerProx
   `onReconnecting()`, each returning `CompletableFuture<Void>`. `context()` returns the `ClientSessionContext`.
 - `InvocationContext.result(future, formatter)` for `ValueTask<T>`, `result(future)` for `ValueTask`,
   `noResult()` for `void` methods only. Pipe and channel arguments: `ctx.pipe(id)`, `ctx.channel(id, formatter)`.
-- **Pipe and channel methods return `ctx.result(future)`** with the user method's future (amendment C-3). They
+- **Pipe and channel methods return `ctx.result(future)`** with the user method's future ([#168](https://github.com/Dtronix/NexNet/pull/168)). They
   are invoked with `IgnoreReturn | DuplexPipe`, so no result is sent, but the runtime closes the method's pipes
   (specification section 7.6) and finishes the invocation only when that future completes. `noResult()` completes
   at once, so it would close the pipe before the method has used it. A pipe method's execution slot is freed as soon
@@ -237,11 +237,11 @@ public final class ChatClient {
 }
 ```
 
-- **Class names (K04).** Each export's classes share a stem: the export name without a trailing `ServerNexus`, or
+- **Class names.** Each export's classes share a stem: the export name without a trailing `ServerNexus`, or
   else without a trailing `Nexus` (`ChatServerNexus` and `ChatNexus` both give `Chat`; a name that is only the
   suffix is kept whole). The files are `<Stem>Handshake`, `<Stem>ServerProxy`, `<Stem>ClientNexusBase` and
   `<Stem>Client`. Two exports with the same stem in one package are NEXNET047.
-- **Base-member clashes (K04).** A method or collection accessor whose Java name equals a member of the generated
+- **Base-member clashes.** A method or collection accessor whose Java name equals a member of the generated
   class's base gets a trailing `_`: on the proxy, `ProxyBase`'s `invoke`, `invokeTask`, `invokeVoid`,
   `invokePipe`, `invokeChannel` and `list`; on the client nexus base, `ClientNexusBase`'s `context`,
   `onConnected`, `onDisconnected`, `onReconnecting`, `dispatch`, `separatePool`, `onInvocationException`
@@ -283,19 +283,19 @@ server `INexusList<T>` (protocol specification section 12):
   `config()`, `session()` (the current `NexusSession`, or null), `createPipe()`, `createChannel(formatter)`,
   `close()`. `connect()`/`tryConnect()` on a connected client succeed and do nothing (C# parity); during an attempt
   they fail with `IllegalStateException` (`tryConnect()`: an `EXCEPTION` result).
-- **Clock and session options (C-9).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
+- **Clock and session options ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
   timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
   by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and
   `sessionOptions` sets `maxMessageSize`, `invocationCredits` and the other limits of section 6.5 that
   `ClientConfig` does not carry. `connector` is `NexusConnector.defaults()` for the built-in transports. A null
   argument throws `NullPointerException`. The other two overloads pass `SessionTimers.system()` and
   `SessionOptions.defaults()`; generated factories (section 3.5) keep using them.
-- **A channel over an existing pipe (C-9).** `NexusDuplexChannel.over(pipe, itemFormatter)` (static) is a typed
+- **A channel over an existing pipe ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusDuplexChannel.over(pipe, itemFormatter)` (static) is a typed
   channel over a pipe of `createPipe()` or one received as a method argument, like the C#
   `INexusDuplexPipe.GetChannel<T>()`. Several channels over one pipe share its bytes and credit, and closing any of
   them closes the pipe. A pipe the runtime did not create throws `IllegalArgumentException`.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
-  `tcpTls(host, port)`. UDS and QUIC are not available on Java (D4). Builder options:
+  `tcpTls(host, port)`. UDS and QUIC are not available on Java ([D4](multilang-decisions.md#d4)). Builder options:
   - `tls(TlsOptions)`;
   - `authenticate(Supplier<byte[]>)` or `authenticateAsync(Supplier<CompletableFuture<byte[]>>)` (mutually
     exclusive; `build()` throws `IllegalStateException` when both are set);
@@ -338,23 +338,23 @@ server `INexusList<T>` (protocol specification section 12):
 - **Threads.** One reader and one writer thread per connection (`nexnet-<id>-reader`, `nexnet-<id>-writer`; section 6.1). No IO on
   the caller thread. **Never complete a user-visible future on the reader thread**: complete it through the callback
   executor.
-- **Security (F05, D7).** `isSecure()` is true only for `tcpTls`, `wss://` and `https://`. A plaintext client logs
+- **Security ([#114](https://github.com/Dtronix/NexNet/pull/114), [D7](multilang-decisions.md#d7)).** `isSecure()` is true only for `tcpTls`, `wss://` and `https://`. A plaintext client logs
   once per instance, on the first connect: `NexNet: unencrypted transport (<transport>); credentials and data are
   visible on the network.`
 - **Authentication.** The supplier runs before the transport connects, on every connect and reconnect, bounded by the
   handshake timeout. If it throws or times out, the connect fails with `DisconnectReason.AUTHENTICATION` and no
   connection is opened.
-- **Cancellation (D17).** A token canceled before send fails the call with `CancellationException` and sends nothing.
+- **Cancellation ([D17](multilang-decisions.md#d17)).** A token canceled before send fails the call with `CancellationException` and sends nothing.
   A cancel after send completes the future canceled at once and the late result is consumed.
 - **Version check.** `NexusClient.create` refuses a `HandshakeDescriptor.runtimeVersion()` whose major.minor differs
   from `NexusRuntime.VERSION`.
 - **Flow control.** Pipe and channel credit is granted only when the consumer reads.
-- **Decimal negative zero (K31, known parity loss).** C# `decimal` maps to `java.math.BigDecimal`, which has no sign
+- **Decimal negative zero (known parity loss, [#268](https://github.com/Dtronix/NexNet/pull/268)).** C# `decimal` maps to `java.math.BigDecimal`, which has no sign
   of zero. A `-0m` from a .NET peer (flags `0x80000000`, magnitude 0) reads as `BigDecimal` zero and is written
   back as `0m`. The two compare equal in .NET (`-0m == 0m`), so only the sign bit is lost; every other decimal,
   scale included, round-trips exactly. Code that needs the exact four-integer form uses `NexusDecimal` and
   `Formatters.NEXUS_DECIMAL`, which keep the sign. The golden vector `decimal.m0` passes through
-  `NEXUS_DECIMAL` in the runtime's golden tests, and the K11 scaffolding runner (which uses the generated
+  `NEXUS_DECIMAL` in the runtime's golden tests, and the generated test-scaffolding runner (which uses the generated
   `BigDecimal` mapping) skips it for this reason.
 
 ## 6. Runtime internals and extension points
@@ -390,7 +390,7 @@ Rules:
 ### 6.2 Logging
 
 `ClientConfig.Builder.logger(NexusLogger)` sets the logger. Without one the runtime logs nothing, and that includes
-the plaintext warning (D7). It mirrors the C# `INexusLogger`:
+the plaintext warning ([D7](multilang-decisions.md#d7)). It mirrors the C# `INexusLogger`:
 
 ```java
 @FunctionalInterface
@@ -424,7 +424,7 @@ NexusClient<P> client = NexusClient.create(config, Handshake.DESCRIPTOR, nexus, 
 ```
 
 The generated factory (section 3.5) calls the four-argument overload, which uses `NexusConnector.defaults()`. The
-five-argument overload takes any `Transport.Connector`, for a test transport, a proxy tunnel, or OkHttp (K13).
+five-argument overload takes any `Transport.Connector`, for a test transport, a proxy tunnel, or OkHttp (the optional `okhttp` module).
 
 - **`Transport.Connector.connect(ClientConfig config, int timeoutMillis)`** is called once per connection attempt,
   reconnects included. It runs on a runtime thread, never on the caller of `connect()`, after the token supplier has
@@ -448,7 +448,7 @@ five-argument overload takes any `Transport.Connector`, for a test transport, a 
 
 ### 6.4 Default connector, TLS trust and pins
 
-**`NexusConnector`** (`com.dtronix.nexnet.transport`) implements the built-in transports (D4):
+**`NexusConnector`** (`com.dtronix.nexnet.transport`) implements the built-in transports ([D4](multilang-decisions.md#d4)):
 
 | Transport | Behavior |
 |---|---|
@@ -508,15 +508,15 @@ so frames that arrive in the same read as the `ServerGreeting` find their handle
 NexusSession s = NexusSession.builder(transport, handshake)
     .name(clientId).authenticationToken(token).reconnecting(isReconnect)
     .options(sessionOptions).handshakeTimeoutMillis(..).timeoutMillis(..).pingIntervalMillis(..)
-    .progressTimeoutMillis(config.progressTimeoutMillis())                        // K17, section 6.9
+    .progressTimeoutMillis(config.progressTimeoutMillis())                        // section 6.9
     .callbackExecutor(callbacks).timers(timers).logger(logger)
-    .owner(client)                                                                 // K20, section 6.10
+    .owner(client)                                                                 // section 6.10
     .build();
 InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)
-    .options(config.invocationOptions())                                           // K17
+    .options(config.invocationOptions())
     .callbackExecutor(callbacks).invocationExecutor(invocations).logger(logger).build();
-s.setMessageHandler(runtime);                                                     // K07
-PipeManager.attach(runtime, callbacks, timers, config.pipeOptions(), logger);   // K08: next handler; K19: progress probe
+s.setMessageHandler(runtime);
+PipeManager.attach(runtime, callbacks, timers, config.pipeOptions(), logger);   // next handler; progress probe
 s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), onConnected, runtime.startDispatching()
 ```
 
@@ -538,7 +538,7 @@ s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), on
 **`SessionOptions`** holds the limits this client advertises in its greeting and the session timings. They are not
 on `ClientConfig`: `NexusClient` uses `SessionOptions.defaults()`, the C# untrusted defaults (protocol
 specification section 9). The public `NexusClient.create` overload with a `SessionTimers` and a
-`SessionOptions` (section 4, C-9) takes others. The options are
+`SessionOptions` (section 4) takes others. The options are
 immutable; each `withX(value)` returns a copy:
 
 | Option | Default | Range | Meaning |
@@ -557,9 +557,9 @@ The server's advertised limits are checked at the handshake: a `maxMessageSize` 
 
 `SessionCounters` (`openSessions`, `liveThreads`, `activeTimers`, `pendingWrites`) and `InvocationCounters`
 (`pendingCalls`, `inboundInvocations`, `largeMessages`) are process-wide. Every counter returns to 0 once every
-client has closed, which is what the leak audit (H05) checks.
+client has closed, which is what the leak audit of the interop harness checks.
 
-### 6.6 Ping interval (S04)
+### 6.6 Ping interval
 
 `ClientConfig.pingIntervalMillis()` is an `@Nullable Integer`. It is null by default; set values must be
 positive. The effective interval (`NexusSession.pingIntervalMillis()`, C# `ClientConfig.GetEffectivePingInterval`)
@@ -588,14 +588,14 @@ Public types:
 
 | Type | Use |
 |---|---|
-| `NexusRemoteError(@Nullable Integer code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError`. `code()` is `@Nullable Integer` like C#'s `int? Code` (C-10): a null code goes on the wire as nil, so an error with only a message round-trips. Source-compatible with the former `int` signature (`new NexusRemoteError(42, "m")` autoboxes); a caller that unboxes `code()` must handle null |
+| `NexusRemoteError(@Nullable Integer code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError`. `code()` is `@Nullable Integer` like C#'s `int? Code` ([#289](https://github.com/Dtronix/NexNet/pull/289)): a null code goes on the wire as nil, so an error with only a message round-trips. Source-compatible with the former `int` signature (`new NexusRemoteError(42, "m")` autoboxes); a caller that unboxes `code()` must handle null |
 | `RemoteExceptionDetail` | `NONE` (default): the server sees a failure without detail. `TYPE_AND_MESSAGE`: the class name and message, truncated to 256 and 2048 chars. Use `TYPE_AND_MESSAGE` only with a trusted peer |
 | `InvocationOptions` | Immutable `withX` copies of `defaults()`, the C# untrusted defaults: `maxConcurrentInvocations` 2 (1–1000), `maxSeparatePoolInvocations` 4 (1–1000), `sessionBudget` 16 MiB (at least 64 KiB), `remoteExceptionDetail` `NONE`. Set through `ClientConfig.Builder.invocationOptions`, which `NexusClient` passes to `InvocationRuntime.Builder.options` |
 | `SessionBudget` | The session's receive memory (`tryReserve`, `release`, `reserved`, `limit`; thread-safe). The invocation queue (`invocationCredits` x 64 KiB) is reserved up front. A large argument or result that does not fit the rest is refused with `Busy`. The pipe runtime reserves its windows from it. `InvocationRuntime.budget()` |
 | `PayloadCodec` | Turns argument writers and result formatters into bytes and back. `PayloadCodec.MSGPACK` is the default; tests substitute their own through `InvocationRuntime.Builder.codec`. The runtime writes the message envelopes itself |
 | `InvocationCounters` | Diagnostic counters (section 6.5) |
-| `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe (K08) and collection (K09) runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()`. Diagnostics (section 6.10): `snapshot(nowNanos)`, `budgetSnapshot()`, `largeMessageSnapshots(nowNanos)`, `queued(separate)`, `executing(separate)`, `creditWaits()`, `largeMessagesInbound()` and `largeMessagesOutbound()`. A progress probe (section 6.9) watches the large arguments and results being received |
-| `ClientProxyInvoker` | The proxy's invoker, described above. Constructors `ClientProxyInvoker(Executor callbackExecutor)` and `ClientProxyInvoker(Executor callbackExecutor, @Nullable NexusLogger logger)` (K24). `NexusClient` passes its logger, and the `NexusList` instances the invoker creates for `list(...)` log through it; without one they do not log |
+| `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe and collection runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()`. Diagnostics (section 6.10): `snapshot(nowNanos)`, `budgetSnapshot()`, `largeMessageSnapshots(nowNanos)`, `queued(separate)`, `executing(separate)`, `creditWaits()`, `largeMessagesInbound()` and `largeMessagesOutbound()`. A progress probe (section 6.9) watches the large arguments and results being received |
+| `ClientProxyInvoker` | The proxy's invoker, described above. Constructors `ClientProxyInvoker(Executor callbackExecutor)` and `ClientProxyInvoker(Executor callbackExecutor, @Nullable NexusLogger logger)`. `NexusClient` passes its logger, and the `NexusList` instances the invoker creates for `list(...)` log through it; without one they do not log |
 
 **Failed client nexus methods.** When a method that returns a result fails, the runtime calls
 `ClientNexusBase.onInvocationException(Throwable exception, int methodId)`, through
@@ -610,12 +610,12 @@ The hook is not called for canceled invocations (the result is `Canceled`) or fo
 result larger than the server's `maxMessageSize` is sent as a failure with `NexusMessageTooLargeException`
 passed to the hook.
 
-**Session end (C-2).** When the session closes, for any reason:
+**Session end ([#158](https://github.com/Dtronix/NexNet/pull/158), [#160](https://github.com/Dtronix/NexNet/pull/160)).** When the session closes, for any reason:
 
 - every outbound call still pending completes **canceled**, on the callback executor. This covers calls waiting for
   credit, calls being sent and calls awaiting their result. `future.get()` then throws a
   `java.util.concurrent.CancellationException` ("The session closed."). Its `getCause()` is a
-  `SessionClosedException` whose `reason()` is the session's `DisconnectReason` (K17), so an application can
+  `SessionClosedException` whose `reason()` is the session's `DisconnectReason`, so an application can
   tell a call the session ended (`STALLED`, `TIMEOUT`, `SOCKET_ERROR` and so on) from one it canceled itself,
   which has no such cause.
 - `invokeIgnoreReturn` futures still waiting for credit fail with the same exception.
@@ -657,7 +657,7 @@ Two failures sit outside this table:
 After the handshake, transport failures end the session with a `DisconnectReason` and are not reported as
 `TransportError`. A WebSocket transport closes with code 1002 for `PROTOCOL_ERROR` and 1000 otherwise.
 
-### 6.9 Progress timeout and stall detection (K17, K18)
+### 6.9 Progress timeout and stall detection
 
 `ClientConfig.progressTimeoutMillis` (section 4) is the C# `ProgressTimeout` (protocol specification section 9).
 The session checks progress on each keepalive (ping) tick while it is connected, after the receive timeout and
@@ -665,7 +665,7 @@ before the ping, so a stall is noticed within one ping interval of the timeout. 
 as a `WARNING` ("The session made no progress within <n> ms: <description>.") and closes the session with
 `DisconnectReason.STALLED` (37). The checks, in order:
 
-1. **Outbound transport write (K18).** The writer thread records when each transport write (and its flush) starts.
+1. **Outbound transport write.** The writer thread records when each transport write (and its flush) starts.
    A write that runs longer than the progress timeout is a stall. The session then closes **without** the disconnect
    byte, because the writer that would send it is the one that is stuck. Closing the transport unblocks the write,
    and the frames it was writing fail with `SessionClosedException(STALLED)`.
@@ -689,17 +689,17 @@ public interface ProgressProbe {                       // com.dtronix.nexnet.ses
   - the pipe runtime's (`PipeManager`): a pipe whose close the server never confirms, or a channel item given extra
     credit whose data stopped arriving.
 
-**Close fallback (K18).** A close that sends the disconnect byte leaves the writer to send it, then waits
+**Close fallback.** A close that sends the disconnect byte leaves the writer to send it, then waits
 `SessionOptions.disconnectDelayMillis` before closing the transport. If the writer is stuck, closing waits at most
 the progress timeout plus `disconnectDelayMillis`. It then logs a `WARNING` ("The disconnect byte was not written
 within the progress timeout; closing.") and closes the transport, so a stalled writer cannot keep a session in
 `CLOSING` forever.
 
 The disconnect delay and the close fallback run on real time (`SessionTimers.system()`), never on the injected
-`SessionTimers` clock, as C#'s `Task.Delay` does (K34): the delay gives the network wall-clock time to carry the byte,
+`SessionTimers` clock, as C#'s `Task.Delay` does ([#282](https://github.com/Dtronix/NexNet/pull/282)): the delay gives the network wall-clock time to carry the byte,
 and a test clock that is no longer advanced must not hold a session in `CLOSING`.
 
-### 6.10 Snapshots and metrics hooks (K20)
+### 6.10 Snapshots and metrics hooks
 
 The diagnostics (`com.dtronix.nexnet.diagnostics`) and metrics (`com.dtronix.nexnet.metrics`) layers read the
 session, invocation and pipe layers through these hooks. They are public for those layers. Applications use
@@ -783,7 +783,7 @@ session. The values are read one at a time, so they are not an atomic picture.
 - **Listeners** are called synchronously where the event happens, which may be the reader thread. A listener that
   throws is ignored.
 
-## 7. Test scaffolding (K11) and the JVM interop host (K12)
+## 7. Test scaffolding and the JVM interop host
 
 With the target option `EmitTestScaffolding=true` (`<NexNetTarget Include="java" … EmitTestScaffolding="true" />`), the
 generator also writes the `<package>.scaffolding` sub-package: the code the JVM language host of the cross-language
@@ -806,18 +806,18 @@ strings), `String` and `List` (JSON arrays). Floats are bit-pattern strings (`"f
 
 The scriptable nexus's `onInvocationException` asks `ScriptHost.onInvocationException(exception, methodId)` (a
 default method returning null), which a host overrides to honor `ClientSpec.onInvocationException`. The Java
-`NexusRemoteError` code is nullable (C-10), so the JVM host honors a hook error without a code; a code outside Int32 is a
+`NexusRemoteError` code is nullable, so the JVM host honors a hook error without a code; a code outside Int32 is a
 `BadRequest`.
 
-**The JVM interop host** (`clients/java/interop-host`, K12) implements the control protocol
+**The JVM interop host** (`clients/java/interop-host`) implements the control protocol
 (`docs/internals/interop-control-protocol.md`) on top of this API. `clients/java/gradlew -p clients/java
 :interop-host:installInteropHost` installs it and writes `artifacts/interop/java/host.json` (the runner launches the JVM
 of `-Pnexnet.testRuntime=11|21` directly with the installed class path). The host uses only public runtime API and
-has no classes in the runtime's packages (C-9): fake time, `maxMessageSize` and `invocationCredits` go through the
+has no classes in the runtime's packages: fake time, `maxMessageSize` and `invocationCredits` go through the
 public `NexusClient.create` overload with `SessionTimers` and `SessionOptions`, and a pipe of `pipe.create` that is
 later used as a channel (`channel.writer`/`channel.reader`) goes through `NexusDuplexChannel.over` (section 4).
 
-## 8. Optional modules (K13, G10)
+## 8. Optional modules
 
 Four optional modules sit on top of the core runtime. Each is a separate Gradle project in `clients/java` with its own
 package and third-party dependencies, and the generator emits it beside the emitted core runtime when a consumer

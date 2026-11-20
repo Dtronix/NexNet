@@ -5,7 +5,7 @@ using NexNet.TestNexus.Interop;
 
 // Usage: NexNet.InteropServer.Cli [--token <token>] [--origin <origin>]... [--timeout <ms>]
 // Starts a dedicated interop server with the interop test nexus (InteropServerNexus, which Java and JavaScript export),
-// prints each endpoint's address and runs until Ctrl+C. The nightly Android job runs its emulator smoke test against it.
+// prints each endpoint's address and runs until Ctrl+C. The Android CI job runs its emulator smoke test against it.
 var options = new InteropServerOptions();
 for (var i = 0; i < args.Length; i++)
 {

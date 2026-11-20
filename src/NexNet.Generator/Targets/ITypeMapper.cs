@@ -2,7 +2,7 @@ using NexNet.Generator.Ir;
 
 namespace NexNet.Generator.Targets;
 
-/// <summary>Maps IR type references to one target language (the normative table of report §3.5 and 01-context §5).</summary>
+/// <summary>Maps IR type references to one target language (the normative table in docs/articles/multi-language-clients.md, "Type mapping").</summary>
 internal interface ITypeMapper
 {
     /// <summary>

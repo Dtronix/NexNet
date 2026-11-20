@@ -1,8 +1,8 @@
 # Interop control protocol (version 1)
 
-Status: introduced by the multi-language train (unit H05). **Frozen contract**: a change needs a contract amendment card
-(`C-<n>`) that updates every consumer (the C# runner in `src/NexNet.Interop/Remote` and `Hosts`, the Node and browser
-hosts of J12, the JVM host of K12, future hosts) in one PR.
+Status: introduced in [#209](https://github.com/Dtronix/NexNet/pull/209). **Stable contract**: a change must update every consumer (the C# runner in
+`src/NexNet.Interop/Remote` and `Hosts`, the Node and browser hosts in `clients/js/packages/interop-host-*`, the JVM
+host in `clients/java/interop-host`, future hosts) in one PR.
 
 The cross-language test harness runs every client test (written in C#, TUnit) against clients written in other
 languages. Each language has a thin, long-lived **language host**: a process that owns real NexNet clients of its
@@ -44,7 +44,7 @@ runner (C#, TUnit)                                   language host (node / java 
 4. The runner accepts one connection per launch. A connection whose first frame is not a valid `hello` with the right
    token is refused: the runner sends `bye` with the reason, closes it and fails the launch.
 
-**Browser hosts.** A browser cannot open TCP connections. The Node launcher of the browser host (J12) listens on a
+**Browser hosts.** A browser cannot open TCP connections. The Node launcher of the browser host listens on a
 loopback WebSocket, dials the runner over TCP, and bridges the two byte streams unchanged: each WebSocket binary message
 carries any number of bytes of the control stream (a frame MAY span messages, a message MAY hold several frames). The
 browser page runs the host and the launcher only relays bytes; the protocol is exactly the same.
@@ -148,7 +148,7 @@ Optional: a close without `bye` is still a close.
 The value model of the tests is the generator IR of the shared test nexuses (`src/NexNet.TestNexus`): the runner
 computes the SHA-256 of the bytes of `src/NexNet.TestNexus/obj/nexnet-ir.json` (written by the NexNet generator's
 unpack target on every build; `NEXNET_INTEROP_IR` overrides the path). The host reports the hash of the IR file its
-generated code (J11/K11) was produced from; build tools embed it in the host at build time.
+generated test scaffolding was produced from; build tools embed it in the host at build time.
 
 A different hash means the host's generated code is stale. The runner fails the launch (every row of the language
 fails) with the message:
@@ -279,7 +279,7 @@ name and its wire id (the host MAY use either the name or the id; they always ag
 - `pipe` is the pipe handle passed for the method's `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter.
 - `cancel` is `{afterMs}` (a host-side timer cancels the call that many milliseconds after it is handed to the runtime,
   so the race under test does not include the control connection) or `{token}` (the call observes that token). A call
-  whose token is canceled before it is sent fails with kind `Canceled` and is not sent (D17).
+  whose token is canceled before it is sent fails with kind `Canceled` and is not sent ([D17](multilang-decisions.md#d17)).
 - Errors use the kinds of §8: the server's exception is `RemoteInvocation`, a refused authorization `Unauthorized`, a
   canceled call `Canceled`, a disconnected session `Disconnected`.
 - A future of a fire-and-forget method completes when the invocation is sent. A future that is never awaited is released
@@ -539,7 +539,7 @@ Any detail MAY carry `stack` (the native stack trace, for the transcript). An un
 
 ## 10. Launch configuration (`host.json`)
 
-The J12/K12 builds write `artifacts/interop/<lang>/host.json` (repository root; `browser-*` languages fall back to
+The host builds write `artifacts/interop/<lang>/host.json` (repository root; `browser-*` languages fall back to
 `artifacts/interop/browser/host.json`):
 
 ```json
@@ -569,7 +569,7 @@ When the file is missing, every row of the language fails with the command that 
 | `node`, `browser-*` | `npm ci --prefix clients/js && npm run build:interop-host --prefix clients/js` |
 | `java` | `clients/java/gradlew -p clients/java :interop-host:installInteropHost` |
 
-(J12 and K12 MUST provide these script/task names.)
+(The JavaScript and Java host builds MUST provide these script/task names.)
 
 ## 11. Runner components (C#)
 

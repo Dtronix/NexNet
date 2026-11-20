@@ -61,7 +61,7 @@ export type TransportFactory = (config: import('../contract/config.js').ClientCo
  * @returns {Promise<Transport>}
  */
 /**
- * Placeholder factory used until the transport card lands.
+ * Placeholder factory for a transport kind that has no implementation in this environment.
  *
  * @param {import('../contract/config.js').TransportKind} kind
  * @returns {TransportFactory}
