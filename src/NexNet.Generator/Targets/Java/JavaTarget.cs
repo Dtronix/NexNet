@@ -23,7 +23,22 @@ internal sealed class JavaTarget : TargetLanguageBase
     /// <summary>Option: <c>true</c> also emits the test scaffolding (<see cref="EmitMode.TestScaffolding"/>).</summary>
     public const string TestScaffoldingOption = Bundle.TargetBundleBuilder.TestScaffoldingOption;
 
-    private static readonly string[] Options = { PackageOption, TestScaffoldingOption, EmbeddedRuntime.EmitRuntimeOption, JavaNullness.Option };
+    /// <summary>
+    /// Option: the optional runtime modules (K13) emitted beside the core runtime, a list separated by ',', ';' or
+    /// spaces (<see cref="RuntimeModuleNames"/>). None by default. Each module needs its own third-party libraries
+    /// (docs/internals/generator-emitted-runtime.md §3.3).
+    /// </summary>
+    public const string RuntimeModulesOption = "EmitRuntimeModules";
+
+    /// <summary>
+    /// The optional runtime modules, in emission order: the folder <c>clients/java/nexnet-client-&lt;name&gt;</c> and the
+    /// embedded resource target <c>java-&lt;name&gt;</c> (<see cref="ModuleResourceTarget"/>).
+    /// </summary>
+    internal static readonly string[] RuntimeModuleNames = { "android", "kotlin", "micrometer", "okhttp" };
+
+    private static readonly char[] ModuleSeparators = { ',', ';', ' ', '\t' };
+
+    private static readonly string[] Options = { PackageOption, TestScaffoldingOption, EmbeddedRuntime.EmitRuntimeOption, JavaNullness.Option, RuntimeModulesOption };
 
     /// <summary>Java reserved words and literals, plus restricted identifiers that cannot name a type or variable.</summary>
     internal static readonly string[] Keywords =
@@ -72,6 +87,16 @@ internal sealed class JavaTarget : TargetLanguageBase
         if (nullness != null && !JavaNullness.IsValid(nullness))
             yield return "Nullness of the java target must be none or jspecify, not '" + nullness + "'";
 
+        var modules = RuntimeModules(options, out var unknown);
+        if (unknown.Count > 0)
+        {
+            yield return "EmitRuntimeModules of the java target lists " + string.Join(", ", unknown.Select(u => "'" + u + "'"))
+                         + "; the modules are " + string.Join(", ", RuntimeModuleNames);
+        }
+
+        if (modules.Count > 0 && !EmitsRuntime(options))
+            yield return "EmitRuntimeModules of the java target needs the emitted runtime, which is off (EmitRuntime=false or EmitTestScaffolding=true)";
+
         var package = options.Get(PackageOption);
         if (package == null)
         {
@@ -81,6 +106,25 @@ internal sealed class JavaTarget : TargetLanguageBase
 
         if (!IsValidPackage(package))
             yield return "'" + package + "' is not a valid Java package name";
+    }
+
+    /// <summary>The embedded resource target of an optional runtime module: <c>java-kotlin</c>…</summary>
+    internal static string ModuleResourceTarget(string module) => "java-" + module;
+
+    /// <summary>
+    /// The known modules <see cref="RuntimeModulesOption"/> lists, in <see cref="RuntimeModuleNames"/> order, without
+    /// duplicates (names compare in any case); <paramref name="unknown"/> gets the other names, lower case.
+    /// </summary>
+    internal static IReadOnlyList<string> RuntimeModules(TargetOptions options, out IReadOnlyList<string> unknown)
+    {
+        var listed = (options.Get(RuntimeModulesOption) ?? "")
+            .Split(ModuleSeparators, StringSplitOptions.RemoveEmptyEntries)
+            .Select(m => m.Trim().ToLowerInvariant())
+            .Where(m => m.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        unknown = listed.Where(m => Array.IndexOf(RuntimeModuleNames, m) < 0).OrderBy(m => m, StringComparer.Ordinal).ToArray();
+        return RuntimeModuleNames.Where(m => Array.IndexOf(listed, m) >= 0).ToArray();
     }
 
     /// <summary>Dot-separated Java identifiers, none of them a keyword.</summary>
@@ -182,7 +226,8 @@ internal sealed class JavaTarget : TargetLanguageBase
     /// <summary>
     /// D31: the nexnet-client sources under <c>com/dtronix/nexnet/</c>, each after the runtime header line, the
     /// <c>NexusRuntimeVersion</c> class Gradle generates in the workspace build, and <c>LICENSE.txt</c>. Without JSpecify
-    /// annotations unless <c>Nullness=jspecify</c>.
+    /// annotations unless <c>Nullness=jspecify</c>. Then the sources of each optional module of
+    /// <see cref="RuntimeModulesOption"/> (G10), in their own packages (<c>com/dtronix/nexnet/kotlin/</c>…).
     /// </summary>
     protected override IEnumerable<GeneratedFile> EmitRuntimeCore(TargetOptions options)
     {
@@ -202,6 +247,16 @@ internal sealed class JavaTarget : TargetLanguageBase
             + "    }\n"
             + "}\n");
         yield return new GeneratedFile(RuntimePath + "LICENSE.txt", EmbeddedRuntime.License);
+
+        foreach (var module in RuntimeModules(options, out _))
+        {
+            foreach (var source in EmbeddedRuntime.Sources(ModuleResourceTarget(module)))
+            {
+                // Kotlin sources carry no JSpecify annotations.
+                var strip = !keep && source.Path.EndsWith(".java", StringComparison.Ordinal);
+                yield return new GeneratedFile(source.Path, header + (strip ? JavaNullness.Strip(source.Content) : source.Content));
+            }
+        }
     }
 
     /// <summary>The native formatters (D12) of every external type the Java code serializes, by formatter class.</summary>

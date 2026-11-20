@@ -1,6 +1,7 @@
 # Generator-emitted client runtime (D31)
 
-Owner: G09. Status: design accepted with G09; follow-ups J27 (JavaScript `.d.ts`) and the items in §12.
+Owner: G09 (optional Java modules: G10). Status: design accepted with G09; follow-ups J27 (JavaScript `.d.ts`) and the
+items in §12.
 
 NexNet publishes only NuGet packages (D30). A project that turns on a Java or JavaScript target must therefore get
 everything it needs from the generator: the generated nexus code **and the client runtime itself** (D31). This page
@@ -17,6 +18,7 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 | Java layout | `<OutputDir>/com/dtronix/nexnet/**` beside the generated package, plus a generated `NexusRuntimeVersion.java` and `com/dtronix/nexnet/LICENSE.txt` |
 | JSpecify | **Emit no annotations** when the runtime is emitted (`Nullness=none`). `Nullness=jspecify` keeps them, and the consumer adds `org.jspecify:jspecify` (not a NexNet artifact). Do not vendor the annotation sources |
 | Option | `EmitRuntime` per `NexNetTarget`, default `true`. Implicitly `false` for the in-repo hosts (`EmitTestScaffolding=true`, or a JavaScript `ModuleName`) |
+| Optional Java modules | Opt-in per module: `EmitRuntimeModules="kotlin;okhttp;micrometer;android"` on the Java target emits each module's sources beside the core runtime. Their third-party libraries are the consumer's (§3.3) |
 | Version | The generator's version (lockstep with NuGet) stamps every runtime file. A new generator rewrites every file; files a newer runtime dropped are deleted through the unpack manifest |
 | Licence | MIT. One header line per emitted runtime file plus the full `LICENSE` text in the runtime root |
 
@@ -29,11 +31,12 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 | `javascript` | `clients/js/packages/nexnet/src/**/*.js` | `NexNet.Runtime/javascript/<path under src>` |
 | `java` | `clients/java/nexnet-client/src/main/java/**/*.java` | `NexNet.Runtime/java/<path under java>` |
 | both | `LICENSE` (repository root) | `NexNet.Runtime/LICENSE` |
+| `java`, module `<m>` (G10) | `clients/java/nexnet-client-<m>/src/main/java/**/*.java` (`kotlin`: `src/main/kotlin/**/*.kt`) | `NexNet.Runtime/java-<m>/<path>` |
 
 - The items are plain MSBuild globs of checked-in files. `dotnet build src` never runs npm or Gradle (D27).
 - The items are inputs of `CoreCompile`, so editing a runtime file rebuilds the generator, and nothing else does.
 - A missing `clients/` folder (a source drop of `src/` only) is a build error, not a generator without a runtime:
-  `NexNet.Generator.csproj` checks that both runtime roots exist.
+  `NexNet.Generator.csproj` checks that both runtime roots and the four module roots exist.
 - Gradle generates one Java source, `com/dtronix/nexnet/NexusRuntimeVersion.java`, from the NexNet version. The
   generator writes the same class itself (`VALUE` = the generator version).
 - `EmbeddedRuntime` (`src/NexNet.Generator/Runtime/EmbeddedRuntime.cs`) reads the resources once per process, sorts
@@ -97,6 +100,45 @@ The runtime keeps its package, `com.dtronix.nexnet`, so code written against the
 source root (Gradle `java.srcDir(...)`, Maven `build-helper`, Android `sourceSets.main.java.srcDir`). Build tools
 ignore the `.txt` file in a source root. A runtime file and a generated file at the same path are NEXNET047.
 
+### 3.3 Optional Java modules (G10)
+
+The optional modules of K13 are not published either (D30), so the generator carries them too. None is emitted by
+default: each needs third-party libraries the generator cannot supply, and one (android) needs an Android build. List
+the ones you want in `EmitRuntimeModules` (§4):
+
+```xml
+<NexNetTarget Include="java" OutputDir="generated/java" Package="com.acme.chat" EmitRuntimeModules="kotlin;okhttp" />
+<!-- or -->
+<NexNetJavaEmitRuntimeModules>kotlin;okhttp</NexNetJavaEmitRuntimeModules>
+```
+
+Each module keeps its package, beside the core runtime in the same source root:
+
+```
+<OutputDir>/com/dtronix/nexnet/kotlin/*.kt       NexusCoroutines.kt, NexusFlows.kt
+<OutputDir>/com/dtronix/nexnet/okhttp/*.java     OkHttpWebSocketConnector, OkHttpWebSocketTransport
+<OutputDir>/com/dtronix/nexnet/micrometer/*.java NexusMicrometerBinder
+<OutputDir>/com/dtronix/nexnet/android/*.java    NexusAndroid, NexusConnectionKeeper, AndroidNexusLogger, NexusJavaTime
+```
+
+What the consumer adds for each module (the versions the modules are built and tested with, from
+`clients/java/gradle/libs.versions.toml`; any later compatible version works):
+
+| Module | Third-party dependencies (consumer's build) | Build requirements |
+|---|---|---|
+| `kotlin` | `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0` (and the Kotlin standard library the Kotlin plugin adds) | The Kotlin Gradle plugin (`org.jetbrains.kotlin.jvm` or `.android`, Kotlin 2.x), which compiles `.kt` files in a Java source root. The sources use explicit visibility and build under `explicitApi()` |
+| `okhttp` | `com.squareup.okhttp3:okhttp:5.5.1` (brings Okio and the Kotlin standard library) | Plain Java 11 |
+| `micrometer` | `io.micrometer:micrometer-core:1.17.2` | Plain Java 11 |
+| `android` | `androidx.lifecycle:lifecycle-process:2.11.0`, `androidx.annotation:annotation:1.11.0` | **An Android build** (Android Gradle plugin, `compileSdk` 36, `minSdk` 24): the sources use `android.*` classes, so a plain JVM project cannot compile them. The app's manifest needs `android.permission.INTERNET` and, for `NexusConnectionKeeper`, `android.permission.ACCESS_NETWORK_STATE` (the AAR's merged manifest would add both; emitted sources bring no manifest). No R8/ProGuard rules are needed (the runtime uses no reflection) |
+
+- The `Nullness` option (§5) applies to the module `.java` sources as to the core runtime; the Kotlin sources have no
+  JSpecify annotations.
+- Every module file gets the runtime header line (§7) and is covered by the same `LICENSE.txt`. The third-party
+  libraries are dependencies, not emitted code, so no NOTICE is needed.
+- A module path that collides with a generated file is NEXNET047, as for the core runtime.
+- Modules need the emitted core runtime: listing one with `EmitRuntime=false` (or with `EmitTestScaffolding=true`
+  and no explicit `EmitRuntime`) is NEXNET045. So is an unknown module name.
+
 ## 4. Options
 
 Each option is `NexNetTarget` item metadata (`<NexNetTarget Include="java" OutputDir="…" EmitRuntime="false" />`) or a
@@ -107,8 +149,12 @@ shorthand property.
 | `EmitRuntime` | `NexNetJavaEmitRuntime`, `NexNetJavaScriptEmitRuntime` | `true`, `false` | `true`, except `false` when `EmitTestScaffolding=true` or (JavaScript) `ModuleName` is set |
 | `RuntimeImport` (JavaScript) | `NexNetJavaScriptRuntimeImport` | `package`, `relative` | `package` |
 | `Nullness` (Java) | `NexNetJavaNullness` | `none`, `jspecify` | `none` when the runtime is emitted, otherwise `jspecify` |
+| `EmitRuntimeModules` (Java) | `NexNetJavaEmitRuntimeModules` | a list of `android`, `kotlin`, `micrometer`, `okhttp`, separated by `;`, `,` or spaces, any case | none (§3.3) |
 
 An invalid value is NEXNET045.
+
+The `.editorconfig` that carries the options to the generator reads `;` as the start of a comment, so the MSBuild
+flattening (`NexNetFlattenTargets`) turns every `;` in a value into `,`.
 
 **In-repo hosts and tests.** `src/NexNet.TestNexus` writes the code of the language hosts, which build against the
 workspace runtime (`clients/java` project dependency, npm workspace). Emitting the runtime there would put a second
@@ -193,7 +239,14 @@ but adds a build step and a decompression on first use; not worth it now.
   the generated `.d.ts` and the emitted runtime, and Node imports the generated module and the runtime and serializes
   a value. `relative` needs no `node_modules` at all; `package` links `node_modules/@dtronix/nexnet` to the emitted
   `nexnet-runtime` folder, which is what `npm install file:…` does.
-- SDK-free tests check the layout, the options, NEXNET045/047, determinism, the version stamp and the JSpecify rewrite.
+- SDK-free tests check the layout, the options, NEXNET045/047, determinism, the version stamp and the JSpecify rewrite,
+  and for the optional modules (G10): embedding, opt-in, layout, header, `Nullness` and NEXNET045. A real build of
+  the integration sample (`BundleBuildTests`) checks that a `;` list reaches the generator.
+- The modules are not compiled by a test: that needs their third-party jars, which only Gradle resolves (D27). When
+  G10 landed they were checked by hand: the emitted core runtime plus the `okhttp` and `micrometer` modules compiled
+  with `javac --release 11 -Xlint:all -Werror` against the jars of §3.3, and the `kotlin` module with `kotlinc
+  -Werror -Xexplicit-api=strict` against the emitted runtime and `kotlinx-coroutines-core`. The `android` module is
+  unverified in emitted form until an Android consumer build exists (§12).
 
 ## 12. Follow-ups
 
@@ -203,4 +256,6 @@ but adds a build step and a decompression on first use; not worth it now.
   release notes).
 - **TestNexus:** set `EmitRuntime="false"` explicitly on both targets of `src/NexNet.TestNexus`.
 - **CI:** a nightly job that builds an Android app from an emitted Java runtime (D26) would also cover `Nullness=none`
-  under D8.
+  under D8, and should list `EmitRuntimeModules="android"` so the emitted Android module compiles too.
+- **Module compile proof:** a Gradle-driven consumer check (in `clients/java`, e.g. beside `consumer-test`) that
+  compiles the emitted modules against their real dependencies, so the hand check of §11 becomes automatic.

@@ -13,7 +13,9 @@ using Microsoft.Build.Utilities;
 
 /// <summary>
 /// Flattens NexNetTarget items into the generator's configuration: <c>TargetIds</c> (ids with an OutputDir) and one
-/// <c>NexNetTarget_&lt;id&gt;_&lt;Metadata&gt;</c> item per other non-blank metadata, with its value in <c>Value</c>.
+/// <c>NexNetTarget_&lt;id&gt;_&lt;Metadata&gt;</c> item per other non-blank metadata, with its value in <c>Value</c>. A ';' in a
+/// value (an MSBuild list such as <c>EmitRuntimeModules="kotlin;okhttp"</c>) becomes ',': the .editorconfig parser reads
+/// ';' as the start of a comment.
 /// </summary>
 public class NexNetFlattenTargets : Task
 {
@@ -57,7 +59,7 @@ public class NexNetFlattenTargets : Task
                     continue;
 
                 var option = new TaskItem("NexNetTarget_" + id + "_" + name);
-                option.SetMetadata("Value", value.Trim());
+                option.SetMetadata("Value", value.Trim().Replace(';', ','));
                 options.Add(option);
             }
         }
