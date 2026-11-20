@@ -60,6 +60,35 @@ val consumerTest = tasks.register<GradleBuild>("consumerTest") {
     )
 }
 
+// A second stand-alone build (emitted-consumer-test/) compiles the runtime in the form NexNet.Generator emits it (D31):
+// the core runtime and generated code with nothing on the class path, and the optional modules (G10) against their
+// third-party libraries; the android module too when ANDROID_HOME is set (K37). It reads the Java output of
+// src/NexNet.Generator.IntegrationSample (or -Pnexnet.emittedSample=<dir>, relative to clients/java), which only a .NET build writes (D27):
+//   dotnet build src/NexNet.Generator.IntegrationSample "-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp%3Bmicrometer"
+// Without that output the check is skipped.
+val emittedSample: File = providers.gradleProperty("nexnet.emittedSample")
+    .map { rootProject.layout.projectDirectory.file(it).asFile }
+    .orElse(rootProject.layout.projectDirectory.dir("../../src/NexNet.Generator.IntegrationSample/generated/java").asFile)
+    .get()
+    .normalize()
+
+val emittedConsumerTest = tasks.register<GradleBuild>("emittedConsumerTest") {
+    group = "verification"
+    description = "Compiles the generator-emitted runtime and its optional modules in a separate consumer build."
+    dir = layout.projectDirectory.dir("emitted-consumer-test").asFile
+    tasks = listOf("consumerCheck")
+    startParameter.projectProperties = mapOf("nexnet.emitted.dir" to emittedSample.absolutePath)
+    val sample = emittedSample
+    onlyIf("the emitted sample exists") {
+        val exists = sample.isDirectory
+        if (!exists) {
+            logger.lifecycle("emittedConsumerTest skipped: no emitted sample in $sample. Build it with: dotnet build " +
+                "src/NexNet.Generator.IntegrationSample \"-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp%3Bmicrometer\"")
+        }
+        exists
+    }
+}
+
 // The runtime version constant (NexusRuntime.VERSION), generated from the lockstep NexNet version.
 val generateRuntimeVersion = tasks.register("generateRuntimeVersion") {
     val outputDir = layout.buildDirectory.dir("generated/sources/nexnet-version/java")
@@ -107,5 +136,5 @@ tasks.test {
 
 // Javadoc is part of the published artifact; build it in check so broken docs fail early.
 tasks.check {
-    dependsOn(tasks.javadoc, consumerTest)
+    dependsOn(tasks.javadoc, consumerTest, emittedConsumerTest)
 }
