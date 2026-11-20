@@ -49,7 +49,13 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
         return (result["items"] as JsonArray ?? new JsonArray()).Select(n => codec.Decode(n)!).ToArray();
     }
 
-    public async ValueTask<IRemoteListWatch<T>> WatchAsync()
+    public ValueTask<IRemoteListWatch<T>> WatchAsync() => WatchAsync(throws: false);
+
+    /// <summary>
+    /// Starts a watch (<c>list.watch</c>); with <paramref name="throws"/>, its listener throws a native exception after
+    /// sending each change (<see cref="RemoteListExtensions.WatchThrowingAsync{T}"/>).
+    /// </summary>
+    public async ValueTask<IRemoteListWatch<T>> WatchAsync(bool throws)
     {
         // The runner names the watch and routes its events before asking, so no event can arrive unrouted.
         var name = driver.NewName("w");
@@ -68,8 +74,10 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
         driver.AddListWatch(name, evt => watch.Add(ControlJson.ToListChange(evt, codec)));
         try
         {
-            await driver.CallAsync("list.watch", new JsonObject { ["collection"] = ControlJson.ToJson(Collection), ["watch"] = name }, RemoteClientDriver.DefaultOpMs)
-                .ConfigureAwait(false);
+            var args = new JsonObject { ["collection"] = ControlJson.ToJson(Collection), ["watch"] = name };
+            if (throws)
+                args["throws"] = true;
+            await driver.CallAsync("list.watch", args, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
         }
         catch
         {

@@ -45,7 +45,13 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
 
     public ValueTask<IReadOnlyList<T>> SnapshotAsync() => new(list.ToArray());
 
-    public ValueTask<IRemoteListWatch<T>> WatchAsync()
+    public ValueTask<IRemoteListWatch<T>> WatchAsync() => WatchAsync(throws: false);
+
+    /// <summary>
+    /// Starts a watch; with <paramref name="throws"/>, its handler throws <see cref="InvalidOperationException"/> after
+    /// recording each change (<see cref="RemoteListExtensions.WatchThrowingAsync{T}"/>).
+    /// </summary>
+    public ValueTask<IRemoteListWatch<T>> WatchAsync(bool throws)
     {
         IDisposable? subscription = null;
         var watch = new RemoteListWatch<T>(Collection, () =>
@@ -58,8 +64,11 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
         // The C# client's event carries only the action (its args are pooled: read them in the handler).
         subscription = list.Changed.Subscribe(e =>
         {
-            if (e.ChangedAction != NexusCollectionChangedAction.Unset)
-                watch.Add(new RemoteListChange<T>(e.ChangedAction, RemoteListWatch<T>.Now));
+            if (e.ChangedAction == NexusCollectionChangedAction.Unset)
+                return;
+            watch.Add(new RemoteListChange<T>(e.ChangedAction, RemoteListWatch<T>.Now));
+            if (throws)
+                throw new InvalidOperationException(RemoteListExtensions.ThrowingWatchMessage);
         });
         return new ValueTask<IRemoteListWatch<T>>(watch);
     }
