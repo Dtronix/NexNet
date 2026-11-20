@@ -1,6 +1,6 @@
 # NexNet generator IR (`nexnet-ir.json`)
 
-Status: introduced in [#113](https://github.com/Dtronix/NexNet/pull/113), schema version **1**. Owner: `src/NexNet.Generator/Ir/`.
+Schema version **1**. The model lives in `src/NexNet.Generator/Ir/`.
 
 The IR is a language-neutral description of everything a client in another language needs to talk to a NexNet server:
 the exported nexus pairs (methods, ids, hashes, handshake values) and every serialized type they reach. Target-language
@@ -158,7 +158,7 @@ A reference to a serialized type. `kind` selects which other fields are present.
 | `Nullable` | `args[0]` inner | Nil or the inner value. |
 | `Decl` | `id`, `args` (type arguments of a generic declaration) | See TypeDecl. |
 | `TypeParam` | `ordinal` | Type parameter of the enclosing generic declaration. |
-| `External` | `clr` (full .NET name), `args`, `nativeFormatters` | No language-neutral form: a `[NexusFormatter]` user type (needs a `NexusTargetFormatter` mapping, [D12](multilang-decisions.md#d12)), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). The target validator turns these into NEXNET040 per target that has no native formatter. |
+| `External` | `clr` (full .NET name), `args`, `nativeFormatters` | No language-neutral form: a `[NexusFormatter]` user type (needs a `[NexusTargetFormatter<T>(target, "native.Formatter")]` mapping), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). The target validator turns these into NEXNET040 per target that has no native formatter. |
 
 **nativeFormatters** (External only; absent when empty): `{target, formatter}[]` ordered by `target`, one entry per target
 bit declared with `[assembly: NexusTargetFormatter<T>(target, formatter)]` for the type whose definition's full metadata
@@ -166,7 +166,7 @@ name equals `clr` (a generic user type's mapping applies to every construction).
 fully qualified name, as written in the attribute (trimmed).
 
 **jsNumber** ([#259](https://github.com/Dtronix/NexNet/pull/259); `Prim` with `prim` `Int64` or `UInt64` only; absent = false): the occurrence opted in to the checked
-JavaScript `number` mapping of [D13](multilang-decisions.md#d13) with `[NexusJsNumber]`, instead of `bigint`. The wire form is unchanged; other targets
+JavaScript `number` mapping with `[NexusJsNumber]`, instead of the default `bigint`. The wire form is unchanged; other targets
 ignore the flag. It is set on every Int64/UInt64 leaf of the type of an attributed `[NexusObject]` member (property or
 field), method parameter (for a channel: its item type), return value (`[return: NexusJsNumber]`) or collection property,
 looking through `Nullable`, `Seq`, `Set`, `Queue`, `Stack`, `Map`, `Tuple` and the `args` of a `Decl`, but not into

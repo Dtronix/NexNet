@@ -57,7 +57,7 @@ and carries the TUnit properties `Lang` (`csharp`, `node`, `java`, `browser-chro
 `browser-webkit`) and `Transport` (a `ClientTransport` name such as `WebSocketTls`). Select rows by property:
 - `--treenode-filter "/*/*/*/*[Lang=node]"` runs one language's rows; `[Transport=Tcp]` one transport's.
 - `NEXNET_TEST_LANGS` (comma list) picks the languages. `csharp` (in process) always runs first; `browser` means
-  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked ([D27](docs/internals/multilang-decisions.md#d27)).
+  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked.
 - `NEXNET_TEST_TRANSPORTS` picks the transports of tests that name none of their own. Unset: HttpSocketTls and
   WebSocketTls. `all`: every transport the language supports. A comma list of `ClientTransport` names
   (case-insensitive) is used for every language; a transport a language lacks is a visible skip on its row, and an
@@ -547,7 +547,7 @@ Client-only runtimes; the server stays .NET. User docs: `docs/articles/multi-lan
 **Pipeline.** The generator builds a language-neutral IR (`NexNet.Generator/Ir/`, also written as `nexnet-ir.json`),
 validates it per target (`Validation/TargetValidator.cs`: NEXNET040-048), and each `Targets/<Lang>/` emitter
 (`ITargetLanguage`, `TargetRegistry`) writes proxies, client nexus bases, types and formatters. The runtime sources
-under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`, [D31](docs/internals/multilang-decisions.md#d31)) and emitted beside the
+under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`; the clients are not published, so the generator carries everything a consumer needs) and emitted beside the
 generated code. Everything travels in the comment-only `NexNet.Targets.g.cs` bundle (`Bundle/`), unpacked after
 `CoreCompile` by `build/NexNet.Generator.targets` (task in `build/NexNet.Generator.Tasks.cs`; the bundle parser is
 duplicated in `Bundle/TargetBundle.cs`). `docs/internals/generator-emitted-runtime.md` covers the emitted runtime.
@@ -568,7 +568,7 @@ emits, so it rebuilds the generator. Language gates run when a change touches `c
 ## 5d. Cross-language Test Harness (src/NexNet.Interop/)
 
 C#-authored TUnit tests run against every client language. `dotnet build src`/`dotnet test` never invoke npm,
-Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set ([D27](docs/internals/multilang-decisions.md#d27)).
+Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set.
 
 - **Rows.** `[ClientMatrix(Transports = [...], CSharpTransports = [...], Requires = ClientCapabilities.X)]` makes one
   row per language of `NEXNET_TEST_LANGS` (`csharp` always, first) times transport; the test takes a `ClientTarget`.

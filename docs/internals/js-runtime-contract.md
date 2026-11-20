@@ -1,6 +1,6 @@
 # JavaScript runtime contract (`@dtronix/nexnet`)
 
-Status: introduced in [#135](https://github.com/Dtronix/NexNet/pull/135). This is the contract between the code the generator emits for JavaScript
+This is the contract between the code the generator emits for JavaScript
 (`src/NexNet.Generator/Targets/JavaScript/`) and the hand-written runtime (`clients/js/packages/nexnet`). It is
 **frozen**: renaming or removing a member, or changing a signature, is a contract change that updates every consumer in
 one PR. Adding an
@@ -14,7 +14,7 @@ it does not repeat every member.
 | Path | Contents |
 |---|---|
 | `clients/js/package.json` | Private npm workspace root: dev dependencies and scripts |
-| `clients/js/packages/nexnet/` | `@dtronix/nexnet`, version in lockstep with the NexNet NuGet package ([D19](multilang-decisions.md#d19)) |
+| `clients/js/packages/nexnet/` | `@dtronix/nexnet`, version in lockstep with the NexNet NuGet package; not published to npm (generated output carries the runtime) |
 | `clients/js/tsconfig.json` | Type check and `.d.ts` emit for the runtime (`allowJs`, `checkJs`, `strict`) |
 | `clients/js/tsconfig.test.json` | Type check of the runtime plus tests and config files |
 | `clients/js/vitest.config.js` | Vitest projects `node` and `browser` (Playwright, Chromium) |
@@ -190,7 +190,7 @@ from `null`.
 |---|---|---|
 | `bool` | `boolFormatter` | `boolean` |
 | `sbyte`, `byte`, `short`, `ushort`, `int`, `uint` | `sbyteFormatter`, `byteFormatter`, `int16Formatter`, `uint16Formatter`, `int32Formatter`, `uint32Formatter` | `number`, range-checked both ways |
-| `long`, `ulong` | `int64Formatter`, `uint64Formatter` | `bigint` (the default, [D13](multilang-decisions.md#d13)) |
+| `long`, `ulong` | `int64Formatter`, `uint64Formatter` | `bigint` (the default) |
 | `long`, `ulong` (checked number) | `int64NumberFormatter`, `uint64NumberFormatter` | safe-integer `number` (below) |
 | `float`, `double`, `Half` | `float32Formatter`, `float64Formatter`, `halfFormatter` | `number` (float32 rounds with `Math.fround`; `Half` rounds to the nearest half, written as float32) |
 | `char` | `charFormatter` | a 1-unit `string` (a lone surrogate included) |
@@ -215,7 +215,7 @@ half, -0 and the infinities included, round-trips bit for bit. This applies to `
 round trip would need the raw bits (for example a `Uint16Array` for `Half[]`), which changes the formatter API
 and is a contract change.
 
-**Checked-number mapping ([D13](multilang-decisions.md#d13), [#259](https://github.com/Dtronix/NexNet/pull/259)).** `long`/`ulong` are `bigint` by default. A member or assembly that opts in to the
+**Checked-number mapping ([#259](https://github.com/Dtronix/NexNet/pull/259)).** `long`/`ulong` are `bigint` by default. A member or assembly that opts in to the
 checked `number` mapping uses `int64NumberFormatter` (±(2^53 − 1)) or `uint64NumberFormatter` (0 … 2^53 − 1). Writing
 a value outside that range throws `RangeError`; reading one throws `NexusSerializationError` `range`. Nothing is ever
 silently rounded.
@@ -233,7 +233,7 @@ silently rounded.
 
 **`FormatterRegistry`** holds formatters by string key: `register(key, formatter)` (throws `TypeError` for a
 non-string key or a value without `write`/`read`, and `Error` for a key already registered), `get(key)` (throws when
-missing) and `tryGet(key)` (undefined when missing). Generated code registers user target formatters ([D12](multilang-decisions.md#d12)) and generic
+missing) and `tryGet(key)` (undefined when missing). Generated code registers user target formatters (`[NexusTargetFormatter<T>]` mappings) and generic
 instantiations there.
 
 **Guid helpers** (`src/values/guid.js`). A Guid is its lower-case "D" string. `EMPTY_GUID`; `parseGuid(text)`
@@ -339,7 +339,7 @@ about once a minute or frozen, which would let the server's idle timeout expire.
 
 `isSecure` is true only for transports that declare themselves secure: TLS, WSS, HTTPS and (Node) UDS. Over any other
 transport a client logs `NexNet: unencrypted transport (<transport>); credentials and data are visible on the network.`
-once per instance, on the first connect ([D7](multilang-decisions.md#d7)).
+once per instance, on the first connect. Plaintext stays allowed; the warning and `isSecure` make it visible.
 
 The `Transport` interface between the session and the transports: `write(chunks)`, `onData(cb)`, `onClose(cb)`,
 `close(reason)`, `isSecure`, `remoteCertificate`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
@@ -460,7 +460,7 @@ session. Its options:
 | `NexusBusyError` | A pipe, channel or large-message limit refused the operation |
 | `NexusMessageTooLargeError` | A message exceeded the negotiated `MaxMessageSize` |
 
-Cancellation ([D17](multilang-decisions.md#d17)) is not a NexNet error class: operations reject with `cancellationError(signal)`, which is
+Cancellation (a call canceled before it is sent rejects and sends nothing; it never resolves with a default value) is not a NexNet error class: operations reject with `cancellationError(signal)`, which is
 `signal.reason` when set and otherwise a `DOMException` named `AbortError`. `isCancellationError(e)` is true for
 `AbortError` and `TimeoutError`.
 
@@ -525,7 +525,7 @@ transports report the Node socket error, or none for a plain end. The WebSocket 
 for a close other than code 1000 (or a connection lost without a Close frame, 1006) and `ProtocolError` for an RFC 6455
 violation or a text message. A write on an ended transport rejects with `ConnectionAborted`.
 
-**Credentials.** The greeting token (`authenticate`) is the canonical credential for every transport ([D15](multilang-decisions.md#d15)). For the
+**Credentials.** The greeting token (`authenticate`) is the canonical credential for every transport, because browsers cannot set an `Authorization` header on a WebSocket. For the
 HTTP-based transports in Node, extra upgrade headers, an `Authorization` header for example, go in
 `config.webSocket.headers` or `config.httpSocket.headers`; the transport sets its own upgrade headers (`Connection`,
 `Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
