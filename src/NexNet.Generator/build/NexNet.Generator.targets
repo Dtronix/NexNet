@@ -11,6 +11,7 @@
        NexNet.Targets.g.cs bundle to obj/. Set inside a target so evaluation (and the IDE) is unaffected.
     3. NexNetUnpackTargets: after CoreCompile, writes the bundle's files to each target's OutputDir (only changed files,
        atomically) and nexnet-ir.json to NexNetIrOutputPath, and deletes files of the previous manifest that are gone.
+       Skipped while its stamp is current, unless a file of the manifest is missing (H22).
     4. NexNetCleanTargets: on Clean, deletes every file of the manifest.
 
     Multi-targeting projects unpack in their first TargetFramework only. Design-time builds never unpack.
@@ -81,11 +82,34 @@
     </PropertyGroup>
   </Target>
 
+  <!--
+    The stamp only proves this configuration unpacked once. The written files can be gone since then: a Clean of another
+    configuration (the manifest is shared), or an output folder deleted by hand. The unpack then runs again, even when
+    the compile is up to date. A manifest written by another configuration after this stamp is caught by the unpack's
+    Inputs; the task itself rewrites only files whose bytes differ.
+  -->
+  <Target Name="_NexNetCheckUnpackOutputs" DependsOnTargets="_NexNetComputeUnpackStamp" Condition="Exists('$(_NexNetUnpackStamp)')">
+    <ReadLinesFromFile File="$(NexNetTargetsManifest)" Condition="Exists('$(NexNetTargetsManifest)')">
+      <Output TaskParameter="Lines" ItemName="_NexNetManifestLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_NexNetManifestFile Include="$([System.String]::Copy('%(_NexNetManifestLine.Identity)').Substring(2))"
+                           Condition="$([System.String]::Copy('%(_NexNetManifestLine.Identity)').StartsWith('F '))" />
+      <_NexNetMissingFile Include="@(_NexNetManifestFile)" Condition="!Exists('%(_NexNetManifestFile.Identity)')" />
+    </ItemGroup>
+    <Delete Files="$(_NexNetUnpackStamp)" Condition="!Exists('$(NexNetTargetsManifest)') or '@(_NexNetMissingFile)' != ''" />
+    <ItemGroup>
+      <_NexNetManifestLine Remove="@(_NexNetManifestLine)" />
+      <_NexNetManifestFile Remove="@(_NexNetManifestFile)" />
+      <_NexNetMissingFile Remove="@(_NexNetMissingFile)" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="NexNetUnpackTargets"
           AfterTargets="CoreCompile"
-          DependsOnTargets="_NexNetComputeUnpackStamp"
+          DependsOnTargets="_NexNetComputeUnpackStamp;_NexNetCheckUnpackOutputs"
           Condition="'@(NexNetTarget)' != '' and '$(DesignTimeBuild)' != 'true' and '$(_NexNetIsUnpackFramework)' == 'true' and '$(NexNetTargetBundleFile)' != '' and Exists('$(NexNetTargetBundleFile)')"
-          Inputs="$(NexNetTargetBundleFile);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath)"
+          Inputs="$(NexNetTargetBundleFile);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(NexNetTargetsManifest)"
           Outputs="$(_NexNetUnpackStamp)">
     <NexNetUnpackBundle BundleFile="$(NexNetTargetBundleFile)"
                         Targets="@(NexNetTarget)"

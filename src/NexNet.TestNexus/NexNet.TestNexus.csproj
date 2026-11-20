@@ -27,7 +27,7 @@
   -->
   <ItemGroup>
     <NexNetTarget Include="java" OutputDir="$(NexNetInteropArtifactsDir)java/generated" Package="com.dtronix.nexnet.testnexus"
-                  EmitTestScaffolding="true" />
+                  EmitTestScaffolding="true" EmitRuntime="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,7 +35,7 @@
       JavaScript (J12): the clients and the test scaffolding (J11) of the Node and browser language hosts. npm run
       build:interop-host (clients/js) copies them into the hosts; they import the runtime as @dtronix/nexnet.
     -->
-    <NexNetTarget Include="javascript" OutputDir="$(NexNetInteropArtifactsDir)js/generated" EmitTestScaffolding="true" />
+    <NexNetTarget Include="javascript" OutputDir="$(NexNetInteropArtifactsDir)js/generated" EmitTestScaffolding="true" EmitRuntime="false" />
   </ItemGroup>
 
   <ItemGroup>
