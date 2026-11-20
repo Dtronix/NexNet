@@ -13,9 +13,10 @@
 //            ANDROID_HOME alone does not include it: CI runners set it in jobs that have no use for it.
 
 pluginManagement {
+    // Maven Central before the plugin portal (K41), as in clients/java/settings.gradle.kts.
     repositories {
-        gradlePluginPortal()
         mavenCentral()
+        gradlePluginPortal()
         google {
             content {
                 includeGroupByRegex("com\\.android.*")

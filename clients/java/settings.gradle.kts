@@ -3,9 +3,10 @@
 
 pluginManagement {
     includeBuild("build-logic")
+    // Maven Central before the plugin portal: the portal only redirects to Central for most artifacts (K41).
     repositories {
-        gradlePluginPortal()
         mavenCentral()
+        gradlePluginPortal()
         // The Android Gradle plugin (nexnet-client-android only).
         google {
             content {
