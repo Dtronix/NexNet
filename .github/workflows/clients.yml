@@ -269,11 +269,10 @@ jobs:
           path: TestResults/
           if-no-files-found: ignore
 
-  # Bucket-A interop rows (D23/D24) against each language host. Not required until J12 (node, browser) and K12 (java)
-  # provide the hosts: until then a missing host build is a visible notice and the job reports success.
+  # Bucket-A interop rows (D23/D24) against each language host. Every row is required: a failing interop test fails
+  # the job.
   interop:
     runs-on: ubuntu-26.04
-    continue-on-error: true  # TODO(J12/K12): make required once the hosts land.
     strategy:
       fail-fast: false
       matrix:
@@ -286,28 +285,14 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Is the host buildable yet?
-        id: host
-        shell: bash
-        run: |
-          case "${{ matrix.lang }}" in
-            java) grep -q installInteropHost clients/java/interop-host/build.gradle.kts && ready=true || ready=false; card=K12 ;;
-            *)    grep -q '"build:interop-host"' clients/js/package.json && ready=true || ready=false; card=J12 ;;
-          esac
-          [ "$ready" = true ] || echo "::notice::The ${{ matrix.lang }} interop host does not exist yet ($card); interop rows skipped."
-          echo "ready=$ready" >> "$GITHUB_OUTPUT"
-
       - name: Install msquic
-        if: steps.host.outputs.ready == 'true'
         run: sudo apt-get update && sudo apt-get install -y libmsquic
 
       - uses: actions/setup-dotnet@v6
-        if: steps.host.outputs.ready == 'true'
         with:
           dotnet-version: '10.*'
 
       - name: Cache NuGet packages
-        if: steps.host.outputs.ready == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
@@ -315,43 +300,41 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - uses: actions/setup-node@v7
-        if: steps.host.outputs.ready == 'true' && matrix.lang != 'java'
+        if: matrix.lang != 'java'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: clients/js/package-lock.json
 
       - uses: actions/setup-java@v6
-        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        if: matrix.lang == 'java'
         with:
           distribution: temurin
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
-        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        if: matrix.lang == 'java'
 
       - name: Build the C# side
-        if: steps.host.outputs.ready == 'true'
         run: dotnet build src -c Release --maxcpucount:1
 
       # The host build commands are fixed by docs/internals/interop-control-protocol.md §10.
       - name: Build the Node/browser host
-        if: steps.host.outputs.ready == 'true' && matrix.lang != 'java'
+        if: matrix.lang != 'java'
         run: |
           npm ci --prefix clients/js
           npm run build:interop-host --prefix clients/js
 
       - name: Install Chromium
-        if: steps.host.outputs.ready == 'true' && matrix.lang == 'browser-chromium'
+        if: matrix.lang == 'browser-chromium'
         working-directory: clients/js
         run: npx playwright install --with-deps chromium
 
       - name: Build the JVM host
-        if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        if: matrix.lang == 'java'
         run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
-        if: steps.host.outputs.ready == 'true'
         env:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
