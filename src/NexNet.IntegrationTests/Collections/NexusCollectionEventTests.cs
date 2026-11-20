@@ -70,26 +70,29 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task EventException_DoesNotBreakSystem(ClientTarget target)
     {
-        RequireInProc(target, ThrowingListHandler);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        var clientList = InProc(s.Client).Client.Proxy.IntListBi;
         await list.EnableAsync().Timeout(T(1));
 
-        var goodEventCount = 0;
-
-        // One subscriber that throws exceptions
-        using var throwing = clientList.Changed.Subscribe(args => throw new InvalidOperationException("Test exception"));
+        // One subscriber that throws a native exception after recording each change (attached first)
+        await using var throwing = await list.WatchThrowingAsync().AsTask().Timeout(T(1));
 
         // One subscriber that works normally
-        using var counting = clientList.Changed.Subscribe(args => Interlocked.Increment(ref goodEventCount));
+        await using var counting = await WatchAsync(list);
 
         // Operations should continue working despite exceptions
         await s.ServerList.AddAsync(42).Timeout(T(1));
-        await WaitUntil(() => Volatile.Read(ref goodEventCount) >= 1);
+        await WaitForChangesAsync(counting, NexusCollectionChangedAction.Add);
+        await WaitForChangesAsync(throwing, NexusCollectionChangedAction.Add);
+        await Assert.That(counting.Changes.Count(c => c.Action == NexusCollectionChangedAction.Add)).IsEqualTo(1);
 
-        await Assert.That(goodEventCount).IsEqualTo(1);
+        await s.ServerList.AddAsync(43).Timeout(T(1));
+        await WaitForChangesAsync(counting, NexusCollectionChangedAction.Add, 2);
+        await Assert.That(await ItemsAsync(list)).IsEquivalentTo(new[] { 42, 43 });
+
         await s.Client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await throwing.DisposeAsync();
+        await counting.DisposeAsync();
         await s.EndAsync();
     }
 

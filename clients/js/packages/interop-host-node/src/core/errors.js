@@ -37,6 +37,17 @@ export class HostError extends Error {
   }
 }
 
+/**
+ * The error a `list.watch` listener with `throws` raises (control protocol §6.10). The runtime leaves a throwing
+ * `EventTarget` listener to the platform's uncaught-error path, so the host does not report it as `host.error`.
+ */
+export class ThrowingWatchError extends Error {
+  constructor() {
+    super('A scripted list change handler threw (list.watch throws).');
+    this.name = 'ThrowingWatchError';
+  }
+}
+
 /** @param {string} message @returns {HostError} */
 export const badRequest = (message) => new HostError('BadRequest', message);
 /** @param {string} message @returns {HostError} */

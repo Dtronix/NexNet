@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Host, listChangedData, PROTOCOL_VERSION } from '../src/core/host.js';
 import { FrameDecoder } from '../src/core/framing.js';
 import { pumpItem } from '../src/core/scripts.js';
-import { nativeError, toWireError, HostError } from '../src/core/errors.js';
+import { nativeError, toWireError, HostError, ThrowingWatchError } from '../src/core/errors.js';
 import { NexusRemoteInvocationError, NexusTransportError } from '@dtronix/nexnet';
 
 /** A host over a fake platform with no generated code; returns it and the messages it sends. */
@@ -61,6 +61,14 @@ describe('Host', () => {
       t: 'hello', proto: PROTOCOL_VERSION, token: 'tok', lang: 'node', runtime: 'test', lib: 'lib', schemaHash: 'abc',
       capabilities: ['Tcp', 'ClientPool'], transports: ['Tcp'], maxConcurrency: 2, pid: 42,
     });
+  });
+
+  it('reports uncaught errors as host.error, except the throw of a list.watch with throws', () => {
+    const { host, sent } = createHost();
+    host.hostError(new ThrowingWatchError());
+    expect(sent.filter((m) => m.ev === 'host.error')).toEqual([]);
+    host.hostError(new Error('real'));
+    expect(sent.filter((m) => m.ev === 'host.error').map((m) => m.data.message)).toEqual(['real']);
   });
 
   it('answers ping at once and runs an empty scope clean', async () => {
