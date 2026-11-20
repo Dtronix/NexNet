@@ -310,6 +310,9 @@ These change how NexNet is built and tested, not the packages.
 - **Toolchain and repository.** Contributor setup for Java (JDK 21) and JavaScript (Node 22+) ([#104](https://github.com/Dtronix/NexNet/pull/104));
   regenerated test certificates with a CA and SAN, so non-.NET TLS stacks accept them ([#112](https://github.com/Dtronix/NexNet/pull/112)); `.gitattributes` and
   ignore rules ([#121](https://github.com/Dtronix/NexNet/pull/121), [#176](https://github.com/Dtronix/NexNet/pull/176), [#198](https://github.com/Dtronix/NexNet/pull/198)).
+- **SDK-gated generator tests in CI.** A `generator-sdks` job runs the whole Generator test suite with JDK 21, Node 24
+  and `NEXNET_REQUIRE_SDKS=1`, so the javac and tsc checks of the emitted Java and JavaScript (proxies, scaffolding, the
+  emitted runtime, the guides' samples) run on every pull request, and the job fails if any of them is skipped ([#312](https://github.com/Dtronix/NexNet/pull/312)).
 <!-- P03 (release pipeline), K37 and H26 (CI): add their lines here. -->
 
 ## Full change log
