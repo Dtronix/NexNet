@@ -46,6 +46,26 @@ public final class ManualTimers implements SessionTimers {
         }
     }
 
+    /**
+     * Waits until the session's writer thread has finished its last transport write. The writer clears its
+     * write-in-progress flag ({@link NexusSession#isFlushing()}) only after the flush returns, so the peer can read the
+     * bytes before that. A test that then advances this clock past the progress timeout while the flag is still set
+     * makes the keepalive tick see a stalled write (specification section 9), which closes the session without the
+     * disconnect byte. Call this before such an advance, once nothing else is being written.
+     *
+     * @param session the session
+     * @throws InterruptedException when interrupted while waiting
+     */
+    public static void awaitWriterIdle(NexusSession session) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (session.isFlushing()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("The session's writer did not finish its write.");
+            }
+            Thread.sleep(1);
+        }
+    }
+
     /** Moves the clock forward, running every task that falls due, in time order. */
     public void advance(long millis) {
         long target;

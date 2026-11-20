@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.session.SessionOptions;
@@ -321,6 +322,9 @@ class PipeManagerTest extends PipeTestBase {
         PipeImpl pipe = openPipe(10);
         pipe.close();
         peer.expectState(pipe.id(), PipeWire.COMPLETE, 0);
+        // The stall must be the pipe's: a tick that still saw the state write in progress could find it stalled and
+        // close without the disconnect byte.
+        ManualTimers.awaitWriterIdle(session);
         sessionTimers.advance(900);
         assertTrue(session.isConnected());
         sessionTimers.advance(400);
