@@ -1,5 +1,5 @@
 /**
- * Client pool (J10, D20).
+ * Client pool.
  * @module
  */
 

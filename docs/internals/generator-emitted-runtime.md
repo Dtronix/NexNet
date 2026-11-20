@@ -1,17 +1,14 @@
 # Generator-emitted client runtime
 
-Status: implemented ([#285](https://github.com/Dtronix/NexNet/pull/285); optional Java modules [#297](https://github.com/Dtronix/NexNet/pull/297); JavaScript `.d.ts` [#292](https://github.com/Dtronix/NexNet/pull/292)). Known limits
-in §12.
-
-NexNet publishes only NuGet packages ([D30](multilang-decisions.md#d30)). A project that turns on a Java or JavaScript target must therefore get
-everything it needs from the generator: the generated nexus code **and the client runtime itself** ([D31](multilang-decisions.md#d31)). This page
+NexNet publishes only NuGet packages; the Java and JavaScript clients are not published to npm or Maven. A project that turns on a Java or JavaScript target must therefore get
+everything it needs from the generator: the generated nexus code **and the client runtime itself**, so a consumer needs no npm or Maven NexNet dependency, and the generated code and the runtime always come from the same generator version. This page
 describes how the runtime sources travel inside `NexNet.Generator.dll` and how they reach the output directory.
 
 ## 1. Summary of the recommendations
 
 | Topic | Recommendation |
 |---|---|
-| Source of the runtime | `EmbeddedResource` items in `NexNet.Generator.csproj` that glob the checked-in sources under `clients/`. No npm or Gradle at build time ([D27](multilang-decisions.md#d27)) |
+| Source of the runtime | `EmbeddedResource` items in `NexNet.Generator.csproj` that glob the checked-in sources under `clients/`. No npm or Gradle at build time |
 | JavaScript types | **Commit the `tsc`-generated `.d.ts`** in `clients/js`, check in the JS gate that they are current, and embed them: each emitted `.js` has its `.d.ts` beside it, so TypeScript consumers need no `allowJs` |
 | JavaScript layout | `<OutputDir>/nexnet-runtime/`: the `src/` tree plus its own `package.json` (`@dtronix/nexnet`, the same conditional exports) and `LICENSE` |
 | JavaScript import | `RuntimeImport=package` (default): generated code keeps importing `@dtronix/nexnet`, and the consumer adds the emitted folder as a `file:` dependency. `RuntimeImport=relative`: generated code imports `./nexnet-runtime/index.js`, no install step |
@@ -33,7 +30,7 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 | both | `LICENSE` (repository root) | `NexNet.Runtime/LICENSE` |
 | `java`, module `<m>` | `clients/java/nexnet-client-<m>/src/main/java/**/*.java` (`kotlin`: `src/main/kotlin/**/*.kt`) | `NexNet.Runtime/java-<m>/<path>` |
 
-- The items are plain MSBuild globs of checked-in files. `dotnet build src` never runs npm or Gradle ([D27](multilang-decisions.md#d27)).
+- The items are plain MSBuild globs of checked-in files. `dotnet build src` never runs npm or Gradle.
 - The items are inputs of `CoreCompile`, so editing a runtime file rebuilds the generator, and nothing else does.
 - A missing `clients/` folder (a source drop of `src/` only) is a build error, not a generator without a runtime:
   `NexNet.Generator.csproj` checks that both runtime roots and the four module roots exist.
@@ -45,8 +42,8 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 
 ### 2.1 JavaScript type declarations
 
-The JavaScript runtime is plain `.js` with JSDoc ([D2](multilang-decisions.md#d2)); its `.d.ts` come from `tsc --declaration`. The generator
-cannot run `tsc` ([D27](multilang-decisions.md#d27)). The options:
+The JavaScript runtime is plain ESM `.js` with JSDoc, so it runs without a build step; its `.d.ts` come from `tsc --declaration`. The generator
+cannot run `tsc`: `dotnet build` never runs Node or npm. The options:
 
 | Option | Verdict |
 |---|---|
@@ -87,7 +84,7 @@ How generated code reaches the runtime (`RuntimeImport`):
 | `package` (default) | `@dtronix/nexnet` (as today) | `"dependencies": { "@dtronix/nexnet": "file:<OutputDir>/nexnet-runtime" }` and `npm install` (no registry), or a bundler alias / `tsconfig` `paths` | Keeps the `node`/`browser` conditions: in Node, the generated `createXClient` gets `NodeNexusClient` with TCP, TLS, UDS and HttpSocket. One runtime instance however many output folders import it |
 | `relative` | `./nexnet-runtime/index.js` (`../` per directory level for files in sub-folders) | none | Plain browser ESM and scripts work with no install and no import map. The import is the platform-neutral entry, so the generated factory knows only WebSocket transports; Node code that needs the Node transports calls `NodeNexusClient.create(config, nexus, XBinding)` from `./nexnet-runtime/node.js` |
 
-`package` is the default because it behaves exactly like the published package would ([D2](multilang-decisions.md#d2)'s `exports` map), and
+`package` is the default because it behaves exactly like the `@dtronix/nexnet` package (its `exports` map, with separate browser and Node entries), and
 because `instanceof` checks need a single runtime copy. A `ModuleName` option still wins over both modes.
 
 ### 3.2 Java
@@ -107,7 +104,7 @@ ignore the `.txt` file in a source root. A runtime file and a generated file at 
 
 ### 3.3 Optional Java modules
 
-The optional Java modules are not published either ([D30](multilang-decisions.md#d30)), so the generator carries them too. None is emitted by
+The optional Java modules are not published either, so the generator carries them too. None is emitted by
 default: each needs third-party libraries the generator cannot supply, and one (android) needs an Android build. List
 the ones you want in `EmitRuntimeModules` (§4):
 
@@ -235,7 +232,7 @@ but adds a build step and a decompression on first use; not worth it now.
 
 ## 11. Proof
 
-`src/NexNet.Generator.Tests/Runtime/EmittedRuntimeTests.cs`, SDK-gated as the other compile checks ([D27](multilang-decisions.md#d27)):
+`src/NexNet.Generator.Tests/Runtime/EmittedRuntimeTests.cs`, SDK-gated as the other compile checks (skipped visibly when the tool is missing, mandatory when `NEXNET_REQUIRE_SDKS=1`):
 
 - **Java:** runs the real generator with the Java target, unpacks the bundle to a temporary folder, compiles **only**
   those files with `javac --release 11 -Xlint:all -Werror` (no class path: no runtime jar, no JSpecify), then runs a
@@ -247,7 +244,7 @@ but adds a build step and a decompression on first use; not worth it now.
 - SDK-free tests check the layout, the options, NEXNET045/047, determinism, the version stamp and the JSpecify rewrite,
   and for the optional modules: embedding, opt-in, layout, header, `Nullness` and NEXNET045. A real build of
   the integration sample (`BundleBuildTests`) checks that a `;` list reaches the generator.
-- **Optional modules:** the modules need their third-party jars, which only Gradle resolves ([D27](multilang-decisions.md#d27)), so a Gradle
+- **Optional modules:** the modules need their third-party jars, which only Gradle resolves, and `dotnet test` never runs Gradle, so a Gradle
   consumer build compiles them: `clients/java/nexnet-client/emitted-consumer-test`, run by
   `:nexnet-client:emittedConsumerTest` (part of `gradlew check`). It reads the Java output of
   `src/NexNet.Generator.IntegrationSample` and compiles the core runtime and generated code with nothing on the class

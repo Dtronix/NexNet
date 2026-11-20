@@ -20,7 +20,7 @@
  */
 
 /**
- * Formatters by key. Generated code registers user target formatters (D12) and generic instantiations here; the
+ * Formatters by key. Generated code registers user target formatters (`[NexusTargetFormatter<T>]` mappings) and generic instantiations here; the
  * runtime looks up formatters it does not get passed directly.
  */
 export class FormatterRegistry {

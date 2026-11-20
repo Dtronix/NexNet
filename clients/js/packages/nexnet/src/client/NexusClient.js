@@ -166,7 +166,7 @@ export class NexusClient extends EventTarget {
     return this.#proxy;
   }
 
-  /** True when the transport is TLS, WSS, HTTPS or UDS (D7). @returns {boolean} */
+  /** True when the transport is TLS, WSS, HTTPS or UDS. Plaintext is allowed but logs a warning once per client. @returns {boolean} */
   get isSecure() {
     return this.#options.isSecure;
   }

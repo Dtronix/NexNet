@@ -1,6 +1,6 @@
 # Interop control protocol (version 1)
 
-Status: introduced in [#209](https://github.com/Dtronix/NexNet/pull/209). **Stable contract**: a change must update every consumer (the C# runner in
+**Stable contract**: a change must update every consumer (the C# runner in
 `src/NexNet.Interop/Remote` and `Hosts`, the Node and browser hosts in `clients/js/packages/interop-host-*`, the JVM
 host in `clients/java/interop-host`, future hosts) in one PR.
 
@@ -279,7 +279,7 @@ name and its wire id (the host MAY use either the name or the id; they always ag
 - `pipe` is the pipe handle passed for the method's `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter.
 - `cancel` is `{afterMs}` (a host-side timer cancels the call that many milliseconds after it is handed to the runtime,
   so the race under test does not include the control connection) or `{token}` (the call observes that token). A call
-  whose token is canceled before it is sent fails with kind `Canceled` and is not sent ([D17](multilang-decisions.md#d17)).
+  whose token is canceled before it is sent fails with kind `Canceled` and is not sent (C# `TaskCanceledException`, Java `CancellationException`, JavaScript `AbortError`; never a default value).
 - Errors use the kinds of §8: the server's exception is `RemoteInvocation`, a refused authorization `Unauthorized`, a
   canceled call `Canceled`, a disconnected session `Disconnected`.
 - A future of a fire-and-forget method completes when the invocation is sent. A future that is never awaited is released

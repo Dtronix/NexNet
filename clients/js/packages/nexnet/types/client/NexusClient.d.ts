@@ -90,7 +90,7 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
     get state(): import('../contract/enums.js').ConnectionStateValue;
     /** The server proxy. Throws before the first successful connect. @returns {TProxy} */
     get proxy(): TProxy;
-    /** True when the transport is TLS, WSS, HTTPS or UDS (D7). @returns {boolean} */
+    /** True when the transport is TLS, WSS, HTTPS or UDS. Plaintext is allowed but logs a warning once per client. @returns {boolean} */
     get isSecure(): boolean;
     /**
      * The server certificate of the current connection: Node's `X509Certificate` (`node:crypto`) on the Node TLS

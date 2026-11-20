@@ -12,5 +12,3 @@
   href: interop-control-protocol.md
 - name: Generator-Emitted Client Runtime
   href: generator-emitted-runtime.md
-- name: Multi-language Design Decisions
-  href: multilang-decisions.md

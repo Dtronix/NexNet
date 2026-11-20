@@ -1,6 +1,6 @@
 # Java runtime contract (generated code ↔ runtime)
 
-Introduced in [#137](https://github.com/Dtronix/NexNet/pull/137). Consumers: the Java emitters in `src/NexNet.Generator/Targets/Java/` and the runtime in
+Consumers: the Java emitters in `src/NexNet.Generator/Targets/Java/` and the runtime in
 `clients/java/nexnet-client`. This is a stable contract: a change must update every consumer in one PR.
 
 The Java client is `com.dtronix:nexnet-client`, package `com.dtronix.nexnet`, built in `clients/java`. This page
@@ -89,7 +89,7 @@ The Java emitter writes one file per declared .NET type, and the formatters in a
 |---|---|
 | `<package>/<Type>.java` | One flat package (`NexNetJavaPackage`). Nested .NET types are flattened to `Outer_Inner` |
 | `<package>/formatters/Formatters.java` | A `public static final Formatter<X>` constant per non-generic type, named as the type (`Formatters.InteropItem`), and a factory per generic type (`Formatters.InteropBox(Formatter<T>)`). Abstract objects have none |
-| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists ([D12](multilang-decisions.md#d12)): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
+| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists (a type with a C# `[NexusFormatter]` needs a hand-written native formatter; without the mapping the generator reports NEXNET040): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
 
 `Formatters`, `UserFormatters` and `formatters` are reserved type names (NEXNET041).
 
@@ -295,7 +295,7 @@ server `INexusList<T>` (protocol specification section 12):
   `INexusDuplexPipe.GetChannel<T>()`. Several channels over one pipe share its bytes and credit, and closing any of
   them closes the pipe. A pipe the runtime did not create throws `IllegalArgumentException`.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
-  `tcpTls(host, port)`. UDS and QUIC are not available on Java ([D4](multilang-decisions.md#d4)). Builder options:
+  `tcpTls(host, port)`. UDS and QUIC are not available on Java (no portable UDS client API down to Android API 24). Builder options:
   - `tls(TlsOptions)`;
   - `authenticate(Supplier<byte[]>)` or `authenticateAsync(Supplier<CompletableFuture<byte[]>>)` (mutually
     exclusive; `build()` throws `IllegalStateException` when both are set);
@@ -338,13 +338,13 @@ server `INexusList<T>` (protocol specification section 12):
 - **Threads.** One reader and one writer thread per connection (`nexnet-<id>-reader`, `nexnet-<id>-writer`; section 6.1). No IO on
   the caller thread. **Never complete a user-visible future on the reader thread**: complete it through the callback
   executor.
-- **Security ([#114](https://github.com/Dtronix/NexNet/pull/114), [D7](multilang-decisions.md#d7)).** `isSecure()` is true only for `tcpTls`, `wss://` and `https://`. A plaintext client logs
+- **Security ([#114](https://github.com/Dtronix/NexNet/pull/114)).** Plaintext transports are allowed, but visible: `isSecure()` is true only for `tcpTls`, `wss://` and `https://`. A plaintext client logs
   once per instance, on the first connect: `NexNet: unencrypted transport (<transport>); credentials and data are
   visible on the network.`
 - **Authentication.** The supplier runs before the transport connects, on every connect and reconnect, bounded by the
   handshake timeout. If it throws or times out, the connect fails with `DisconnectReason.AUTHENTICATION` and no
   connection is opened.
-- **Cancellation ([D17](multilang-decisions.md#d17)).** A token canceled before send fails the call with `CancellationException` and sends nothing.
+- **Cancellation.** A token canceled before send fails the call with `CancellationException` and sends nothing.
   A cancel after send completes the future canceled at once and the late result is consumed.
 - **Version check.** `NexusClient.create` refuses a `HandshakeDescriptor.runtimeVersion()` whose major.minor differs
   from `NexusRuntime.VERSION`.
@@ -390,7 +390,7 @@ Rules:
 ### 6.2 Logging
 
 `ClientConfig.Builder.logger(NexusLogger)` sets the logger. Without one the runtime logs nothing, and that includes
-the plaintext warning ([D7](multilang-decisions.md#d7)). It mirrors the C# `INexusLogger`:
+the plaintext warning. It mirrors the C# `INexusLogger`:
 
 ```java
 @FunctionalInterface
@@ -448,7 +448,7 @@ five-argument overload takes any `Transport.Connector`, for a test transport, a 
 
 ### 6.4 Default connector, TLS trust and pins
 
-**`NexusConnector`** (`com.dtronix.nexnet.transport`) implements the built-in transports ([D4](multilang-decisions.md#d4)):
+**`NexusConnector`** (`com.dtronix.nexnet.transport`) implements the built-in transports (WebSocket and HttpSocket, plain and TLS, TCP and TLS over TCP; no UDS):
 
 | Transport | Behavior |
 |---|---|

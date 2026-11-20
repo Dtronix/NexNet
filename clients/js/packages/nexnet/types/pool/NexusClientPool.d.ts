@@ -1,5 +1,5 @@
 /**
- * Client pool (D20). Mirrors C# `NexusClientPool`: up to `maxConnections` clients, rented one caller at a time and
+ * Client pool. Mirrors C# `NexusClientPool`: up to `maxConnections` clients, rented one caller at a time and
  * returned by releasing the rental; idle clients beyond `minIdleConnections` are disconnected after `maxIdleTime`, and
  * unhealthy (disconnected) ones are dropped by a periodic health check.
  * @module

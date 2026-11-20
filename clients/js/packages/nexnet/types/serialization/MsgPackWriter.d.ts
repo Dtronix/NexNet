@@ -23,7 +23,7 @@ export declare class MsgPackWriter {
     writeBool(value: boolean): void;
     /**
      * Writes an integer that fits in a JS `number`: C# sbyte through uint, and `long`/`ulong` in their opt-in
-     * checked-number mapping (D13). The target range is the formatter's job; this checks only that `value` is a safe
+     * checked-number mapping (`[NexusJsNumber]`). The target range is the formatter's job; this checks only that `value` is a safe
      * integer.
      * @param {number} value
      * @returns {void}

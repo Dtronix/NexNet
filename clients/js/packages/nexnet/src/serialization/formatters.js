@@ -109,14 +109,14 @@ export const int32Formatter = formatter((w, v) => w.writeInt(checkInt(v, -0x8000
 /** C# `uint`. @type {Formatter<number>} */
 export const uint32Formatter = formatter((w, v) => w.writeInt(checkInt(v, 0, 0xffffffff, 'uint')), (r) => r.readUInt32());
 
-/** C# `long` as `bigint` (the default mapping, D13). @type {Formatter<bigint>} */
+/** C# `long` as `bigint` (the default mapping). @type {Formatter<bigint>} */
 export const int64Formatter = formatter((w, v) => w.writeInt64(v), (r) => r.readInt64());
 
-/** C# `ulong` as `bigint` (the default mapping, D13). @type {Formatter<bigint>} */
+/** C# `ulong` as `bigint` (the default mapping). @type {Formatter<bigint>} */
 export const uint64Formatter = formatter((w, v) => w.writeUInt64(v), (r) => r.readUInt64());
 
 /**
- * C# `long` in the opt-in checked-number mapping (D13): a safe-integer `number`. Reading a value beyond ±(2^53 − 1)
+ * C# `long` in the opt-in checked-number mapping (`[NexusJsNumber]`): a safe-integer `number`. Reading a value beyond ±(2^53 − 1)
  * throws (`range`).
  * @type {Formatter<number>}
  */
@@ -126,7 +126,7 @@ export const int64NumberFormatter = formatter(
 );
 
 /**
- * C# `ulong` in the opt-in checked-number mapping (D13): a non-negative safe-integer `number`.
+ * C# `ulong` in the opt-in checked-number mapping (`[NexusJsNumber]`): a non-negative safe-integer `number`.
  * @type {Formatter<number>}
  */
 export const uint64NumberFormatter = formatter(
