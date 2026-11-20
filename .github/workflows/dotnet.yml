@@ -135,7 +135,7 @@ jobs:
       run: dotnet test src/NexNet.IntegrationTests -c Release --no-build --minimum-expected-tests 2859 --results-directory TestResults -- --report-trx
 
     - name: Execute generator tests
-      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build --minimum-expected-tests 214 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build --minimum-expected-tests 606 --results-directory TestResults -- --report-trx
 
     - name: Execute serialization tests (includes fuzz harness smoke run and golden freshness)
       run: dotnet test src/NexNet.Serialization.Tests -c Release --no-build --minimum-expected-tests 298 --results-directory TestResults -- --report-trx
