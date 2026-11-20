@@ -13,7 +13,9 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 /// <remarks>
 /// The header tests need <see cref="ClientCapabilities.AuthorizationHeader"/>, which browsers lack; the query-string
-/// token tests run on every row, browsers included.
+/// token tests run on every row, browsers included. A browser cannot see the HTTP status of a refused WebSocket upgrade,
+/// so on browser rows a refused authentication is <see cref="TransportError.InternalError"/>
+/// (<see cref="AuthRefusedError"/>; a documented browser parity limit, J34).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTests
@@ -48,6 +50,17 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         config.AspEnableAuthentication = true;
         config.AspAuthenticationScheme = scheme;
     }
+
+    /// <summary>
+    /// The error a client of <paramref name="target"/> reports when ASP.NET authentication refuses its upgrade.
+    /// <see cref="TransportError.AuthenticationError"/>, except in a browser: the platform <c>WebSocket</c> hides the
+    /// HTTP status of a refused upgrade, so the JS client reports every connect failure as
+    /// <see cref="TransportError.InternalError"/> (docs/internals/js-runtime-contract.md, transport errors).
+    /// </summary>
+    private static TransportError AuthRefusedError(ClientTarget target)
+        => target.Language.StartsWith("browser-", StringComparison.Ordinal)
+            ? TransportError.InternalError
+            : TransportError.AuthenticationError;
 
     private static async Task AssertConnectFails(IClientUnderTest client, TransportError error)
     {
@@ -93,7 +106,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         var (_, created) = await CreateAsync(target, config => EnableBearerAuthentication(config));
         await using var client = created;
 
-        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await AssertConnectFails(client, AuthRefusedError(target));
         await MatrixTestBase.EndAsync(client);
     }
 
@@ -151,7 +164,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         if (succeeds)
             await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         else
-            await AssertConnectFails(client, TransportError.AuthenticationError);
+            await AssertConnectFails(client, AuthRefusedError(target));
 
         await MatrixTestBase.EndAsync(client);
     }
@@ -172,7 +185,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await Assert.That(GetAccessTokenQueryParameter(server!)).IsNull();
-        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await AssertConnectFails(client, AuthRefusedError(target));
         await MatrixTestBase.EndAsync(client);
     }
 

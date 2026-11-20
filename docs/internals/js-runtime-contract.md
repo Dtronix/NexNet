@@ -517,7 +517,7 @@ A handshake the server ends for any other reason rejects with a `NexusTransportE
 | Node WebSocket upgrade refused with `5xx` | `InternalError`, `status` set | `SocketError` |
 | Node WebSocket upgrade refused with any other status | `ProtocolError`, `status` set | `SocketError` |
 | `101` with a wrong `Upgrade`/`Connection`/`Sec-WebSocket-Accept`, or a subprotocol or extension selected | `ProtocolError` | `SocketError` |
-| Browser WebSocket: any connect failure (the platform hides the cause and the status) | `InternalError` | `SocketError` |
+| Browser WebSocket: any connect failure, an upgrade refused with `401`/`403` included (the platform hides the cause and the status) | `InternalError` | `SocketError` |
 | Any other error | `InternalError` | `SocketError` |
 
 After the connection is up, the error a transport ends with is only logged (at `debug`): the session ends with
@@ -532,6 +532,13 @@ HTTP-based transports in Node, extra upgrade headers, an `Authorization` header 
 `Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
 cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook (F06) goes in the URL
 (`wss://host/nexus?token=…`), in Node as well as in browsers.
+
+**Browser parity limit: refused upgrade authentication.** The platform `WebSocket` fails a refused upgrade the same
+way as an unreachable server or a TLS failure (close code 1006, no status, no reason), so a browser client cannot tell
+that NexNet.Asp authentication (the `Authorization` header or the query-string token) refused it: `connect()`
+rejects with `transportError` `InternalError`, not `AuthenticationError` as in Node, Java and C#. The greeting token
+is refused over an open socket (`DisconnectReason.Authentication`), so it is `AuthenticationError` in browsers too.
+The interop suite expects `InternalError` on browser rows of the refused-upgrade tests (`AspClientServerTests`, J34).
 
 **TLS options and pinning (Node).** `TlsOptions` follow `tls.connect`. Unless `rejectUnauthorized` is false, the
 chain must lead to a trusted CA (`ca`, else Node's bundled roots) and the host name is verified with

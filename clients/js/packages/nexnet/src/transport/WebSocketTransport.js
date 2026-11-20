@@ -97,7 +97,9 @@ export class BrowserWebSocketTransport extends TransportBase {
 /**
  * Opens a WebSocket transport (`ClientConfig.webSocket`) with the platform `WebSocket`. TLS, headers and the HTTP
  * status of a failed upgrade are under the platform's control: a browser reports every failure the same way, so it is
- * `SocketError` with `transportError` `InternalError`.
+ * `SocketError` with `transportError` `InternalError`. That includes an upgrade the server refuses with `401` or
+ * `403` (ASP.NET authentication), which the Node transport reports as `AuthenticationError`; a refused greeting token
+ * (`authenticate`) is still `AuthenticationError` in a browser, because it is refused over an open socket.
  *
  * @type {import('./ITransport.js').TransportFactory}
  */
@@ -126,7 +128,10 @@ export async function webSocketTransport(config, { signal }) {
     // connect: Node 22's undici fires only 'error' for a refused upgrade and leaves the socket CONNECTING.
     const onFail = () => {
       cleanup();
-      reject(transportError(`WebSocket connection to ${url.href} failed.`));
+      reject(transportError(
+        `WebSocket connection to ${url.href} failed. The browser does not say why: the server may be unreachable, the ` +
+        'TLS handshake may have failed, or the server may have refused the upgrade (HTTP 401 or 403, for example).',
+      ));
     };
     const onAbort = () => {
       cleanup();
