@@ -104,7 +104,9 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
     get _session(): NexusSession | null;
     /**
      * Connects and completes the handshake. Rejects with `NexusTransportError` on failure and the abort reason
-     * when `signal` aborts.
+     * when `signal` aborts. A connect the server refuses for its authentication (`DisconnectReason.Authentication`
+     * during the handshake), or an `authenticate` that exceeds `handshakeTimeout`, rejects with `transportError`
+     * `AuthenticationError`, as C# `ConnectAsync` throws `TransportException(AuthenticationError)`.
      *
      * @param {{ signal?: AbortSignal }} [options]
      * @returns {Promise<void>}
