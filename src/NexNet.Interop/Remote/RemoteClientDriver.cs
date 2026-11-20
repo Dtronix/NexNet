@@ -20,7 +20,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
     private readonly ConcurrentDictionary<Type, object> _proxies = new();
     private readonly ConcurrentDictionary<string, object> _lists = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _outstanding = new();
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _forwards = new(StringComparer.Ordinal);
+    private readonly ForwardedCalls _forwards = new();
     private readonly ConcurrentDictionary<string, Action<ControlEvent>> _listWatches = new(StringComparer.Ordinal);
     private readonly IDisposable _events;
     private readonly ScriptFacade? _facade;
@@ -254,8 +254,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
                 slot.Changed -= OnSlotChanged;
         }
 
-        foreach (var forward in _forwards.Values)
-            forward.Cancel();
+        _forwards.CancelAll();
         return true;
     }
 
@@ -403,8 +402,10 @@ public sealed class RemoteClientDriver : IClientUnderTest
                     onChanged(evt);
                 break;
             case "script.forwardCancel":
-                if (evt.Data["callId"]?.ToJsonString() is { } id && _forwards.TryGetValue(id, out var source))
-                    source.Cancel();
+                // A cancel can arrive after the call finished (the Node host sends it right after script.forward when
+                // the call is canceled already): then it does nothing.
+                if (evt.Data["callId"]?.ToJsonString() is { } id)
+                    _forwards.Cancel(id);
                 break;
         }
     }
@@ -421,8 +422,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
         var key = callId?.ToJsonString() ?? "";
         var slot = FindSlot(evt);
         var arguments = (evt.Data["args"] as JsonArray)?.DeepClone() as JsonArray ?? new JsonArray();
-        var source = new CancellationTokenSource();
-        _forwards[key] = source;
+        var token = _forwards.Start(key);
         _ = Task.Run(async () =>
         {
             var reply = new JsonObject { ["h"] = Handle, ["callId"] = callId };
@@ -430,7 +430,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
             {
                 if (slot == null)
                     throw new InvalidOperationException($"No script slot '{evt.Data["slot"]}' to forward to.");
-                reply["result"] = await slot.ForwardAsync(arguments, source.Token).ConfigureAwait(false);
+                reply["result"] = await slot.ForwardAsync(arguments, token).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -439,8 +439,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
             }
             finally
             {
-                _forwards.TryRemove(key, out _);
-                source.Dispose();
+                _forwards.Complete(key);
             }
 
             if (!Connection.IsClosed && !IsReleased)
