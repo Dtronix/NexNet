@@ -601,11 +601,37 @@ jobs:
           disable-animations: true
           script: clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
 
+      # connectedCheck prints no test counts, and the smoke tests skip themselves without the endpoint arguments, so a
+      # broken argument hand-off would still pass. Lists every device test and fails if none ran or a smoke test skipped.
+      - name: Device test results
+        if: steps.module.outputs.smoke == 'true' && !cancelled()
+        shell: python3 {0}
+        run: |
+          import glob, os, sys
+          import xml.etree.ElementTree as ET
+          files = glob.glob('clients/java/nexnet-client-android/build/outputs/androidTest-results/connected/**/*.xml', recursive=True)
+          cases = [c for f in files for c in ET.parse(f).getroot().iter('testcase')]
+          def state(c):
+              return 'failed' if c.find('failure') is not None or c.find('error') is not None else 'skipped' if c.find('skipped') is not None else 'passed'
+          for c in cases:
+              print(f"  {state(c):7} {c.get('classname')}.{c.get('name')} ({c.get('time')} s)")
+          count = lambda cs, s: sum(1 for c in cs if state(c) == s)
+          smoke = [c for c in cases if c.get('classname', '').endswith('.InteropServerSmokeTest')]
+          line = (f"Device tests on the API 24 emulator: {len(cases)} ({count(cases, 'passed')} passed, {count(cases, 'failed')} failed, "
+                  f"{count(cases, 'skipped')} skipped); InteropServerSmokeTest: {len(smoke)} ({count(smoke, 'passed')} passed)")
+          print(line)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(line + '\n')
+          if not cases:
+              sys.exit('::error::No device test results (androidTest-results/connected).')
+          if not smoke or count(smoke, 'passed') != len(smoke):
+              sys.exit('::error::InteropServerSmokeTest did not run and pass on every transport (endpoint arguments missing?).')
+
       - name: Upload Android results
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: android-smoke
+          name: android-results
           path: |
             ${{ runner.temp }}/interop-server.log
             clients/java/**/build/outputs/androidTest-results/
