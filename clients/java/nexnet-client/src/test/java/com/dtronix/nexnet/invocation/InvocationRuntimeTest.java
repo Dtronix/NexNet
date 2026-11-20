@@ -595,10 +595,15 @@ class InvocationRuntimeTest {
             }
             return ctx.result(result, TestCodec.BYTES);
         });
+        // An outbound call whose result is sent last: frames are handled in order, so once its result is in, the
+        // reader has handled the invocation and its cancellation too.
+        CompletableFuture<Void> barrier = runtime.invokeTask(2, ArgumentWriter.NONE, null);
+        assertEquals(1, idOf(peer.expect(MessageTypes.INVOCATION)));
         peer.send(MessageTypes.INVOCATION, invocation(5, 0, 0, SMALL_ARGS));
         peer.send(MessageTypes.INVOCATION_CANCELLATION, array(5));
+        peer.send(MessageTypes.INVOCATION_RESULT, array(1, 1));
+        await(barrier);
         // Nothing runs before dispatching starts (after onConnected).
-        Thread.sleep(100);
         assertTrue(nexus.threads.isEmpty());
         assertEquals(1, runtime.inboundInvocations());
         runtime.startDispatching();
@@ -700,7 +705,9 @@ class InvocationRuntimeTest {
         Peer.Msg msg = peer.expect(MessageTypes.INVOCATION);
         peer.send(MessageTypes.INVOCATION_RESULT, array(idOf(msg), 1));
         await(next);
-        assertEquals(0, runtime.pendingCalls());
+        // The refused (or canceled) call's id is released by the stream's pump thread after it queues the abort,
+        // which the peer can read first.
+        waitFor(() -> runtime.pendingCalls() == 0);
     }
 
     @Test
@@ -719,7 +726,9 @@ class InvocationRuntimeTest {
         Peer.Msg msg = peer.expect(MessageTypes.INVOCATION);
         peer.send(MessageTypes.INVOCATION_RESULT, array(idOf(msg), 1));
         await(next);
-        assertEquals(0, runtime.pendingCalls());
+        // The refused (or canceled) call's id is released by the stream's pump thread after it queues the abort,
+        // which the peer can read first.
+        waitFor(() -> runtime.pendingCalls() == 0);
     }
 
     @Test
@@ -822,6 +831,9 @@ class InvocationRuntimeTest {
         peer.send(MessageTypes.INVOCATION_RESULT, array(2, 1));
         await(barrier);
         awaitLargeMessages(1);
+        // The peer can read the barrier invocation before the writer thread clears its write-in-progress flag. A tick
+        // that still saw it would find a stalled write and close without the disconnect byte (the K43 flake: -1).
+        ManualTimers.awaitWriterIdle(session);
 
         // The first keepalive tick (10 s): nothing arrived for the stream for longer than the progress timeout.
         timers.advance(10_000);
@@ -839,6 +851,8 @@ class InvocationRuntimeTest {
         connect();
         peer.send(MessageTypes.MESSAGE_START, array(4, 0, MessageTypes.INVOCATION, 200_000));
         awaitLargeMessages(1);
+        // The stall must be the stream's, not the handshake write's (see the test above).
+        ManualTimers.awaitWriterIdle(session);
         timers.advance(10_000);
         assertEquals(DisconnectReason.STALLED, closedWith());
     }
@@ -858,12 +872,17 @@ class InvocationRuntimeTest {
         // Frames are handled in order: once the barrier's result is in, so is the chunk.
         peer.send(MessageTypes.INVOCATION_RESULT, array(2, 1));
         await(barrier);
+        // The barrier invocation was written at 0 s: a tick at 10 s that still saw the write in progress would find
+        // it stalled.
+        ManualTimers.awaitWriterIdle(session);
 
         // The tick at 10 s: 9.1 s since the chunk, under the 9.5 s timeout (10 s since the start would be over it).
         timers.advance(9_100);
         assertEquals(MessageTypes.PING, peer.server().readByte());
         assertTrue(session.isConnected());
         assertFalse(call.isDone());
+        // Likewise the ping, written at 10 s: the stall the next tick finds must be the stream's.
+        ManualTimers.awaitWriterIdle(session);
 
         // The next tick (20 s) finds the stream stalled.
         timers.advance(10_000);

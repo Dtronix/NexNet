@@ -200,6 +200,9 @@ class NexusClientInvocationTest {
         server.write(Frame.of(MessageTypes.MESSAGE_START, new byte[] {(byte) 0x94, 7, 0, MessageTypes.INVOCATION,
             (byte) 0xCE, 0, 3, 0x0D, 0x40}).bytes());
         NexusClientTest.waitFor(() -> InvocationCounters.largeMessages() > before);
+        // The stall must be the stream's: a tick that still saw the handshake write in progress would find it stalled
+        // and close without the disconnect byte.
+        ManualTimers.awaitWriterIdle(client.session());
         timers.advance(10_000);
         assertEquals(DisconnectReason.STALLED.code(), server.readByte());
         client.disconnected().get(5, TimeUnit.SECONDS);

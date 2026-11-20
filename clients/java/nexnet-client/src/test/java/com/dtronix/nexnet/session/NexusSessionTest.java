@@ -154,6 +154,9 @@ class NexusSessionTest {
         transport.server().write(GoldenFrames.get("server-greeting"));
         session.ready().get(5, TimeUnit.SECONDS);
         assertEquals(1_000, session.progressTimeoutMillis());
+        // The stall must be the probe's: a tick that still saw the handshake write in progress would find it stalled
+        // and close without the disconnect byte.
+        ManualTimers.awaitWriterIdle(session);
 
         timers.advance(10_000);
         assertEquals(DisconnectReason.STALLED, closedWith(session));
