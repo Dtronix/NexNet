@@ -119,7 +119,8 @@ public class JsProxyCompileTests
     }
 
     private const string Usage = """
-        import { NexusList, NexusDuplexPipe, NexusDuplexChannel, NexusClient } from '@dtronix/nexnet';
+        import { NexusList, NexusDuplexPipe, NexusDuplexChannel, NexusClient, int32Formatter, stringFormatter } from '@dtronix/nexnet';
+        import { ItemFormatter } from './formatters.js';
         import { ChatClientBinding, ChatClientNexusBase, ChatHandshake, ChatServerProxy, createChatClient } from './ChatServerNexus.js';
         import { Box } from './Box.js';
         import { Color } from './Color.js';
@@ -170,6 +171,23 @@ public class JsProxyCompileTests
           // @ts-expect-error the method has no cancellation
           await proxy.ping({ signal: AbortSignal.timeout(1) });
           void [sum, sum2, found, items, waited, names, boxes, scores, Incomplete];
+        }
+
+        // J32: a class formatter reads Item | null, yet createChannel gives the NexusDuplexChannel<Item> the proxy takes.
+        export async function channels(): Promise<void> {
+          const channel = client.createChannel(ItemFormatter);
+          await client.proxy.stream(channel);
+          for await (const item of await channel.getReader()) {
+            const id: number = item.id;
+            void id;
+          }
+          const fromContext: NexusDuplexChannel<Item> = client.nexus.context.createChannel(ItemFormatter);
+          const strings: NexusDuplexChannel<string> = client.createChannel(stringFormatter);
+          const nullable: NexusDuplexChannel<string | null> = client.createChannel<string | null>(stringFormatter);
+          const numbers: NexusDuplexChannel<number> = client.createChannel(int32Formatter);
+          // @ts-expect-error an int32 formatter does not make a string channel
+          const wrong: NexusDuplexChannel<string> = client.createChannel(int32Formatter);
+          void [fromContext, strings, nullable, numbers, wrong];
         }
         """;
 

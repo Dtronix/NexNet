@@ -97,9 +97,7 @@ Without npm (plain `<script type="module">` pages, quick scripts), build with
 
 **TypeScript.** Import the generated modules as usual; their `.d.ts` describe the API. The runtime is typed by its
 JSDoc, so set `"allowJs": true` (with `checkJs` off) in `tsconfig.json`, and, when the runtime is linked into
-`node_modules` (`RuntimeImport=package`), `"maxNodeModuleJsDepth": 1` so TypeScript reads it. A generated class
-formatter is typed as reading `T | null`; pass it to `createChannel` as `Formatter<T>` when the channel's items are
-never null.
+`node_modules` (`RuntimeImport=package`), `"maxNodeModuleJsDepth": 1` so TypeScript reads it.
 
 ## 4. Connect
 
@@ -273,6 +271,9 @@ for await (const message of await channel.getReader()) {
 - `await channel.getWriter()`: `write(item)`, `writeMany(items)`, `complete()`, `writeAndComplete(items)`.
 - Built-in item types use the runtime formatters (`int32Formatter`, `stringFormatter`, …); generated types use
   `formatters.js`.
+- A class formatter (`ChatMessageFormatter`, `stringFormatter`) reads `T | null`; `createChannel` still gives the
+  `NexusDuplexChannel<T>` the proxy's channel parameter takes. For a channel of nullable items (`INexusDuplexChannel<string?>`),
+  pass the type: `createChannel<string | null>(stringFormatter)`.
 
 ## 10. Synchronized collections
 
