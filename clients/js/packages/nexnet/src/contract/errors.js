@@ -72,7 +72,7 @@ export class NexusBusyError extends NexusError {}
 export class NexusMessageTooLargeError extends NexusError {}
 
 /**
- * Returns the error a cancelled operation rejects with (D17). This is `signal.reason` when the signal has one,
+ * Returns the error a cancelled operation rejects with (a call canceled before it is sent rejects and is never sent). This is `signal.reason` when the signal has one,
  * otherwise a `DOMException` named `AbortError`. Invocations pending when the session ends also reject with an
  * `AbortError`, whose `cause` is the `NexusTransportError` with the disconnect reason (amendment C-2).
  *

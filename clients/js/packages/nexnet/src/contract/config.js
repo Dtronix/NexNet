@@ -100,7 +100,7 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  */
 
 /**
- * Supplies the greeting authentication token (D15). Called before the transport connects, on every connect and
+ * Supplies the greeting authentication token, the canonical credential on every transport. Called before the transport connects, on every connect and
  * reconnect, bounded by `handshakeTimeout`. Return null for no token. If it throws or rejects, the connect fails
  * with `DisconnectReason.Authentication` and no connection is opened.
  *

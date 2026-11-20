@@ -1,5 +1,5 @@
 /**
- * WebSocket transport over the platform `WebSocket` (browsers; D6). Protocol spec §13.7: binary messages only, no
+ * WebSocket transport over the platform `WebSocket` (browsers). Protocol spec §13.7: binary messages only, no
  * subprotocol, message boundaries carry no meaning. The Node entry uses its own RFC 6455 client
  * (`node/ws.js`) instead, for TLS options and headers.
  * @module

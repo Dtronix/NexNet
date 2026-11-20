@@ -27,18 +27,18 @@ export declare const uint16Formatter: Formatter<number>;
 export declare const int32Formatter: Formatter<number>;
 /** C# `uint`. @type {Formatter<number>} */
 export declare const uint32Formatter: Formatter<number>;
-/** C# `long` as `bigint` (the default mapping, D13). @type {Formatter<bigint>} */
+/** C# `long` as `bigint` (the default mapping). @type {Formatter<bigint>} */
 export declare const int64Formatter: Formatter<bigint>;
-/** C# `ulong` as `bigint` (the default mapping, D13). @type {Formatter<bigint>} */
+/** C# `ulong` as `bigint` (the default mapping). @type {Formatter<bigint>} */
 export declare const uint64Formatter: Formatter<bigint>;
 /**
- * C# `long` in the opt-in checked-number mapping (D13): a safe-integer `number`. Reading a value beyond ±(2^53 − 1)
+ * C# `long` in the opt-in checked-number mapping (`[NexusJsNumber]`): a safe-integer `number`. Reading a value beyond ±(2^53 − 1)
  * throws (`range`).
  * @type {Formatter<number>}
  */
 export declare const int64NumberFormatter: Formatter<number>;
 /**
- * C# `ulong` in the opt-in checked-number mapping (D13): a non-negative safe-integer `number`.
+ * C# `ulong` in the opt-in checked-number mapping (`[NexusJsNumber]`): a non-negative safe-integer `number`.
  * @type {Formatter<number>}
  */
 export declare const uint64NumberFormatter: Formatter<number>;

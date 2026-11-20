@@ -11,7 +11,7 @@ import { systemClock } from './clock.js';
  * @typedef {object} ResolvedClientOptions
  * @property {import('../contract/config.js').TransportKind} kind The configured transport property.
  * @property {string} transportName Transport name for logs and the plaintext warning (`tcp`, `ws://`, …).
- * @property {boolean} isSecure True for TLS, WSS, HTTPS and UDS (D7, F05).
+ * @property {boolean} isSecure True for TLS, WSS, HTTPS and UDS.
  * @property {import('./clock.js').Clock} clock
  * @property {import('../contract/config.js').NexusLogger | null} logger
  * @property {import('../contract/config.js').AuthenticateCallback | null} authenticate
