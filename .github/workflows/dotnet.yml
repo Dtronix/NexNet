@@ -31,6 +31,12 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
+  # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
+  # limits). Pushes to master and train/** (and the nightly on master) write; pull requests and tags only restore.
+  NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
+
 jobs:
   # Runs first on every event: lockstep versions and no npm or Maven publish path (D30). It also decides whether this
   # run is a release (tag), a dry run (workflow_dispatch, or a pull request touching the release pipeline) or neither.
@@ -204,6 +210,8 @@ jobs:
         java-version: '21'
 
     - uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
     - name: JavaScript client tarball (npm pack; never published)
       run: |

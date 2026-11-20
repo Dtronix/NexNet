@@ -14,6 +14,10 @@ permissions:
 env:
   DOTNET_NOLOGO: '1'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
+  # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
+  # limits). Pushes to master and train/** (and the nightly on master) write; pull requests and tags only restore.
+  NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
   # Bucket-A interop rows on every transport: plaintext and TLS, TCP, TcpTls, HttpSocket, WebSocket, and UDS on Node
@@ -82,6 +86,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: Build the C# side
         if: steps.host.outputs.ready == 'true'
@@ -186,6 +192,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: Build
         if: steps.host.outputs.ready == 'true'
@@ -249,6 +257,8 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - uses: android-actions/setup-android@v4
 

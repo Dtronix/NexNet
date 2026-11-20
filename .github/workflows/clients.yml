@@ -27,6 +27,10 @@ permissions:
 env:
   DOTNET_NOLOGO: '1'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
+  # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
+  # limits). Pushes to master and train/** (and the nightly on master) write; pull requests and tags only restore.
+  NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
   # Every runtime replays tests/golden (golden format v1). The C# replay runs in the dotnet job; this job checks that the
@@ -94,6 +98,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         if: steps.replay.outputs.java == 'true'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: Java golden replay
         if: steps.replay.outputs.java == 'true'
@@ -183,6 +189,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: gradlew check (unit tests, golden vectors, javadoc, Animal Sniffer API 24)
         run: >-
@@ -237,6 +245,8 @@ jobs:
 
       # The tests build the nexnet-client jar with the wrapper (and read JSpecify from the Gradle cache).
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: Install the TypeScript compiler
         run: npm ci --prefix clients/js
@@ -341,6 +351,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         if: matrix.lang == 'java'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
       - name: Build the C# side
         run: dotnet build src -c Release --maxcpucount:1
