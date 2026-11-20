@@ -12,9 +12,13 @@ on:
     branches:
       - '**'  # '*' does not match '/', so PRs into branches such as train/multilang would not run
   workflow_dispatch:
+  # The release pipeline in dotnet.yml runs this whole workflow as its client gate (tags and dry runs).
+  workflow_call:
 
 concurrency:
-  group: clients-${{ github.ref }}
+  # github.workflow is the caller's name when dotnet.yml calls this workflow, so the call and a direct run of the same
+  # pull request do not cancel each other.
+  group: ${{ github.workflow }}-clients-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
