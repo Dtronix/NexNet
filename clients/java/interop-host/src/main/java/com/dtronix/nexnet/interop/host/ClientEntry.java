@@ -36,6 +36,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * calls run the scripts of §6.6.
  */
 final class ClientEntry extends Driven implements ScriptHost {
+    /** The message of the exception a {@code list.watch} listener with {@code throws} raises. */
+    static final String THROWING_WATCH_MESSAGE = "A scripted list change handler threw (list.watch throws).";
+
     private volatile NexusClient<?> client;
     final FakeTimers fakeTime;
     private final CancellationTokenSource lifetime = new CancellationTokenSource();
@@ -411,8 +414,14 @@ final class ClientEntry extends Driven implements ScriptHost {
         if (watches.containsKey(watch)) {
             throw HostError.badRequest("The watch '" + watch + "' is in use.");
         }
-        Registration registration = list.addChangeListener(change -> host.event(scope.id, handle, "list.changed",
-            changeJson(watch, change, codec)));
+        boolean throwing = args.bool("throws");
+        Registration registration = list.addChangeListener(change -> {
+            host.event(scope.id, handle, "list.changed", changeJson(watch, change, codec));
+            if (throwing) {
+                // list.watch throws: the runtime must survive a listener that throws (control protocol §6.10).
+                throw new IllegalStateException(THROWING_WATCH_MESSAGE);
+            }
+        });
         watches.put(watch, registration);
         return Protocol.empty();
     }
