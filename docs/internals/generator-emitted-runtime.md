@@ -1,6 +1,6 @@
 # Generator-emitted client runtime (D31)
 
-Owner: G09 (optional Java modules: G10). Status: design accepted with G09; follow-ups J27 (JavaScript `.d.ts`) and the
+Owner: G09 (optional Java modules: G10). Status: design accepted with G09; JavaScript `.d.ts` added by J27; open
 items in §12.
 
 NexNet publishes only NuGet packages (D30). A project that turns on a Java or JavaScript target must therefore get
@@ -12,7 +12,7 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 | Topic | Recommendation |
 |---|---|
 | Source of the runtime | `EmbeddedResource` items in `NexNet.Generator.csproj` that glob the checked-in sources under `clients/`. No npm or Gradle at build time (D27) |
-| JavaScript types | **Commit the `tsc`-generated `.d.ts`** in `clients/js`, check in the JS gate that they are current, and embed them (J27). Until then the runtime ships its JSDoc-typed `.js` and TypeScript consumers set `allowJs` |
+| JavaScript types | **Commit the `tsc`-generated `.d.ts`** in `clients/js`, check in the JS gate that they are current, and embed them (J27): each emitted `.js` has its `.d.ts` beside it, so TypeScript consumers need no `allowJs` |
 | JavaScript layout | `<OutputDir>/nexnet-runtime/`: the `src/` tree plus its own `package.json` (`@dtronix/nexnet`, the same conditional exports) and `LICENSE` |
 | JavaScript import | `RuntimeImport=package` (default): generated code keeps importing `@dtronix/nexnet`, and the consumer adds the emitted folder as a `file:` dependency. `RuntimeImport=relative`: generated code imports `./nexnet-runtime/index.js`, no install step |
 | Java layout | `<OutputDir>/com/dtronix/nexnet/**` beside the generated package, plus a generated `NexusRuntimeVersion.java` and `com/dtronix/nexnet/LICENSE.txt` |
@@ -45,18 +45,21 @@ describes how the runtime sources travel inside `NexNet.Generator.dll` and how t
 
 ### 2.1 JavaScript type declarations
 
-The JavaScript runtime is plain `.js` with JSDoc (D2); its `.d.ts` come from `tsc --declaration` into `dist/`, which
-is not checked in. The generator cannot run `tsc` (D27). The options:
+The JavaScript runtime is plain `.js` with JSDoc (D2); its `.d.ts` come from `tsc --declaration`. The generator
+cannot run `tsc` (D27). The options:
 
 | Option | Verdict |
 |---|---|
-| **A. Commit the generated `.d.ts`** (`npm run build:types` into a checked-in folder), and a JS-gate test that rebuilds them and fails on a difference. The generator embeds them | **Recommended.** Same bytes on every machine; drift is caught by the JS gate, which already runs for every `clients/js` change |
+| **A. Commit the generated `.d.ts`** (`npm run build:types` into a checked-in folder), and a JS-gate test that rebuilds them and fails on a difference. The generator embeds them | **Chosen (J27).** Same bytes on every machine; drift is caught by the JS gate, which already runs for every `clients/js` change |
 | B. Generate them in CI only and embed them there | Rejected: a local `dotnet build` would produce a different generator than CI, so output is not deterministic across machines |
 | C. Hand-write `.d.ts` | Rejected: about 95 modules; they would drift from the JSDoc the runtime is checked against |
 
-Until J27 lands, the emitted runtime has no `.d.ts`. TypeScript consumers compile with `allowJs` (with `checkJs` off):
-`tsc` then reads the types from the runtime's JSDoc. The proof test (§10) does exactly this. JavaScript consumers are
-not affected.
+J27 implemented option A. `npm run build:types --prefix clients/js` writes the declarations to
+`clients/js/packages/nexnet/types/` (checked in), and `npm run typecheck` fails when they differ from a fresh build
+(`scripts/check-types.js`). The workspace `package.json` points its `types` conditions at `./types/` and packs that
+folder. The generator embeds `types/**` beside `src/**`, so the emitted runtime has each `.d.ts` next to its `.js`,
+and the emitted `package.json` carries `types` conditions. TypeScript consumers need no `allowJs`; the proof test
+(§11) type-checks with `allowJs` off.
 
 ## 3. Output layout
 
@@ -69,10 +72,12 @@ not affected.
     package.json        name @dtronix/nexnet, version, "type": "module", "sideEffects": false, exports (below)
     LICENSE
     index.js  browser.js  node.js  diagnostics.js  client/ … values/       clients/js/packages/nexnet/src/**
+    index.d.ts  browser.d.ts  node.d.ts  …  client/*.d.ts …               clients/js/packages/nexnet/types/**
 ```
 
 The emitted `package.json` has the conditional exports of the published layout, pointing at the local files:
-`.` (`browser` → `browser.js`, `node` → `node.js`, `default` → `index.js`), `./node` and `./diagnostics`. It also
+`.` (`browser` → `browser.js`, `node` → `node.js`, `default` → `index.js`), `./node` and `./diagnostics`, each with a `types`
+condition naming the `.d.ts` beside it, and a top-level `types` (`./index.d.ts`). It also
 makes the folder ESM whatever the consumer's own `package.json` says.
 
 How generated code reaches the runtime (`RuntimeImport`):
@@ -160,8 +165,8 @@ flattening (`NexNetFlattenTargets`) turns every `;` in a value into `,`.
 workspace runtime (`clients/java` project dependency, npm workspace). Emitting the runtime there would put a second
 copy of `com.dtronix.nexnet` on the JVM host's source path. Both of its targets turn the runtime off implicitly: Java
 through `EmitTestScaffolding=true` (test scaffolding exists only for the in-repo hosts), JavaScript through its
-`ModuleName` (the consumer names the module the runtime comes from). An explicit `EmitRuntime="false"` in
-`NexNet.TestNexus.csproj` is clearer and is a follow-up (§12); the implicit rules then stay as safe defaults.
+`ModuleName` (the consumer names the module the runtime comes from). `NexNet.TestNexus.csproj` also sets
+`EmitRuntime="false"` explicitly on both targets (H22); the implicit rules stay as safe defaults.
 
 ## 5. JSpecify
 
@@ -235,8 +240,8 @@ but adds a build step and a decompression on first use; not worth it now.
 - **Java:** runs the real generator with the Java target, unpacks the bundle to a temporary folder, compiles **only**
   those files with `javac --release 11 -Xlint:all -Werror` (no class path: no runtime jar, no JSpecify), then runs a
   program that builds a client through the generated factory and serializes a generated type.
-- **JavaScript:** the same for both import modes: `tsc` (`allowJs`, `strict`) type-checks a TypeScript file against
-  the generated `.d.ts` and the emitted runtime, and Node imports the generated module and the runtime and serializes
+- **JavaScript:** the same for both import modes: `tsc` (`strict`, `allowJs` off) type-checks a TypeScript file against
+  the generated `.d.ts` and the emitted runtime's `.d.ts`, and Node imports the generated module and the runtime and serializes
   a value. `relative` needs no `node_modules` at all; `package` links `node_modules/@dtronix/nexnet` to the emitted
   `nexnet-runtime` folder, which is what `npm install file:…` does.
 - SDK-free tests check the layout, the options, NEXNET045/047, determinism, the version stamp and the JSpecify rewrite,
@@ -250,11 +255,8 @@ but adds a build step and a decompression on first use; not worth it now.
 
 ## 12. Follow-ups
 
-- **J27:** commit the `tsc`-generated `.d.ts` of the JavaScript runtime with a currency check in the JS gate, embed
-  them, and add `types` to the emitted `package.json`.
 - **Docs:** user-facing documentation of the options (`llm-usage.md`, `docs/articles/multi-language-clients.md`,
   release notes).
-- **TestNexus:** set `EmitRuntime="false"` explicitly on both targets of `src/NexNet.TestNexus`.
 - **CI:** a nightly job that builds an Android app from an emitted Java runtime (D26) would also cover `Nullness=none`
   under D8, and should list `EmitRuntimeModules="android"` so the emitted Android module compiles too.
 - **Module compile proof:** a Gradle-driven consumer check (in `clients/java`, e.g. beside `consumer-test`) that
