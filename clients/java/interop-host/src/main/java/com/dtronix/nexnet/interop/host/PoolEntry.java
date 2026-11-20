@@ -202,9 +202,16 @@ final class PoolEntry {
         return disposed;
     }
 
+    /**
+     * Whether a client of the pool is still closing. The pool closes evicted and returned clients off the calling
+     * thread (as the C# and JS pools do), so after a health-check eviction the client can still be Connected when
+     * the pool is disposed and the audit starts: once disposed, every client that is not Disconnected is settling,
+     * like the leak audits of the C# in-proc driver and the JS host, which wait up to 1 s for it.
+     */
     boolean isSettling() {
         for (NexusClient<?> client : clients) {
-            if (client.state() == ConnectionState.DISCONNECTING) {
+            ConnectionState state = client.state();
+            if (state == ConnectionState.DISCONNECTING || (disposed && state != ConnectionState.DISCONNECTED)) {
                 return true;
             }
         }
