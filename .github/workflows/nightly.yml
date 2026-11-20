@@ -229,12 +229,16 @@ jobs:
           if-no-files-found: ignore
 
   # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
-  # D8 and R8, and smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2.
+  # D8 and R8, and smoke-tests on an API-24 emulator against the interop server, reachable from it at 10.0.2.2: connect,
+  # invoke and pipe echo through the generated client of the interop test nexus (K36).
   android:
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       ANDROID_BUILD_TOOLS: '35.0.0'
+      # compileSdk of nexnet-client-android. Installed up front so the build does not depend on the Android Gradle
+      # plugin downloading it.
+      ANDROID_COMPILE_SDK: '36'
     steps:
       - uses: actions/checkout@v7
 
@@ -247,8 +251,8 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
-      - name: Install the API 24 platform and build tools
-        run: sdkmanager --install "platforms;android-24" "build-tools;${ANDROID_BUILD_TOOLS}"
+      - name: Install the API 24 and compile SDK platforms and build tools
+        run: sdkmanager --install "platforms;android-24" "platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
 
       - name: Build the core JAR
         run: clients/java/gradlew -p clients/java :nexnet-client:jar
@@ -287,6 +291,12 @@ jobs:
         with:
           dotnet-version: '10.*'
 
+      # Builds src/NexNet.TestNexus too: the generator writes the Java client of the interop test nexus, which the
+      # device tests compile, to artifacts/interop/java/generated.
+      - name: Build the interop server
+        if: steps.module.outputs.smoke == 'true'
+        run: dotnet build src/NexNet.InteropServer/Cli -c Release
+
       - name: Start the interop server
         if: steps.module.outputs.smoke == 'true'
         # Prints "<endpoint> <address>" per endpoint. Addresses use 127.0.0.1; the emulator reaches the host's loopback
@@ -294,7 +304,7 @@ jobs:
         shell: bash
         run: |
           log="$RUNNER_TEMP/interop-server.log"
-          nohup dotnet run --project src/NexNet.InteropServer/Cli -c Release -- --token nightly-android > "$log" 2>&1 &
+          nohup dotnet run --project src/NexNet.InteropServer/Cli -c Release --no-build -- --token nightly-android > "$log" 2>&1 &
           for _ in $(seq 1 180); do grep -q '^Running' "$log" && break; sleep 1; done
           grep -q '^Running' "$log" || { cat "$log"; echo "::error::The interop server did not start."; exit 1; }
           cat "$log"
