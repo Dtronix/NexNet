@@ -135,10 +135,45 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
      */
     createPipe(): import('../contract/pipes.js').NexusDuplexPipe;
     /**
+     * Creates a channel to pass to a channel method. A generated class formatter (and `stringFormatter`) is typed as
+     * reading `T | null`; this overload gives a `NexusDuplexChannel<T>`, the type a channel parameter of a generated
+     * proxy takes. Pass the type argument (`createChannel<T | null>(formatter)`) for a channel of nullable items.
+     * @template T
+     * @overload
+     * @param {import('../contract/codec.js').Formatter<T | null>} formatter
+     * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+     */
+    /**
      * Creates a channel to pass to a channel method.
      * @template T
+     * @overload
      * @param {import('../contract/codec.js').Formatter<T>} formatter
      * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+     */
+    /**
+     * @param {import('../contract/codec.js').Formatter<any>} formatter
+     * @returns {import('../contract/pipes.js').NexusDuplexChannel<any>}
+     */
+    createChannel<T>(formatter: import('../contract/codec.js').Formatter<T | null>): import('../contract/pipes.js').NexusDuplexChannel<T>;
+    /**
+     * Creates a channel to pass to a channel method. A generated class formatter (and `stringFormatter`) is typed as
+     * reading `T | null`; this overload gives a `NexusDuplexChannel<T>`, the type a channel parameter of a generated
+     * proxy takes. Pass the type argument (`createChannel<T | null>(formatter)`) for a channel of nullable items.
+     * @template T
+     * @overload
+     * @param {import('../contract/codec.js').Formatter<T | null>} formatter
+     * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+     */
+    /**
+     * Creates a channel to pass to a channel method.
+     * @template T
+     * @overload
+     * @param {import('../contract/codec.js').Formatter<T>} formatter
+     * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+     */
+    /**
+     * @param {import('../contract/codec.js').Formatter<any>} formatter
+     * @returns {import('../contract/pipes.js').NexusDuplexChannel<any>}
      */
     createChannel<T>(formatter: import('../contract/codec.js').Formatter<T>): import('../contract/pipes.js').NexusDuplexChannel<T>;
     /**

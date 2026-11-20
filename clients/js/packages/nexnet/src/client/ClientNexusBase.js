@@ -6,6 +6,16 @@
 import { notImplemented } from '../contract/internal.js';
 
 /**
+ * `createChannel` of a client and of a client context: a formatter typed as reading `T | null` (a generated class
+ * formatter, `stringFormatter`) gives a `NexusDuplexChannel<T>`, the type a channel parameter of a generated proxy takes.
+ *
+ * @typedef {{
+ *   <T>(formatter: import('../contract/codec.js').Formatter<T | null>): import('../contract/pipes.js').NexusDuplexChannel<T>;
+ *   <T>(formatter: import('../contract/codec.js').Formatter<T>): import('../contract/pipes.js').NexusDuplexChannel<T>;
+ * }} CreateChannel
+ */
+
+/**
  * What a client nexus method can reach while connected. Mirrors C# `ClientContext<TProxy>`.
  *
  * @template {import('./ProxyBase.js').ProxyBase} TProxy
@@ -13,7 +23,7 @@ import { notImplemented } from '../contract/internal.js';
  * @property {TProxy} proxy The server proxy.
  * @property {bigint | null} sessionId The session ID, or null before the handshake completes.
  * @property {() => import('../contract/pipes.js').NexusDuplexPipe} createPipe
- * @property {<T>(formatter: import('../contract/codec.js').Formatter<T>) => import('../contract/pipes.js').NexusDuplexChannel<T>} createChannel
+ * @property {CreateChannel} createChannel
  * @property {() => Promise<void>} disconnect
  */
 
@@ -45,7 +55,7 @@ import { notImplemented } from '../contract/internal.js';
  * @property {any} proxy
  * @property {{ id: bigint | null } | null} _session
  * @property {() => import('../contract/pipes.js').NexusDuplexPipe} createPipe
- * @property {<T>(formatter: import('../contract/codec.js').Formatter<T>) => import('../contract/pipes.js').NexusDuplexChannel<T>} createChannel
+ * @property {CreateChannel} createChannel
  * @property {() => Promise<void>} disconnect
  */
 
@@ -67,8 +77,8 @@ export function bindNexusClient(nexus, client) {
       return client._session?.id ?? null;
     },
     createPipe: () => client.createPipe(),
-    /** @type {<T>(formatter: import('../contract/codec.js').Formatter<T>) => import('../contract/pipes.js').NexusDuplexChannel<T>} */
-    createChannel: (formatter) => client.createChannel(formatter),
+    createChannel: /** @type {CreateChannel} */ (
+      /** @param {import('../contract/codec.js').Formatter<any>} formatter */ (formatter) => client.createChannel(formatter)),
     disconnect: () => client.disconnect(),
   }));
 }

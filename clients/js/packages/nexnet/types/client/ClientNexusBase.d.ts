@@ -2,6 +2,10 @@
  * Base class of generated client nexuses (J07). Contract: `src/contract/nexus.js`.
  * @module
  */
+export type CreateChannel = {
+    <T>(formatter: import('../contract/codec.js').Formatter<T | null>): import('../contract/pipes.js').NexusDuplexChannel<T>;
+    <T>(formatter: import('../contract/codec.js').Formatter<T>): import('../contract/pipes.js').NexusDuplexChannel<T>;
+};
 export type ClientContext<TProxy extends import('./ProxyBase.js').ProxyBase> = {
     /**
      * The server proxy.
@@ -12,7 +16,7 @@ export type ClientContext<TProxy extends import('./ProxyBase.js').ProxyBase> = {
      */
     sessionId: bigint | null;
     createPipe: () => import('../contract/pipes.js').NexusDuplexPipe;
-    createChannel: <T>(formatter: import('../contract/codec.js').Formatter<T>) => import('../contract/pipes.js').NexusDuplexChannel<T>;
+    createChannel: CreateChannel;
     disconnect: () => Promise<void>;
 };
 export type DispatchContext = {
@@ -51,7 +55,7 @@ export type AttachedClient = {
         id: bigint | null;
     } | null;
     createPipe: () => import('../contract/pipes.js').NexusDuplexPipe;
-    createChannel: <T>(formatter: import('../contract/codec.js').Formatter<T>) => import('../contract/pipes.js').NexusDuplexChannel<T>;
+    createChannel: CreateChannel;
     disconnect: () => Promise<void>;
 };
 /**
