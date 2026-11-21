@@ -102,6 +102,8 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     private @Nullable Throwable outputFailure;
     private boolean outputCompleteRequested;
     private boolean outputCompleteSent;
+    /** completeInput() was called: the input is dropped, and the direction bit is sent once the pipe is ready. */
+    private boolean inputCompleteRequested;
     private final CompletableFuture<Void> outputCompleted = new CompletableFuture<>();
 
     PipeImpl(PipeManager manager, int id, int localId, boolean initiating, int window) {
@@ -205,6 +207,41 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
         }
         manager.runAll(after);
         return outputCompleted;
+    }
+
+    @Override
+    public CompletableFuture<Void> completeInput() {
+        List<Runnable> after = new ArrayList<>();
+        synchronized (lock) {
+            if (!inputCompleteRequested) {
+                inputCompleteRequested = true;
+                // Buffered data is dropped, pending reads see the end of input, and data still arriving is
+                // discarded (it used credit, which is not granted back), as in C#.
+                clearInputLocked(after);
+                sendInputCompleteLocked(after);
+            }
+        }
+        manager.runAll(after);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * Sends this side's reader-complete bit (the server's writer completes) once completeInput() was called and the
+     * pipe is ready; before it is ready, the bit is sent when the peer's Ready arrives.
+     */
+    private void sendInputCompleteLocked(List<Runnable> after) {
+        if (!inputCompleteRequested || (state & PipeWire.READY) == 0 || id == 0 || sentClose || sessionClosed
+            || (state & PipeWire.CLIENT_READER_COMPLETE) != 0) {
+            return;
+        }
+        state |= PipeWire.CLIENT_READER_COMPLETE;
+        if (state == PipeWire.COMPLETE) {
+            // Both directions are now complete: like the C# side, this state is this side's close.
+            sentClose = true;
+            closingSince = manager.nanoTime();
+        }
+        sendStateLocked(state, 0);
+        completeLocked(after);
     }
 
     @Override
@@ -427,6 +464,7 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
                         sendCloseLocked();
                     } else {
                         after.add(() -> ready.complete(null));
+                        sendInputCompleteLocked(after);
                     }
                 }
                 int newly = remote & ~state & (PipeWire.CLIENT_READER_COMPLETE | PipeWire.CLIENT_WRITER_COMPLETE);
@@ -538,6 +576,17 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
             manager.requestControl(this);
         }
         return result;
+    }
+
+    /**
+     * Stops a wait of {@link #waitForMore(long)} (a canceled channel read): forgets it and completes it, so its
+     * continuation runs now.
+     */
+    void abandonWait(CompletableFuture<Void> future) {
+        synchronized (lock) {
+            dataWaiters.removeIf(waiter -> waiter.future == future);
+        }
+        future.complete(null);
     }
 
     /** The input has ended and everything buffered was read. */

@@ -243,6 +243,54 @@ class PipeManagerTest extends PipeTestBase {
     }
 
     @Test
+    void completingTheInputWithTheWriterOpenDropsTheInputAndKeepsWriting() throws Exception {
+        connect(SMALL);
+        PipeImpl pipe = openPipe(100);
+        peer.take(MessageTypes.PIPE_WINDOW_UPDATE, pipe.id());
+        peer.sendData(pipe.id(), bytes(10, 1));
+        waitFor(() -> pipe.bufferedBytes() == 10);
+        await(pipe.completeInput());
+        peer.expectState(pipe.id(), PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
+        assertEquals(0, pipe.bufferedBytes(), "buffered input is dropped");
+        assertNull(await(pipe.read()));
+        // Data still in flight is discarded and not granted back.
+        peer.sendData(pipe.id(), bytes(20, 2));
+        peer.expectNone(MessageTypes.PIPE_WINDOW_UPDATE, 100);
+        assertNull(await(pipe.read()));
+        assertFalse(pipe.completed().isDone(), "the output is still open");
+        // This side still writes.
+        await(pipe.write(ByteBuffer.wrap(bytes(30, 3))));
+        assertArrayEquals(bytes(30, 3), peer.awaitData(pipe.id(), 30));
+        // Again does nothing.
+        await(pipe.completeInput());
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_UPDATE_STATE, 100);
+        // Completing the output completes the pipe: this state is the close.
+        await(pipe.completeOutput());
+        peer.expectState(pipe.id(), PipeWire.COMPLETE, 0);
+        await(pipe.completed());
+        peer.sendState(pipe.id(), PipeWire.COMPLETE, 0);
+        pipe.close();
+        waitFor(() -> pipes.openPipes() == 0);
+    }
+
+    @Test
+    void completingTheInputBeforeReadySendsItOnReady() throws Exception {
+        connect(SMALL);
+        PipeImpl pipe = (PipeImpl) pipes.createPipe();
+        await(pipe.completeInput());
+        await(pipes.invokePipe(7, pipe, (w, id) -> TestCodec.args(new byte[] {(byte) 0x91, (byte) id}).write(w)));
+        peer.take(MessageTypes.INVOCATION);
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_UPDATE_STATE, 100);
+        int fullId = pipe.localId | (5 << 8);
+        peer.sendState(fullId, PipeWire.READY, 100);
+        await(pipe.ready());
+        peer.expectState(fullId, PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
+        assertNull(await(pipe.read()));
+        await(pipe.write(ByteBuffer.wrap(bytes(5, 1))));
+        assertArrayEquals(bytes(5, 1), peer.awaitData(fullId, 5));
+    }
+
+    @Test
     void thePeerCompletingOurOutputFailsPendingWrites() throws Exception {
         connect(SMALL);
         PipeImpl pipe = openPipe(0);
