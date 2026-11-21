@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.CancellationTokenSource;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusMessageTooLargeException;
 import com.dtronix.nexnet.invocation.InvocationOptions;
@@ -23,6 +25,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -378,5 +381,84 @@ class ChannelTest extends PipeTestBase {
             received.addAll(batch);
             return readRandomBatches(reader, random.nextLong(), received);
         });
+    }
+    @Test
+    void aReadCanceledBeforeAnItemArrivesConsumesNothing() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        CancellationTokenSource source = new CancellationTokenSource();
+        CompletableFuture<List<byte[]>> canceled = reader.readBatch(10, source.token());
+        Thread.sleep(50);
+        assertFalse(canceled.isDone(), "waits for an item");
+        source.cancel();
+        assertInstanceOf(CancellationException.class, failure(canceled));
+        byte[] a = bin(3, 1);
+        peer.sendData(id, framed(a));
+        // The canceled read took nothing: the next read gets the item.
+        List<byte[]> items = await(reader.readBatch(10));
+        assertEquals(1, items.size());
+        assertArrayEquals(a, items.get(0));
+    }
+
+    @Test
+    void aTokenCanceledBeforeTheReadFailsItAtOnceAndKeepsTheItem() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        byte[] a = bin(3, 1);
+        peer.sendData(id, framed(a));
+        waitFor(() -> ((PipeImpl) channel.pipe()).bufferedBytes() > 0);
+        CancellationTokenSource source = new CancellationTokenSource();
+        source.cancel();
+        CompletableFuture<Optional<byte[]>> canceled = reader.read(source.token());
+        assertTrue(canceled.isCancelled(), "fails at once");
+        assertArrayEquals(a, await(reader.read()).get());
+    }
+
+    @Test
+    void cancellingTheReadFutureKeepsTheNextItemAndDoesNothingOnceTheReadHasIt() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        // Two reads queued: the first gets the item, the second is canceled while it waits for one.
+        CompletableFuture<ChannelReadResult<byte[]>> first = reader.readItem();
+        CompletableFuture<ChannelReadResult<byte[]>> second = reader.readItem();
+        byte[] a = bin(3, 1);
+        byte[] b = bin(4, 2);
+        peer.sendData(id, framed(a));
+        assertArrayEquals(a, await(first).value());
+        // second took nothing yet: cancelling it keeps the next item.
+        assertTrue(second.cancel(true));
+        assertInstanceOf(CancellationException.class, failure(second));
+        peer.sendData(id, framed(b));
+        waitFor(() -> ((PipeImpl) channel.pipe()).bufferedBytes() > 0);
+        CompletableFuture<ChannelReadResult<byte[]>> third = reader.readItem();
+        assertArrayEquals(b, await(third).value());
+        // Cancelling a read that has its item does nothing.
+        assertFalse(third.cancel(true));
+        assertArrayEquals(b, await(third).value());
+    }
+
+    @Test
+    void readsQueuedBehindACanceledReadRunInOrder() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        CancellationTokenSource source = new CancellationTokenSource();
+        CompletableFuture<List<byte[]>> canceled = reader.readBatch(5, source.token());
+        CompletableFuture<Optional<byte[]>> next = reader.read();
+        source.cancel();
+        assertInstanceOf(CancellationException.class, failure(canceled));
+        assertFalse(next.isDone());
+        byte[] a = bin(3, 1);
+        peer.sendData(id, framed(a));
+        assertArrayEquals(a, await(next).get());
+        peer.sendState(id, PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
+        assertFalse(await(reader.read(CancellationToken.NONE)).isPresent());
     }
 }

@@ -42,7 +42,7 @@ final class InteropHost {
 
     private static final List<String> CAPABILITIES = Arrays.asList(
         "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "RemoteCertificate", "HttpSocket", "Tcp",
-        "FakeTime", "ClientPool");
+        "FakeTime", "ClientPool", "PipeInputCompletion", "ChannelReadCancellation");
 
     private static final List<String> TRANSPORTS = Arrays.asList(
         "Tcp", "TcpTls", "HttpSocket", "HttpSocketTls", "WebSocket", "WebSocketTls");
@@ -401,8 +401,7 @@ final class InteropHost {
             case "pipe.tryWrite":
                 return pipe(scope, args).tryWrite(args);
             case "pipe.completeInput":
-                // The Java runtime has no way to complete a pipe's reading side alone (capability PipeInputCompletion).
-                throw HostError.notSupported("The Java client cannot complete a pipe's reading side alone.");
+                return pipe(scope, args).completeInput();
             case "pipe.dispose": {
                 Object value = scope.find(args.str("pipe"));
                 if (value instanceof PipeEntry) {
@@ -419,12 +418,20 @@ final class InteropHost {
                 return pipe(scope, args).channelComplete();
             case "channel.reader":
                 return pipe(scope, args).channelReader(args.str("type"));
-            case "channel.read":
-                if (args.optObj("cancel") != null) {
-                    // The Java runtime cannot cancel a channel read (capability ChannelReadCancellation).
-                    throw HostError.notSupported("The Java client cannot cancel a channel read.");
+            case "channel.read": {
+                // A canceled read fails with kind Canceled and consumes nothing (capability ChannelReadCancellation).
+                PipeEntry pipe = pipe(scope, args);
+                int max = args.int32("max");
+                Args cancel = args.optObj("cancel");
+                if (cancel == null || !cancel.has("afterMs")) {
+                    return pipe.channelRead(max, cancelToken(scope, args));
                 }
-                return pipe(scope, args).channelRead(args.int32("max"));
+                CancellationTokenSource after = new CancellationTokenSource();
+                ScheduledFuture<?> timeout = timer.schedule(after::cancel, cancel.integer("afterMs"), TimeUnit.MILLISECONDS);
+                CompletableFuture<Map<String, Object>> read = pipe.channelRead(max, after.token());
+                read.whenComplete((v, e) -> timeout.cancel(false));
+                return read;
+            }
             case "channel.readAll":
                 return pipe(scope, args).channelReadAll();
 

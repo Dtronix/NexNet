@@ -67,6 +67,18 @@ public interface NexusDuplexPipe extends AutoCloseable {
     CompletableFuture<Void> completeOutput();
 
     /**
+     * Completes this side's input only (C# {@code Input.CompleteAsync()}): buffered data is dropped, pending and later
+     * reads see the end of input, and data the peer still sends is discarded. The peer's writes then see the pipe
+     * complete. This side can still write; the pipe completes once its output is complete too. Before the pipe is
+     * ready, the completion is sent when it becomes ready. Calling it again does nothing.
+     *
+     * @return a future that completes when the completion is queued for sending
+     */
+    default CompletableFuture<Void> completeInput() {
+        throw new UnsupportedOperationException("This pipe cannot complete its input alone.");
+    }
+
+    /**
      * A blocking {@link InputStream} over {@link #read()}. Never use it on the Android main thread.
      *
      * @return the stream

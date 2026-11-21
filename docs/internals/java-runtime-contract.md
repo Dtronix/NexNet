@@ -294,6 +294,12 @@ server `INexusList<T>` (protocol specification section 12):
   channel over a pipe of `createPipe()` or one received as a method argument, like the C#
   `INexusDuplexPipe.GetChannel<T>()`. Several channels over one pipe share its bytes and credit, and closing any of
   them closes the pipe. A pipe the runtime did not create throws `IllegalArgumentException`.
+- **Completing a pipe's input only (K45).** `NexusDuplexPipe.completeInput()` completes the reading side alone, like
+  the C# `Input.CompleteAsync()`: it sends the client-reader-complete bit (before the pipe is ready, once it is),
+  drops buffered input, later reads see the end of input, and data the peer still sends is discarded and not granted
+  back. The server's writer then sees the pipe complete. This side can still write; the pipe completes when its output
+  is complete too. A second call does nothing. The interface method is a `default` that throws
+  `UnsupportedOperationException`, so other implementations keep compiling; the runtime's pipes implement it.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
   `tcpTls(host, port)`. UDS and QUIC are not available on Java (no portable UDS client API down to Android API 24). Builder options:
   - `tls(TlsOptions)`;
@@ -319,7 +325,13 @@ server `INexusList<T>` (protocol specification section 12):
 - Channels: `NexusChannelReader<T>`: `read()` (`Optional<T>`, empty at the end; **only for item types that are
   never null**: a null item fails it with `NullPointerException`), `readItem()` (`ChannelReadResult<T>` with
   `isCompleted()` and `value()`, which tells a null item apart from the end), `readBatch(max)`,
-  `readUntilComplete()`. `NexusChannelWriter<T>`: `write`, `writeAll`, `complete`, `writeAndComplete`. When an
+  `readUntilComplete()`. `read`, `readItem` and `readBatch` have overloads with a trailing `CancellationToken`
+  (K45; `default` methods that throw `UnsupportedOperationException` for a token that can be canceled, so other
+  implementations keep compiling). A read canceled by its token, or by cancelling the future it returns, before it
+  takes an item fails with `CancellationException` and consumes nothing: the next read gets the items that arrive
+  later (C# `ReadAsync(cancellationToken)` parity). A token canceled already fails the read at once; a read that has
+  taken its items is not canceled. Cancelling `readUntilComplete()`'s future does not stop it.
+  `NexusChannelWriter<T>`: `write`, `writeAll`, `complete`, `writeAndComplete`. When an
   item is larger than the server accepts (`NexusMessageTooLargeException`) or can't be serialized, the items before
   it in the same call are sent, as in C#; it and the items after it are not, the future fails, and
   `writeAndComplete` does not complete the channel. The channel stays usable.
