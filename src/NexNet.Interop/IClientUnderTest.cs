@@ -39,6 +39,22 @@ public interface IClientUnderTest : IAsyncDisposable
     /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
     Task<byte[]?> GetRemoteCertificateAsync();
 
+    /// <summary>
+    /// Whether the client's transport encrypts the connection (C# <c>NexusClient.IsSecure</c>, Java <c>isSecure()</c>, JS
+    /// <c>isSecure</c>): true for TLS, HTTPS, WSS, QUIC and Unix domain sockets. Known before the client connects.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<bool> GetIsSecureAsync();
+
+    /// <summary>
+    /// The server's address and port as the client's current connection reports them; <see cref="RemoteEndpoint.None"/>
+    /// when the client is not connected. What a transport reports differs by language: the C# WebSocket and HttpSocket
+    /// clients report none, the Java and Node clients report the peer of the underlying socket, and the browser cannot see
+    /// it (always <see cref="RemoteEndpoint.None"/>).
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<RemoteEndpoint> GetRemoteEndpointAsync();
+
     /// <summary>Waits until the client reaches state <paramref name="state"/>.</summary>
     /// <exception cref="TimeoutException">Not reached within <paramref name="seconds"/>.</exception>
     Task WaitForStateAsync(ConnectionState state, double seconds);

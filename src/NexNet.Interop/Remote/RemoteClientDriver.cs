@@ -100,6 +100,17 @@ public sealed class RemoteClientDriver : IClientUnderTest
     }
 
     /// <inheritdoc />
+    public async Task<bool> GetIsSecureAsync()
+        => (await CallAsync("client.isSecure", null, DefaultOpMs).ConfigureAwait(false))["secure"]!.GetValue<bool>();
+
+    /// <inheritdoc />
+    public async Task<RemoteEndpoint> GetRemoteEndpointAsync()
+    {
+        var result = await CallAsync("client.remoteEndpoint", null, DefaultOpMs).ConfigureAwait(false);
+        return new RemoteEndpoint(result["address"]?.GetValue<string>(), result["port"]?.GetValue<int>());
+    }
+
+    /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         try

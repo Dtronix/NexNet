@@ -62,6 +62,14 @@ internal sealed class RentedClient : IRentedClientUnderTest
         => throw new NotSupportedException($"{Target}: a pool rental has no remote certificate query.");
 
     /// <inheritdoc />
+    public Task<bool> GetIsSecureAsync()
+        => throw new NotSupportedException($"{Target}: a pool rental has no isSecure query.");
+
+    /// <inheritdoc />
+    public Task<RemoteEndpoint> GetRemoteEndpointAsync()
+        => throw new NotSupportedException($"{Target}: a pool rental has no remote endpoint query.");
+
+    /// <inheritdoc />
     public Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         if (!IsReturned)
