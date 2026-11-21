@@ -933,6 +933,8 @@ app.MapNexusHttpSocket(srv, new HttpSocketServerConfig { Path = "/hs" }, "http")
 // Browser clients (cookies, no Authorization header on a WebSocket):
 c.NexusConfig.AllowedOrigins.Add("https://app.example.com"); // WebSocketServerConfig; empty (default) or "*" = any origin
 // HttpSocket: c.SocketOptions.AllowedOrigins (HttpSocketOptions). Other Origin -> 403; a request with no Origin is allowed.
+// Failed AspEnableAuthentication: HttpSocket -> 401; WebSocket -> 101, then DisconnectReason.Authentication in-protocol,
+// so every client (browsers included) reports TransportError.AuthenticationError.
 c.NexusConfig.AccessTokenQueryParameter = "access_token";    // WebSocket + HttpSocket configs; null (default) = off
 // With AspEnableAuthentication: ?access_token=<t> becomes "Authorization: Bearer <t>" when no Authorization header is
 // sent, before AspAuthenticationScheme runs; removed from the query string, never logged. The greeting token
