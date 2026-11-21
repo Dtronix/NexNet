@@ -6,6 +6,7 @@ Per-version release notes for NexNet. Each page is also the body of the matching
 
 | Version | Released | Highlights |
 |---------|----------|------------|
+| [v0.21.0](release-notes-v0.21.0.md) | Unreleased | Java and JavaScript clients written by the source generator; one server listening on several transports; fix for cross-session data corruption in the HttpSocket and WebSocket transports. |
 | [v0.20.0](release-notes-v0.20.0.md) | 2026-11-06 | Flow-controlled relay for pipes and channels; `[NexusMethod(SeparatePool = true)]`; remote exception detail; send pipe for every transport; fix for a rejected authentication reaching the client as `SocketError`. |
 | [v0.19.1](release-notes-v0.19.1.md) | 2026-10-31 | TLS options (client certificate, server certificate pinning) for WebSocket and HttpSocket clients; `Context.RemoteCertificate`; fix for an unobserved WebSocket receive fault; HttpSocket client resource fixes. |
 | [v0.19.0](release-notes-v0.19.0.md) | 2026-10-25 | Fix: a call refused by `OnAuthorize` no longer disconnects the session; `NexNet` metrics meter and session snapshots; fewer allocations per call; caller-side cancellation fixes. |
