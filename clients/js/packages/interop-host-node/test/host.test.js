@@ -59,7 +59,7 @@ describe('Host', () => {
     host.start();
     expect(sent[0]).toEqual({
       t: 'hello', proto: PROTOCOL_VERSION, token: 'tok', lang: 'node', runtime: 'test', lib: 'lib', schemaHash: 'abc',
-      capabilities: ['Tcp', 'ClientPool'], transports: ['Tcp'], maxConcurrency: 2, pid: 42,
+      capabilities: ['Tcp', 'ClientPool', 'PipeInputCompletion', 'ChannelReadCancellation'], transports: ['Tcp'], maxConcurrency: 2, pid: 42,
     });
   });
 

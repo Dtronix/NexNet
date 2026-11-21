@@ -21,6 +21,8 @@ const STEPS = new Set(['return', 'throw', 'delay', 'awaitSignal', 'awaitCancel',
  * @property {(callback: () => void, ms: number) => () => void} timer A host timer of the client (counted in the leak
  *   report while it runs); returns its cancel function.
  * @property {AbortSignal} lifetime Aborted when the client is disposed or its scope ends.
+ * @property {(name: string, pipe: NexusDuplexPipe) => Promise<void>} [hold] `pipe.hold`: publishes the pipe for
+ *   `pipe.accept`; resolves when the runner disposes its handle. Absent: the handler is not supported.
  */
 
 /**
@@ -350,6 +352,15 @@ export async function runNamed(handler, options, call, signal, owner) {
       await pipe.complete();
       return;
     }
+    case 'pipe.hold': {
+      if (!(call.pipe instanceof NexusDuplexPipe)) throw missingPipe(handler);
+      const name = options?.name;
+      if (typeof name !== 'string' || name.length === 0) throw nativeError('InvalidOperation', 'pipe.hold needs the option \'name\'.');
+      if (!owner.hold) throw nativeError('NotSupported', 'This client cannot hold pipes.');
+      // Ignores the call's cancellation (a disconnect): the runner still drives the pipe; ends with the client.
+      await Promise.race([owner.hold(name, call.pipe), aborted(owner.lifetime)]);
+      return;
+    }
     case 'channel.echo': {
       if (!(call.pipe instanceof NexusDuplexChannel)) throw missingPipe(handler);
       const reader = await call.pipe.getReader();
@@ -383,6 +394,6 @@ export async function runNamed(handler, options, call, signal, owner) {
       return;
     }
     default:
-      throw nativeError('NotSupported', 'This host has no built-in handler \'' + handler + '\' (pipe.echo, pipe.drain, pipe.readExact, channel.echo, channel.pump).');
+      throw nativeError('NotSupported', 'This host has no built-in handler \'' + handler + '\' (pipe.echo, pipe.drain, pipe.readExact, pipe.hold, channel.echo, channel.pump).');
   }
 }

@@ -29,6 +29,11 @@ export const PROTOCOL_VERSION = 1;
 /** Ops that take no test scope (§6.2). */
 const HOST_OPS = new Set(['ping', 'host.dumpThreads', 'host.shutdown', 'log.level']);
 
+/**
+ * Capabilities of the JavaScript client runtime itself, whatever the platform: added to the platform's in `hello`.
+ */
+const RUNTIME_CAPABILITIES = ['PipeInputCompletion', 'ChannelReadCancellation'];
+
 /** Bytes per pattern chunk written to a pipe. */
 const PATTERN_CHUNK = 16 * 1024;
 
@@ -210,6 +215,11 @@ class ClientEntry extends InvokerEntry {
     this.scripts = null;
     /** @type {Set<PipeEntry>} */
     this.pipes = new Set();
+    /**
+     * Pipes `pipe.hold` steps published, by name, and the `pipe.accept` requests waiting for one.
+     * @type {Map<string, { ready: PipeEntry[], waiters: ((pipe: PipeEntry) => void)[] }>}
+     */
+    this.held = new Map();
     /** Collections enabled by `list.enable`. @type {Set<string>} */
     this.enabled = new Set();
     /** @type {Map<string, { list: EventTarget, listener: (e: Event) => void }>} */
@@ -298,6 +308,11 @@ export class PipeEntry {
     this.pipe = pipe;
     this.complete = false;
     this.disposed = false;
+    /**
+     * Set for a pipe a `pipe.hold` step holds (a pipe the server opened): disposing the entry calls it, which ends the
+     * step, instead of disposing the pipe. @type {(() => void) | null}
+     */
+    this.release = null;
     /** @type {WritableStreamDefaultWriter<Uint8Array> | null} */
     this.byteWriter = null;
     /** @type {ReadableStreamDefaultReader<Uint8Array> | null} */
@@ -494,7 +509,7 @@ export class Host {
       runtime: this.#platform.runtime,
       lib: this.#platform.lib,
       schemaHash: this.#generated.schemaHash,
-      capabilities: [...this.#platform.capabilities],
+      capabilities: [...new Set([...this.#platform.capabilities, ...RUNTIME_CAPABILITIES])],
       transports: [...this.#platform.transports],
       maxConcurrency: this.#platform.maxConcurrency,
     };
@@ -835,6 +850,44 @@ export class Host {
   }
 
   /**
+   * `pipe.hold` (§6.9): registers the pipe the server passed to a client nexus method as a pipe handle of the client,
+   * publishes it for `pipe.accept`, and resolves when the handle is disposed.
+   * @param {ClientEntry} entry
+   * @param {string} name
+   * @param {import('@dtronix/nexnet').NexusDuplexPipe} pipe
+   * @returns {Promise<void>}
+   */
+  #hold(entry, name, pipe) {
+    const pe = new PipeEntry(this.#newHandle('p'), entry.scope, entry, pipe);
+    /** @type {Promise<void>} */
+    const released = new Promise((resolve) => {
+      pe.release = () => resolve();
+    });
+    entry.pipes.add(pe);
+    this.#register(entry.scope, pe);
+    const box = this.#heldBox(entry, name);
+    const waiter = box.waiters.shift();
+    if (waiter) waiter(pe);
+    else box.ready.push(pe);
+    return released;
+  }
+
+  /**
+   * The held pipes of a client published under `name`, and the `pipe.accept` requests waiting for one.
+   * @param {ClientEntry} entry
+   * @param {string} name
+   * @returns {{ ready: PipeEntry[], waiters: ((pipe: PipeEntry) => void)[] }}
+   */
+  #heldBox(entry, name) {
+    let box = entry.held.get(name);
+    if (!box) {
+      box = { ready: [], waiters: [] };
+      entry.held.set(name, box);
+    }
+    return box;
+  }
+
+  /**
    * The signal of a cancellation `{afterMs}` or `{token}` (§6.5); the returned function stops an `afterMs` timer.
    * @param {Context} ctx
    * @param {InvokerEntry} entry
@@ -1024,10 +1077,15 @@ export class Host {
   async #disposePipe(entry) {
     if (entry.disposed) return;
     entry.disposed = true;
-    try {
-      await entry.pipe[Symbol.asyncDispose]();
-    } catch {
-      // A pipe of an ended session.
+    if (entry.release) {
+      // A held pipe belongs to its method: the runtime releases it when the method returns.
+      entry.release();
+    } else {
+      try {
+        await entry.pipe[Symbol.asyncDispose]();
+      } catch {
+        // A pipe of an ended session.
+      }
     }
     this.#release(entry);
   }
@@ -1244,6 +1302,7 @@ export class Host {
         invoke: (method, callArgs) => entry.exp.invokeByName(entry.client.proxy, method, callArgs),
         timer: (callback, ms) => entry.timer(callback, ms),
         lifetime: entry.lifetime.signal,
+        hold: (name, pipe) => this.#hold(entry, name, pipe),
       }, { invocationError: parsed.onInvocationException });
       const client = exp.createClient(entry.config, entry.scripts);
       entry.client = client;
@@ -1493,6 +1552,60 @@ export class Host {
       return {};
     });
 
+    op('pipe.accept', async (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'pipe.accept');
+      const box = this.#heldBox(entry, requireString(args.name, 'name'));
+      const ready = box.ready.shift();
+      if (ready) return { pipe: ready.h };
+      const signal = ctx.signal;
+      /** @type {PipeEntry} */
+      const pe = await new Promise((resolve, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        const onAbort = () => {
+          const index = box.waiters.indexOf(waiter);
+          if (index >= 0) box.waiters.splice(index, 1);
+          reject(signal.reason);
+        };
+        /** @param {PipeEntry} held */
+        const waiter = (held) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(held);
+        };
+        box.waiters.push(waiter);
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      return { pipe: pe.h };
+    });
+    op('pipe.tryWrite', async (args, ctx) => {
+      const pe = this.#pipe(ctx, args.pipe);
+      if (typeof args.b64 !== 'string') throw badRequest('pipe.tryWrite needs b64.');
+      const data = fromBase64(args.b64);
+      try {
+        await pe.writer().write(data);
+        return { ok: true };
+      } catch {
+        // The writable errors once the writing side is complete (the server completed its reading side or the
+        // pipe, or the session ended): C# FlushResult.IsCompleted.
+        return { ok: false };
+      }
+    });
+    op('pipe.completeInput', async (args, ctx) => {
+      const pe = this.#pipe(ctx, args.pipe);
+      pe.inputDone = true;
+      pe.buffered = [];
+      pe.bufferedLength = 0;
+      try {
+        // Cancelling the readable completes this side's reading direction.
+        await (pe.byteReader ? pe.byteReader.cancel() : pe.pipe.readable.cancel());
+      } catch {
+        // The reading side is complete already.
+      }
+      return {};
+    });
+
     // Channels (§6.8).
     op('channel.writer', async (args, ctx) => {
       const pe = this.#pipe(ctx, args.pipe);
@@ -1533,8 +1646,16 @@ export class Host {
       const pe = this.#pipe(ctx, args.pipe);
       if (!pe.channelReader || !pe.readerCodec) throw invalidOperation('channel.reader was not called for pipe ' + pe.h + '.');
       const codec = pe.readerCodec;
-      const items = await pe.channelReader.readBatch(requireInt(args.max, 'max', 1));
-      return { items: items.map((/** @type {unknown} */ item) => codec.toJson(item)), complete: items.length === 0 };
+      const max = requireInt(args.max, 'max', 1);
+      // A canceled read rejects with an AbortError (kind Canceled) and consumes no item.
+      const cancel = this.#cancel(ctx, pe.owner, args.cancel);
+      cancel.start();
+      try {
+        const items = await pe.channelReader.readBatch(max, cancel.signal ? { signal: cancel.signal } : undefined);
+        return { items: items.map((/** @type {unknown} */ item) => codec.toJson(item)), complete: items.length === 0 };
+      } finally {
+        cancel.stop();
+      }
     });
     op('channel.readAll', async (args, ctx) => {
       const pe = this.#pipe(ctx, args.pipe);
@@ -1709,7 +1830,7 @@ export class Host {
       if (entry instanceof RentalEntry) throw notSupported('Pipes are not supported on a pooled client.');
       if (args.pipe === undefined || args.pipe === null) throw badRequest(name + ' needs a pipe.');
       const pe = this.#pipe(ctx, args.pipe);
-      if (pe.owner !== entry) throw badRequest('The pipe ' + pe.h + ' belongs to another client.');
+      // A pipe of another client of the scope goes to the runtime as is: it refuses a pipe of another session (§6.5).
       pipe = method.pipeKind === 'Channel' ? pe.channelFor(/** @type {import('./types.js').TypedCodec} */ (method.channelItem)) : pe.pipe;
     }
     const cancel = this.#cancel(ctx, entry, args.cancel);
