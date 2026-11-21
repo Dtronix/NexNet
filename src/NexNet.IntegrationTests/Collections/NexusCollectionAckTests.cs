@@ -1,89 +1,102 @@
-﻿ using System.Diagnostics;
+﻿using System.Diagnostics;
 using NexNet.Collections;
-using NexNet.Pipes.Broadcast;
-using NUnit.Framework;
+using NexNet.IntegrationTests.Collections.Lists;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 
 namespace NexNet.IntegrationTests.Collections;
 
-internal class NexusCollectionAckTests : NexusCollectionBaseTests
+/// <summary>Acknowledgments of the client under test's list operations.</summary>
+[NotInParallel]
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
-    public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync();
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await list.EnableAsync().Timeout(T(1));
 
         var stopwatch = Stopwatch.StartNew();
-        var result = await client.Proxy.IntListBi.AddAsync(42);
+        var result = await list.AddAsync(42).Timeout(T(1));
         stopwatch.Stop();
 
-        Assert.That(result, Is.True);
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(1000));
-        Assert.That(client.Proxy.IntListBi.Contains(42), Is.True);
+        await Assert.That(result).IsTrue();
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsLessThan(1000);
+        await Assert.That((await ItemsAsync(list)).Contains(42)).IsTrue();
+        await s.EndAsync();
     }
-    
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
-    public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync();
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await list.EnableAsync().Timeout(T(1));
 
         // Disable acknowledgments to simulate timeout
-        var internalCollection = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
-        internalCollection.DoNotSendAck = true;
+        DoNotSendAck(s.ServerList);
 
         var stopwatch = Stopwatch.StartNew();
-        var addTask = client.Proxy.IntListBi.AddAsync(42);
+        var addTask = list.AddAsync(42).AsTask();
 
         // Should not complete within reasonable time
         var completedTask = await Task.WhenAny(addTask, Task.Delay(100));
         stopwatch.Stop();
 
-        Assert.That(completedTask, Is.Not.EqualTo(addTask));
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.GreaterThan(90));
+        await Assert.That(ReferenceEquals(completedTask, addTask)).IsFalse();
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsGreaterThan(90);
+
+        // Disconnecting ends the wait, so the client holds nothing after the test.
+        await s.Client.DisconnectAsync().Timeout(T(1));
+        await addTask.Timeout(T(1));
+        await s.EndAsync();
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
-    public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task MultipleOperations_ReceiveCorrectAcknowledgments(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.EnableAsync();
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await list.EnableAsync().Timeout(T(1));
 
         // Send multiple operations concurrently
         var tasks = new List<Task<bool>>();
         for (int i = 0; i < 10; i++)
         {
-            tasks.Add(client.Proxy.IntListBi.AddAsync(i));
+            tasks.Add(list.AddAsync(i).AsTask());
         }
 
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(tasks).Timeout(T(2));
 
-        Assert.That(results, Is.All.True);
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(10));
+        await Assert.That(results).All(x => x);
+        await Assert.That((await ItemsAsync(list)).Length).IsEqualTo(10);
+        await s.EndAsync();
     }
-    
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
-    public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task DisconnectDuringOperation_CompletesWithFalse(ClientTarget target)
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync();
+        await using var s = await ConnectAsync(target);
+        var list = s.List;
+        await list.EnableAsync().Timeout(T(1));
 
-        var internalCollection = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
-        internalCollection.DoNotSendAck = true;
+        DoNotSendAck(s.ServerList);
 
-        var addTask = client.Proxy.IntListBi.AddAsync(42);
+        using var serverAdded = s.ServerList.WaitForEvent(NexusCollectionChangedAction.Add);
+        var addTask = list.AddAsync(42).AsTask();
 
-        // Disconnect while operation is pending
-        await Task.Delay(100);
-        await client.DisconnectAsync();
+        // Disconnect while operation is pending: the server has applied it and holds back the acknowledgment.
+        await serverAdded.Wait();
+        await s.Client.DisconnectAsync().Timeout(T(1));
 
-        var result = await addTask;
-        Assert.That(result, Is.False);
+        var result = await addTask.Timeout(T(1));
+        await Assert.That(result).IsFalse();
+        await s.EndAsync();
     }
 }

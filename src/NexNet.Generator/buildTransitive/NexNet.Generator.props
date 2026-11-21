@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="../build/NexNet.Generator.props" Condition="'$(_NexNetGeneratorPropsImported)' != 'true'" />
+</Project>

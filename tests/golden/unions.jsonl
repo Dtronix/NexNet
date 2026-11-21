@@ -1,0 +1,8 @@
+{"id":"union.circle","type":"InteropShape","mode":"both","value":[0,["f64:0x4000000000000000"]],"hex":"920091cb4000000000000000"}
+{"id":"union.rectangle","type":"InteropShape","mode":"both","value":[1,["f64:0x4008000000000000","f64:0x4010000000000000"]],"hex":"920192cb4008000000000000cb4010000000000000"}
+{"id":"union.nil","type":"InteropShape","mode":"both","value":null,"hex":"c0"}
+{"id":"union.interface.text","type":"IInteropMessage","mode":"both","note":"a union over an interface","value":[0,["hi"]],"hex":"920091a26869"}
+{"id":"union.interface.binary","type":"IInteropMessage","mode":"both","value":[1,["AQI=",32769]],"hex":"920192c4020102cd8001"}
+{"id":"union.list","type":"List<InteropShape>","mode":"both","value":[[0,["f64:0x3FE0000000000000"]],[1,["f64:0x0000000000000000","f64:0x0000000000000000"]],[0,["f64:0x0000000000000000"]]],"hex":"93920091cb3fe0000000000000920192cb0000000000000000cb0000000000000000920091cb0000000000000000"}
+{"id":"union.tag-from-uint16","type":"InteropShape","mode":"decode","note":"the tag in a non-canonical integer form","value":[0,["f64:0x3FF0000000000000"]],"hex":"92cd000091cb3ff0000000000000"}
+{"id":"limit.depth.union","type":"List<InteropShape>","mode":"both","options":{"maxDepth":3},"note":"3 levels with maxDepth 3","value":[[0,["f64:0x3FF0000000000000"]]],"hex":"91920091cb3ff0000000000000"}

@@ -152,6 +152,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     // Metrics (docs/articles/metrics.md): the tags this session is counted under, and its slot in their table.
     private readonly MetricsTagSet _metricsTags;
     public MetricsTagSet MetricsTags => _metricsTags;
+
+    // Server only: the endpoint this session was accepted on.
+    private readonly NexusEndpointInfo? _endpoint;
     int IMeteredSession.MetricsSlot { get; set; } = -1;
     long IMeteredSession.MetricsStartTimestamp { get; set; }
 
@@ -178,6 +181,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     }
     
     public IServerSessionManager? SessionManager => _sessionManager;
+
+    /// <summary>
+    /// Client only: the idle timeout the server advertised in its greeting, in milliseconds; 0 if it advertised none.
+    /// </summary>
+    internal uint PeerIdleTimeoutMs { get; private set; }
     public ISessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
@@ -233,8 +241,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _nexus = configurations.Nexus;
         _disconnectionCts = new CancellationTokenSource();
         CollectionManager = configurations.CollectionManager;
+        _endpoint = configurations.Endpoint;
         _nexus.SessionContext = IsServer
-            ? new ServerSessionContext<TProxy>(this, _sessionManager!)
+            ? new ServerSessionContext<TProxy>(this, _sessionManager!) { Endpoint = _endpoint }
             : new ClientSessionContext<TProxy>(this);
 
         // Store remote endpoint info from transport
@@ -636,6 +645,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             Id = Id,
             IsServer = IsServer,
             Transport = _metricsTags.TransportName,
+            Endpoint = _endpoint?.Name,
             State = _state,
             IsEstablished = (_internalState & InternalState.NexusCompletedConnection) != 0,
             Connected = startTimestamp == 0 ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp),

@@ -35,6 +35,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private readonly INexusLogger? _logger;
     private readonly MetricsTagSet _metricsTags;
     private int _plaintextWarningLogged;
+    private int _pingInterval;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -79,7 +80,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// internal state, so do not serve it to unauthenticated callers. See docs/articles/metrics.md.
     /// </summary>
     public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot() is { } snapshot
-        ? snapshot with { IsSecure = IsSecure }
+        ? snapshot with
+        {
+            IsSecure = IsSecure,
+            PingInterval = Volatile.Read(ref _pingInterval) is var ping and > 0 ? TimeSpan.FromMilliseconds(ping) : null
+        }
         : null;
 
     /// <inheritdoc />
@@ -184,8 +189,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _ = disconnectedTaskCompletionSource.Task.ContinueWith(ConnectionClosed, cancellationToken);
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
 
-        _config.InternalOnClientConnect?.Invoke();
-
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
             ConnectionState = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting, 
@@ -221,11 +224,21 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected, session.DisconnectReason);
         }
 
+        // The interval comes from the server's advertised idle timeout unless the config sets one.
+        var serverIdleTimeout = session.PeerIdleTimeoutMs;
+        var pingInterval = _config.GetEffectivePingInterval(serverIdleTimeout);
+        Volatile.Write(ref _pingInterval, pingInterval);
+        if (_config.PingInterval != null && serverIdleTimeout != 0 && pingInterval >= serverIdleTimeout)
+        {
+            _logger?.LogWarning(
+                $"PingInterval ({pingInterval} ms) is not below the server's idle timeout ({serverIdleTimeout} ms); the server may time the session out between pings.");
+        }
+
         // Construct the ping timer here so it uses whatever TimeProvider is on _config at connect-time.
         // Disposing any prior timer first lets reconnects pick up a fresh provider if Config.Time was swapped.
         _pingTimer?.Dispose();
         _pingTimer = _config.Time.CreateTimer(PingTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        _pingTimer.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
+        _pingTimer.Change(TimeSpan.FromMilliseconds(pingInterval), TimeSpan.FromMilliseconds(pingInterval));
 
         return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
     }
@@ -369,7 +382,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     {
         if (reconnected)
         {
-            _pingTimer?.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
+            var pingInterval = TimeSpan.FromMilliseconds(Volatile.Read(ref _pingInterval));
+            _pingTimer?.Change(pingInterval, pingInterval);
         }
         else
         {

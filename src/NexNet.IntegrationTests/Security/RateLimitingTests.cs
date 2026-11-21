@@ -2,12 +2,12 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Security;
 
+[NotInParallel("stress")]
 internal class RateLimitingTests : BaseTests
 {
     private const int MaxGreetingAttempts = 3; // Must match NexusSession.MaxGreetingAttempts

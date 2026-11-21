@@ -1,21 +1,20 @@
 ﻿using System.Buffers;
 using NexNet.Pipes;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
 
 public class NexusPipeReaderTests
 {
     [Test]
-    public void TryRead_NoData_ReturnsFalseAndEmptyBuffer()
+    public async Task TryRead_NoData_ReturnsFalseAndEmptyBuffer()
     {
         var reader = CreateReader();
         var got = reader.TryRead(out var result);
 
-        Assert.That(got, Is.False, "Should get false when there's no buffered data");
-        Assert.That(result.Buffer.IsEmpty, Is.True, "Buffer should be empty");
-        Assert.That(result.IsCanceled, Is.False, "Should not be canceled");
-        Assert.That(result.IsCompleted, Is.False, "Should not be completed");
+        await Assert.That(got).IsFalse().Because("Should get false when there's no buffered data");
+        await Assert.That(result.Buffer.IsEmpty).IsTrue().Because("Buffer should be empty");
+        await Assert.That(result.IsCanceled).IsFalse().Because("Should not be canceled");
+        await Assert.That(result.IsCompleted).IsFalse().Because("Should not be completed");
     }
     
     [Test]
@@ -25,14 +24,14 @@ public class NexusPipeReaderTests
         byte[] payload = [1, 2, 3, 4];
 
         var bufferResult = reader.BufferData(new ReadOnlySequence<byte>(payload));
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
-            Assert.That(bufferResult, Is.EqualTo(NexusPipeBufferResult.Success));
-            Assert.That(reader.TryRead(out var readResult), Is.True, "TryRead should return true after buffering");
+            await Assert.That(bufferResult).IsEqualTo(NexusPipeBufferResult.Success);
+            await Assert.That(reader.TryRead(out var readResult)).IsTrue().Because("TryRead should return true after buffering");
             var actual = readResult.Buffer.ToArray();
-            Assert.That(actual, Is.EqualTo(payload), "Payload should match what was buffered");
-            Assert.That(readResult.IsCanceled, Is.False);
-            Assert.That(readResult.IsCompleted, Is.False);
+            await Assert.That(actual).IsEquivalentTo(payload, CollectionOrdering.Matching).Because("Payload should match what was buffered");
+            await Assert.That(readResult.IsCanceled).IsFalse();
+            await Assert.That(readResult.IsCompleted).IsFalse();
         }
 
     }
@@ -46,9 +45,9 @@ public class NexusPipeReaderTests
         reader.CancelPendingRead();
         var readResult = await reader.ReadAsync();
 
-        Assert.That(readResult.IsCanceled, Is.True, "ReadAsync should reflect cancellation");
-        Assert.That(readResult.Buffer.Length, Is.EqualTo(0), "Buffer should still be empty");
-        Assert.That(readResult.IsCompleted, Is.False);
+        await Assert.That(readResult.IsCanceled).IsTrue().Because("ReadAsync should reflect cancellation");
+        await Assert.That(readResult.Buffer.Length).IsEqualTo(0).Because("Buffer should still be empty");
+        await Assert.That(readResult.IsCompleted).IsFalse();
     }
     
     
@@ -58,12 +57,12 @@ public class NexusPipeReaderTests
         var reader = CreateReader();
 
         await reader.CompleteAsync();
-        Assert.That(reader.IsCompleted, Is.True, "Reader should be marked completed");
+        await Assert.That(reader.IsCompleted).IsTrue().Because("Reader should be marked completed");
 
-        Assert.That(reader.TryRead(out var result), Is.True);
-        Assert.That(result.IsCompleted, Is.True);
-        Assert.That(result.IsCanceled, Is.False);
-        Assert.That(result.Buffer.IsEmpty, Is.True, "No data should be buffered");
+        await Assert.That(reader.TryRead(out var result)).IsTrue();
+        await Assert.That(result.IsCompleted).IsTrue();
+        await Assert.That(result.IsCanceled).IsFalse();
+        await Assert.That(result.Buffer.IsEmpty).IsTrue().Because("No data should be buffered");
     }
     
     [Test]
@@ -75,14 +74,14 @@ public class NexusPipeReaderTests
         reader.BufferData(new ReadOnlySequence<byte>(payload));
         var readResult = await reader.ReadAsync();
 
-        Assert.That(readResult.Buffer.ToArray(), Is.EqualTo(payload), "Initial read sees full payload");
+        await Assert.That(readResult.Buffer.ToArray()).IsEquivalentTo(payload, CollectionOrdering.Matching).Because("Initial read sees full payload");
 
         reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
 
-        Assert.That(reader.TryRead(out var afterConsume), Is.False, "No data should remain after consume");
-        Assert.That(afterConsume.Buffer.IsEmpty, Is.True);
-        Assert.That(afterConsume.IsCompleted, Is.False);
-        Assert.That(afterConsume.IsCanceled, Is.False);
+        await Assert.That(reader.TryRead(out var afterConsume)).IsFalse().Because("No data should remain after consume");
+        await Assert.That(afterConsume.Buffer.IsEmpty).IsTrue();
+        await Assert.That(afterConsume.IsCompleted).IsFalse();
+        await Assert.That(afterConsume.IsCanceled).IsFalse();
     }
     
     
@@ -97,8 +96,7 @@ public class NexusPipeReaderTests
         reader.CompleteNoNotify();
 
         var result = reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3]));
-        Assert.That(result, Is.EqualTo(NexusPipeBufferResult.DataIgnored),
-            "Once completed, new data must be ignored");
+        await Assert.That(result).IsEqualTo(NexusPipeBufferResult.DataIgnored).Because("Once completed, new data must be ignored");
     }
     
     
@@ -110,39 +108,67 @@ public class NexusPipeReaderTests
         reader.CompleteNoNotify();
 
         var rr = await reader.ReadAsync();
-        Assert.That(rr.IsCompleted, Is.True);
-        Assert.That(rr.Buffer.IsEmpty, Is.True);
-        Assert.That(rr.IsCanceled, Is.False);
+        await Assert.That(rr.IsCompleted).IsTrue();
+        await Assert.That(rr.Buffer.IsEmpty).IsTrue();
+        await Assert.That(rr.IsCanceled).IsFalse();
     }
     
     [Test]
-    public void TryRead_AfterCancelPendingRead_ReturnsTrueAndCanceled()
+    public async Task ReadAsync_AfterDispose_ReturnsWithoutThrowing()
+    {
+        var reader = CreateReader();
+        reader.Dispose();
+
+        var result = await reader.ReadAsync();
+
+        await Assert.That(result.Buffer.IsEmpty).IsTrue();
+        await Assert.That(result.IsCanceled).IsFalse();
+    }
+
+    [Test]
+    public async Task ReadAsync_Pending_CompleteNoNotify_WakesTheRead()
+    {
+        var reader = CreateReader();
+
+        var readTask = reader.ReadAsync().AsTask();
+        await Assert.That(readTask.IsCompleted).IsFalse().Because("No data is buffered, so the read must wait");
+
+        // Completion swaps the semaphore field out and releases that instance: the waiting read must wake.
+        reader.CompleteNoNotify();
+        var result = await readTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(result.IsCompleted).IsTrue();
+        await Assert.That(result.Buffer.IsEmpty).IsTrue();
+    }
+
+    [Test]
+    public async Task TryRead_AfterCancelPendingRead_ReturnsTrueAndCanceled()
     {
         var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CancelPendingRead();
         var got = reader.TryRead(out var result);
 
-        Assert.That(got, Is.True);
-        Assert.That(result.IsCanceled, Is.True);
-        Assert.That(result.Buffer.IsEmpty, Is.True);
-        Assert.That(result.IsCompleted, Is.False);
+        await Assert.That(got).IsTrue();
+        await Assert.That(result.IsCanceled).IsTrue();
+        await Assert.That(result.Buffer.IsEmpty).IsTrue();
+        await Assert.That(result.IsCompleted).IsFalse();
     }
     
     [Test]
-    public void TryRead_CancellationFlagResets_AfterFirstTryRead()
+    public async Task TryRead_CancellationFlagResets_AfterFirstTryRead()
     {
         var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CancelPendingRead();
 
         // First TryRead picks up the cancel flag…
-        Assert.That(reader.TryRead(out _), Is.True);
+        await Assert.That(reader.TryRead(out _)).IsTrue();
 
         // …but it is cleared immediately thereafter
         var secondCall = reader.TryRead(out var r2);
-        Assert.That(secondCall, Is.False, "No more data & no more cancellation");
-        Assert.That(r2.IsCanceled, Is.False);
+        await Assert.That(secondCall).IsFalse().Because("No more data & no more cancellation");
+        await Assert.That(r2.IsCanceled).IsFalse();
     }
     
     [Test]
@@ -154,27 +180,26 @@ public class NexusPipeReaderTests
 
         await reader.CompleteAsync();
 
-        Assert.That(spy.Updates, Has.Count.EqualTo(1));
-        Assert.That(spy.Updates[0].Flag,
-            Is.EqualTo(NexusDuplexPipe.State.ClientReaderServerWriterComplete));
-        Assert.That(spy.Updates[0].Remove, Is.False);
-        Assert.That(spy.NotifyCount, Is.EqualTo(1));
+        await Assert.That(spy.Updates).Count().IsEqualTo(1);
+        await Assert.That(spy.Updates[0].Flag).IsEqualTo(NexusDuplexPipe.State.ClientReaderServerWriterComplete);
+        await Assert.That(spy.Updates[0].Remove).IsFalse();
+        await Assert.That(spy.NotifyCount).IsEqualTo(1);
 
         // And TryRead now reports IsCompleted
-        Assert.That(reader.TryRead(out var finalResult), Is.True);
-        Assert.That(finalResult.IsCompleted, Is.True);
+        await Assert.That(reader.TryRead(out var finalResult)).IsTrue();
+        await Assert.That(finalResult.IsCompleted).IsTrue();
     }
     
     [Test]
-    public void CancelPendingRead_DoesNotUpdateState()
+    public async Task CancelPendingRead_DoesNotUpdateState()
     {
         var spy = new SpyStateManager();
         var reader = TestPipes.Reader(spy, null, false);
 
         reader.CancelPendingRead();
 
-        Assert.That(spy.Updates, Is.Empty,    "CancelPendingRead should not call UpdateState");
-        Assert.That(spy.NotifyCount, Is.Zero,  "CancelPendingRead should not call NotifyState");
+        await Assert.That(spy.Updates).IsEmpty().Because("CancelPendingRead should not call UpdateState");
+        await Assert.That(spy.NotifyCount).IsZero().Because("CancelPendingRead should not call NotifyState");
     }
     
     
@@ -187,65 +212,63 @@ public class NexusPipeReaderTests
 
         await reader.CompleteAsync();
 
-        Assert.That(spy.Updates, Has.Count.EqualTo(1));
-        Assert.That(spy.Updates[0].Flag,
-            Is.EqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete),
-            "Server readers should set the ClientWriterServerReaderComplete flag");
-        Assert.That(spy.NotifyCount, Is.EqualTo(1));
+        await Assert.That(spy.Updates).Count().IsEqualTo(1);
+        await Assert.That(spy.Updates[0].Flag).IsEqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete).Because("Server readers should set the ClientWriterServerReaderComplete flag");
+        await Assert.That(spy.NotifyCount).IsEqualTo(1);
     }
     
     
     [Test]
-    public void BufferData_BeyondCredit_ReturnsCreditExceeded()
+    public async Task BufferData_BeyondCredit_ReturnsCreditExceeded()
     {
         var reader = CreateReader(window: 4);
 
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3])), Is.EqualTo(NexusPipeBufferResult.Success));
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3]))).IsEqualTo(NexusPipeBufferResult.Success);
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5]))).IsEqualTo(NexusPipeBufferResult.CreditExceeded);
 
         // The data beyond the credit was not buffered.
-        Assert.That(reader.TryRead(out var result), Is.True);
-        Assert.That(result.Buffer.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+        await Assert.That(reader.TryRead(out var result)).IsTrue();
+        await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void BufferData_BeforeTheWindowOpens_ReturnsCreditExceeded()
+    public async Task BufferData_BeforeTheWindowOpens_ReturnsCreditExceeded()
     {
         // Nothing was granted yet, so the peer may not send anything.
         var reader = new NexusPipeReader(new DummyStateManager(), logger: null, isServer: false, window: 1024);
 
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1]))).IsEqualTo(NexusPipeBufferResult.CreditExceeded);
     }
 
     [Test]
-    public void ConsumingHalfTheWindow_GrantsTheConsumedBytes()
+    public async Task ConsumingHalfTheWindow_GrantsTheConsumedBytes()
     {
         var spy = new SpyStateManager();
         var reader = TestPipes.Reader(spy, window: 8);
         reader.BufferData(new ReadOnlySequence<byte>([0, 1, 2, 3, 4, 5, 6, 7]));
 
         reader.AdvanceTo(3, 3);
-        Assert.That(spy.Grants, Is.Empty, "Less than half the window consumed");
+        await Assert.That(spy.Grants).IsEmpty().Because("Less than half the window consumed");
 
         reader.AdvanceTo(1, 1);
-        Assert.That(spy.Grants, Is.EqualTo(new[] { 4 }), "Half the window consumed");
+        await Assert.That(spy.Grants).IsEquivalentTo(new[] { 4 }, CollectionOrdering.Matching).Because("Half the window consumed");
 
         // The grant is usable: 4 more bytes fit, a fifth does not.
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([8, 9, 10, 11])), Is.EqualTo(NexusPipeBufferResult.Success));
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([12])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([8, 9, 10, 11]))).IsEqualTo(NexusPipeBufferResult.Success);
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([12]))).IsEqualTo(NexusPipeBufferResult.CreditExceeded);
     }
 
     [Test]
-    public void BufferData_AfterComplete_IsDiscardedButCountsAgainstTheCredit()
+    public async Task BufferData_AfterComplete_IsDiscardedButCountsAgainstTheCredit()
     {
         var spy = new SpyStateManager();
         var reader = TestPipes.Reader(spy, window: 4);
         reader.CompleteNoNotify();
 
         // The peer may still have data in flight; it is discarded, up to the credit granted.
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3])), Is.EqualTo(NexusPipeBufferResult.DataIgnored));
-        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
-        Assert.That(spy.Grants, Is.Empty, "Discarded data is not granted back");
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3]))).IsEqualTo(NexusPipeBufferResult.DataIgnored);
+        await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5]))).IsEqualTo(NexusPipeBufferResult.CreditExceeded);
+        await Assert.That(spy.Grants).IsEmpty().Because("Discarded data is not granted back");
     }
 
     private NexusPipeReader CreateReader(int window = TestPipes.LargeWindow, bool isServer = false)

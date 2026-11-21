@@ -1,0 +1,142 @@
+// com.dtronix:nexnet-client: the core Java client runtime. No runtime dependencies.
+
+plugins {
+    id("nexnet.java-library")
+    `maven-publish`
+}
+
+description = "NexNet client runtime for Java 11+ and Android API 24+"
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+dependencies {
+    // Nullness annotations: not needed at run time, but part of the API. Generated code imports them, so consumers
+    // must get them on their compile classpath without declaring JSpecify themselves (K28).
+    compileOnlyApi(libs.jspecify)
+    testCompileOnly(libs.jspecify)
+}
+
+// The Maven publication: JSpecify is compile scope in the POM and only in the API variant of the Gradle module metadata.
+// It is published only to the local consumer-test repository below. Nothing goes to a remote repository (D30); the
+// nexnet.java-library convention fails the build if one is added (NoRemotePublishing.kt).
+val consumerTestRepo = layout.buildDirectory.dir("consumer-test/repo")
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven {
+            name = "consumerTest"
+            url = uri(consumerTestRepo)
+        }
+    }
+}
+
+// A stand-alone Gradle build (consumer-test/) compiles generated code against the published artifact with no other
+// declared dependency, once from the Gradle module metadata and once from the POM alone (K28).
+val publishForConsumerTest = tasks.named("publishMavenPublicationToConsumerTestRepository") {
+    // A clean repository each time, so a stale artifact never passes the check.
+    val repo = consumerTestRepo
+    doFirst { repo.get().asFile.deleteRecursively() }
+}
+
+val consumerTest = tasks.register<GradleBuild>("consumerTest") {
+    group = "verification"
+    description = "Compiles and runs generated code in a separate build that depends only on nexnet-client."
+    dependsOn(publishForConsumerTest)
+    dir = layout.projectDirectory.dir("consumer-test").asFile
+    tasks = listOf("consumerCheck")
+    startParameter.projectProperties = mapOf(
+        "nexnet.consumer.repo" to consumerTestRepo.get().asFile.absolutePath,
+        "nexnet.consumer.version" to project.version.toString(),
+        "nexnet.consumer.snapshot" to rootProject.layout.projectDirectory
+            .file("../../src/NexNet.Generator.Tests/Targets/Java/Snapshots/zoo.txt").asFile.absolutePath,
+    )
+}
+
+// A second stand-alone build (emitted-consumer-test/) compiles the runtime in the form NexNet.Generator emits it (D31):
+// the core runtime and generated code with nothing on the class path, and the optional modules (G10) against their
+// third-party libraries. The android module is not built here: the Android Gradle plugin does not work in this nested
+// build, so the Android CI job runs that build on its own (emitted-consumer-test/settings.gradle.kts, K39).
+// It reads the Java output of src/NexNet.Generator.IntegrationSample (or -Pnexnet.emittedSample=<dir>, relative to clients/java), which only a .NET build writes (D27):
+//   dotnet build src/NexNet.Generator.IntegrationSample "-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp%3Bmicrometer"
+// Without that output the check is skipped.
+val emittedSample: File = providers.gradleProperty("nexnet.emittedSample")
+    .map { rootProject.layout.projectDirectory.file(it).asFile }
+    .orElse(rootProject.layout.projectDirectory.dir("../../src/NexNet.Generator.IntegrationSample/generated/java").asFile)
+    .get()
+    .normalize()
+
+val emittedConsumerTest = tasks.register<GradleBuild>("emittedConsumerTest") {
+    group = "verification"
+    description = "Compiles the generator-emitted runtime and its optional modules in a separate consumer build."
+    dir = layout.projectDirectory.dir("emitted-consumer-test").asFile
+    tasks = listOf("consumerCheck")
+    // Replaces the parent's -P properties, so nexnet.emittedConsumer.android never reaches the nested build.
+    startParameter.projectProperties = mapOf("nexnet.emitted.dir" to emittedSample.absolutePath)
+    val sample = emittedSample
+    onlyIf("the emitted sample exists") {
+        val exists = sample.isDirectory
+        if (!exists) {
+            logger.lifecycle("emittedConsumerTest skipped: no emitted sample in $sample. Build it with: dotnet build " +
+                "src/NexNet.Generator.IntegrationSample \"-p:NexNetJavaEmitRuntimeModules=kotlin%3Bokhttp%3Bmicrometer\"")
+        }
+        exists
+    }
+}
+
+// The runtime version constant (NexusRuntime.VERSION), generated from the lockstep NexNet version.
+val generateRuntimeVersion = tasks.register("generateRuntimeVersion") {
+    val outputDir = layout.buildDirectory.dir("generated/sources/nexnet-version/java")
+    val runtimeVersion = project.version.toString()
+    inputs.property("version", runtimeVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("com/dtronix/nexnet/NexusRuntimeVersion.java").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package com.dtronix.nexnet;
+            |
+            |/** Generated by the build from src/NexNet/NexNet.csproj. */
+            |final class NexusRuntimeVersion {
+            |    static final String VALUE = "$runtimeVersion";
+            |
+            |    private NexusRuntimeVersion() {
+            |    }
+            |}
+            |""".trimMargin()
+        )
+    }
+}
+
+sourceSets.main {
+    java.srcDir(generateRuntimeVersion)
+}
+
+tasks.jar {
+    manifest {
+        attributes(
+            "Automatic-Module-Name" to "com.dtronix.nexnet",
+            "Implementation-Title" to "nexnet-client",
+            "Implementation-Version" to project.version,
+            "Implementation-Vendor" to "Dtronix",
+        )
+    }
+}
+
+tasks.test {
+    // Golden vectors (H03/K02) are read from the repository's tests/golden directory.
+    systemProperty("nexnet.golden", rootProject.layout.projectDirectory.dir("../../tests/golden").asFile.absolutePath)
+}
+
+// Javadoc is part of the published artifact; build it in check so broken docs fail early.
+tasks.check {
+    dependsOn(tasks.javadoc, consumerTest, emittedConsumerTest)
+}

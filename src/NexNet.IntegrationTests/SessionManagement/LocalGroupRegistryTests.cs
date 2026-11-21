@@ -1,15 +1,12 @@
 using NexNet.Invocation;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.SessionManagement;
-
-[TestFixture]
 internal class LocalGroupRegistryTests
 {
     private LocalSessionContext _context = null!;
     private LocalGroupRegistry _registry = null!;
 
-    [SetUp]
+    [Before(HookType.Test)]
     public void Setup()
     {
         _context = new LocalSessionContext();
@@ -23,8 +20,8 @@ internal class LocalGroupRegistryTests
 
         await _registry.AddToGroupAsync("group1", session);
 
-        Assert.That(_context.GroupIdDictionary.ContainsKey("group1"), Is.True);
-        Assert.That(session.RegisteredGroups, Has.Count.EqualTo(1));
+        await Assert.That(_context.GroupIdDictionary.ContainsKey("group1")).IsTrue();
+        await Assert.That(session.RegisteredGroups).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -37,9 +34,9 @@ internal class LocalGroupRegistryTests
         await _registry.AddToGroupAsync("group1", session2);
 
         var members = _registry.GetLocalGroupMembers("group1").ToList();
-        Assert.That(members, Has.Count.EqualTo(2));
-        Assert.That(members, Contains.Item(session1));
-        Assert.That(members, Contains.Item(session2));
+        await Assert.That(members).Count().IsEqualTo(2);
+        await Assert.That(members).Contains(session1);
+        await Assert.That(members).Contains(session2);
     }
 
     [Test]
@@ -51,7 +48,7 @@ internal class LocalGroupRegistryTests
         await _registry.AddToGroupAsync("group1", session);
 
         var members = _registry.GetLocalGroupMembers("group1").ToList();
-        Assert.That(members, Has.Count.EqualTo(1));
+        await Assert.That(members).Count().IsEqualTo(1);
         // RegisteredGroups list may have duplicates in this impl, but group itself won't
     }
 
@@ -62,10 +59,10 @@ internal class LocalGroupRegistryTests
 
         await _registry.AddToGroupsAsync(["group1", "group2", "group3"], session);
 
-        Assert.That(session.RegisteredGroups, Has.Count.EqualTo(3));
-        Assert.That(_registry.GetLocalGroupMembers("group1"), Contains.Item(session));
-        Assert.That(_registry.GetLocalGroupMembers("group2"), Contains.Item(session));
-        Assert.That(_registry.GetLocalGroupMembers("group3"), Contains.Item(session));
+        await Assert.That(session.RegisteredGroups).Count().IsEqualTo(3);
+        await Assert.That(_registry.GetLocalGroupMembers("group1")).Contains(session);
+        await Assert.That(_registry.GetLocalGroupMembers("group2")).Contains(session);
+        await Assert.That(_registry.GetLocalGroupMembers("group3")).Contains(session);
     }
 
     [Test]
@@ -75,7 +72,7 @@ internal class LocalGroupRegistryTests
 
         await _registry.AddToGroupsAsync([], session);
 
-        Assert.That(session.RegisteredGroups, Is.Empty);
+        await Assert.That(session.RegisteredGroups).IsEmpty();
     }
 
     [Test]
@@ -87,7 +84,7 @@ internal class LocalGroupRegistryTests
         await _registry.RemoveFromGroupAsync("group1", session);
 
         var members = _registry.GetLocalGroupMembers("group1").ToList();
-        Assert.That(members, Does.Not.Contain(session));
+        await Assert.That(members).DoesNotContain(session);
     }
 
     [Test]
@@ -98,7 +95,6 @@ internal class LocalGroupRegistryTests
         await _registry.RemoveFromGroupAsync("nonexistent", session);
 
         // Should not throw
-        Assert.Pass();
     }
 
     [Test]
@@ -112,7 +108,7 @@ internal class LocalGroupRegistryTests
 
         // Should not throw, session1 should still be in group
         var members = _registry.GetLocalGroupMembers("group1").ToList();
-        Assert.That(members, Contains.Item(session1));
+        await Assert.That(members).Contains(session1);
     }
 
     [Test]
@@ -123,9 +119,9 @@ internal class LocalGroupRegistryTests
 
         await _registry.RemoveFromAllGroupsAsync(session);
 
-        Assert.That(session.RegisteredGroups, Is.Empty);
-        Assert.That(_registry.GetLocalGroupMembers("group1"), Does.Not.Contain(session));
-        Assert.That(_registry.GetLocalGroupMembers("group2"), Does.Not.Contain(session));
+        await Assert.That(session.RegisteredGroups).IsEmpty();
+        await Assert.That(_registry.GetLocalGroupMembers("group1")).DoesNotContain(session);
+        await Assert.That(_registry.GetLocalGroupMembers("group2")).DoesNotContain(session);
     }
 
     [Test]
@@ -136,7 +132,6 @@ internal class LocalGroupRegistryTests
         await _registry.RemoveFromAllGroupsAsync(session);
 
         // Should not throw
-        Assert.Pass();
     }
 
     [Test]
@@ -148,9 +143,9 @@ internal class LocalGroupRegistryTests
 
         var names = await _registry.GetGroupNamesAsync();
 
-        Assert.That(names, Has.Count.EqualTo(2));
-        Assert.That(names, Contains.Item("group1"));
-        Assert.That(names, Contains.Item("group2"));
+        await Assert.That(names).Count().IsEqualTo(2);
+        await Assert.That(names).Contains("group1");
+        await Assert.That(names).Contains("group2");
     }
 
     [Test]
@@ -158,7 +153,7 @@ internal class LocalGroupRegistryTests
     {
         var names = await _registry.GetGroupNamesAsync();
 
-        Assert.That(names, Is.Empty);
+        await Assert.That(names).IsEmpty();
     }
 
     [Test]
@@ -171,7 +166,7 @@ internal class LocalGroupRegistryTests
 
         var size = await _registry.GetGroupSizeAsync("group1");
 
-        Assert.That(size, Is.EqualTo(2));
+        await Assert.That(size).IsEqualTo(2);
     }
 
     [Test]
@@ -179,7 +174,7 @@ internal class LocalGroupRegistryTests
     {
         var size = await _registry.GetGroupSizeAsync("nonexistent");
 
-        Assert.That(size, Is.EqualTo(0));
+        await Assert.That(size).IsEqualTo(0);
     }
 
     [Test]
@@ -191,7 +186,7 @@ internal class LocalGroupRegistryTests
 
         var size = await _registry.GetGroupSizeAsync("group1");
 
-        Assert.That(size, Is.EqualTo(0));
+        await Assert.That(size).IsEqualTo(0);
     }
 
     [Test]
@@ -204,17 +199,17 @@ internal class LocalGroupRegistryTests
 
         var members = _registry.GetLocalGroupMembers("group1").ToList();
 
-        Assert.That(members, Has.Count.EqualTo(2));
-        Assert.That(members, Contains.Item(session1));
-        Assert.That(members, Contains.Item(session2));
+        await Assert.That(members).Count().IsEqualTo(2);
+        await Assert.That(members).Contains(session1);
+        await Assert.That(members).Contains(session2);
     }
 
     [Test]
-    public void GetLocalGroupMembers_NonExistentGroup_ReturnsEmpty()
+    public async Task GetLocalGroupMembers_NonExistentGroup_ReturnsEmpty()
     {
         var members = _registry.GetLocalGroupMembers("nonexistent").ToList();
 
-        Assert.That(members, Is.Empty);
+        await Assert.That(members).IsEmpty();
     }
 
     [Test]
@@ -223,7 +218,6 @@ internal class LocalGroupRegistryTests
         await _registry.InitializeAsync();
 
         // No exception = success
-        Assert.Pass();
     }
 
     [Test]
@@ -235,8 +229,8 @@ internal class LocalGroupRegistryTests
 
         await _registry.ShutdownAsync();
 
-        Assert.That(_context.SessionGroups, Is.Empty);
-        Assert.That(_context.GroupIdDictionary, Is.Empty);
+        await Assert.That(_context.SessionGroups).IsEmpty();
+        await Assert.That(_context.GroupIdDictionary).IsEmpty();
     }
 
     [Test]
@@ -254,12 +248,12 @@ internal class LocalGroupRegistryTests
         var players = _registry.GetLocalGroupMembers("players").ToList();
         var admins = _registry.GetLocalGroupMembers("admins").ToList();
 
-        Assert.That(players, Has.Count.EqualTo(2));
-        Assert.That(players, Contains.Item(session1));
-        Assert.That(players, Contains.Item(session2));
+        await Assert.That(players).Count().IsEqualTo(2);
+        await Assert.That(players).Contains(session1);
+        await Assert.That(players).Contains(session2);
 
-        Assert.That(admins, Has.Count.EqualTo(2));
-        Assert.That(admins, Contains.Item(session1));
-        Assert.That(admins, Contains.Item(session3));
+        await Assert.That(admins).Count().IsEqualTo(2);
+        await Assert.That(admins).Contains(session1);
+        await Assert.That(admins).Contains(session3);
     }
 }

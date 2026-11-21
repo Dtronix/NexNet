@@ -2,3 +2,13 @@
   href: protocol-specification.md
 - name: Flow Control (design)
   href: flow-control.md
+- name: Generator IR (nexnet-ir.json)
+  href: nexnet-ir.md
+- name: JavaScript Runtime Contract
+  href: js-runtime-contract.md
+- name: Java Runtime Contract
+  href: java-runtime-contract.md
+- name: Interop Control Protocol
+  href: interop-control-protocol.md
+- name: Generator-Emitted Client Runtime
+  href: generator-emitted-runtime.md

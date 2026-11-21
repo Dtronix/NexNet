@@ -1,0 +1,312 @@
+using System.Collections.Concurrent;
+using System.Threading.Channels;
+using NexNet.Collections;
+using NexNet.Collections.Lists;
+using NexNet.Logging;
+using NexNet.Pipes.Broadcast;
+
+namespace NexNet.IntegrationTests.Collections;
+
+/// <summary>
+/// After an unexpected error stops a broadcast message processor (S09), the server restarts it and resets its
+/// clients, and the client closes the collection and reports the failure, so no collection stays silently dead (S11).
+/// </summary>
+internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
+{
+    [Test]
+    public async Task Server_ProcessorStoppedByError_RestartsAndProcesses()
+    {
+        var logger = new FaultInjectingLogger();
+        var list = new NexusListServer<int>(0, NexusCollectionMode.BiDirectional, logger);
+        list.Start();
+
+        try
+        {
+            FailNextProcess(list);
+            await Assert.That(await list.AddAsync(1).Timeout(1)).IsFalse();
+
+            // Rejected while the processor is down, then processed again once it has been restarted.
+            await Assert.That(await AddWhenRunning(list, 2)).IsTrue();
+            await Assert.That(list).IsEquivalentTo([2]);
+            await Assert.That(logger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+        }
+        finally
+        {
+            list.Stop();
+        }
+    }
+
+    [Test]
+    public async Task Server_ProcessorStoppingRepeatedly_GivesUpAndStops()
+    {
+        var logger = new FaultInjectingLogger();
+        var list = new NexusListServer<int>(0, NexusCollectionMode.BiDirectional, logger);
+        var broadcaster = (NexusBroadcastServer<INexusCollectionListMessage>)(object)list;
+        broadcaster.ProcessorRestartBackoff = TimeSpan.FromMilliseconds(1);
+        list.Start();
+
+        try
+        {
+            // One stop more than the restart budget allows within the window.
+            for (var i = 0; i <= NexusBroadcastServer<INexusCollectionListMessage>.MaxProcessorRestartsPerWindow; i++)
+            {
+                // An add queued while the previous run is stopping is drained with false without reaching the hook,
+                // so that stop would not count. Add until the hook has stopped the processor.
+                var fired = FailNextProcess(list);
+                for (var attempt = 0; !fired() && attempt < 20; attempt++)
+                    await Assert.That(await AddWhenRunning(list, i)).IsFalse();
+
+                await Assert.That(fired()).IsTrue().Because($"stop {i} was injected");
+            }
+
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (broadcaster.IsRunning && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+
+            await Assert.That(broadcaster.IsRunning).IsFalse();
+            await Assert.That(logger.Errors.Any(m => m.Contains("stopping the collection"))).IsTrue();
+
+            // Stopped for good: the collection rejects changes instead of silently dropping them.
+            await Task.Delay(50);
+            await AssertThrows<ChannelClosedException>(() => list.AddAsync(100).Timeout(1));
+
+            // A new start brings it back.
+            list.Stop();
+            list.Start();
+            await Assert.That(await AddWhenRunning(list, 200)).IsTrue();
+        }
+        finally
+        {
+            list.Stop();
+        }
+    }
+
+    [Test]
+    public async Task Server_ProcessorStoppedByError_ClientsResynchronize()
+    {
+        var serverLogger = new FaultInjectingLogger(Logger);
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfigWithLog(Type.Uds, serverLogger),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var serverNexus = server.NexusCreatedQueue.First();
+        var list = client.Proxy.IntListBi;
+
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await list.ReadyTask.Timeout(1);
+        await Assert.That(await list.AddAsync(1).Timeout(1)).IsTrue();
+
+        var disabled = list.DisabledTask;
+        FailNextProcess(serverNexus.IntListBi);
+
+        // The change is lost with the processor; the client is reset instead of waiting forever for its ack.
+        await Assert.That(await list.AddAsync(2).Timeout(2)).IsFalse();
+        await disabled.Timeout(2);
+        await Assert.That(serverLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+
+        // Re-enabling resynchronizes against the restarted processor.
+        await EnableUntilWorking(list, 3);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(list).IsEquivalentTo([1, 3]);
+            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 3]);
+        }
+    }
+
+    [Test]
+    public async Task Client_ProcessorStoppedByError_DisablesCollection()
+    {
+        var clientLogger = new FaultInjectingLogger(Logger);
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfigWithLog(Type.Uds, clientLogger));
+
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var serverNexus = server.NexusCreatedQueue.First();
+        var list = client.Proxy.IntListBi;
+
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await list.ReadyTask.Timeout(1);
+
+        var disabled = list.DisabledTask;
+        FailNextProcess(list);
+
+        // The broadcast of this change stops the client's processor.
+        await Assert.That(await serverNexus.IntListBi.AddAsync(5).Timeout(1)).IsTrue();
+
+        await disabled.Timeout(2);
+        await Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+
+        // Enabling again resynchronizes.
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await list.ReadyTask.Timeout(1);
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+        await Assert.That(list).IsEquivalentTo([5]);
+    }
+
+    [Test]
+    public async Task Client_ProcessorStoppedByErrorDuringEnable_EnableThrows()
+    {
+        var clientLogger = new FaultInjectingLogger(Logger);
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfigWithLog(Type.Uds, clientLogger));
+
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var serverNexus = server.NexusCreatedQueue.First();
+        await serverNexus.IntListBi.AddAsync(7).Timeout(1);
+        var list = client.Proxy.IntListBi;
+
+        // The first message of the initial synchronization stops the client's processor.
+        FailNextProcess(list);
+        await AssertThrows<InvalidOperationException>(() => list.EnableAsync().AsTask().Timeout(1));
+        await Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
+        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+
+        // EnableAsync throws as soon as the pipe completes; the disconnect cleanup runs as a separate continuation
+        // of that completion. Until it has run, the collection still holds the failed session, so an immediate
+        // EnableAsync returns true against it with the faulted ReadyTask. Wait for the cleanup first.
+        await list.DisabledTask.Timeout(1);
+
+        // A retry is a fresh enable.
+        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
+        await list.ReadyTask.Timeout(1);
+        await Assert.That(list).IsEquivalentTo([7]);
+    }
+
+    /// <summary>
+    /// Makes the next message processed by the collection's broadcast processor throw. With
+    /// <see cref="FaultInjectingLogger"/> the error then escapes the per-message handling and stops the processor.
+    /// </summary>
+    /// <returns>True once the injected failure has been thrown.</returns>
+    private static Func<bool> FailNextProcess(INexusList<int> list)
+    {
+        var armed = 1;
+        Action<INexusCollectionListMessage> hook = _ =>
+        {
+            if (Interlocked.Exchange(ref armed, 0) == 1)
+                throw new InjectedProcessingException();
+        };
+
+        switch ((object)list)
+        {
+            case NexusBroadcastServer<INexusCollectionListMessage> server:
+                server.ProcessTestHook = hook;
+                break;
+            case NexusBroadcastClient<INexusCollectionListMessage> client:
+                client.ProcessTestHook = hook;
+                break;
+            default:
+                throw new InvalidOperationException($"Unexpected collection type {list.GetType()}.");
+        }
+
+        return () => Volatile.Read(ref armed) == 0;
+    }
+
+    private sealed class InjectedProcessingException() : Exception("Injected processing failure.");
+
+    /// <summary>
+    /// Adds an item, retrying while the processor is down (between its stop and its restart).
+    /// </summary>
+    private static async Task<bool> AddWhenRunning(INexusList<int> list, int item)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            try
+            {
+                return await list.AddAsync(item).Timeout(1);
+            }
+            catch (ChannelClosedException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enables the collection and adds an item, again if the server reset the collection meanwhile (it resets its
+    /// clients once more after the restart).
+    /// </summary>
+    private static async Task EnableUntilWorking(INexusList<int> list, int item)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            try
+            {
+                if (await list.EnableAsync().Timeout(1))
+                {
+                    await list.ReadyTask.Timeout(1);
+                    if (await list.AddAsync(item).Timeout(1))
+                        return;
+                }
+            }
+            catch (Exception) when (DateTime.UtcNow < deadline)
+            {
+            }
+
+            if (DateTime.UtcNow >= deadline)
+                Assert.Fail("The collection did not recover after the server processor restarted.");
+
+            await list.DisabledTask.Timeout(1);
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>
+    /// Forwards to an optional inner logger and records errors. Its broadcast processor loggers throw when they log
+    /// an <see cref="InjectedProcessingException"/>: that throw escapes the processor's per-message error handling
+    /// and stops its loop, the way an unexpected error does.
+    /// </summary>
+    private sealed class FaultInjectingLogger : INexusLogger
+    {
+        private readonly SharedState _state;
+        private readonly INexusLogger? _inner;
+        private readonly bool _isProcessor;
+
+        public FaultInjectingLogger(INexusLogger? inner = null) : this(new SharedState(), inner, false)
+        {
+        }
+
+        private FaultInjectingLogger(SharedState state, INexusLogger? inner, bool isProcessor)
+        {
+            _state = state;
+            _inner = inner;
+            _isProcessor = isProcessor;
+        }
+
+        public IEnumerable<string> Errors => _state.Errors;
+        public NexusLogBehaviors Behaviors { get; set; }
+        public string FormattedPath => _inner?.FormattedPath ?? PathSegment ?? "";
+        public string? PathSegment { get; set; }
+
+        public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
+        {
+            if (logLevel >= NexusLogLevel.Error)
+                _state.Errors.Enqueue(message);
+
+            _inner?.Log(logLevel, category, exception, message);
+
+            if (_isProcessor && exception is InjectedProcessingException)
+                throw new InvalidOperationException("Injected logger failure.");
+        }
+
+        public INexusLogger CreateLogger(string? pathSegment = null) =>
+            new FaultInjectingLogger(_state, _inner?.CreateLogger(pathSegment), _isProcessor || pathSegment == "Processor")
+            {
+                PathSegment = pathSegment
+            };
+
+        private sealed class SharedState
+        {
+            public readonly ConcurrentQueue<string> Errors = new();
+        }
+    }
+}

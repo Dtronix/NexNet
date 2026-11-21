@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\server.pfx" Link="server.pfx">
+    <None Include="..\NexNet.IntegrationTests\certs\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

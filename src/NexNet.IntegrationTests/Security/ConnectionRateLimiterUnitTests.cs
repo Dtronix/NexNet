@@ -1,25 +1,22 @@
 using System;
 using NexNet.RateLimiting;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Security;
-
-[TestFixture]
 internal class ConnectionRateLimiterUnitTests
 {
     [Test]
-    public void TryAcquire_WithinGlobalLimit_ReturnsAllowed()
+    public async Task TryAcquire_WithinGlobalLimit_ReturnsAllowed()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 10 };
         using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         var result = limiter.TryAcquire("127.0.0.1");
 
-        Assert.That(result, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void TryAcquire_ExceedsGlobalLimit_ReturnsExceeded()
+    public async Task TryAcquire_ExceedsGlobalLimit_ReturnsExceeded()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 2 };
         using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
@@ -28,11 +25,11 @@ internal class ConnectionRateLimiterUnitTests
         limiter.TryAcquire("127.0.0.1");
         var result = limiter.TryAcquire("127.0.0.1");
 
-        Assert.That(result, Is.EqualTo(ConnectionRateLimitResult.MaxConcurrentConnectionsExceeded));
+        await Assert.That(result).IsEqualTo(ConnectionRateLimitResult.MaxConcurrentConnectionsExceeded);
     }
 
     [Test]
-    public void Release_DecrementsCount()
+    public async Task Release_DecrementsCount()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 };
         using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
@@ -41,11 +38,11 @@ internal class ConnectionRateLimiterUnitTests
         limiter.Release("127.0.0.1");
         var result = limiter.TryAcquire("127.0.0.1");
 
-        Assert.That(result, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void BanMechanism_BansAfterThreshold()
+    public async Task BanMechanism_BansAfterThreshold()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -63,11 +60,11 @@ internal class ConnectionRateLimiterUnitTests
         limiter.Release(ip);
         var result = limiter.TryAcquire(ip);
 
-        Assert.That(result, Is.EqualTo(ConnectionRateLimitResult.IpBanned));
+        await Assert.That(result).IsEqualTo(ConnectionRateLimitResult.IpBanned);
     }
 
     [Test]
-    public void NullAddress_SkipsPerIpChecks()
+    public async Task NullAddress_SkipsPerIpChecks()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -80,12 +77,12 @@ internal class ConnectionRateLimiterUnitTests
         var result1 = limiter.TryAcquire(null);
         var result2 = limiter.TryAcquire(null);
 
-        Assert.That(result1, Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(result2, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result1).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(result2).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void UdsPath_SkipsPerIpChecks()
+    public async Task UdsPath_SkipsPerIpChecks()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -99,12 +96,12 @@ internal class ConnectionRateLimiterUnitTests
         var result2 = limiter.TryAcquire("/var/run/app.sock");
 
         // Both allowed because non-IP addresses skip per-IP checks
-        Assert.That(result1, Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(result2, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result1).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(result2).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void IPv6Normalization_TreatsEquivalentAddressesAsSame()
+    public async Task IPv6Normalization_TreatsEquivalentAddressesAsSame()
     {
         var config = new ConnectionRateLimitConfig { MaxConnectionsPerIp = 1 };
         using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
@@ -113,11 +110,11 @@ internal class ConnectionRateLimiterUnitTests
         limiter.TryAcquire("::1");
         var result = limiter.TryAcquire("0:0:0:0:0:0:0:1");
 
-        Assert.That(result, Is.EqualTo(ConnectionRateLimitResult.PerIpConcurrentLimitExceeded));
+        await Assert.That(result).IsEqualTo(ConnectionRateLimitResult.PerIpConcurrentLimitExceeded);
     }
 
     [Test]
-    public void GetStats_ReturnsCorrectValues()
+    public async Task GetStats_ReturnsCorrectValues()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 10 };
         using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
@@ -127,24 +124,24 @@ internal class ConnectionRateLimiterUnitTests
 
         var stats = limiter.GetStats();
 
-        Assert.That(stats.CurrentConnections, Is.EqualTo(2));
-        Assert.That(stats.TotalAccepted, Is.EqualTo(2));
-        Assert.That(stats.UniqueIpCount, Is.EqualTo(2));
+        await Assert.That(stats.CurrentConnections).IsEqualTo(2);
+        await Assert.That(stats.TotalAccepted).IsEqualTo(2);
+        await Assert.That(stats.UniqueIpCount).IsEqualTo(2);
     }
 
     [Test]
-    public void ConfigValidation_ThrowsOnInvalidValues()
+    public async Task ConfigValidation_ThrowsOnInvalidValues()
     {
         var config = new ConnectionRateLimitConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = -1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = 100_001);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.PerIpWindowSeconds = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.BanThreshold = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = 100_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.PerIpWindowSeconds = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.BanThreshold = 0);
     }
 
     [Test]
-    public void IsEnabled_ReturnsFalseWhenAllZero()
+    public async Task IsEnabled_ReturnsFalseWhenAllZero()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -154,26 +151,26 @@ internal class ConnectionRateLimiterUnitTests
             MaxConnectionsPerIp = 0,
             ConnectionsPerIpPerWindow = 0
         };
-        Assert.That(config.IsEnabled, Is.False);
+        await Assert.That(config.IsEnabled).IsFalse();
     }
 
     [Test]
-    public void IsEnabled_ReturnsTrueWithDefaults()
+    public async Task IsEnabled_ReturnsTrueWithDefaults()
     {
         // Defaults now have rate limiting enabled
         var config = new ConnectionRateLimitConfig();
-        Assert.That(config.IsEnabled, Is.True);
+        await Assert.That(config.IsEnabled).IsTrue();
     }
 
     [Test]
-    public void IsEnabled_ReturnsTrueWhenAnySet()
+    public async Task IsEnabled_ReturnsTrueWhenAnySet()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 };
-        Assert.That(config.IsEnabled, Is.True);
+        await Assert.That(config.IsEnabled).IsTrue();
     }
 
     [Test]
-    public void WhitelistedIp_BypassesAllLimits()
+    public async Task WhitelistedIp_BypassesAllLimits()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -188,13 +185,13 @@ internal class ConnectionRateLimiterUnitTests
         var result2 = limiter.TryAcquire("10.0.0.1");
         var result3 = limiter.TryAcquire("10.0.0.1");
 
-        Assert.That(result1, Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(result2, Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(result3, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result1).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(result2).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(result3).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void WhitelistedIp_CannotBeBanned()
+    public async Task WhitelistedIp_CannotBeBanned()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -210,15 +207,15 @@ internal class ConnectionRateLimiterUnitTests
         limiter.TryAcquire("192.168.1.1"); // Violation -> banned
         limiter.Release("192.168.1.1");
         var bannedResult = limiter.TryAcquire("192.168.1.1");
-        Assert.That(bannedResult, Is.EqualTo(ConnectionRateLimitResult.IpBanned));
+        await Assert.That(bannedResult).IsEqualTo(ConnectionRateLimitResult.IpBanned);
 
         // Whitelisted IP still works
         var whitelistedResult = limiter.TryAcquire("10.0.0.1");
-        Assert.That(whitelistedResult, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(whitelistedResult).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void WhitelistedIp_NormalizesIPv6()
+    public async Task WhitelistedIp_NormalizesIPv6()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -231,12 +228,12 @@ internal class ConnectionRateLimiterUnitTests
         var result1 = limiter.TryAcquire("::1");
         var result2 = limiter.TryAcquire("0:0:0:0:0:0:0:1");
 
-        Assert.That(result1, Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(result2, Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(result1).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(result2).IsEqualTo(ConnectionRateLimitResult.Allowed);
     }
 
     [Test]
-    public void WhitelistedIp_StillCountsForStats()
+    public async Task WhitelistedIp_StillCountsForStats()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -249,12 +246,12 @@ internal class ConnectionRateLimiterUnitTests
         limiter.TryAcquire("10.0.0.1");
 
         var stats = limiter.GetStats();
-        Assert.That(stats.CurrentConnections, Is.EqualTo(2));
-        Assert.That(stats.TotalAccepted, Is.EqualTo(2));
+        await Assert.That(stats.CurrentConnections).IsEqualTo(2);
+        await Assert.That(stats.TotalAccepted).IsEqualTo(2);
     }
 
     [Test]
-    public void ManyUniqueIps_AllAllowed()
+    public async Task ManyUniqueIps_AllAllowed()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -274,14 +271,14 @@ internal class ConnectionRateLimiterUnitTests
             results.Add(limiter.TryAcquire(ip));
         }
 
-        Assert.That(results.All(r => r == ConnectionRateLimitResult.Allowed), Is.True);
+        await Assert.That(results.All(r => r == ConnectionRateLimitResult.Allowed)).IsTrue();
 
         var stats = limiter.GetStats();
-        Assert.That(stats.UniqueIpCount, Is.EqualTo(uniqueIps));
+        await Assert.That(stats.UniqueIpCount).IsEqualTo(uniqueIps);
     }
 
     [Test]
-    public void MultipleBans_TracksCorrectly()
+    public async Task MultipleBans_TracksCorrectly()
     {
         var config = new ConnectionRateLimitConfig
         {
@@ -299,11 +296,11 @@ internal class ConnectionRateLimiterUnitTests
         }
 
         var stats = limiter.GetStats();
-        Assert.That(stats.BannedIpCount, Is.GreaterThan(0));
+        await Assert.That(stats.BannedIpCount).IsGreaterThan(0);
     }
 
     [Test]
-    public void PerIpWindow_FakeTimeProvider_ExpiredEntriesAllowNewConnections()
+    public async Task PerIpWindow_FakeTimeProvider_ExpiredEntriesAllowNewConnections()
     {
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var config = new ConnectionRateLimitConfig
@@ -313,19 +310,18 @@ internal class ConnectionRateLimiterUnitTests
         };
         using var limiter = new ConnectionRateLimiter(config, fakeTime);
 
-        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
-        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.PerIpRateExceeded));
+        await Assert.That(limiter.TryAcquire("10.0.0.1")).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(limiter.TryAcquire("10.0.0.1")).IsEqualTo(ConnectionRateLimitResult.Allowed);
+        await Assert.That(limiter.TryAcquire("10.0.0.1")).IsEqualTo(ConnectionRateLimitResult.PerIpRateExceeded);
 
         // Advance past the 60s sliding window.
         fakeTime.Advance(TimeSpan.FromSeconds(61));
 
-        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed),
-            "Once the sliding window expires, a new connection from the same IP must be allowed.");
+        await Assert.That(limiter.TryAcquire("10.0.0.1")).IsEqualTo(ConnectionRateLimitResult.Allowed).Because("Once the sliding window expires, a new connection from the same IP must be allowed.");
     }
 
     [Test]
-    public void BanExpiration_FakeTimeProvider_ExpiredBanReleasesIp()
+    public async Task BanExpiration_FakeTimeProvider_ExpiredBanReleasesIp()
     {
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var config = new ConnectionRateLimitConfig
@@ -336,17 +332,16 @@ internal class ConnectionRateLimiterUnitTests
         };
         using var limiter = new ConnectionRateLimiter(config, fakeTime);
 
-        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        await Assert.That(limiter.TryAcquire("10.0.0.5")).IsEqualTo(ConnectionRateLimitResult.Allowed);
         // Second concurrent connection exceeds per-IP — records a violation that should ban the IP.
-        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.PerIpConcurrentLimitExceeded));
-        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.IpBanned));
+        await Assert.That(limiter.TryAcquire("10.0.0.5")).IsEqualTo(ConnectionRateLimitResult.PerIpConcurrentLimitExceeded);
+        await Assert.That(limiter.TryAcquire("10.0.0.5")).IsEqualTo(ConnectionRateLimitResult.IpBanned);
 
         // Advance past the 30s ban — IP should be unbanned.
         fakeTime.Advance(TimeSpan.FromSeconds(31));
 
         var afterBan = limiter.TryAcquire("10.0.0.5");
-        Assert.That(afterBan, Is.Not.EqualTo(ConnectionRateLimitResult.IpBanned),
-            "Once BanDurationSeconds elapses, the IP must no longer be banned.");
+        await Assert.That(afterBan).IsNotEqualTo(ConnectionRateLimitResult.IpBanned).Because("Once BanDurationSeconds elapses, the IP must no longer be banned.");
     }
 
 }

@@ -1,0 +1,746 @@
+{
+  "exports": [
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": -804434152
+      },
+      "name": "NonVersionedClientNexus",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -804434152,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -1748196110,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "RunTaskNew",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -281599977,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "RunTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1342660701,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "RunTaskWithResult",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus+ReturnState",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1040520279,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "VerifyVersion",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "INonVersionedServerNexus",
+        "versions": []
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": -804434152
+      },
+      "name": "NonVersionedServerNexus",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -804434152,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -1748196110,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "RunTaskNew",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -281599977,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "RunTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1342660701,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "RunTaskWithResult",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus+ReturnState",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1040520279,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "VerifyVersion",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "INonVersionedServerNexus",
+        "versions": []
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": -326045431,
+        "version": "v1.0"
+      },
+      "name": "VersionedClientNexusV1",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -326045431,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -78067274,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "VerifyVersionV1",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IVersionedServerNexusV1",
+        "versions": [
+          {
+            "hash": -326045431,
+            "methodIds": [1],
+            "version": "v1.0"
+          }
+        ]
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": 1866304169,
+        "version": "v1.2"
+      },
+      "name": "VersionedClientNexusV2",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV2",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": 1866304169,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -78067274,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "VerifyVersionV1",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 259429543,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "RunTaskV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 576356863,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "RunTaskWithResultV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -411822312,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "RunTaskNewV2",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "IVersionedServerNexusV2",
+        "versions": [
+          {
+            "hash": -326045431,
+            "methodIds": [1],
+            "version": "v1.0"
+          },
+          {
+            "hash": -1058213897,
+            "methodIds": [1, 2, 3],
+            "version": "v1.1"
+          },
+          {
+            "hash": 1866304169,
+            "methodIds": [1, 2, 3, 4],
+            "version": "v1.2"
+          }
+        ]
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": -1058213897,
+        "version": "v1.1"
+      },
+      "name": "VersionedServerNexusV1_1",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -1058213897,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -78067274,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "VerifyVersionV1",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 259429543,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "RunTaskV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 576356863,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "RunTaskWithResultV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "IVersionedServerNexusV1_1",
+        "versions": [
+          {
+            "hash": -326045431,
+            "methodIds": [1],
+            "version": "v1.0"
+          },
+          {
+            "hash": -1058213897,
+            "methodIds": [1, 2, 3],
+            "version": "v1.1"
+          }
+        ]
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -165921370,
+          "id": 0
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -165921370,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -205654457,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Run",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "ISimpleClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -165921370,
+        "serverNexusHash": 1866304169,
+        "version": "v1.2"
+      },
+      "name": "VersionedServerNexusV2",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV2",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": 1866304169,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -78067274,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "VerifyVersionV1",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "version",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Bool"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 259429543,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "RunTaskV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 576356863,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "RunTaskWithResultV1_1",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -411822312,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "RunTaskNewV2",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          }
+        ],
+        "name": "IVersionedServerNexusV2",
+        "versions": [
+          {
+            "hash": -326045431,
+            "methodIds": [1],
+            "version": "v1.0"
+          },
+          {
+            "hash": -1058213897,
+            "methodIds": [1, 2, 3],
+            "version": "v1.1"
+          },
+          {
+            "hash": 1866304169,
+            "methodIds": [1, 2, 3, 4],
+            "version": "v1.2"
+          }
+        ]
+      },
+      "targets": 0
+    }
+  ],
+  "irVersion": 1,
+  "types": [
+    {
+      "clrMetadataName": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus+ReturnState",
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "containingTypes": ["INonVersionedServerNexus"],
+      "id": "NexNet.IntegrationTests.TestInterfaces.INonVersionedServerNexus+ReturnState",
+      "isFlags": false,
+      "kind": "Enum",
+      "members": [
+        {
+          "name": "Unset",
+          "value": 0
+        },
+        {
+          "name": "Success",
+          "value": 1
+        },
+        {
+          "name": "Failure",
+          "value": 2
+        }
+      ],
+      "name": "ReturnState",
+      "underlying": "UInt16"
+    },
+    {
+      "clrMetadataName": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState",
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "containingTypes": ["IVersionedServerNexusV1_1"],
+      "id": "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState",
+      "isFlags": false,
+      "kind": "Enum",
+      "members": [
+        {
+          "name": "Unset",
+          "value": 0
+        },
+        {
+          "name": "Success",
+          "value": 1
+        },
+        {
+          "name": "Failure",
+          "value": 2
+        }
+      ],
+      "name": "ReturnState",
+      "underlying": "UInt16"
+    }
+  ]
+}

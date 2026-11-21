@@ -1,7 +1,5 @@
 ﻿using System.Buffers;
 using NexNet.Internals.Pipelines.Buffers;
-using NUnit.Framework;
-using NUnit.Framework.Legacy;
 
 #pragma warning disable VSTHRD200
 
@@ -27,7 +25,7 @@ internal class BufferWriterTests
 
             var addBufferLen = bufferWriter.GetBuffer().Length;
             if (bufferSize != addBufferLen)
-                Assert.Fail($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
+                Fail.Test($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
 
             if (decreaseSize < bufferWriter.Length)
                 decreaseSize = (int)bufferWriter.Length;
@@ -39,7 +37,7 @@ internal class BufferWriterTests
             var bufferLen = buffer.Length;
 
             if (bufferSize != bufferLen)
-                Assert.Fail($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
+                Fail.Test($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
 
             if (bufferLen > 1024 * 32)
                 decreaseSize = 529;
@@ -66,7 +64,7 @@ internal class BufferWriterTests
             var addBuffer = bufferWriter.GetBuffer();
             var addBufferLen = addBuffer.Length;
             if (bufferSize != addBufferLen)
-                Assert.Fail($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
+                Fail.Test($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
 
             bufferWriter.ReleaseTo(addBuffer.GetPosition(decreaseSize));
 
@@ -75,7 +73,7 @@ internal class BufferWriterTests
             var bufferLen = buffer.Length;
 
             if (bufferSize != bufferLen)
-                Assert.Fail($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
+                Fail.Test($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
 
             if (bufferLen > 1024 * 32)
                 decreaseSize = 529;
@@ -85,7 +83,7 @@ internal class BufferWriterTests
     }
 
     [Test]
-    public void ReleasesLargeDataSpan()
+    public async Task ReleasesLargeDataSpan()
     {
         var bufferWriter = BufferWriter.Create(8 * 1024);
         var loops = 9000;
@@ -101,16 +99,16 @@ internal class BufferWriterTests
         }
 
         var sequence = bufferWriter.GetBuffer();
-        Assert.That(sequence.Length, Is.EqualTo(loops * dataLength));
+        await Assert.That(sequence.Length).IsEqualTo(loops * dataLength);
 
         bufferWriter.ReleaseTo(3000 * 16);
 
         sequence = bufferWriter.GetBuffer();
-        Assert.That(sequence.Length, Is.EqualTo(loops * dataLength - 3000 * 16));
+        await Assert.That(sequence.Length).IsEqualTo(loops * dataLength - 3000 * 16);
     }    
     
     [Test]
-    public void AllowsUseAfterDisposal()
+    public async Task AllowsUseAfterDisposal()
     {
         var bufferWriter = BufferWriter.Create(8 * 1024);
  
@@ -127,27 +125,27 @@ internal class BufferWriterTests
         bufferWriter.Advance(data.Length);
 
         var sequence = bufferWriter.GetBuffer();
-        Assert.That(sequence.Length, Is.EqualTo(data.Length));
+        await Assert.That(sequence.Length).IsEqualTo(data.Length);
 
 
     }
     
     [Test]
-    public void GetBuffer_Empty_ReturnsZeroLength()
+    public async Task GetBuffer_Empty_ReturnsZeroLength()
     {
         var writer = BufferWriter.Create(128);
-        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
+        await Assert.That(writer.GetBuffer().Length).IsEqualTo(0);
     }
 
     [Test]
-    public void Advance_Negative_ThrowsArgumentOutOfRangeException()
+    public async Task Advance_Negative_ThrowsArgumentOutOfRangeException()
     {
         var writer = BufferWriter.Create(128);
-        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Advance(-1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => writer.Advance(-1));
     }
 
     [Test]
-    public void Deallocate_KeepsDataWrittenAfterGetBuffer()
+    public async Task Deallocate_KeepsDataWrittenAfterGetBuffer()
     {
         var writer = BufferWriter.Create(4);
         var data = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
@@ -156,14 +154,14 @@ internal class BufferWriterTests
         var first = writer.GetBuffer();
         Write(writer, data.AsSpan(6));
 
-        Assert.That(first.ToArray(), Is.EqualTo(data.Take(6).ToArray()).AsCollection);
+        CallbackAssert.Equal(first.ToArray(), data.Take(6).ToArray());
         writer.Deallocate(first);
 
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(data.Skip(6).ToArray()).AsCollection);
+        CallbackAssert.Equal(writer.GetBuffer().ToArray(), data.Skip(6).ToArray());
     }
 
     [Test]
-    public void Deallocate_EndingAtSegmentBoundary_ContinuesInNextSegment()
+    public async Task Deallocate_EndingAtSegmentBoundary_ContinuesInNextSegment()
     {
         // Blocks are rented with at least 16 bytes; fill the first block exactly, then start a second one.
         var writer = BufferWriter.Create(16);
@@ -174,51 +172,51 @@ internal class BufferWriterTests
 
         writer.Deallocate(buffer);
 
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }).AsCollection);
-        Assert.That(writer.Length, Is.EqualTo(3));
+        await Assert.That(writer.GetBuffer().ToArray()).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
+        await Assert.That(writer.Length).IsEqualTo(3);
     }
 
     [Test]
-    public void Deallocate_MultipleSegments_ReleasesThemAll()
+    public async Task Deallocate_MultipleSegments_ReleasesThemAll()
     {
         var writer = BufferWriter.Create(16);
         for (var i = 0; i < 10; i++)
             Write(writer, new byte[16]);
 
         var buffer = writer.GetBuffer();
-        Assert.That(buffer.IsSingleSegment, Is.False);
+        await Assert.That(buffer.IsSingleSegment).IsFalse();
 
         writer.Deallocate(buffer);
-        Assert.That(writer.Length, Is.Zero);
+        await Assert.That(writer.Length).IsZero();
 
         // The writer keeps working on the remaining (or new) segments.
         Write(writer, new byte[] { 7 });
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 7 }).AsCollection);
+        await Assert.That(writer.GetBuffer().ToArray()).IsEquivalentTo(new byte[] { 7 }, CollectionOrdering.Matching);
     }
 
     // Pool return: each test writes 16-byte blocks into 16-byte segments, so segment i holds block i and the
     // arrays rented are known in order.
 
     [Test]
-    public void Deallocate_ReturnsReleasedArraysToThePool()
+    public async Task Deallocate_ReturnsReleasedArraysToThePool()
     {
         var pool = new RecordingArrayPool();
         var writer = BufferWriter.Create(pool, 16);
         for (var i = 0; i < 3; i++)
             Write(writer, new byte[16]);
-        Assert.That(pool.Rented, Has.Count.EqualTo(3));
+        await Assert.That(pool.Rented).Count().IsEqualTo(3);
 
         writer.Deallocate(writer.GetBuffer());
 
         // The last segment stays as the head (the writer continues in it); the others go back to the pool.
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(2), CollectionOrdering.Matching);
 
         writer.Dispose();
-        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented);
     }
 
     [Test]
-    public void ReleaseTo_ReturnsOnlyFullyConsumedSegments()
+    public async Task ReleaseTo_ReturnsOnlyFullyConsumedSegments()
     {
         var pool = new RecordingArrayPool();
         var writer = BufferWriter.Create(pool, 16);
@@ -227,15 +225,15 @@ internal class BufferWriterTests
 
         // All of the first segment and part of the second.
         writer.ReleaseTo(20);
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(1)).AsCollection);
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(1), CollectionOrdering.Matching);
 
         writer.ReleaseTo(writer.GetBuffer().GetPosition(12));
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
-        Assert.That(writer.Length, Is.EqualTo(16));
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(2), CollectionOrdering.Matching);
+        await Assert.That(writer.Length).IsEqualTo(16);
     }
 
     [Test]
-    public void Dispose_ReturnsEveryRentedArray()
+    public async Task Dispose_ReturnsEveryRentedArray()
     {
         var pool = new RecordingArrayPool();
         var writer = BufferWriter.Create(pool, 16);
@@ -245,8 +243,8 @@ internal class BufferWriterTests
 
         writer.Dispose();
 
-        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
-        Assert.That(pool.Returned.Distinct().Count(), Is.EqualTo(pool.Returned.Count), "an array was returned twice");
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented);
+        await Assert.That(pool.Returned.Distinct().Count()).IsEqualTo(pool.Returned.Count).Because("an array was returned twice");
     }
 
     private static void Write(BufferWriter writer, ReadOnlySpan<byte> data)
@@ -274,7 +272,7 @@ internal class BufferWriterTests
     }
 
     [Test]
-    public void Deallocate_FullSequence_ClearsBuffer()
+    public async Task Deallocate_FullSequence_ClearsBuffer()
     {
         var writer = BufferWriter.Create(128);
         var data = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
@@ -283,11 +281,11 @@ internal class BufferWriterTests
 
         var seq = writer.GetBuffer();
         writer.Deallocate(seq);
-        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
+        await Assert.That(writer.GetBuffer().Length).IsEqualTo(0);
     }
 
     [Test]
-    public void ReleaseTo_CountGreaterThanBuffered_Throws()
+    public async Task ReleaseTo_CountGreaterThanBuffered_Throws()
     {
         var writer = BufferWriter.Create(128);
         var data = new byte[20];
@@ -295,35 +293,35 @@ internal class BufferWriterTests
         data.CopyTo(span);
         writer.Advance(data.Length);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => writer.ReleaseTo(data.Length + 10));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => writer.ReleaseTo(data.Length + 10));
     }
 
     [Test]
-    public void Dispose_ClearsBuffer_And_IsIdempotent()
+    public async Task Dispose_ClearsBuffer_And_IsIdempotent()
     {
         var writer = BufferWriter.Create(64);
         writer.GetSpan(10);
         writer.Advance(10);
 
         writer.Dispose();
-        Assert.That(writer.GetBuffer().Length, Is.Zero);
+        await Assert.That(writer.GetBuffer().Length).IsZero();
 
         // second dispose must not throw
-        Assert.DoesNotThrow(() => writer.Dispose());
+        await Assert.That(() => writer.Dispose()).ThrowsNothing();
     }
     
     [Test]
-    public void GetSpan_DoesNotCommitUntilAdvance()
+    public async Task GetSpan_DoesNotCommitUntilAdvance()
     {
         var writer = BufferWriter.Create(32);
         var span = writer.GetSpan(10);
         for (int i = 0; i < 10; i++) span[i] = (byte)i;
 
         // not yet committed
-        Assert.That(writer.GetBuffer().Length, Is.Zero);
+        await Assert.That(writer.GetBuffer().Length).IsZero();
 
         writer.Advance(10);
-        Assert.That(writer.GetBuffer().Length, Is.EqualTo(10));
+        await Assert.That(writer.GetBuffer().Length).IsEqualTo(10);
     }
 
 

@@ -114,7 +114,7 @@ internal sealed class BenchConnection : IAsyncDisposable
         _proxy?.Dispose();
     }
 
-    // TLS 1.3 on both sides, the certificate shared with the integration tests (src/server.pfx).
+    // TLS 1.3 on both sides, the certificate shared with the integration tests (src/NexNet.IntegrationTests/certs/server.pfx).
     private static SslServerAuthenticationOptions ServerTls() => new()
     {
         CertificateRevocationCheckMode = X509RevocationMode.NoCheck,

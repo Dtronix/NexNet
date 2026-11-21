@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -42,6 +46,92 @@ public static partial class NexNetMiddlewareExtensions
             sp.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>().ContextProvider);
 
         return services;
+    }
+
+    /// <summary>
+    /// Adds a Nexus Server configured by <paramref name="configure"/> to the service collection, with a hosted service
+    /// that starts it once the application has started (after Kestrel binds) and stops it when the application stops.
+    /// </summary>
+    /// <param name="services">The <see cref="IServiceCollection"/> to add the service to.</param>
+    /// <param name="configure">Sets the primary configuration and adds listener endpoints, for example
+    /// <c>o => { o.Configure(primary); o.AddListener(tcp, "tcp"); }</c>. Runs when the server is first resolved.
+    /// WebSocket and HttpSocket endpoints are mapped on the app with <c>MapNexusWebSocket</c> and
+    /// <c>MapNexusHttpSocket</c>.</param>
+    /// <returns>A reference to this instance after the operation has completed.</returns>
+    public static IServiceCollection AddNexusServer<
+        // The DI container constructs the nexus for every connection.
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TServerNexus,
+        TClientProxy>(this IServiceCollection services, Action<NexusServerOptions<TServerNexus, TClientProxy>> configure)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddTransient<TServerNexus>();
+
+        services.AddSingleton(sp =>
+        {
+            var options = new NexusServerOptions<TServerNexus, TClientProxy>();
+            configure(options);
+            var server = new NexusServer<TServerNexus, TClientProxy>();
+            options.Apply(server, sp);
+            return server;
+        });
+
+        services.AddSingleton<ServerNexusContextProvider<TServerNexus, TClientProxy>>(sp =>
+            sp.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>().ContextProvider);
+
+        services.AddHostedService(sp => new NexusServerHostedService(
+            sp.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>(),
+            sp.GetRequiredService<IHostApplicationLifetime>(),
+            sp.GetService<ILogger<INexusServer>>()));
+
+        return services;
+    }
+
+    /// <summary>
+    /// The endpoint a Map* call routes to: an external endpoint added for <paramref name="config"/> when it is not the
+    /// primary configuration of an already configured server; null to route to the primary endpoint (the primary
+    /// configuration, or a server not configured yet when the map is made, as before endpoints existed).
+    /// </summary>
+    private static INexusExternalEndpoint? ResolveEndpoint<TServerNexus, TClientProxy>(
+        WebApplication app,
+        AspServerConfig config,
+        ref NexusServer<TServerNexus, TClientProxy>? server,
+        string? name,
+        bool requireConfigured)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        server ??= app.Services.GetService<NexusServer<TServerNexus, TClientProxy>>();
+
+        if (server is not { IsConfigured: true })
+        {
+            if (requireConfigured)
+                throw new InvalidOperationException("Configure the server before mapping endpoints to it.");
+            return null;
+        }
+
+        if (ReferenceEquals(server.Config, config))
+            return null;
+
+        if (name == null)
+        {
+            // Named after the transport, or after transport and path when that name is taken (several WebSocket
+            // endpoints, or a WebSocket primary endpoint).
+            name = config.TransportName;
+            foreach (var endpoint in server.Endpoints)
+            {
+                if (endpoint.Name == name)
+                {
+                    name = config.TransportName + config.Path;
+                    break;
+                }
+            }
+        }
+
+        return (INexusExternalEndpoint)server.AddExternalEndpoint(config, name);
     }
     
     /// <summary>

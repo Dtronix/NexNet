@@ -15,13 +15,23 @@
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
     <File Path="Directory.Build.props" />
+    <File Path="..\global.json" />
   </Folder>
   <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="C#" />
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
+  <Project Path="NexNet.GoldenVectors\NexNet.GoldenVectors.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
+  <Project Path="NexNet.Interop.Abstractions\NexNet.Interop.Abstractions.csproj" />
+  <Project Path="NexNet.Interop\NexNet.Interop.csproj" />
+  <Project Path="NexNet.Interop\SelfTest\NexNet.Interop.SelfTest.csproj" />
+  <Project Path="NexNet.Interop.Tests\NexNet.Interop.Tests.csproj" />
+  <Project Path="NexNet.InteropServer\NexNet.InteropServer.csproj" />
+  <Project Path="NexNet.InteropServer\Cli\NexNet.InteropServer.Cli.csproj" />
+  <Project Path="NexNet.InteropServer\SelfTest\NexNet.InteropServer.SelfTest.csproj" />
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
   <Project Path="NexNet.Serialization.Tests\NexNet.Serialization.Tests.csproj" />
+  <Project Path="NexNet.TestNexus\NexNet.TestNexus.csproj" />
   <Project Path="NexNet.Fuzz\NexNet.Fuzz.csproj" />
   <Project Path="NexNetBenchmarks\NexNetBenchmarks.csproj" />
   <Project Path="NexNet\NexNet.csproj" />

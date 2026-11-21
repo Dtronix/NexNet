@@ -73,7 +73,10 @@ public class QuicServerConfig : ServerConfig
     /// Endpoint to bind to.
     /// </summary>
     public required IPEndPoint EndPoint { get; set; }
-    
+
+    /// <inheritdoc />
+    internal override IPEndPoint? UdpEndPoint => EndPoint;
+
     /// <summary>
     /// Sets the server mode.
     /// </summary>
@@ -84,7 +87,6 @@ public class QuicServerConfig : ServerConfig
     }
 
 
-    /// <param name="cancellationToken"></param>
     /// <inheritdoc />
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {

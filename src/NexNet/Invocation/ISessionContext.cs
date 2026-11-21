@@ -54,6 +54,17 @@ public interface ISessionContext
     ClaimsPrincipal? User { get; }
 
     /// <summary>
+    /// On a server, the endpoint the session was accepted on: its name, transport, whether the connection is
+    /// encrypted, and the request path for ASP.NET endpoints. Null in a client nexus.
+    /// </summary>
+    /// <remarks>
+    /// Set when the connection is accepted, so it is readable from <c>OnAuthenticate</c> onward. For WebSocket and
+    /// HttpSocket endpoints <see cref="NexusEndpointInfo.IsSecure"/> is <c>HttpRequest.IsHttps</c> of the request
+    /// that opened the connection.
+    /// </remarks>
+    NexusEndpointInfo? Endpoint => null;
+
+    /// <summary>
     /// Creates a pipe for use with the current session.
     /// </summary>
     /// <returns>Pipe for communication over teh current session.</returns>

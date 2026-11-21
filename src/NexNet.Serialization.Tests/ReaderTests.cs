@@ -4,7 +4,6 @@ using static NexNet.Serialization.Tests.TestHelpers;
 
 namespace NexNet.Serialization.Tests;
 
-[TestFixture]
 public class ReaderTests
 {
     private delegate void ReferenceOp(ref MessagePackWriter writer);
@@ -19,7 +18,7 @@ public class ReaderTests
     }
 
     [Test]
-    public void ReadsEveryIntegerForm()
+    public async Task ReadsEveryIntegerForm()
     {
         // 5 encoded in every form MessagePack allows.
         var forms = new[]
@@ -37,16 +36,16 @@ public class ReaderTests
 
         foreach (var form in forms)
         {
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt32()), Is.EqualTo(5), Hex(form));
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt64()), Is.EqualTo(5L), Hex(form));
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadUInt64()), Is.EqualTo(5UL), Hex(form));
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadByte()), Is.EqualTo((byte)5), Hex(form));
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadUInt16()), Is.EqualTo((ushort)5), Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt32())).IsEqualTo(5).Because(Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt64())).IsEqualTo(5L).Because(Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadUInt64())).IsEqualTo(5UL).Because(Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadByte())).IsEqualTo((byte)5).Because(Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadUInt16())).IsEqualTo((ushort)5).Because(Hex(form));
         }
     }
 
     [Test]
-    public void ReadsNegativeForms()
+    public async Task ReadsNegativeForms()
     {
         var forms = new[]
         {
@@ -59,40 +58,41 @@ public class ReaderTests
 
         foreach (var form in forms)
         {
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt32()), Is.EqualTo(-5), Hex(form));
-            Assert.That(Read(form, (ref MsgPackReader r) => r.ReadSByte()), Is.EqualTo((sbyte)-5), Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadInt32())).IsEqualTo(-5).Because(Hex(form));
+            await Assert.That(Read(form, (ref MsgPackReader r) => r.ReadSByte())).IsEqualTo((sbyte)-5).Because(Hex(form));
         }
     }
 
     [Test]
-    public void IntegerOverflowThrows()
+    public async Task IntegerOverflowThrows()
     {
         var big = Write((ref MsgPackWriter w) => w.Write(300));
-        Assert.Throws<NexusSerializationException>(() => Read(big, (ref MsgPackReader r) => r.ReadByte()));
+        await Assert.That(() => Read(big, (ref MsgPackReader r) => r.ReadByte())).ThrowsExactly<NexusSerializationException>();
 
         var negative = Write((ref MsgPackWriter w) => w.Write(-1));
-        Assert.Throws<NexusSerializationException>(() => Read(negative, (ref MsgPackReader r) => r.ReadUInt32()));
+        await Assert.That(() => Read(negative, (ref MsgPackReader r) => r.ReadUInt32())).ThrowsExactly<NexusSerializationException>();
 
         var huge = Write((ref MsgPackWriter w) => w.Write(ulong.MaxValue));
-        Assert.Throws<NexusSerializationException>(() => Read(huge, (ref MsgPackReader r) => r.ReadInt64()));
+        await Assert.That(() => Read(huge, (ref MsgPackReader r) => r.ReadInt64())).ThrowsExactly<NexusSerializationException>();
     }
 
     [Test]
-    public void FloatsAcceptOtherNumericForms()
+    public async Task FloatsAcceptOtherNumericForms()
     {
         var f32 = Write((ref MsgPackWriter w) => w.Write(1.5f));
-        Assert.That(Read(f32, (ref MsgPackReader r) => r.ReadDouble()), Is.EqualTo(1.5));
+        await Assert.That(Read(f32, (ref MsgPackReader r) => r.ReadDouble())).IsEqualTo(1.5);
         var f64 = Write((ref MsgPackWriter w) => w.Write(2.5d));
-        Assert.That(Read(f64, (ref MsgPackReader r) => r.ReadSingle()), Is.EqualTo(2.5f));
+        await Assert.That(Read(f64, (ref MsgPackReader r) => r.ReadSingle())).IsEqualTo(2.5f);
         var i = Write((ref MsgPackWriter w) => w.Write(7));
-        Assert.That(Read(i, (ref MsgPackReader r) => r.ReadDouble()), Is.EqualTo(7d));
+        await Assert.That(Read(i, (ref MsgPackReader r) => r.ReadDouble())).IsEqualTo(7d);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(7)]
-    public void ReadsAcrossSegments(int segmentSize)
+    [Test]
+    [Arguments(1)]
+    [Arguments(2)]
+    [Arguments(3)]
+    [Arguments(7)]
+    public async Task ReadsAcrossSegments(int segmentSize)
     {
         var data = Write((ref MsgPackWriter w) =>
         {
@@ -103,44 +103,59 @@ public class ReaderTests
             w.Write(3.14159);
         });
 
-        var reader = new MsgPackReader(Segmented(data, segmentSize));
-        Assert.That(reader.ReadArrayHeader(), Is.EqualTo(4));
-        Assert.That(reader.ReadInt32(), Is.EqualTo(int.MinValue));
-        Assert.That(reader.ReadInt64(), Is.EqualTo(long.MaxValue));
-        Assert.That(reader.ReadString(), Is.EqualTo("a string that crosses several segments 字"));
-        Assert.That(reader.ReadDouble(), Is.EqualTo(3.14159));
-        Assert.That(reader.End, Is.True);
+        // The reader is a ref struct and cannot live across an await: read everything first, then assert.
+        int header, int32;
+        long int64;
+        string? text;
+        double number;
+        bool end;
+        {
+            var reader = new MsgPackReader(Segmented(data, segmentSize));
+            header = reader.ReadArrayHeader();
+            int32 = reader.ReadInt32();
+            int64 = reader.ReadInt64();
+            text = reader.ReadString();
+            number = reader.ReadDouble();
+            end = reader.End;
+        }
+
+        await Assert.That(header).IsEqualTo(4);
+        await Assert.That(int32).IsEqualTo(int.MinValue);
+        await Assert.That(int64).IsEqualTo(long.MaxValue);
+        await Assert.That(text).IsEqualTo("a string that crosses several segments 字");
+        await Assert.That(number).IsEqualTo(3.14159);
+        await Assert.That(end).IsTrue();
     }
 
     [Test]
-    public void StrictUtf8RejectsInvalidBytes()
+    public async Task StrictUtf8RejectsInvalidBytes()
     {
         // fixstr of length 2 with an invalid UTF-8 sequence.
         var data = new byte[] { 0xa2, 0xc3, 0x28 };
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.ReadString()));
-        Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted), Is.EqualTo("�("));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.ReadString())).ThrowsExactly<NexusSerializationException>();
+        await Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted)).IsEqualTo("�(");
     }
 
     [Test]
-    public void ArrayHeaderLargerThanRemainingIsRejectedBeforeAllocation()
+    public async Task ArrayHeaderLargerThanRemainingIsRejectedBeforeAllocation()
     {
         // array32 claiming 4 billion elements with no data.
         var data = new byte[] { 0xdd, 0xff, 0xff, 0xff, 0xff };
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.ReadArrayHeader()));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.ReadArrayHeader())).ThrowsExactly<NexusSerializationException>();
 
         var map = new byte[] { 0xdf, 0x00, 0x00, 0x00, 0x02, 0x01, 0x02, 0x03 };
-        Assert.Throws<NexusSerializationException>(() => Read(map, (ref MsgPackReader r) => r.ReadMapHeader()));
+        await Assert.That(() => Read(map, (ref MsgPackReader r) => r.ReadMapHeader())).ThrowsExactly<NexusSerializationException>();
     }
 
     [Test]
-    public void BinaryLengthLargerThanRemainingIsRejected()
+    public async Task BinaryLengthLargerThanRemainingIsRejected()
     {
         var data = new byte[] { 0xc6, 0x7f, 0xff, 0xff, 0xff, 0x00 };
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.ReadBinaryToArray()));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.ReadBinaryToArray())).ThrowsExactly<NexusSerializationException>();
     }
 
     [Test]
-    public void DepthLimitIsEnforced()
+    public async Task DepthLimitIsEnforced()
     {
         // 100 nested arrays of one element, then nil.
         var data = new byte[101];
@@ -149,30 +164,30 @@ public class ReaderTests
         data[100] = 0xc0;
 
         var options = NexusSerializerOptions.Untrusted with { MaxDepth = 10 };
-        Assert.Throws<NexusSerializationException>(() =>
+        await Assert.That(() =>
         {
             var reader = new MsgPackReader(data, options);
             object? value = null;
             new NestedFormatter().Deserialize(ref reader, ref value);
-        });
+        }).ThrowsExactly<NexusSerializationException>();
 
         var ok = new MsgPackReader(data, NexusSerializerOptions.Untrusted with { MaxDepth = 200 });
         object? okValue = null;
         new NestedFormatter().Deserialize(ref ok, ref okValue);
-        Assert.That(ok.End, Is.True);
+        await Assert.That(ok.End).IsTrue();
     }
 
     [Test]
-    public void ElementLimitCountsCumulativelyAcrossNestedContainers()
+    public async Task ElementLimitCountsCumulativelyAcrossNestedContainers()
     {
         // Three arrays of four nils: 3 + 12 = 15 elements, each array within a limit of 10 on its own.
         var data = new byte[] { 0x93, 0x94, 0xc0, 0xc0, 0xc0, 0xc0, 0x94, 0xc0, 0xc0, 0xc0, 0xc0, 0x94, 0xc0, 0xc0, 0xc0, 0xc0 };
 
-        Assert.Throws<NexusSerializationException>(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 10 }));
-        Assert.DoesNotThrow(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 15 }));
+        await Assert.That(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 10 })).ThrowsExactly<NexusSerializationException>();
+        await Assert.That(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 15 })).ThrowsNothing();
 
         // 0, the default, means no limit.
-        Assert.DoesNotThrow(() => ReadNested(data, NexusSerializerOptions.Untrusted));
+        await Assert.That(() => ReadNested(data, NexusSerializerOptions.Untrusted)).ThrowsNothing();
 
         static void ReadNested(byte[] data, NexusSerializerOptions options)
         {
@@ -188,18 +203,18 @@ public class ReaderTests
     }
 
     [Test]
-    public void ElementLimitCountsMapEntriesAsKeyAndValue()
+    public async Task ElementLimitCountsMapEntriesAsKeyAndValue()
     {
         // A map of three pairs is six elements.
         var data = new byte[] { 0x83, 0x01, 0xc0, 0x02, 0xc0, 0x03, 0xc0 };
 
-        Assert.Throws<NexusSerializationException>(() =>
+        await Assert.That(() =>
         {
             var reader = new MsgPackReader(data, NexusSerializerOptions.Untrusted with { MaxElements = 5 });
             reader.ReadMapHeader();
-        });
+        }).ThrowsExactly<NexusSerializationException>();
         var ok = new MsgPackReader(data, NexusSerializerOptions.Untrusted with { MaxElements = 6 });
-        Assert.That(ok.ReadMapHeader(), Is.EqualTo(3));
+        await Assert.That(ok.ReadMapHeader()).IsEqualTo(3);
     }
 
     private sealed class NestedFormatter : NexusFormatter<object>
@@ -220,14 +235,14 @@ public class ReaderTests
     }
 
     [Test]
-    public void NeverUsedCodeThrows()
+    public async Task NeverUsedCodeThrows()
     {
         var data = new byte[] { 0xc1 };
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.TrySkip()));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.TrySkip())).ThrowsExactly<NexusSerializationException>();
     }
 
     [Test]
-    public void ReadRawValueReturnsExactlyOneValue()
+    public async Task ReadRawValueReturnsExactlyOneValue()
     {
         var data = Write((ref MsgPackWriter w) =>
         {
@@ -239,14 +254,20 @@ public class ReaderTests
             w.Write(99);
         });
 
-        var reader = new MsgPackReader(data);
-        var raw = reader.ReadRawValue();
-        Assert.That(raw.Length, Is.EqualTo(data.Length - 1));
-        Assert.That(reader.ReadInt32(), Is.EqualTo(99));
+        long rawLength;
+        int next;
+        {
+            var reader = new MsgPackReader(data);
+            rawLength = reader.ReadRawValue().Length;
+            next = reader.ReadInt32();
+        }
+
+        await Assert.That(rawLength).IsEqualTo(data.Length - 1);
+        await Assert.That(next).IsEqualTo(99);
     }
 
     [Test]
-    public void TrySkipReturnsFalseOnTruncatedData()
+    public async Task TrySkipReturnsFalseOnTruncatedData()
     {
         var data = Write((ref MsgPackWriter w) =>
         {
@@ -259,63 +280,78 @@ public class ReaderTests
 
         for (var cut = 0; cut < data.Length; cut++)
         {
-            var reader = new MsgPackReader(data.AsMemory(0, cut));
-            Assert.That(reader.TrySkip(), Is.False, $"cut {cut}");
-            Assert.That(reader.Consumed, Is.EqualTo(0));
+            var (skipped, _, consumed) = TrySkip(data.AsMemory(0, cut));
+            await Assert.That(skipped).IsFalse().Because($"cut {cut}");
+            await Assert.That(consumed).IsEqualTo(0);
         }
 
-        var full = new MsgPackReader(data);
-        Assert.That(full.TrySkip(), Is.True);
-        Assert.That(full.End, Is.True);
+        var full = TrySkip(data);
+        await Assert.That(full.Skipped).IsTrue();
+        await Assert.That(full.End).IsTrue();
     }
 
     [Test]
-    public void TrySkipHandlesDeepNestingWithoutStack()
+    public async Task TrySkipHandlesDeepNestingWithoutStack()
     {
         var depth = 1_000_000;
         var data = new byte[depth + 1];
         Array.Fill(data, (byte)0x91, 0, depth);
         data[depth] = 0xc0;
-        var reader = new MsgPackReader(data);
-        Assert.That(reader.TrySkip(), Is.True);
-        Assert.That(reader.End, Is.True);
+        var (skipped, end, _) = TrySkip(data);
+        await Assert.That(skipped).IsTrue();
+        await Assert.That(end).IsTrue();
     }
 
     [Test]
-    public void TrySkipMatchesReferenceOnValidData()
+    public async Task TrySkipMatchesReferenceOnValidData()
     {
         var random = new Random(1234);
         for (var i = 0; i < 200; i++)
         {
             var value = RandomObject(random, 0);
             var bytes = MessagePackSerializer.Serialize<object?>(value);
-            var reader = new MsgPackReader(bytes);
-            Assert.That(reader.TrySkip(), Is.True);
-            Assert.That(reader.End, Is.True);
+            var (skipped, end, _) = TrySkip(bytes);
+            await Assert.That(skipped).IsTrue();
+            await Assert.That(end).IsTrue();
         }
     }
 
     [Test]
-    public void TrySkipNeverOverrunsOnRandomBytes()
+    public async Task TrySkipNeverOverrunsOnRandomBytes()
     {
         var random = new Random(42);
         for (var i = 0; i < 20000; i++)
         {
             var data = new byte[random.Next(0, 64)];
             random.NextBytes(data);
-            var reader = new MsgPackReader(data);
+            bool skipped;
+            long consumed;
             try
             {
-                if (reader.TrySkip())
-                    Assert.That(reader.Consumed, Is.LessThanOrEqualTo(data.Length));
-                else
-                    Assert.That(reader.Consumed, Is.EqualTo(0));
+                (skipped, _, consumed) = TrySkip(data);
             }
             catch (NexusSerializationException)
             {
                 // Malformed input is expected to throw this exception only.
+                continue;
             }
+
+            if (skipped)
+                await Assert.That(consumed).IsLessThanOrEqualTo(data.Length);
+            else
+                await Assert.That(consumed).IsEqualTo(0);
         }
+    }
+
+    /// <summary>
+    /// Runs <see cref="MsgPackReader.TrySkip"/> on a fresh reader and returns what the assertions need, so the
+    /// ref struct reader is never live across an await.
+    /// </summary>
+    private static (bool Skipped, bool End, long Consumed) TrySkip(ReadOnlyMemory<byte> data)
+    {
+        var reader = new MsgPackReader(data);
+        var skipped = reader.TrySkip();
+        return (skipped, reader.End, reader.Consumed);
     }
 
     internal static object? RandomObject(Random random, int depth)

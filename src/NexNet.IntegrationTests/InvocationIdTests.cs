@@ -1,7 +1,6 @@
 using NexNet.IntegrationTests.SessionManagement;
 using NexNet.Invocation;
 using NexNet.Pools;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -12,7 +11,7 @@ internal class InvocationIdTests
     private MockNexusSession _mockSession = null!;
     private PoolManager _poolManager = null!;
 
-    [SetUp]
+    [Before(HookType.Test)]
     public void SetUp()
     {
         _mockSession = new MockNexusSession();
@@ -20,7 +19,7 @@ internal class InvocationIdTests
     }
 
     [Test]
-    public void GetNextId_SequentialGeneration_ReturnsUniqueIds()
+    public async Task GetNextId_SequentialGeneration_ReturnsUniqueIds()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -28,12 +27,12 @@ internal class InvocationIdTests
         for (int i = 0; i < 1000; i++)
         {
             var id = manager.GetNextId(true);
-            Assert.That(ids.Add(id), Is.True, $"Duplicate ID generated at iteration {i}");
+            await Assert.That(ids.Add(id)).IsTrue().Because($"Duplicate ID generated at iteration {i}");
         }
     }
 
     [Test]
-    public void GetNextId_WithoutAddingToInvocations_DoesNotTrack()
+    public async Task GetNextId_WithoutAddingToInvocations_DoesNotTrack()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -42,15 +41,15 @@ internal class InvocationIdTests
         var id2 = manager.GetNextId(false);
 
         // They should be sequential
-        Assert.That(id2, Is.EqualTo((ushort)(id1 + 1)));
+        await Assert.That(id2).IsEqualTo((ushort)(id1 + 1));
 
         // Get an ID with tracking - should work since previous IDs weren't tracked
         var id3 = manager.GetNextId(true);
-        Assert.That(id3, Is.EqualTo((ushort)(id2 + 1)));
+        await Assert.That(id3).IsEqualTo((ushort)(id2 + 1));
     }
 
     [Test]
-    public void GetNextId_WithWraparound_HandlesCorrectly()
+    public async Task GetNextId_WithWraparound_HandlesCorrectly()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -62,7 +61,7 @@ internal class InvocationIdTests
         }
 
         // All IDs should be unique
-        Assert.That(ids.Distinct().Count(), Is.EqualTo(100));
+        await Assert.That(ids.Distinct().Count()).IsEqualTo(100);
     }
 
     [Test]
@@ -88,11 +87,11 @@ internal class InvocationIdTests
 
         // All 1000 IDs should be unique
         var uniqueIds = ids.Distinct().ToList();
-        Assert.That(uniqueIds.Count, Is.EqualTo(1000), "Not all concurrent IDs were unique");
+        await Assert.That(uniqueIds.Count).IsEqualTo(1000).Because("Not all concurrent IDs were unique");
     }
 
     [Test]
-    public void GetNextId_AfterRemoval_CanReuseId()
+    public async Task GetNextId_AfterRemoval_CanReuseId()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -113,11 +112,12 @@ internal class InvocationIdTests
             newIds.Add(manager.GetNextId(true));
         }
 
-        Assert.That(newIds.Distinct().Count(), Is.EqualTo(10), "Should be able to get unique IDs after clearing");
+        await Assert.That(newIds.Distinct().Count()).IsEqualTo(10).Because("Should be able to get unique IDs after clearing");
     }
 
     [Test]
-    public void GetNextId_HashSetLookup_IsEfficient()
+    [NotInParallel]
+    public async Task GetNextId_HashSetLookup_IsEfficient()
     {
         // This test verifies that the lookup is O(1) by testing performance
         // with many active invocations
@@ -139,12 +139,11 @@ internal class InvocationIdTests
 
         // Should complete in reasonable time (less than 100ms for 1000 operations)
         // With O(n) lookup this would be much slower
-        Assert.That(sw.ElapsedMilliseconds, Is.LessThan(100),
-            "ID generation should be fast with HashSet O(1) lookup");
+        await Assert.That(sw.ElapsedMilliseconds).IsLessThan(100).Because("ID generation should be fast with HashSet O(1) lookup");
     }
 
     [Test]
-    public void CancelAll_ClearsAllTrackedInvocations()
+    public async Task CancelAll_ClearsAllTrackedInvocations()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -167,11 +166,11 @@ internal class InvocationIdTests
         }
 
         // All new IDs should be unique among themselves
-        Assert.That(newIds.Distinct().Count(), Is.EqualTo(100));
+        await Assert.That(newIds.Distinct().Count()).IsEqualTo(100);
     }
 
     [Test]
-    public void GetNextId_NonTracked_DoesNotAffectTrackedIds()
+    public async Task GetNextId_NonTracked_DoesNotAffectTrackedIds()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
@@ -188,11 +187,11 @@ internal class InvocationIdTests
         var trackedId2 = manager.GetNextId(true);
 
         // Both tracked IDs should be unique (they are different)
-        Assert.That(trackedId1, Is.Not.EqualTo(trackedId2));
+        await Assert.That(trackedId1).IsNotEqualTo(trackedId2);
     }
 
     [Test]
-    public void UpdateInvocationResult_Unsolicited_ReturnsMessageToPool()
+    public async Task UpdateInvocationResult_Unsolicited_ReturnsMessageToPool()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
         var message = _poolManager.Rent<NexNet.Messages.InvocationResultMessage>();
@@ -201,7 +200,7 @@ internal class InvocationIdTests
         // No call is waiting for this result. It used to be dropped without returning it to its pool.
         manager.UpdateInvocationResult(message);
 
-        Assert.That(_poolManager.Rent<NexNet.Messages.InvocationResultMessage>(), Is.SameAs(message));
+        await Assert.That(_poolManager.Rent<NexNet.Messages.InvocationResultMessage>()).IsSameReferenceAs(message);
     }
 
     [Test]
@@ -212,11 +211,11 @@ internal class InvocationIdTests
 
         var state = NexNet.Internals.RegisteredInvocationState.Rent();
         await manager.InvokeMethodWithResultCore(state, 0, Memory<byte>.Empty, _mockSession, cts.Token);
-        Assert.That(state.TrySetResult(), Is.True, "The sent call is left for its result");
+        await Assert.That(state.TrySetResult()).IsTrue().Because("The sent call is left for its result");
 
         // Released on completion, also when nothing reads the result: cancelling later does not reach the state.
         cts.Cancel();
-        Assert.That(state.IsCanceled, Is.False);
+        await Assert.That(state.IsCanceled).IsFalse();
         state.Return();
     }
 
@@ -230,9 +229,9 @@ internal class InvocationIdTests
         var state = NexNet.Internals.RegisteredInvocationState.Rent();
         var version = state.Version;
         await manager.InvokeMethodWithResultCore(state, 0, arguments, _mockSession);
-        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await new ValueTask(state, version));
+        await Assert.ThrowsExactlyAsync<NexusMessageTooLargeException>(async () => await new ValueTask(state, version));
 
         // The rejected call took no ID, so the next ID is the first one.
-        Assert.That(manager.GetNextId(true), Is.EqualTo(1));
+        await Assert.That(manager.GetNextId(true)).IsEqualTo(1);
     }
 }

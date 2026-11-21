@@ -1,5 +1,4 @@
 ﻿using NexNet.Internals.Collections.Lists;
-using NUnit.Framework;
 using System.Collections.Concurrent;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -7,289 +6,289 @@ namespace NexNet.IntegrationTests.Collections;
 internal class IndexedCircularListTests
 {
     [Test]
-    public void Constructor_DefaultCapacity_InitialCountIsZero()
+    public async Task Constructor_DefaultCapacity_InitialCountIsZero()
     {
         var list = new IndexedCircularList<string>();
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Constructor_WithCapacity_InitialCountIsZeroAndIndices()
+    public async Task Constructor_WithCapacity_InitialCountIsZeroAndIndices()
     {
         var list = new IndexedCircularList<string>(5);
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.FirstIndex, Is.EqualTo(0));
-        Assert.That(list.LastIndex, Is.EqualTo(-1));
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.FirstIndex).IsEqualTo(0);
+        await Assert.That(list.LastIndex).IsEqualTo(-1);
     }
 
     [Test]
-    public void Constructor_WithZeroCapacity_ThrowsArgumentException()
+    public async Task Constructor_WithZeroCapacity_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new IndexedCircularList<string>(0));
+        Assert.ThrowsExactly<ArgumentException>(() => new IndexedCircularList<string>(0));
     }
 
     [Test]
-    public void Constructor_WithNegativeCapacity_ThrowsArgumentException()
+    public async Task Constructor_WithNegativeCapacity_ThrowsArgumentException()
     {
-        Assert.Throws<ArgumentException>(() => new IndexedCircularList<string>(-1));
+        Assert.ThrowsExactly<ArgumentException>(() => new IndexedCircularList<string>(-1));
     }
 
     [Test]
-    public void Add_SingleItem_ReturnsZeroIndex()
+    public async Task Add_SingleItem_ReturnsZeroIndex()
     {
         var list = new IndexedCircularList<string>();
         var index = list.Add("A");
-        Assert.That(index, Is.EqualTo(0));
+        await Assert.That(index).IsEqualTo(0);
     }
 
     [Test]
-    public void Add_MultipleItems_ReturnsIncrementalIndices()
+    public async Task Add_MultipleItems_ReturnsIncrementalIndices()
     {
         var list = new IndexedCircularList<string>();
         var idx1 = list.Add("A");
         var idx2 = list.Add("B");
-        Assert.That(idx1, Is.EqualTo(0));
-        Assert.That(idx2, Is.EqualTo(1));
+        await Assert.That(idx1).IsEqualTo(0);
+        await Assert.That(idx2).IsEqualTo(1);
     }
 
     [Test]
-    public void Add_UnderCapacity_IncreasesCount()
+    public async Task Add_UnderCapacity_IncreasesCount()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.Count, Is.EqualTo(2));
+        await Assert.That(list.Count).IsEqualTo(2);
     }
 
     [Test]
-    public void Add_AtCapacity_DoesNotIncreaseCountBeyondCapacity()
+    public async Task Add_AtCapacity_DoesNotIncreaseCountBeyondCapacity()
     {
         var list = new IndexedCircularList<string>(2);
         list.Add("A");
         list.Add("B");
         list.Add("C");
-        Assert.That(list.Count, Is.EqualTo(2));
+        await Assert.That(list.Count).IsEqualTo(2);
     }
 
     [Test]
-    public void Count_AfterAdds_ReturnsCorrectCount()
+    public async Task Count_AfterAdds_ReturnsCorrectCount()
     {
         var list = new IndexedCircularList<string>(4);
         list.Add("A");
         list.Add("B");
         list.Add("C");
-        Assert.That(list.Count, Is.EqualTo(3));
+        await Assert.That(list.Count).IsEqualTo(3);
     }
 
     [Test]
-    public void FirstIndex_EmptyList_ReturnsZero()
+    public async Task FirstIndex_EmptyList_ReturnsZero()
     {
         var list = new IndexedCircularList<string>();
-        Assert.That(list.FirstIndex, Is.EqualTo(0));
+        await Assert.That(list.FirstIndex).IsEqualTo(0);
     }
 
     [Test]
-    public void LastIndex_EmptyList_ReturnsMinusOne()
+    public async Task LastIndex_EmptyList_ReturnsMinusOne()
     {
         var list = new IndexedCircularList<string>();
-        Assert.That(list.LastIndex, Is.EqualTo(-1));
+        await Assert.That(list.LastIndex).IsEqualTo(-1);
     }
 
     [Test]
-    public void FirstIndex_AfterAddsUnderCapacity()
+    public async Task FirstIndex_AfterAddsUnderCapacity()
     {
         var list = new IndexedCircularList<string>(5);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.FirstIndex, Is.EqualTo(0));
+        await Assert.That(list.FirstIndex).IsEqualTo(0);
     }
 
     [Test]
-    public void LastIndex_AfterAddsUnderCapacity()
+    public async Task LastIndex_AfterAddsUnderCapacity()
     {
         var list = new IndexedCircularList<string>(5);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.LastIndex, Is.EqualTo(1));
+        await Assert.That(list.LastIndex).IsEqualTo(1);
     }
 
     [Test]
-    public void FirstIndex_AfterAtCapacity()
+    public async Task FirstIndex_AfterAtCapacity()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
-        Assert.That(list.FirstIndex, Is.EqualTo(0));
+        await Assert.That(list.FirstIndex).IsEqualTo(0);
     }
 
     [Test]
-    public void LastIndex_AfterAtCapacity()
+    public async Task LastIndex_AfterAtCapacity()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
-        Assert.That(list.LastIndex, Is.EqualTo(2));
+        await Assert.That(list.LastIndex).IsEqualTo(2);
     }
 
     [Test]
-    public void FirstIndex_AfterOverCapacity()
-    {
-        var list = new IndexedCircularList<string>(3);
-        list.Add("A");
-        list.Add("B");
-        list.Add("C");
-        list.Add("D");
-        Assert.That(list.FirstIndex, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void LastIndex_AfterOverCapacity()
+    public async Task FirstIndex_AfterOverCapacity()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
         list.Add("D");
-        Assert.That(list.LastIndex, Is.EqualTo(3));
+        await Assert.That(list.FirstIndex).IsEqualTo(1);
     }
 
     [Test]
-    public void Indexer_Get_ValidIndexUnderCapacity()
-    {
-        var list = new IndexedCircularList<string>(3);
-        list.Add("A");
-        list.Add("B");
-        list.Add("C");
-        Assert.That(list[1], Is.EqualTo("B"));
-    }
-
-    [Test]
-    public void Indexer_Get_ValidIndexAtCapacity()
-    {
-        var list = new IndexedCircularList<string>(3);
-        list.Add("A");
-        list.Add("B");
-        list.Add("C");
-        Assert.That(list[2], Is.EqualTo("C"));
-    }
-
-    [Test]
-    public void Indexer_Get_ValidIndexAfterWrap()
+    public async Task LastIndex_AfterOverCapacity()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
         list.Add("D");
-        Assert.That(list[3], Is.EqualTo("D"));
-        Assert.That(list[2], Is.EqualTo("C"));
+        await Assert.That(list.LastIndex).IsEqualTo(3);
     }
 
     [Test]
-    public void Indexer_Get_IndexBelowFirst_ThrowsException()
+    public async Task Indexer_Get_ValidIndexUnderCapacity()
+    {
+        var list = new IndexedCircularList<string>(3);
+        list.Add("A");
+        list.Add("B");
+        list.Add("C");
+        await Assert.That(list[1]).IsEqualTo("B");
+    }
+
+    [Test]
+    public async Task Indexer_Get_ValidIndexAtCapacity()
+    {
+        var list = new IndexedCircularList<string>(3);
+        list.Add("A");
+        list.Add("B");
+        list.Add("C");
+        await Assert.That(list[2]).IsEqualTo("C");
+    }
+
+    [Test]
+    public async Task Indexer_Get_ValidIndexAfterWrap()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
         list.Add("D");
-        Assert.Throws<IndexOutOfRangeException>(() =>
+        await Assert.That(list[3]).IsEqualTo("D");
+        await Assert.That(list[2]).IsEqualTo("C");
+    }
+
+    [Test]
+    public async Task Indexer_Get_IndexBelowFirst_ThrowsException()
+    {
+        var list = new IndexedCircularList<string>(3);
+        list.Add("A");
+        list.Add("B");
+        list.Add("C");
+        list.Add("D");
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[0];
         });
     }
 
     [Test]
-    public void Indexer_Get_IndexAboveLast_ThrowsException()
+    public async Task Indexer_Get_IndexAboveLast_ThrowsException()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        Assert.Throws<IndexOutOfRangeException>(() =>
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[2];
         });
     }
 
     [Test]
-    public void ValidateIndex_ValidIndex_ReturnsTrue()
+    public async Task ValidateIndex_ValidIndex_ReturnsTrue()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.ValidateIndex(1), Is.True);
+        await Assert.That(list.ValidateIndex(1)).IsTrue();
     }
 
     [Test]
-    public void ValidateIndex_IndexBelowFirst_ReturnsFalse()
+    public async Task ValidateIndex_IndexBelowFirst_ReturnsFalse()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.ValidateIndex(-1), Is.False);
+        await Assert.That(list.ValidateIndex(-1)).IsFalse();
     }
 
     [Test]
-    public void ValidateIndex_IndexAboveLast_ReturnsFalse()
+    public async Task ValidateIndex_IndexAboveLast_ReturnsFalse()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        Assert.That(list.ValidateIndex(2), Is.False);
+        await Assert.That(list.ValidateIndex(2)).IsFalse();
     }
 
     [Test]
-    public void TryGetValue_ValidIndex_ReturnsTrueAndValue()
+    public async Task TryGetValue_ValidIndex_ReturnsTrueAndValue()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add("A");
         list.Add("B");
         string? value;
         var result = list.TryGetValue(1, out value);
-        Assert.That(result, Is.True);
-        Assert.That(value, Is.EqualTo("B"));
+        await Assert.That(result).IsTrue();
+        await Assert.That(value).IsEqualTo("B");
     }
 
     [Test]
-    public void TryGetValue_IndexBelowFirst_ReturnsFalseAndNull()
+    public async Task TryGetValue_IndexBelowFirst_ReturnsFalseAndNull()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add("A");
         string? value;
         var result = list.TryGetValue(-1, out value);
-        Assert.That(result, Is.False);
-        Assert.That(value, Is.Null);
+        await Assert.That(result).IsFalse();
+        await Assert.That(value).IsNull();
     }
 
     [Test]
-    public void TryGetValue_IndexAboveLast_ReturnsFalseAndNull()
+    public async Task TryGetValue_IndexAboveLast_ReturnsFalseAndNull()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add("A");
         string? value;
         var result = list.TryGetValue(1, out value);
-        Assert.That(result, Is.False);
-        Assert.That(value, Is.Null);
+        await Assert.That(result).IsFalse();
+        await Assert.That(value).IsNull();
     }
 
     [Test]
-    public void Clear_OnNonEmpty_ListBecomesEmpty()
+    public async Task Clear_OnNonEmpty_ListBecomesEmpty()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Clear();
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.FirstIndex, Is.EqualTo(2));
-        
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.FirstIndex).IsEqualTo(2);
+
         // One less than the FirstIndex to indicate a negative delta.
-        Assert.That(list.LastIndex, Is.EqualTo(1));
+        await Assert.That(list.LastIndex).IsEqualTo(1);
     }
 
     [Test]
-    public void Clear_ClearsBuffer()
+    public async Task Clear_ClearsBuffer()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add("A");
@@ -297,72 +296,72 @@ internal class IndexedCircularListTests
         list.Clear();
         string? value;
         var result = list.TryGetValue(0, out value);
-        Assert.That(result, Is.False);
-        Assert.That(value, Is.Null);
+        await Assert.That(result).IsFalse();
+        await Assert.That(value).IsNull();
     }
 
     [Test]
-    public void Reset_DefaultThenAdd_SetsNextIndexToZero()
+    public async Task Reset_DefaultThenAdd_SetsNextIndexToZero()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Reset();
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.FirstIndex, Is.EqualTo(0));
-        Assert.That(list.LastIndex, Is.EqualTo(-1));
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.FirstIndex).IsEqualTo(0);
+        await Assert.That(list.LastIndex).IsEqualTo(-1);
         list.Add("C");
-        Assert.That(list.LastIndex, Is.EqualTo(0));
+        await Assert.That(list.LastIndex).IsEqualTo(0);
     }
 
     [Test]
-    public void Reset_WithCustomNextIndex_SetsNextIndex()
+    public async Task Reset_WithCustomNextIndex_SetsNextIndex()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Reset(5);
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.FirstIndex, Is.EqualTo(5));
-        Assert.That(list.LastIndex, Is.EqualTo(4));
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.FirstIndex).IsEqualTo(5);
+        await Assert.That(list.LastIndex).IsEqualTo(4);
         list.Add("B");
-        Assert.That(list.LastIndex, Is.EqualTo(5));
-        Assert.That(list[5], Is.EqualTo("B"));
+        await Assert.That(list.LastIndex).IsEqualTo(5);
+        await Assert.That(list[5]).IsEqualTo("B");
     }
 
     [Test]
-    public void Reset_ClearsBufferContents()
+    public async Task Reset_ClearsBufferContents()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Reset();
-        Assert.Throws<IndexOutOfRangeException>(() =>
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[0];
         });
     }
 
     [Test]
-    public void Enumeration_EmptyList_YieldsNoElements()
+    public async Task Enumeration_EmptyList_YieldsNoElements()
     {
         var list = new IndexedCircularList<string>(3);
         var items = list.ToList();
-        Assert.That(items, Is.Empty);
+        await Assert.That(items).IsEmpty();
     }
 
     [Test]
-    public void Enumeration_UnderCapacity_YieldsItemsInOrder()
+    public async Task Enumeration_UnderCapacity_YieldsItemsInOrder()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
         var items = list.ToList();
-        Assert.That(items.Select(t => t.Item), Is.EqualTo(new[] { "A", "B", "C" }));
-        Assert.That(items.Select(t => t.Index), Is.EqualTo(new long[] { 0, 1, 2 }));
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "A", "B", "C" }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 0, 1, 2 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void Enumeration_AfterWrap_YieldsItemsInOrder()
+    public async Task Enumeration_AfterWrap_YieldsItemsInOrder()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
@@ -371,25 +370,25 @@ internal class IndexedCircularListTests
         list.Add("D");
         list.Add("E");
         var items = list.ToList();
-        Assert.That(items.Select(t => t.Item), Is.EqualTo(new[] { "C", "D", "E" }));
-        Assert.That(items.Select(t => t.Index), Is.EqualTo(new long[] { 2, 3, 4 }));
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "C", "D", "E" }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 2, 3, 4 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void ConsecutiveOperations_AddClearAdd_CountAndIndicesCorrect()
+    public async Task ConsecutiveOperations_AddClearAdd_CountAndIndicesCorrect()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Clear();
         list.Add("C");
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.FirstIndex, Is.EqualTo(2));
-        Assert.That(list.LastIndex, Is.EqualTo(2));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.FirstIndex).IsEqualTo(2);
+        await Assert.That(list.LastIndex).IsEqualTo(2);
     }
 
     [Test]
-    public void ConsecutiveOperations_AddResetAdd_CountAndIndicesCorrect()
+    public async Task ConsecutiveOperations_AddResetAdd_CountAndIndicesCorrect()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
@@ -397,58 +396,58 @@ internal class IndexedCircularListTests
         list.Reset(10);
         list.Add("C");
         list.Add("D");
-        Assert.That(list.FirstIndex, Is.EqualTo(10));
-        Assert.That(list.LastIndex, Is.EqualTo(11));
+        await Assert.That(list.FirstIndex).IsEqualTo(10);
+        await Assert.That(list.LastIndex).IsEqualTo(11);
     }
 
     [Test]
-    public void Add_NullValueAllowed()
+    public async Task Add_NullValueAllowed()
     {
         var list = new IndexedCircularList<string?>(3);
         var idx = list.Add(null);
-        Assert.That(idx, Is.EqualTo(0));
-        Assert.That(list[0], Is.Null);
+        await Assert.That(idx).IsEqualTo(0);
+        await Assert.That(list[0]).IsNull();
     }
 
     [Test]
-    public void TryGetValue_NullStored_ReturnsTrueAndNull()
+    public async Task TryGetValue_NullStored_ReturnsTrueAndNull()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add(null);
         string? value;
         var result = list.TryGetValue(0, out value);
-        Assert.That(result, Is.True);
-        Assert.That(value, Is.Null);
+        await Assert.That(result).IsTrue();
+        await Assert.That(value).IsNull();
     }
 
     [Test]
-    public void Indexer_NullStored_ReturnsNull()
+    public async Task Indexer_NullStored_ReturnsNull()
     {
         var list = new IndexedCircularList<string?>(3);
         list.Add(null);
-        Assert.That(list[0], Is.Null);
+        await Assert.That(list[0]).IsNull();
     }
 
     [Test]
-    public void ValidateIndex_EmptyList_ReturnsFalse()
+    public async Task ValidateIndex_EmptyList_ReturnsFalse()
     {
         var list = new IndexedCircularList<string>(3);
-        Assert.That(list.ValidateIndex(0), Is.False);
+        await Assert.That(list.ValidateIndex(0)).IsFalse();
     }
 
     [Test]
-    public void ValidateIndex_AfterWrap_CorrectTrueFalse()
+    public async Task ValidateIndex_AfterWrap_CorrectTrueFalse()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
         list.Add("C");
         list.Add("D");
-        Assert.That(list.ValidateIndex(0), Is.False);
-        Assert.That(list.ValidateIndex(1), Is.True);
-        Assert.That(list.ValidateIndex(2), Is.True);
-        Assert.That(list.ValidateIndex(3), Is.True);
-        Assert.That(list.ValidateIndex(4), Is.False);
+        await Assert.That(list.ValidateIndex(0)).IsFalse();
+        await Assert.That(list.ValidateIndex(1)).IsTrue();
+        await Assert.That(list.ValidateIndex(2)).IsTrue();
+        await Assert.That(list.ValidateIndex(3)).IsTrue();
+        await Assert.That(list.ValidateIndex(4)).IsFalse();
     }
 
     /*
@@ -464,11 +463,11 @@ internal class IndexedCircularListTests
         var nonGen = ((IEnumerable)list).GetEnumerator();
         nonGen.MoveNext();
         var firstNonGen = ((ValueTuple<long, string>)nonGen.Current);
-        Assert.That(firstNonGen, Is.EqualTo(firstGen));
+        await Assert.That(firstNonGen).IsEqualTo(firstGen);
     }*/
 
     [Test]
-    public void BufferModuloMappingIndexingBehavior()
+    public async Task BufferModuloMappingIndexingBehavior()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
@@ -476,63 +475,63 @@ internal class IndexedCircularListTests
         list.Add("C");
         list.Add("D");
         bool ok = list.TryGetValue(3, out var val);
-        Assert.That(ok, Is.True);
-        Assert.That(val, Is.EqualTo("D"));
-        Assert.That(list.ValidateIndex(0), Is.False);
+        await Assert.That(ok).IsTrue();
+        await Assert.That(val).IsEqualTo("D");
+        await Assert.That(list.ValidateIndex(0)).IsFalse();
     }
 
     [Test]
-    public void ManyWraps_Enumeration_OnlyLastNItems()
+    public async Task ManyWraps_Enumeration_OnlyLastNItems()
     {
         var list = new IndexedCircularList<string>(3);
         for (int i = 0; i < 10; i++)
             list.Add($"X{i}");
         var items = list.ToList();
-        Assert.That(items.Count, Is.EqualTo(3));
-        Assert.That(items.Select(t => t.Index), Is.EqualTo(new long[] { 7, 8, 9 }));
+        await Assert.That(items.Count).IsEqualTo(3);
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 7, 8, 9 }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void FirstAndLastIndex_MonotonicBehavior()
+    public async Task FirstAndLastIndex_MonotonicBehavior()
     {
         var list = new IndexedCircularList<string>(3);
         for (int i = 0; i < 5; i++)
         {
             var idx = list.Add($"X{i}");
-            Assert.That(list.LastIndex, Is.EqualTo(idx));
+            await Assert.That(list.LastIndex).IsEqualTo(idx);
         }
 
-        Assert.That(list.FirstIndex, Is.EqualTo(list.LastIndex - list.Count + 1));
+        await Assert.That(list.FirstIndex).IsEqualTo(list.LastIndex - list.Count + 1);
     }
 
     [Test]
-    public void FirstAndLastIndex_AfterResetThenAdd()
+    public async Task FirstAndLastIndex_AfterResetThenAdd()
     {
         var list = new IndexedCircularList<string>(4);
         list.Add("A");
         list.Add("B");
         list.Reset(100);
-        Assert.That(list.FirstIndex, Is.EqualTo(100));
-        Assert.That(list.LastIndex, Is.EqualTo(99));
+        await Assert.That(list.FirstIndex).IsEqualTo(100);
+        await Assert.That(list.LastIndex).IsEqualTo(99);
         list.Add("C");
-        Assert.That(list.FirstIndex, Is.EqualTo(100));
-        Assert.That(list.LastIndex, Is.EqualTo(100));
+        await Assert.That(list.FirstIndex).IsEqualTo(100);
+        await Assert.That(list.LastIndex).IsEqualTo(100);
     }
 
     [Test]
-    public void CapacityOne_WrapBehavior()
+    public async Task CapacityOne_WrapBehavior()
     {
         var list = new IndexedCircularList<string>(1);
         var idx1 = list.Add("A");
         var idx2 = list.Add("B");
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.FirstIndex, Is.EqualTo(1));
-        Assert.That(list.LastIndex, Is.EqualTo(1));
-        Assert.That(list[1], Is.EqualTo("B"));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.FirstIndex).IsEqualTo(1);
+        await Assert.That(list.LastIndex).IsEqualTo(1);
+        await Assert.That(list[1]).IsEqualTo("B");
     }
 
     [Test]
-    public void CapacityTwo_WrapTwice_Behavior()
+    public async Task CapacityTwo_WrapTwice_Behavior()
     {
         var list = new IndexedCircularList<string>(2);
         list.Add("A");
@@ -540,30 +539,30 @@ internal class IndexedCircularListTests
         list.Add("C");
         list.Add("D");
         var items = list.ToList();
-        Assert.That(items.Select(t => t.Index), Is.EqualTo(new long[] { 2, 3 }));
-        Assert.That(items.Select(t => t.Item), Is.EqualTo(new[] { "C", "D" }));
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 2, 3 }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "C", "D" }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void ValidateIndex_AfterClear_ReturnsFalse()
+    public async Task ValidateIndex_AfterClear_ReturnsFalse()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Clear();
-        Assert.That(list.ValidateIndex(0), Is.False);
+        await Assert.That(list.ValidateIndex(0)).IsFalse();
     }
 
     [Test]
-    public void TryGetValue_AfterReset_ReturnsFalseForOldIndex()
+    public async Task TryGetValue_AfterReset_ReturnsFalseForOldIndex()
     {
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Reset();
-        Assert.That(list.TryGetValue(0, out _), Is.False);
+        await Assert.That(list.TryGetValue(0, out _)).IsFalse();
     }
 
     [Test]
-    public void ConcurrentAdds_AllIndicesAreUnique()
+    public async Task ConcurrentAdds_AllIndicesAreUnique()
     {
         var list = new IndexedCircularList<string>(10000);
         var indices = new ConcurrentBag<long>();
@@ -583,12 +582,11 @@ internal class IndexedCircularListTests
 
         // All indices should be unique
         var uniqueIndices = indices.Distinct().ToList();
-        Assert.That(uniqueIndices.Count, Is.EqualTo(indices.Count),
-            $"Expected {indices.Count} unique indices but got {uniqueIndices.Count}");
+        await Assert.That(uniqueIndices.Count).IsEqualTo(indices.Count).Because($"Expected {indices.Count} unique indices but got {uniqueIndices.Count}");
     }
 
     [Test]
-    public void ConcurrentAddAndRead_NoExceptions()
+    public async Task ConcurrentAddAndRead_NoExceptions()
     {
         var list = new IndexedCircularList<string>(100);
         var exceptions = new ConcurrentBag<Exception>();
@@ -646,12 +644,11 @@ internal class IndexedCircularListTests
 
         Task.WaitAll(new[] { writerTask }.Concat(readerTasks).ToArray());
 
-        Assert.That(exceptions, Is.Empty,
-            $"Concurrent operations threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
+        await Assert.That(exceptions).IsEmpty().Because($"Concurrent operations threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
     }
 
     [Test]
-    public void ConcurrentAddAndClear_NoExceptions()
+    public async Task ConcurrentAddAndClear_NoExceptions()
     {
         var list = new IndexedCircularList<string>(50);
         var exceptions = new ConcurrentBag<Exception>();
@@ -694,7 +691,6 @@ internal class IndexedCircularListTests
 
         Task.WaitAll(tasks.ToArray());
 
-        Assert.That(exceptions, Is.Empty,
-            $"Concurrent Add/Clear threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
+        await Assert.That(exceptions).IsEmpty().Because($"Concurrent Add/Clear threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
     }
 }

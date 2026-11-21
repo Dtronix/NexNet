@@ -4,4 +4,8 @@
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <!-- Central TUnit version for every test project. Pin a release that is at least two weeks old. -->
+  <PropertyGroup>
+    <TUnitVersion>1.80.0</TUnitVersion>
+  </PropertyGroup>
 </Project>

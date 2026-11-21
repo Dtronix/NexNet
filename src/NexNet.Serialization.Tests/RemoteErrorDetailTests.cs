@@ -8,7 +8,6 @@ namespace NexNet.Serialization.Tests;
 /// <summary>
 /// The remote error detail: the optional third element <c>[code, type, message]</c> of an Exception invocation result.
 /// </summary>
-[TestFixture]
 public class RemoteErrorDetailTests
 {
     private static byte[] Detail(int? code, string? type, string? message)
@@ -19,112 +18,115 @@ public class RemoteErrorDetailTests
             out code, out type, out message);
 
     [Test]
-    public void GoldenVector()
+    public async Task GoldenVector()
     {
         var bytes = Detail(42, "T", "boom");
-        Assert.That(Convert.ToHexString(bytes).ToLowerInvariant(), Is.EqualTo("93" + "2a" + "a154" + "a4626f6f6d"));
+        await Assert.That(Convert.ToHexString(bytes).ToLowerInvariant()).IsEqualTo("93" + "2a" + "a154" + "a4626f6f6d");
 
         var reference = MessagePackSerializer.Deserialize<object?[]>(bytes);
-        Assert.That(Convert.ToInt32(reference[0]), Is.EqualTo(42));
-        Assert.That(reference[1], Is.EqualTo("T"));
-        Assert.That(reference[2], Is.EqualTo("boom"));
+        await Assert.That(Convert.ToInt32(reference[0])).IsEqualTo(42);
+        await Assert.That(reference[1]).IsEqualTo("T");
+        await Assert.That(reference[2]).IsEqualTo("boom");
     }
 
     [Test]
-    public void AllNil()
+    public async Task AllNil()
     {
         var bytes = Detail(null, null, null);
-        Assert.That(Convert.ToHexString(bytes).ToLowerInvariant(), Is.EqualTo("93c0c0c0"));
+        await Assert.That(Convert.ToHexString(bytes).ToLowerInvariant()).IsEqualTo("93c0c0c0");
 
-        Assert.That(TryRead(bytes, out var code, out var type, out var message), Is.True);
-        Assert.That(code, Is.Null);
-        Assert.That(type, Is.Null);
-        Assert.That(message, Is.Null);
+        await Assert.That(TryRead(bytes, out var code, out var type, out var message)).IsTrue();
+        await Assert.That(code).IsNull();
+        await Assert.That(type).IsNull();
+        await Assert.That(message).IsNull();
     }
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    [TestCase(int.MinValue)]
-    [TestCase(int.MaxValue)]
-    public void RoundTrips(int code)
+    [Test]
+    [Arguments(0)]
+    [Arguments(-1)]
+    [Arguments(int.MinValue)]
+    [Arguments(int.MaxValue)]
+    public async Task RoundTrips(int code)
     {
         var bytes = Detail(code, "System.InvalidOperationException", "boom");
 
-        Assert.That(TryRead(bytes, out var readCode, out var type, out var message), Is.True);
-        Assert.That(readCode, Is.EqualTo(code));
-        Assert.That(type, Is.EqualTo("System.InvalidOperationException"));
-        Assert.That(message, Is.EqualTo("boom"));
+        await Assert.That(TryRead(bytes, out var readCode, out var type, out var message)).IsTrue();
+        await Assert.That(readCode).IsEqualTo(code);
+        await Assert.That(type).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(message).IsEqualTo("boom");
     }
 
     [Test]
-    public void TruncatesTypeAndMessageOnWrite()
+    public async Task TruncatesTypeAndMessageOnWrite()
     {
         var bytes = Detail(null, new string('t', 300), new string('m', 3000));
 
         var reference = MessagePackSerializer.Deserialize<object?[]>(bytes);
-        Assert.That(reference[1], Is.EqualTo(new string('t', 256)));
-        Assert.That(reference[2], Is.EqualTo(new string('m', 2048)));
+        await Assert.That(reference[1]).IsEqualTo(new string('t', 256));
+        await Assert.That(reference[2]).IsEqualTo(new string('m', 2048));
 
-        Assert.That(TryRead(bytes, out _, out var type, out var message), Is.True);
-        Assert.That(type, Is.EqualTo(new string('t', 256)));
-        Assert.That(message, Is.EqualTo(new string('m', 2048)));
+        await Assert.That(TryRead(bytes, out _, out var type, out var message)).IsTrue();
+        await Assert.That(type).IsEqualTo(new string('t', 256));
+        await Assert.That(message).IsEqualTo(new string('m', 2048));
     }
 
     [Test]
-    public void TruncationDoesNotSplitASurrogatePair()
+    public async Task TruncationDoesNotSplitASurrogatePair()
     {
         // 2047 chars then a surrogate pair: the pair would straddle the 2048 limit.
         var message = new string('m', 2047) + "\U0001F600" + "tail";
         var bytes = Detail(null, null, message);
 
-        Assert.That(TryRead(bytes, out _, out _, out var read), Is.True);
-        Assert.That(read, Is.EqualTo(new string('m', 2047)));
+        await Assert.That(TryRead(bytes, out _, out _, out var read)).IsTrue();
+        await Assert.That(read).IsEqualTo(new string('m', 2047));
     }
 
     [Test]
-    public void KeepsStringsAtTheLimit()
+    public async Task KeepsStringsAtTheLimit()
     {
         var bytes = Detail(1, new string('t', 256), new string('m', 2048));
 
-        Assert.That(TryRead(bytes, out _, out var type, out var message), Is.True);
-        Assert.That(type, Has.Length.EqualTo(256));
-        Assert.That(message, Has.Length.EqualTo(2048));
+        await Assert.That(TryRead(bytes, out _, out var type, out var message)).IsTrue();
+        await Assert.That(type).Length().IsEqualTo(256);
+        await Assert.That(message).Length().IsEqualTo(2048);
     }
 
     // Well-formed MessagePack values that are not a valid detail, and oversized strings.
-    [TestCase("05")]
-    [TestCase("c0")]
-    [TestCase("90")]
-    [TestCase("9201a174")]
-    [TestCase("9401a174a16da178")]
-    [TestCase("93a131a174a16d")]
-    [TestCase("930102a16d")]
-    [TestCase("9301a17491a16d")]
-    [TestCase("93cf0000000100000000c0c0")]
-    [TestCase("8101a174")]
-    public void TryRead_RejectsMalformedWithoutThrowing(string hex)
+    [Test]
+    [Arguments("05")]
+    [Arguments("c0")]
+    [Arguments("90")]
+    [Arguments("9201a174")]
+    [Arguments("9401a174a16da178")]
+    [Arguments("93a131a174a16d")]
+    [Arguments("930102a16d")]
+    [Arguments("9301a17491a16d")]
+    [Arguments("93cf0000000100000000c0c0")]
+    [Arguments("8101a174")]
+    public async Task TryRead_RejectsMalformedWithoutThrowing(string hex)
     {
         var value = Convert.FromHexString(hex);
 
         bool read = true;
-        Assert.DoesNotThrow(() => read = TryRead(value, out _, out _, out _));
-        Assert.That(read, Is.False);
+        await Assert.That(() => read = TryRead(value, out _, out _, out _)).ThrowsNothing();
+        await Assert.That(read).IsFalse();
     }
 
-    [TestCase(257, 1)]
-    [TestCase(1, 2049)]
-    public void TryRead_RejectsOversizedStrings(int typeLength, int messageLength)
+    [Test]
+    [Arguments(257, 1)]
+    [Arguments(1, 2049)]
+    public async Task TryRead_RejectsOversizedStrings(int typeLength, int messageLength)
     {
         var value = MessagePackSerializer.Serialize<object?[]>(
             [1, new string('t', typeLength), new string('m', messageLength)]);
 
         bool read = true;
-        Assert.DoesNotThrow(() => read = TryRead(value, out _, out _, out _));
-        Assert.That(read, Is.False);
+        await Assert.That(() => read = TryRead(value, out _, out _, out _)).ThrowsNothing();
+        await Assert.That(read).IsFalse();
     }
 
     [Test]
-    public void ExceptionResultWithDetail_IsAThirdElementAnExistingPeerParses()
+    public async Task ExceptionResultWithDetail_IsAThirdElementAnExistingPeerParses()
     {
         var detail = Detail(42, "T", "boom");
         var message = new InvocationResultMessage
@@ -135,19 +137,19 @@ public class RemoteErrorDetailTests
         };
 
         var body = Write((ref MsgPackWriter w) => message.Serialize(ref w));
-        Assert.That(Convert.ToHexString(body).ToLowerInvariant(), Is.EqualTo("930302" + "932aa154a4626f6f6d"));
-        Assert.That(new InvocationResultBody(message).Length, Is.EqualTo(body.Length));
+        await Assert.That(Convert.ToHexString(body).ToLowerInvariant()).IsEqualTo("930302" + "932aa154a4626f6f6d");
+        await Assert.That(new InvocationResultBody(message).Length).IsEqualTo(body.Length);
 
         // Parsed as a peer without this feature parses it: three elements, the detail kept as the embedded result.
         var parsed = new InvocationResultMessage();
         var reader = new MsgPackReader(new ReadOnlyMemory<byte>(body));
         parsed.Deserialize(ref reader);
-        Assert.That(reader.End, Is.True);
-        Assert.That(parsed.State, Is.EqualTo(InvocationResultMessage.StateType.Exception));
-        Assert.That(parsed.Result, Is.Not.Null);
-        Assert.That(TryRead(parsed.Result!.Value.ToArray(), out var code, out var type, out var text), Is.True);
-        Assert.That(code, Is.EqualTo(42));
-        Assert.That(type, Is.EqualTo("T"));
-        Assert.That(text, Is.EqualTo("boom"));
+        await Assert.That(reader.End).IsTrue();
+        await Assert.That(parsed.State).IsEqualTo(InvocationResultMessage.StateType.Exception);
+        await Assert.That(parsed.Result).IsNotNull();
+        await Assert.That(TryRead(parsed.Result!.Value.ToArray(), out var code, out var type, out var text)).IsTrue();
+        await Assert.That(code).IsEqualTo(42);
+        await Assert.That(type).IsEqualTo("T");
+        await Assert.That(text).IsEqualTo("boom");
     }
 }

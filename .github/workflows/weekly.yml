@@ -1,0 +1,264 @@
+name: Weekly (full interop matrix, browsers, Android, stress)
+
+# Everything too slow or too heavy for every PR: the full transport matrix on every language host, the three browsers,
+# a repeated interop run that shakes out flaky tests, and the Android job of clients.yml (D26) as a drift check of the
+# Android SDK, emulator and Gradle plugin. clients.yml runs the per-PR subset, and the Android job on every pull request
+# that touches the Java client, generator, interop server or test nexuses (H30).
+#
+# Scheduled weekly (H30; it was nightly). Scheduled workflows run on the default branch only. The changes job skips the
+# run when nothing landed since the last one: it compares the current commit with the head commit of the last successful
+# scheduled run of this workflow, and every other job needs it. A scheduled run with no earlier successful run, or a
+# failed lookup, runs everything. workflow_dispatch always runs everything.
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'  # 03:17 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
+  # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
+  # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
+  # A pull request into master reads only master's cache, so it can start empty. Every Gradle command therefore runs
+  # through .github/scripts/gradle-retry.sh (H35), which re-runs it once when it fails on dependency resolution.
+  NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
+
+jobs:
+  # Skips a scheduled run when the commit is the one the last successful scheduled run tested.
+  changes:
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Anything new since the last successful scheduled run?
+        id: decide
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != schedule ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          workflow=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
+          if ! last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?event=schedule&status=success&branch=${GITHUB_REF_NAME}&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // ""'); then
+            echo "::warning::Could not look up the last successful scheduled run; running everything."
+            last=
+          fi
+          if [ -n "$last" ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "::notice::$GITHUB_SHA was tested by the last successful scheduled run; nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Last successful scheduled run: ${last:-none}; now $GITHUB_SHA."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Bucket-A interop rows on every transport: plaintext and TLS, TCP, TcpTls, HttpSocket, WebSocket, and UDS on Node
+  # (Linux runners only; Node cannot use AF_UNIX on Windows). Browsers run their WebSocket rows; the rest are visible
+  # capability skips. Firefox and WebKit run only here (D29).
+  interop:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [node, java, browser-chromium, browser-firefox, browser-webkit]
+    env:
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
+      NEXNET_REQUIRE_SDKS: '1'
+      # Every transport the language supports instead of the per-PR default (HttpSocketTls, WebSocketTls). ClientMatrix
+      # applies it to every test that names no transports of its own; a test that names transports keeps them.
+      NEXNET_TEST_TRANSPORTS: all
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Browser name
+        id: browser
+        if: startsWith(matrix.lang, 'browser-')
+        shell: bash
+        run: |
+          browser="${{ matrix.lang }}"
+          echo "name=${browser#browser-}" >> "$GITHUB_OUTPUT"
+
+      - name: Install msquic
+        run: sudo apt-get update && sudo apt-get install -y libmsquic
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.*'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        if: matrix.lang != 'java'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/js/package-lock.json
+
+      - uses: actions/setup-java@v6
+        if: matrix.lang == 'java'
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: matrix.lang == 'java'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
+
+      - name: Build the C# side
+        run: dotnet build src -c Release --maxcpucount:1
+
+      # The host build commands are fixed by docs/internals/interop-control-protocol.md §10.
+      - name: Build the Node/browser host
+        if: matrix.lang != 'java'
+        run: |
+          npm ci --prefix clients/js
+          npm run build:interop-host --prefix clients/js
+
+      - name: Install ${{ steps.browser.outputs.name }}
+        if: startsWith(matrix.lang, 'browser-')
+        working-directory: clients/js
+        run: npx playwright install --with-deps ${{ steps.browser.outputs.name }}
+
+      - name: Build the JVM host
+        if: matrix.lang == 'java'
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
+
+      - name: Interop tests (${{ matrix.lang }}, every transport)
+        env:
+          NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
+        run: >-
+          dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
+          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]"
+          -- --report-trx
+
+      - name: Upload interop results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-interop-${{ matrix.lang }}
+          path: |
+            TestResults/
+            /tmp/nexnet-interop-transcripts/
+            artifacts/interop/
+            !artifacts/interop/*/generated/**
+          if-no-files-found: ignore
+
+  # The interop suite ten times in a row on the per-PR transports. Every run's failures are kept; the job fails when
+  # any run failed, and the TRX files show which tests are flaky.
+  stress:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [node, java]
+    env:
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
+      NEXNET_REQUIRE_SDKS: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Install msquic
+        run: sudo apt-get update && sudo apt-get install -y libmsquic
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.*'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-node@v7
+        if: matrix.lang != 'java'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: clients/js/package-lock.json
+
+      - uses: actions/setup-java@v6
+        if: matrix.lang == 'java'
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: matrix.lang == 'java'
+        with:
+          cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
+
+      - name: Build
+        shell: bash
+        run: |
+          dotnet build src -c Release --maxcpucount:1
+          if [ "${{ matrix.lang }}" = java ]; then
+            .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
+          else
+            npm ci --prefix clients/js
+            npm run build:interop-host --prefix clients/js
+          fi
+
+      - name: Interop tests, 10 runs
+        shell: bash
+        run: |
+          failed=0
+          for i in $(seq 1 10); do
+            echo "::group::Run $i of 10"
+            if ! dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory "TestResults/run-$i" \
+                --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" -- --report-trx; then
+              failed=$((failed + 1))
+              echo "::warning::Run $i of 10 failed."
+            fi
+            echo "::endgroup::"
+          done
+          echo "$failed of 10 runs failed."
+          [ "$failed" -eq 0 ]
+
+      - name: Upload stress results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: weekly-stress-${{ matrix.lang }}
+          path: |
+            TestResults/
+            /tmp/nexnet-interop-transcripts/
+            artifacts/interop/
+            !artifacts/interop/*/generated/**
+          if-no-files-found: ignore
+
+  # The Android job of clients.yml (AAR, D8/R8, emitted android module, API-24 emulator smoke test), called rather than
+  # duplicated so the two cannot drift apart. On schedule it always runs, whatever the change.
+  android:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    uses: ./.github/workflows/clients.yml
+    with:
+      only-android: true

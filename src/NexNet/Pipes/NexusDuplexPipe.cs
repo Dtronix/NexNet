@@ -499,8 +499,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             // Possible that the session was closed before we could send the message.
             Logger?.LogInfo(e, $"Exception occurred while updating state to: {currentState}. Closing pipe.");
 
-            // Close the pipe.
-            _currentState = State.Complete;
+            // Close the pipe through the normal path: completes the reader and the writer and CompleteTask. Setting
+            // the state alone left a reader waiting forever and made a later UpdateState(Complete) a no-op.
+            UpdateState(State.Complete);
         }
     }
 

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -9,20 +8,21 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Time invocations wait for an execution slot (histogram, snapshot, warning) and time pipe writers wait for credit.
 /// </summary>
+[NotInParallel("stress")]
 internal class InvocationQueueDiagnosticsTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;
 
-    public override void SetUp()
+    protected override void SetUp()
     {
         base.SetUp();
         _recorder = new MetricsRecorder();
     }
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
         _recorder.Dispose();
-        base.TearDown();
+        await base.TearDown();
     }
 
     /// <summary>
@@ -49,9 +49,9 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
             var index = Interlocked.Increment(ref started);
             await released[index].Task;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (time, server, client, released);
     }
 
@@ -93,8 +93,8 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         await Eventually(() => _recorder.Events("nexnet.invocation.queue_wait").Count >= 2);
         var waits = _recorder.Events("nexnet.invocation.queue_wait");
-        Assert.That(waits.Select(w => w.Value), Is.EqualTo(new[] { 0.0, 2.0 }));
-        Assert.That(waits.All(w => w.Has("nexnet.role", "server") && w.Has("nexnet.transport", "uds")), Is.True);
+        await Assert.That(waits.Select(w => w.Value)).IsEquivalentTo(new[] { 0.0, 2.0 }, CollectionOrdering.Matching);
+        await Assert.That(waits.All(w => w.Has("nexnet.role", "server") && w.Has("nexnet.transport", "uds"))).IsTrue();
     }
 
     [Test]
@@ -104,7 +104,7 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         var first = client.Proxy.ServerTask().AsTask();
         await WaitForQueue(server, executing: 1, queued: 0);
-        Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait, Is.Null);
+        await Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait).IsNull();
 
         var second = client.Proxy.ServerTask().AsTask();
         await WaitForQueue(server, executing: 1, queued: 1);
@@ -114,17 +114,17 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
         time.Advance(TimeSpan.FromSeconds(1));
 
         // The second has waited 4 s, the third 1 s.
-        Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait, Is.EqualTo(TimeSpan.FromSeconds(4)));
+        await Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait).IsEqualTo(TimeSpan.FromSeconds(4));
 
         gates[0].SetResult();
         await first.Timeout(1);
         await WaitForQueue(server, executing: 1, queued: 1);
-        Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait, Is.EqualTo(TimeSpan.FromSeconds(1)));
+        await Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait).IsEqualTo(TimeSpan.FromSeconds(1));
 
         gates[1].SetResult();
         await second.Timeout(1);
         await WaitForQueue(server, executing: 1, queued: 0);
-        Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait, Is.Null);
+        await Assert.That(server.GetSnapshot().Sessions.Single().Invocations.OldestQueuedWait).IsNull();
 
         gates[2].SetResult();
         await third.Timeout(1);
@@ -152,15 +152,15 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
         gates[0].SetResult();
         await WaitForQueue(server, executing: 1, queued: 1);
         await Eventually(() => Warnings().Any());
-        Assert.That(Warnings().Count(), Is.EqualTo(1));
+        await Assert.That(Warnings().Count()).IsEqualTo(1);
         var warning = Warnings().Single();
-        Assert.That(warning, Does.Match(@"method \d+"));
-        Assert.That(warning, Does.Contain("2"));
+        await Assert.That(warning).Matches(@"method \d+");
+        await Assert.That(warning).Contains("2");
 
         gates[1].SetResult();
         await WaitForQueue(server, executing: 1, queued: 0);
         await Task.Delay(100);
-        Assert.That(Warnings().Count(), Is.EqualTo(1));
+        await Assert.That(Warnings().Count()).IsEqualTo(1);
 
         // 31 s later the next slow one is reported again.
         calls.Add(client.Proxy.ServerTask().AsTask());
@@ -169,10 +169,10 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
         gates[2].SetResult();
         await WaitForQueue(server, executing: 1, queued: 0);
         await Eventually(() => Warnings().Count() >= 2);
-        Assert.That(Warnings().Count(), Is.EqualTo(2));
+        await Assert.That(Warnings().Count()).IsEqualTo(2);
         // The second queued call of the first round was suppressed; this warning counts it.
-        Assert.That(Warnings().First(), Does.EndWith("threshold 1000 ms)."));
-        Assert.That(Warnings().Last(), Does.Contain("(1 more since the last warning)."));
+        await Assert.That(Warnings().First()).EndsWith("threshold 1000 ms).");
+        await Assert.That(Warnings().Last()).Contains("(1 more since the last warning).");
 
         gates[3].SetResult();
         await Task.WhenAll(calls).Timeout(2);
@@ -198,8 +198,8 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         // The wait is still measured; only the warning is off.
         await Eventually(() => _recorder.Events("nexnet.invocation.queue_wait").Count >= 2);
-        Assert.That(_recorder.Events("nexnet.invocation.queue_wait").Count, Is.EqualTo(2));
-        Assert.That(logger.Warnings.Where(w => w.Contains("execution slot")), Is.Empty);
+        await Assert.That(_recorder.Events("nexnet.invocation.queue_wait").Count).IsEqualTo(2);
+        await Assert.That(logger.Warnings.Where(w => w.Contains("execution slot"))).IsEmpty();
     }
 
     [Test]
@@ -229,9 +229,9 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
                     break;
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -239,7 +239,7 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         var writing = pipe.Output.WriteAsync(new byte[length]).AsTask();
         await MetricsSessionTests.WaitFor(() => client.GetSnapshot()!.Pipes.SingleOrDefault()?.WaitingForCredit != null).Timeout(2);
-        Assert.That(_recorder.Events("nexnet.pipe.credit_wait"), Is.Empty, "Recorded only when the wait ends.");
+        await Assert.That(_recorder.Events("nexnet.pipe.credit_wait")).IsEmpty().Because("Recorded only when the wait ends.");
 
         time.Advance(TimeSpan.FromSeconds(1.5));
         release.SetResult();
@@ -247,10 +247,10 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         await Eventually(() => _recorder.Events("nexnet.pipe.credit_wait").Count > 0);
         var waits = _recorder.Events("nexnet.pipe.credit_wait");
-        Assert.That(waits, Is.Not.Empty);
-        Assert.That(waits.Max(w => w.Value), Is.EqualTo(1.5));
-        Assert.That(waits.Sum(w => w.Value), Is.EqualTo(1.5));
-        Assert.That(waits.All(w => w.Has("nexnet.role", "client") && w.Has("nexnet.transport", "uds")), Is.True);
+        await Assert.That(waits).IsNotEmpty();
+        await Assert.That(waits.Max(w => w.Value)).IsEqualTo(1.5);
+        await Assert.That(waits.Sum(w => w.Value)).IsEqualTo(1.5);
+        await Assert.That(waits.All(w => w.Has("nexnet.role", "client") && w.Has("nexnet.transport", "uds"))).IsTrue();
     }
 
     [Test]
@@ -265,14 +265,13 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         var waiting = writer.WaitForCreditAsync(4096, CancellationToken.None).AsTask();
         await Task.Delay(50);
-        Assert.That(waiting.IsCompleted, Is.False);
+        await Assert.That(waiting.IsCompleted).IsFalse();
 
         time.Advance(TimeSpan.FromSeconds(1.5));
         writer.AddCredit(4096);
         await waiting.WaitAsync(TimeSpan.FromSeconds(2));
 
         var waits = recorder.Events("nexnet.pipe.credit_wait");
-        Assert.That(waits.Sum(w => w.Value), Is.EqualTo(1.5),
-            "A credit wait through WaitForCreditAsync (pipe relays) ends without recording nexnet.pipe.credit_wait.");
+        await Assert.That(waits.Sum(w => w.Value)).IsEqualTo(1.5).Because("A credit wait through WaitForCreditAsync (pipe relays) ends without recording nexnet.pipe.credit_wait.");
     }
 }

@@ -1,4 +1,3 @@
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -7,11 +6,11 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Frame and byte counters.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsIoTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task FramesAndBytes_MatchBetweenPeers_AndSurviveDisconnect(Type type)
     {
         using var recorder = new MetricsRecorder();
@@ -21,8 +20,8 @@ internal class MetricsIoTests : BaseTests
         clientConfig.MeterFactory = recorder;
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
         server.OnNexusCreated = nexus => nexus.ServerTaskValueWithParamEvent = (_, value) => ValueTask.FromResult(value);
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         for (var i = 0; i < 10; i++)
             await client.Proxy.ServerTaskValueWithParam(i).Timeout(1);
@@ -39,13 +38,13 @@ internal class MetricsIoTests : BaseTests
 
         var clientFramesSent = Value("nexnet.io.frames", "client", "sent");
         var clientBytesSent = Value("nexnet.io.bytes", "client", "sent");
-        Assert.That(clientFramesSent, Is.GreaterThanOrEqualTo(11)); // greeting + 10 invocations
-        Assert.That(clientBytesSent, Is.GreaterThan(clientFramesSent * 3));
+        await Assert.That(clientFramesSent).IsGreaterThanOrEqualTo(11); // greeting + 10 invocations
+        await Assert.That(clientBytesSent).IsGreaterThan(clientFramesSent * 3);
 
         // Retired sessions keep counting: the counters never go back.
         await client.DisconnectAsync().Timeout(1);
         await MetricsSessionTests.WaitFor(() => recorder.Metrics.TableSize.Count == 0).Timeout(2);
-        Assert.That(Value("nexnet.io.frames", "client", "sent"), Is.GreaterThan(clientFramesSent));
-        Assert.That(Value("nexnet.io.bytes", "client", "sent"), Is.GreaterThan(clientBytesSent));
+        await Assert.That(Value("nexnet.io.frames", "client", "sent")).IsGreaterThan(clientFramesSent);
+        await Assert.That(Value("nexnet.io.bytes", "client", "sent")).IsGreaterThan(clientBytesSent);
     }
 }

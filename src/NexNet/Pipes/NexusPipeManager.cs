@@ -26,6 +26,11 @@ internal class NexusPipeManager
     // Pipes that hold a receive window: open, or closing until both sides confirmed. Bounded by ConfigBase.MaxPipes.
     private int _openPipes;
 
+    // Waiters for pipes to be freed (see WaitFreedAsync). Guards the removal of a pipe from _activePipes in TryFree,
+    // so a waiter either sees the pipe gone or is completed by that TryFree.
+    private readonly Lock _freedLock = new Lock();
+    private Dictionary<NexusDuplexPipe, TaskCompletionSource>? _freedWaiters;
+
     /// <summary>
     /// Pipes holding a receive window.
     /// </summary>
@@ -44,6 +49,7 @@ internal class NexusPipeManager
         _activePipes.Clear();
         _openPipes = 0;
         _isCanceled = false;
+        CompleteFreedWaiters();
         _session = session;
         _logger = session.Logger?.CreateLogger("PipeManager");
     }
@@ -122,14 +128,83 @@ internal class NexusPipeManager
         if (!pipe.IsFullyClosed || !pipe.TryMarkFreed())
             return;
 
-        _activePipes.TryRemove(new KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
         ReleaseWindow();
         pipe.ReleaseAllExtra();
 
-        lock (_usedIdsLock)
+        TaskCompletionSource? waiter = null;
+        lock (_freedLock)
         {
-            _usedIds.Set(pipe.LocalId, false);
+            _activePipes.TryRemove(new KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
+
+            lock (_usedIdsLock)
+            {
+                _usedIds.Set(pipe.LocalId, false);
+            }
+
+            _freedWaiters?.Remove(pipe, out waiter);
         }
+
+        waiter?.TrySetResult();
+    }
+
+    /// <summary>
+    /// Returns a task that completes once the pipe is freed: its slot, receive window and ID are released after both
+    /// sides closed it and the application released it. Also completes when the session's pipes are canceled.
+    /// Completed at once for a pipe that is already freed or that this manager does not hold.
+    /// </summary>
+    /// <param name="pipe">Pipe rented from or registered with this manager.</param>
+    public Task WaitFreedAsync(INexusDuplexPipe pipe)
+    {
+        if (pipe is not NexusDuplexPipe nexusPipe)
+            return Task.CompletedTask;
+
+        lock (_freedLock)
+        {
+            if (_isCanceled || !IsActive(nexusPipe))
+                return Task.CompletedTask;
+
+            _freedWaiters ??= new Dictionary<NexusDuplexPipe, TaskCompletionSource>();
+            if (!_freedWaiters.TryGetValue(nexusPipe, out var waiter))
+            {
+                waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _freedWaiters.Add(nexusPipe, waiter);
+            }
+
+            return waiter.Task;
+        }
+    }
+
+    /// <summary>
+    /// True if the pipe is still held under its full or its partial ID. A pipe only leaves the active pipes when it
+    /// is freed or the session's pipes are canceled, apart from its move from the partial to the full ID.
+    /// </summary>
+    private bool IsActive(NexusDuplexPipe pipe)
+    {
+        return (pipe.Id != 0 && _activePipes.TryGetValue(pipe.Id, out var full) && ReferenceEquals(full, pipe))
+               || (_activePipes.TryGetValue(GetPartialIdFromLocalId(pipe.LocalId), out var partial)
+                   && ReferenceEquals(partial, pipe));
+    }
+
+    /// <summary>
+    /// Completes every pending <see cref="WaitFreedAsync"/> task.
+    /// </summary>
+    private void CompleteFreedWaiters()
+    {
+        List<TaskCompletionSource>? waiters = null;
+        lock (_freedLock)
+        {
+            if (_freedWaiters is { Count: > 0 })
+            {
+                waiters = new List<TaskCompletionSource>(_freedWaiters.Values);
+                _freedWaiters.Clear();
+            }
+        }
+
+        if (waiters == null)
+            return;
+
+        foreach (var waiter in waiters)
+            waiter.TrySetResult();
     }
 
     /// <summary>
@@ -209,8 +284,11 @@ internal class NexusPipeManager
         if (_isCanceled)
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
-        if (!TryReserveWindow())
+        if (!TryReserveWindow() && !await TryReserveAfterPendingFreesAsync().ConfigureAwait(false))
         {
+            if (_isCanceled)
+                throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
+
             await RefusePipe(otherId).ConfigureAwait(false);
             throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
         }
@@ -248,6 +326,70 @@ internal class NexusPipeManager
         _logger?.LogTrace($"Sending Ready Notification");
         return pipe;
     }
+
+    /// <summary>
+    /// Waits for completed pipes to be freed, then reserves a slot and window (see <see cref="TryReserveWindow"/>).
+    /// A completed pipe keeps its slot until both sides confirmed the close and the application released it, and
+    /// the peer frees its own side as soon as this side's close confirmation arrives. The peer can therefore open its
+    /// next pipe before this side's handler (a collection connection, for example) has returned and released the old
+    /// one. Waiting for such a pipe, bounded by <see cref="MaxPendingFreeWait"/> and
+    /// <see cref="Transports.ConfigBase.ProgressTimeout"/>, avoids refusing an open that is only racing the release.
+    /// Returns false at once when no completed pipe is waiting to be freed.
+    /// </summary>
+    private async ValueTask<bool> TryReserveAfterPendingFreesAsync()
+    {
+        var config = _session.Config;
+        var time = config.Time;
+        var waitMs = Math.Min(config.ProgressTimeout, (long)MaxPendingFreeWait.TotalMilliseconds);
+        var deadline = time.GetTickCount64() + waitMs;
+        List<Task>? pending = null;
+
+        while (!_isCanceled)
+        {
+            pending?.Clear();
+            foreach (var entry in _activePipes)
+            {
+                // Completed by either side and not freed yet: it is freed once the close exchange and the
+                // application's release are done.
+                if (entry.Value.CurrentState != State.Complete)
+                    continue;
+
+                var freed = WaitFreedAsync(entry.Value);
+                if (freed.IsCompleted)
+                    continue;
+
+                pending ??= new List<Task>();
+                pending.Add(freed);
+            }
+
+            if (pending is not { Count: > 0 })
+                return TryReserveWindow();
+
+            var remaining = deadline - time.GetTickCount64();
+            if (remaining <= 0)
+                return false;
+
+            _logger?.LogTrace($"Pipe limit reached; waiting up to {remaining} ms for {pending.Count} completed pipe(s) to be freed.");
+            try
+            {
+                await Task.WhenAny(pending).WaitAsync(TimeSpan.FromMilliseconds(remaining), time).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                return TryReserveWindow();
+            }
+
+            if (TryReserveWindow())
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Longest wait in <see cref="RegisterPipe"/> for completed pipes to be freed before refusing a new one.
+    /// </summary>
+    internal static readonly TimeSpan MaxPendingFreeWait = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Refuses a pipe the peer opened without registering it: sends Refused for the opener's partial ID, so the
@@ -376,6 +518,9 @@ internal class NexusPipeManager
         }
 
         _activePipes.Clear();
+
+        // The session ended: nothing is freed one by one any more, so release everyone waiting for a pipe.
+        CompleteFreedWaiters();
     }
 
     // Pipe IDs are a byte pair: the client's local ID and the server's local ID.

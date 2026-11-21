@@ -1,0 +1,32 @@
+Fire#0 [[1,["c","f64:0x4004000000000000"]],null] cancel=None pipe=False
+Fire#0 [null,3] cancel=None pipe=False
+Wrap#1 [7] cancel=None pipe=False
+Wrap -> 5 [1,2]
+Lookup#2 [4] cancel=After(250ms) pipe=False
+Lookup -> sq 3
+Lookup#2 [1] cancel=Token pipe=False
+Lookup#2 [1] cancel=None pipe=False
+Upload#3 [] cancel=None pipe=False
+Stream#4 [] cancel=After(5ms) pipe=False
+Upload(INexusDuplexPipe) -> A pipe cannot be remoted: call the overload of 'Upload' that takes a global::NexNet.Interop.IRemotePipe.
+Big#5 ["18446744073709551615",[125,0,0,131072],["637135238450000000",120],[1,-1]] cancel=None pipe=False
+Big -> -9007199254740993
+Maybe#6 [null,-2] cancel=None pipe=False
+Maybe -> null
+list Rt.IRtServer.Shapes #7 ServerToClient Rt.Shape
+list Rt.IRtServer.Shapes #7 ServerToClient Rt.Shape
+INexusList -> A remote proxy exposes 'Shapes' as global::NexNet.Interop.IRemoteList<global::Rt.Shape>: use the property of the proxy class.
+methods: Rt.IRtServer.Fire#0 Void None ct=False (shape,count), Rt.IRtServer.Stream#4 Task Channel ct=True (), Rt.IRtServer.Big#5 TaskOf None ct=False (value,price,when,ints)
+slots: OnConnected, OnDisconnected, Ping#0, Notify#1, Receive#2
+steps OnConnected: AwaitSignalStep { Name = go } times=
+steps OnDisconnected:  times=
+steps Ping: DelayStep { Milliseconds = 10 } | Return 54321 times=1
+steps Notify: ThrowStep { Kind = InvalidOperation, Message = no } times=
+steps Receive: NamedStep { Handler = pipe.echo, Options =  } times=
+call: PingArgs { value = 5, note = hi }
+call: NotifyArgs { color = Blue }
+forward: 42
+args: [1,null]
+codec Shape: [2,["s",-1]]
+codec ulong: "18446744073709551615"
+codec Color: 4

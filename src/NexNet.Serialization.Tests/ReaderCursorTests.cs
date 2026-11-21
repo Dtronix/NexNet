@@ -7,7 +7,6 @@ namespace NexNet.Serialization.Tests;
 /// <summary>
 /// Covers the reader's span cursor: segment boundaries, empty segments, positions and string decoding paths.
 /// </summary>
-[TestFixture]
 public class ReaderCursorTests
 {
     private sealed class Segment : ReadOnlySequenceSegment<byte>
@@ -60,122 +59,174 @@ public class ReaderCursorTests
         w.Write(ulong.MaxValue);
     });
 
-    private static void AssertSample(ref MsgPackReader reader)
+    /// <summary>
+    /// The values <see cref="Sample"/> holds, read synchronously so the ref struct reader is not live across an await.
+    /// </summary>
+    private readonly record struct SampleValues(
+        int Header, int Int32, string? String, double Double, byte[]? Binary, ulong UInt64, bool End, long Remaining);
+
+    private static SampleValues ReadSample(ref MsgPackReader reader) => new(
+        reader.ReadArrayHeader(),
+        reader.ReadInt32(),
+        reader.ReadString(),
+        reader.ReadDouble(),
+        reader.ReadBinary()?.ToArray(),
+        reader.ReadUInt64(),
+        reader.End,
+        reader.Remaining);
+
+    private static async Task AssertSample(SampleValues values)
     {
-        Assert.That(reader.ReadArrayHeader(), Is.EqualTo(5));
-        Assert.That(reader.ReadInt32(), Is.EqualTo(int.MinValue));
-        Assert.That(reader.ReadString(), Is.EqualTo("héllo wörld"));
-        Assert.That(reader.ReadDouble(), Is.EqualTo(2.5d));
-        Assert.That(reader.ReadBinary()!.Value.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }));
-        Assert.That(reader.ReadUInt64(), Is.EqualTo(ulong.MaxValue));
-        Assert.That(reader.End, Is.True);
-        Assert.That(reader.Remaining, Is.Zero);
+        await Assert.That(values.Header).IsEqualTo(5);
+        await Assert.That(values.Int32).IsEqualTo(int.MinValue);
+        await Assert.That(values.String).IsEqualTo("héllo wörld");
+        await Assert.That(values.Double).IsEqualTo(2.5d);
+        await Assert.That(values.Binary).IsEquivalentTo(new byte[] { 1, 2, 3, 4, 5 }, CollectionOrdering.Matching);
+        await Assert.That(values.UInt64).IsEqualTo(ulong.MaxValue);
+        await Assert.That(values.End).IsTrue();
+        await Assert.That(values.Remaining).IsZero();
+    }
+
+    private static SampleValues ReadSample(ReadOnlySequence<byte> sequence)
+    {
+        var reader = new MsgPackReader(sequence);
+        return ReadSample(ref reader);
     }
 
     [Test]
-    public void ReadsWithEmptySegmentsInterleaved()
+    public async Task ReadsWithEmptySegmentsInterleaved()
     {
         var data = Sample();
-        var reader = new MsgPackReader(Chunked(data, 0, 1, 0, 0, 3, 0, 2, 0, 5, 0, 1));
-        AssertSample(ref reader);
+        await AssertSample(ReadSample(Chunked(data, 0, 1, 0, 0, 3, 0, 2, 0, 5, 0, 1)));
     }
 
     [Test]
-    public void ReadsWithEmptyFirstAndLastSegments()
+    public async Task ReadsWithEmptyFirstAndLastSegments()
     {
         var data = Sample();
-        var reader = new MsgPackReader(Chunked(data, 0, data.Length, 0));
-        AssertSample(ref reader);
+        await AssertSample(ReadSample(Chunked(data, 0, data.Length, 0)));
     }
 
     [Test]
-    public void ReadsEverySplitPoint()
+    public async Task ReadsEverySplitPoint()
     {
         var data = Sample();
         for (var split = 0; split <= data.Length; split++)
-        {
-            var reader = new MsgPackReader(Chunked(data, split, data.Length - split));
-            AssertSample(ref reader);
-        }
+            await AssertSample(ReadSample(Chunked(data, split, data.Length - split)));
     }
 
     [Test]
-    public void ConsumedAndPositionTrackAcrossSegments()
+    public async Task ConsumedAndPositionTrackAcrossSegments()
     {
         var data = Sample();
         var sequence = Segmented(data, 3);
-        var reader = new MsgPackReader(sequence);
-        reader.ReadArrayHeader();
-        reader.ReadInt32();
-        Assert.That(reader.Consumed, Is.EqualTo(6));
-        Assert.That(sequence.Slice(0, reader.Position).Length, Is.EqualTo(6));
+        long consumedAfterInt, slicedAfterInt, slicedAfterRaw, consumedAfterRaw, remainingAfterRaw;
+        byte[] raw;
+        {
+            var reader = new MsgPackReader(sequence);
+            reader.ReadArrayHeader();
+            reader.ReadInt32();
+            consumedAfterInt = reader.Consumed;
+            slicedAfterInt = sequence.Slice(0, reader.Position).Length;
 
-        var raw = reader.ReadRawValue(); // the string
-        Assert.That(raw.ToArray(), Is.EqualTo(data.AsSpan(6, (int)raw.Length).ToArray()));
-        Assert.That(sequence.Slice(0, reader.Position).Length, Is.EqualTo(reader.Consumed));
-        Assert.That(reader.Remaining, Is.EqualTo(data.Length - reader.Consumed));
+            raw = reader.ReadRawValue().ToArray(); // the string
+            slicedAfterRaw = sequence.Slice(0, reader.Position).Length;
+            consumedAfterRaw = reader.Consumed;
+            remainingAfterRaw = reader.Remaining;
+        }
+
+        await Assert.That(consumedAfterInt).IsEqualTo(6);
+        await Assert.That(slicedAfterInt).IsEqualTo(6);
+        await Assert.That(raw).IsEquivalentTo(data.AsSpan(6, raw.Length).ToArray(), CollectionOrdering.Matching);
+        await Assert.That(slicedAfterRaw).IsEqualTo(consumedAfterRaw);
+        await Assert.That(remainingAfterRaw).IsEqualTo(data.Length - consumedAfterRaw);
     }
 
     [Test]
-    public void TrySkipSnapshotLeavesOriginalUntouched()
+    public async Task TrySkipSnapshotLeavesOriginalUntouched()
     {
         var data = Sample();
-        var reader = new MsgPackReader(Segmented(data, 2));
-        var probe = reader;
-        Assert.That(probe.TrySkip(), Is.True);
-        Assert.That(probe.End, Is.True);
-        Assert.That(reader.Consumed, Is.Zero);
-        AssertSample(ref reader);
+        bool skipped, probeEnd;
+        long consumed;
+        SampleValues values;
+        {
+            var reader = new MsgPackReader(Segmented(data, 2));
+            var probe = reader;
+            skipped = probe.TrySkip();
+            probeEnd = probe.End;
+            consumed = reader.Consumed;
+            values = ReadSample(ref reader);
+        }
+
+        await Assert.That(skipped).IsTrue();
+        await Assert.That(probeEnd).IsTrue();
+        await Assert.That(consumed).IsZero();
+        await AssertSample(values);
     }
 
     [Test]
-    public void TrySkipFailsAtEverySplitOfTruncatedData([Values(1, 2, 5)] int segmentSize)
+    [MatrixDataSource]
+    public async Task TrySkipFailsAtEverySplitOfTruncatedData([Matrix(1, 2, 5)] int segmentSize)
     {
         var data = Sample();
         for (var length = 0; length < data.Length; length++)
         {
-            var reader = new MsgPackReader(Segmented(data.AsSpan(0, length).ToArray(), segmentSize));
-            Assert.That(reader.TrySkip(), Is.False, $"length {length}");
-            Assert.That(reader.Consumed, Is.Zero);
+            bool skipped;
+            long consumed;
+            {
+                var reader = new MsgPackReader(Segmented(data.AsSpan(0, length).ToArray(), segmentSize));
+                skipped = reader.TrySkip();
+                consumed = reader.Consumed;
+            }
+
+            await Assert.That(skipped).IsFalse().Because($"length {length}");
+            await Assert.That(consumed).IsZero();
         }
     }
 
     [Test]
-    public void TruncatedReadsThrowAcrossSegments()
+    public async Task TruncatedReadsThrowAcrossSegments()
     {
         var data = Write((ref MsgPackWriter w) => w.Write(long.MinValue));
         var truncated = Segmented(data.AsSpan(0, data.Length - 1).ToArray(), 2);
-        Assert.Throws<NexusSerializationException>(() =>
+        await Assert.That(() =>
         {
             var reader = new MsgPackReader(truncated);
             reader.ReadInt64();
-        });
+        }).ThrowsExactly<NexusSerializationException>();
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(255)]
-    [TestCase(256)]
-    [TestCase(257)]
-    [TestCase(5000)]
-    public void DecodesAsciiAndNonAsciiOfEveryBufferSize(int length)
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(255)]
+    [Arguments(256)]
+    [Arguments(257)]
+    [Arguments(5000)]
+    public async Task DecodesAsciiAndNonAsciiOfEveryBufferSize(int length)
     {
         var ascii = new string('a', length);
         var mixed = string.Concat(Enumerable.Range(0, length).Select(i => i % 3 == 0 ? "é" : i % 3 == 1 ? "字" : "z"));
         foreach (var s in new[] { ascii, mixed, ascii + "😀", "😀" + ascii })
         {
             var data = Write((ref MsgPackWriter w) => w.Write(s));
-            Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString()), Is.EqualTo(s));
-            Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted), Is.EqualTo(s));
+            await Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString())).IsEqualTo(s);
+            await Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted)).IsEqualTo(s);
 
-            var segmented = new MsgPackReader(Segmented(data, 7));
-            Assert.That(segmented.ReadString(), Is.EqualTo(s));
+            string? segmentedValue;
+            {
+                var segmented = new MsgPackReader(Segmented(data, 7));
+                segmentedValue = segmented.ReadString();
+            }
+
+            await Assert.That(segmentedValue).IsEqualTo(s);
         }
     }
 
-    [TestCase(10)]
-    [TestCase(400)]
-    public void InvalidUtf8IsRejectedWhenStrictAndReplacedWhenTrusted(int prefixLength)
+    [Test]
+    [Arguments(10)]
+    [Arguments(400)]
+    public async Task InvalidUtf8IsRejectedWhenStrictAndReplacedWhenTrusted(int prefixLength)
     {
         // A non-ASCII string whose last sequence is invalid (lone continuation byte), long enough to use the
         // pooled buffer when prefixLength is large.
@@ -186,27 +237,32 @@ public class ReaderCursorTests
             w.WriteRaw(bytes);
         });
 
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.ReadString()));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.ReadString())).ThrowsExactly<NexusSerializationException>();
         var replaced = Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted);
-        Assert.That(replaced, Is.EqualTo(Encoding.UTF8.GetString(bytes)));
+        await Assert.That(replaced).IsEqualTo(Encoding.UTF8.GetString(bytes));
     }
 
     [Test]
-    public void TruncatedMultiByteSequenceIsRejectedWhenStrict()
+    public async Task TruncatedMultiByteSequenceIsRejectedWhenStrict()
     {
         // "字" is e5 ad 97; drop the last byte so the string ends mid-sequence.
         var data = new byte[] { 0xa2, 0xe5, 0xad };
-        Assert.Throws<NexusSerializationException>(() => Read(data, (ref MsgPackReader r) => r.ReadString()));
-        Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted), Is.EqualTo("�"));
+        await Assert.That(() => Read(data, (ref MsgPackReader r) => r.ReadString())).ThrowsExactly<NexusSerializationException>();
+        await Assert.That(Read(data, (ref MsgPackReader r) => r.ReadString(), NexusSerializerOptions.Trusted)).IsEqualTo("�");
     }
 
     [Test]
-    public void ReadsFromMemoryWithOffset()
+    public async Task ReadsFromMemoryWithOffset()
     {
         var data = Sample();
         var padded = new byte[data.Length + 10];
         data.CopyTo(padded, 5);
-        var reader = new MsgPackReader(padded.AsMemory(5, data.Length));
-        AssertSample(ref reader);
+        SampleValues values;
+        {
+            var reader = new MsgPackReader(padded.AsMemory(5, data.Length));
+            values = ReadSample(ref reader);
+        }
+
+        await AssertSample(values);
     }
 }

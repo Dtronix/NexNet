@@ -1,0 +1,24 @@
+{"id":"collection.reset-start.empty","type":"CollectionListMessage","mode":"both","note":"an empty list at version 0","value":[0,[0,0,0]],"hex":"920093000000"}
+{"id":"collection.reset-start","type":"CollectionListMessage","mode":"both","note":"a snapshot of 3 values at version 42","value":[0,[0,42,3]],"hex":"920093002a03"}
+{"id":"collection.reset-start.max","type":"CollectionListMessage","mode":"both","note":"int32 version and count","value":[0,[0,2147483647,100000]],"hex":"92009300ce7fffffffce000186a0"}
+{"id":"collection.reset-values.int","type":"CollectionListMessage","mode":"both","note":"a chunk of an INexusList<int>: Memory<int> [1, 2, 3], ext 78","value":[1,[0,"xw1OBAEAAAACAAAAAwAAAA=="]],"hex":"92019200c70d4e04010000000200000003000000"}
+{"id":"collection.reset-values.int.empty","type":"CollectionListMessage","mode":"both","note":"an empty Memory<int> chunk","value":[1,[0,"1E4E"]],"hex":"92019200d44e04"}
+{"id":"collection.reset-values.string","type":"CollectionListMessage","mode":"both","note":"a chunk of an INexusList<string>: [\"a\", \"b\"], an array","value":[1,[0,"kqFhoWI="]],"hex":"9201920092a161a162"}
+{"id":"collection.reset-complete","type":"CollectionListMessage","mode":"both","value":[2,[0]],"hex":"92029100"}
+{"id":"collection.clear","type":"CollectionListMessage","mode":"both","note":"a request on an empty list, or a relay change","value":[3,[0,0]],"hex":"9203920000"}
+{"id":"collection.clear.ack","type":"CollectionListMessage","mode":"both","note":"Ack: the originator's copy","value":[3,[1,7]],"hex":"9203920107"}
+{"id":"collection.insert","type":"CollectionListMessage","mode":"both","note":"insert 5 at 0, version 0","value":[4,[0,0,0,"BQ=="]],"hex":"92049400000005"}
+{"id":"collection.insert.versioned","type":"CollectionListMessage","mode":"both","note":"insert \"x\" at 2; version 70000 is a uint32 on the wire","value":[4,[0,70000,2,"oXg="]],"hex":"92049400ce0001117002a178"}
+{"id":"collection.insert.ack","type":"CollectionListMessage","mode":"both","value":[4,[1,12,2,"oXg="]],"hex":"920494010c02a178"}
+{"id":"collection.insert.nil-value","type":"CollectionListMessage","mode":"both","note":"a nil item value (INexusList<string?>): the embedded value is nil, null as everywhere","value":[4,[0,3,0,null]],"hex":"920494000300c0"}
+{"id":"collection.replace","type":"CollectionListMessage","mode":"both","note":"replace the item at 1 with \"y\"","value":[5,[0,3,1,"oXk="]],"hex":"920594000301a179"}
+{"id":"collection.replace.ack","type":"CollectionListMessage","mode":"both","value":[5,[1,4,1,"oXk="]],"hex":"920594010401a179"}
+{"id":"collection.move","type":"CollectionListMessage","mode":"both","note":"the item at 0 ends up at 2","value":[6,[0,4,0,2]],"hex":"92069400040002"}
+{"id":"collection.move.ack","type":"CollectionListMessage","mode":"both","value":[6,[1,5,2,0]],"hex":"92069401050200"}
+{"id":"collection.remove","type":"CollectionListMessage","mode":"both","value":[7,[0,0,1]],"hex":"920793000001"}
+{"id":"collection.remove.ack","type":"CollectionListMessage","mode":"both","value":[7,[1,9,0]],"hex":"920793010900"}
+{"id":"collection.noop.ack","type":"CollectionListMessage","mode":"both","note":"the server's \"not applied\" answer: to the originator only, always Ack","value":[8,[1]],"hex":"92089101"}
+{"id":"collection.noop","type":"CollectionListMessage","mode":"both","note":"Noop without Ack decodes too","value":[8,[0]],"hex":"92089100"}
+{"id":"collection.clear.from-int32","type":"CollectionListMessage","mode":"decode","note":"version as int32 (d2)","value":[3,[0,5]],"hex":"92039200d200000005"}
+{"id":"collection.noop.from-uint8","type":"CollectionListMessage","mode":"decode","note":"flags as uint8 (cc)","value":[8,[1]],"hex":"920891cc01"}
+{"id":"collection.noop.from-uint16-tag","type":"CollectionListMessage","mode":"decode","note":"tag as uint16 (cd)","value":[8,[1]],"hex":"92cd00089101"}

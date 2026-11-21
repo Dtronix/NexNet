@@ -1,5 +1,4 @@
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 #pragma warning disable CS1998
 #pragma warning disable VSTHRD200
 
@@ -19,12 +18,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class NexusServerTests_InvocationLifetime : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvocationHasNoExecutionTimeout(Type type)
     {
         var startedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -54,8 +49,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerTaskEvent = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var invocationTask = client.Proxy.ServerTaskValue().AsTask();
         await startedTcs.Task.Timeout(1);
@@ -70,20 +65,16 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
 
         // Neither side imposes a deadline; the invocation just stays pending and the
         // connection remains healthy.
-        Assert.That(invocationTask.IsCompleted, Is.False);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(invocationTask.IsCompleted).IsFalse();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
         // Once the method finally returns, the invocation completes normally.
         hangTcs.TrySetResult(42);
-        Assert.That(await invocationTask.Timeout(1), Is.EqualTo(42));
+        await Assert.That(await invocationTask.Timeout(1)).IsEqualTo(42);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task HungInvocationStarvesSessionInvocationSlots(Type type)
     {
         var startedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -103,8 +94,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerVoidEvent = _ => secondInvocationTcs.TrySetResult();
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var firstInvocationTask = client.Proxy.ServerTask().AsTask();
         await startedTcs.Task.Timeout(1);
@@ -120,23 +111,15 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await firstInvocationTask.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task SaturatedSessionStillProcessesCancellation(Type type)
     {
         await RunCancellationScenario(type, saturateSession: true);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CancellationIsProcessedWhenSessionIsNotSaturated(Type type)
     {
         // Control test for SaturatedSessionStillProcessesCancellation: the same cancellation
@@ -144,12 +127,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await RunCancellationScenario(type, saturateSession: false);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DisconnectDoesNotCancelRunningInvocation(Type type)
     {
         // Session teardown disposes the invocation's CancellationTokenSource without
@@ -158,12 +137,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await RunDisconnectScenario(type, withCancellationToken: true);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DisconnectDoesNotStopInvocationWithoutCancellationToken(Type type)
     {
         // Without a CancellationToken parameter there is no cancellation mechanism at
@@ -201,8 +176,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerVoidEvent = _ => queuedInvocationTcs.TrySetResult();
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         var invocationTask = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
@@ -220,7 +195,7 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         }
 
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await invocationTask);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await invocationTask);
 
         // The read loop does not wait for a slot, so the cancellation reaches the running method
         // even while the session is saturated.
@@ -276,8 +251,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var invocationTask = withCancellationToken
             ? client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask()

@@ -94,9 +94,19 @@ internal class HttpSocketTransport : ITransport
             response = await connector.Invoker.SendAsync(message, cancellationTokenRegistration.Token)
                 .ConfigureAwait(false);
 
-            // The protocol should be switching. If not, then check for error.
+            // Only 101 Switching Protocols opens the session. An error status maps by its code; any other status
+            // (a 2xx or 3xx) did not upgrade the connection, so its body is not a NexNet stream. Redirects are
+            // never followed (the handler has AllowAutoRedirect off).
             if (response.StatusCode != HttpStatusCode.SwitchingProtocols)
+            {
+                if ((int)response.StatusCode is >= 300 and < 400)
+                    throw new TransportException(TransportError.ProtocolError,
+                        $"HttpSocket upgrade failed: the server answered with redirect {(int)response.StatusCode}; redirects are not followed.", null);
+
                 response.EnsureSuccessStatusCode();
+                throw new TransportException(TransportError.ProtocolError,
+                    $"HttpSocket upgrade failed: the server answered {(int)response.StatusCode} instead of 101 Switching Protocols.", null);
+            }
 
             // Don't cancel the stream from the passed cancellation token as it is only valid
             // until the connection has been completed.
@@ -123,6 +133,9 @@ internal class HttpSocketTransport : ITransport
 
         switch (exception)
         {
+            case TransportException e:
+                return e;
+
             case HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden } e:
                 return new TransportException(TransportError.AuthenticationError,
                     $"Http connection authentication failed with status code: {e.StatusCode}", e);

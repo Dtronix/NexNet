@@ -1,0 +1,39 @@
+{"id":"object.all-types.defaults","type":"InteropAllTypes","mode":"both","note":"every member at its default","value":[false,0,0,0,0,0,0,0,0,"f32:0x00000000","f64:0x0000000000000000","f16:0x0000",0,[0,0,0,0],null,null,0,[0,0],0,0,0,"00000000-0000-0000-0000-000000000000","0",null,null,0,0,0,null,null,null,null],"hex":"dc0020c20000000000000000ca00000000cb0000000000000000ca0000000000c41000000000000000000000000000000000c0c000920000000000c41000000000000000000000000000000000c40100c0c0000000c0c0c0c0"}
+{"id":"object.all-types","type":"InteropAllTypes","mode":"both","note":"one member of every built-in type","value":[true,-100,200,-30000,60000,-2000000000,4000000000,"-9223372036854775808","18446744073709551615","f32:0x3FC00000","f64:0xBFB999999999999A","f16:0x3800",90,[15,0,0,-2147418112],"zoo","AP8=","5248820354427387904",["637134336000000000",330],-15000000,737424,863990000000,"00112233-4455-6677-8899-aabbccddeeff","1180591620717411303424","https://example.com/","1.2.3",-1,32769,"9007199254740993",42,[1,2,3],["x","y"],[["k",1]]],"hex":"dc0020c3d09cccc8d18ad0cdea60d288ca6c00ceee6b2800d38000000000000000cfffffffffffffffffca3fc00000cbbfb999999999999aca3f0000005ac4100f000000000000000000000000000180a37a6f6fc40200ffcf48d78e4d8b7c000092cf08d78e4d8b7c0000cd014ad2ff1b1e40ce000b4090cf000000c929d12980c41000112233445566778899aabbccddeeffc409000000000000000040b468747470733a2f2f6578616d706c652e636f6d2fa5312e322e33ffcd8001cf00200000000000012ac70d4e0401000000020000000300000092a178a17981a16b01"}
+{"id":"object.all-types.nil","type":"InteropAllTypes","mode":"both","value":null,"hex":"c0"}
+{"id":"object.struct","type":"InteropStruct","mode":"both","value":[-3,"f64:0x4004000000000000","p"],"hex":"93fdcb4004000000000000a170"}
+{"id":"object.struct.nullable","type":"InteropStruct?","mode":"both","value":[1,"f64:0x0000000000000000",null],"hex":"9301cb0000000000000000c0"}
+{"id":"object.struct.nullable-nil","type":"InteropStruct?","mode":"both","value":null,"hex":"c0"}
+{"id":"object.record","type":"InteropRecord","mode":"both","value":["rec",2,[1,"f64:0xBFF0000000000000",null]],"hex":"93a3726563029301cbbff0000000000000c0"}
+{"id":"object.record-struct","type":"InteropRecordStruct","mode":"both","value":["9223372036854775807","3f2504e0-4f89-11d3-9a0c-0305e82c3301"],"hex":"92cf7fffffffffffffffc4103f2504e04f8911d39a0c0305e82c3301"}
+{"id":"object.sparse","type":"InteropSparse","mode":"both","note":"keys 1 and 2 are unused: nil","value":[1,null,null,"four"],"hex":"9401c0c0a4666f7572"}
+{"id":"object.item","type":"InteropItem","mode":"both","value":[7,"seven"],"hex":"9207a5736576656e"}
+{"id":"object.nested","type":"InteropNested","mode":"both","value":[["r",1,[2,"f64:0x0000000000000000",null]],[[1,"a"]],[[0,[5,"f64:0x0000000000000000","five"]]],[0,["f64:0x3FF0000000000000"]],[null,[],null,null,null]],"hex":"9593a172019302cb0000000000000000c0919201a16181009305cb0000000000000000a466697665920091cb3ff000000000000095c090c0c0c0"}
+{"id":"object.box-string","type":"InteropBox<string>","mode":"both","note":"a generic object","value":["boxed"],"hex":"91a5626f786564"}
+{"id":"object.box-item","type":"InteropBox<InteropItem>","mode":"both","value":[[3,"three"]],"hex":"919203a57468726565"}
+{"id":"object.pair","type":"InteropPair<int,InteropItem>","mode":"both","note":"List<TSecond> with TSecond bound to an object is an element-wise array","value":[9,[[1,"x"],[2,"y"]]],"hex":"9209929201a1789202a179"}
+{"id":"object.item.older-peer","type":"InteropItem","mode":"decode","note":"Name is missing: null","value":[5,null],"hex":"9105"}
+{"id":"object.item.newer-peer","type":"InteropItem","mode":"decode","note":"an unknown third member is skipped","value":[5,"a"],"hex":"9305a161c3"}
+{"id":"object.sparse.gap-values","type":"InteropSparse","mode":"decode","note":"values at the unused keys are skipped","value":[1,null,null,"x"],"hex":"9401c3c400a178"}
+{"id":"object.struct.empty-array","type":"InteropStruct","mode":"decode","note":"every member at its default","value":[0,"f64:0x0000000000000000",null],"hex":"90"}
+{"id":"limit.depth.at-limit","type":"InteropNested","mode":"both","options":{"maxDepth":3},"note":"3 nested objects with maxDepth 3","value":[null,null,null,null,[null,null,null,null,[null,null,null,null,null]]],"hex":"95c0c0c0c095c0c0c0c095c0c0c0c0c0"}
+{"id":"external.point","type":"InteropPoint","mode":"both","note":"InteropPointFormatter: [X, Y]","value":"kgP8","hex":"9203fc"}
+{"id":"external.point-list","type":"List<InteropPoint>","mode":"both","value":["kgAA","ks5/////0oAAAAA="],"hex":"9292000092ce7fffffffd280000000"}
+{"id":"enum.int.none","type":"InteropEnum","mode":"both","value":0,"hex":"00"}
+{"id":"enum.int.one","type":"InteropEnum","mode":"both","value":1,"hex":"01"}
+{"id":"enum.int.negative","type":"InteropEnum","mode":"both","value":-1,"hex":"ff"}
+{"id":"enum.int.min","type":"InteropEnum","mode":"both","value":-2147483648,"hex":"d280000000"}
+{"id":"enum.int.max","type":"InteropEnum","mode":"both","value":2147483647,"hex":"ce7fffffff"}
+{"id":"enum.int.undefined","type":"InteropEnum","mode":"both","note":"any value of the underlying type, named or not","value":7,"hex":"07"}
+{"id":"enum.ushort-flags.none","type":"InteropFlags","mode":"both","value":0,"hex":"00"}
+{"id":"enum.ushort-flags.a-c","type":"InteropFlags","mode":"both","value":5,"hex":"05"}
+{"id":"enum.ushort-flags.high","type":"InteropFlags","mode":"both","value":32768,"hex":"cd8000"}
+{"id":"enum.ushort-flags.all","type":"InteropFlags","mode":"both","value":32775,"hex":"cd8007"}
+{"id":"enum.long.negative","type":"InteropLongEnum","mode":"both","value":-5,"hex":"fb"}
+{"id":"enum.long.big","type":"InteropLongEnum","mode":"both","value":1099511627776,"hex":"cf0000010000000000"}
+{"id":"enum.long.beyond-double","type":"InteropLongEnum","mode":"both","note":"2^53 + 1: a string in the value model","value":"9007199254740993","hex":"cf0020000000000001"}
+{"id":"enum.long.min","type":"InteropLongEnum","mode":"both","value":"-9223372036854775808","hex":"d38000000000000000"}
+{"id":"enum.long.max","type":"InteropLongEnum","mode":"both","value":"9223372036854775807","hex":"cf7fffffffffffffff"}
+{"id":"enum.nullable","type":"InteropEnum?","mode":"both","value":2,"hex":"02"}
+{"id":"enum.nullable-nil","type":"InteropEnum?","mode":"both","value":null,"hex":"c0"}
+{"id":"enum.array","type":"InteropEnum[]","mode":"both","note":"an enum array is element-wise, not ext 78","value":[1,-2147483648],"hex":"9201d280000000"}

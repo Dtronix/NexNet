@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests of the control protocol side of NexNet.Interop (H05): framing, hello checks, timeouts, error kinds, the
+    remote driver end to end, the leak report, host crash detection and restart, and the launch configuration. The
+    language host is a fake written in C# (FakeHost): it speaks the control protocol and drives the C# client in
+    process, so no JDK or Node is needed (D27).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet.Interop\NexNet.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

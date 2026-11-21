@@ -1,570 +1,422 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
-using NUnit.Framework;
+using System.Text.Json.Nodes;
+using System.Threading.Channels;
+using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Interop.InProc;
+using NexNet.InteropServer;
+using NexNet.Messages;
+using NexNet.Pipes;
+using NexNet.Transports;
+
+#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Pipes;
 
-internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
+/// <summary>
+/// Pipes between the client under test and the server, mostly opened by the server (the client's registrant role).
+/// </summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReceivesFullFrames(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReceivesFullFrames(ClientTarget target)
     {
         // 4 MiB in maximum-size frames: exceeds the transport's receive pause threshold, the pipe's high watermark
         // and its cutoff, so every one of them has to resume.
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
         const int total = 4 * 1024 * 1024;
-        long received = 0;
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            s => s.ClientTaskValueWithDuplexPipe.Named("pipe.readExact", ReadExact(total)));
+        var sNexus = await ServerNexusAsync();
 
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            while (true)
-            {
-                var result = await pipe.Input.ReadAsync().Timeout(5);
-                received += result.Buffer.Length;
-                pipe.Input.AdvanceTo(result.Buffer.End);
-                if (result.IsCompleted || received >= total)
-                    break;
-            }
+            await pipe.Output.WriteAsync(PipePattern.Create(total, 1)).AsTask().Timeout(T(5));
 
-            tcs.SetResult();
-        };
+            // The client completes the pipe once it has read every byte.
+            await pipe.CompleteTask.Timeout(T(10));
+        }
 
-        await using var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Output.WriteAsync(new byte[total]).Timeout(5);
-
-        await tcs.Task.Timeout(10);
-        Assert.That(received, Is.EqualTo(total));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderReceivesDataMultipleTimes(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        int count = 0;
-
-        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
         const int iterations = 21;
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        for (var i = 0; i < iterations; i++)
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
+            await using var pipe = await OpenToClientAsync(sNexus);
+            await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+            await pipe.Output.CompleteAsync().AsTask().Timeout(T(1));
 
-            if (Interlocked.Increment(ref count) == iterations)
-                tcs.SetResult();
-
-            // If the connection is still alive, the buffer should contain the data.
-            if (!result.IsCompleted)
-            {
-                Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
-            }
-        };
-
-        for (int i = 0; i < iterations; i++)
-        {
-            await using var pipe = sNexus.Context.CreatePipe();
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-            await pipe.ReadyTask.Timeout(1);
-            await pipe.Output.WriteAsync(Data).Timeout(1);
+            // The client read the data: it wrote it back.
+            await Assert.That(await ReadToEndAsync(pipe.Input)).IsEquivalentTo(Data, CollectionOrdering.Matching);
         }
 
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        int count = 0;
-        var largeData = new byte[1024 * 32];
-        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
+        const int length = 1024 * 32;
+        // 1000 round trips, each step bounded: under a loaded parallel run one step can stall for over a second, so
+        // the bounds catch a hang rather than a slow step.
         const int iterations = 1000;
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
-        {
-            var result = await pipe.Input.ReadAtLeastAsync(largeData.Length).Timeout(1);
-            pipe.Input.AdvanceTo(result.Buffer.End);
-            await pipe.CompleteAsync();
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            s => s.ClientTaskValueWithDuplexPipe.Named("pipe.readExact", ReadExact(length)));
+        var sNexus = await ServerNexusAsync();
+        var largeData = new byte[length];
 
-            if (Interlocked.Increment(ref count) == iterations)
-                tcs.SetResult();
-        };
-
-        for (int i = 0; i < iterations; i++)
+        for (var i = 0; i < iterations; i++)
         {
-            await using var pipe = sNexus.Context.CreatePipe();
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-            await pipe.ReadyTask.Timeout(1);
-            await pipe.Output.WriteAsync(largeData).Timeout(1);
-            await pipe.CompleteTask.Timeout(1);
+            await using var pipe = await OpenToClientAsync(sNexus);
+            await pipe.Output.WriteAsync(largeData).AsTask().Timeout(T(5));
+
+            // The client completes the pipe once it has read every byte.
+            await pipe.CompleteTask.Timeout(T(5));
         }
 
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderReceivesData(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderReceivesData(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
-            tcs.SetResult();
-        };
+            await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+            await pipe.Output.CompleteAsync().AsTask().Timeout(T(1));
+            await Assert.That(await ReadToEndAsync(pipe.Input)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        }
 
-        var pipe = sNexus.Context.CreatePipe();
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Output.WriteAsync(Data).Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeWriterSendsData(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeWriterSendsData(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            await pipe.Output.WriteAsync(Data).Timeout(1);
-            await Task.Delay(10000);
-        };
+            // The server's side stays open: the client writes while the pipe is open both ways.
+            await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+            await Assert.That(await ReadExactAsync(pipe.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        }
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        var result = await pipe.Input.ReadAsync().Timeout(1);
-        Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            s => ThenReport(s.ClientTaskValueWithDuplexPipe.Named("pipe.drain"), 1));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
-            tcs.SetResult();
-        };
+            await pipe.CompleteAsync().AsTask().Timeout(T(1));
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+            // pipe.drain returns only once the client's reader completes.
+            await WaitForReportAsync(1);
+        }
 
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.CompleteAsync().Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeWriterCompletesUponCompleteAsync(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeWriterCompletesUponCompleteAsync(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            FlushResult result = default;
-            for (int i = 0; i < 20; i++)
-            {
-                result = await pipe.Output.WriteAsync(Data).Timeout(1);
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
+            await pipe.CompleteAsync().AsTask().Timeout(T(1));
 
-                if (result.IsCompleted)
-                    break;
+            // The client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 20, 100)).IsTrue();
+        }
 
-                await Task.Delay(100);
-            }
-
-            Assert.That(result.IsCompleted, Is.True);
-            tcs.SetResult();
-        };
-
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.CompleteAsync().Timeout(1);
-
-        await tcs.Task.Timeout(3);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderCompletesUponDisconnection(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderCompletesUponDisconnection(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
+        var sNexus = await ServerNexusAsync();
+
+        await using (await OpenToClientAsync(sNexus))
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
-            tcs.SetResult();
-        };
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
+            await client.DisconnectAsync().Timeout(T(1));
 
-        var pipe = sNexus.Context.CreatePipe();
+            // A read waits for at least one byte unless the pipe completed.
+            var read = await held.ReadAsync(1, Data.Length).AsTask().Timeout(T(1));
+            await Assert.That(read.Length).IsEqualTo(0);
+        }
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await cNexus.Context.DisconnectAsync().Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeWriterCompletesUponDisconnection(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeWriterCompletesUponDisconnection(ClientTarget target)
     {
-        var tcsDisconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
+        var sNexus = await ServerNexusAsync();
+
+        await using (await OpenToClientAsync(sNexus))
         {
-            await tcsDisconnected.Task.Timeout(1);
-            await Task.Delay(150);
-            var result = await pipe.Output.WriteAsync(Data).Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
-            tcs.SetResult();
-        };
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
+            await client.DisconnectAsync().Timeout(T(1));
 
-        var pipe = sNexus.Context.CreatePipe();
+            // The client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 20, 50)).IsTrue();
+        }
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await cNexus.Context.DisconnectAsync().Timeout(1);
-        tcsDisconnected.SetResult();
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderCompletesUponWriterCompletion(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderCompletesUponWriterCompletion(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            s => ThenReport(s.ClientTaskValueWithDuplexPipe.Named("pipe.drain"), 1));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
-            tcs.SetResult();
-        };
+            await pipe.Output.CompleteAsync().AsTask().Timeout(T(1));
 
-        var pipe = sNexus.Context.CreatePipe();
+            // pipe.drain returns only once the client's reader completes.
+            await WaitForReportAsync(1);
+        }
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Output.CompleteAsync().Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeWriterCompletesUponWriterCompletion(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeWriterCompletesUponWriterCompletion(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            FlushResult? result = null;
-            while (result == null || !result.Value.IsCompleted)
-            {
-                result = await pipe.Output.WriteAsync(Data).Timeout(1);
-                await Task.Delay(1);
-            }
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
+            await pipe.Input.CompleteAsync().AsTask().Timeout(T(1));
 
-            Assert.That(result.Value.IsCompleted, Is.True);
-            tcs.SetResult();
+            // The server's reader is complete: the client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 100, 10)).IsTrue();
+        }
 
-        };
-
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Input.CompleteAsync().Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
+            await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+            await pipe.Output.CompleteAsync().AsTask().Timeout(T(1));
 
-            await pipe.Output.WriteAsync(Data).Timeout(1);
-            await Task.Delay(1000);
-        };
+            // The server's writer is complete; the client's still delivers.
+            await Assert.That(await ReadToEndAsync(pipe.Input)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        }
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Output.CompleteAsync().Timeout(1);
-
-        var result = await pipe.Input.ReadAsync().Timeout(1);
-        Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(ClientTarget target)
     {
-        var (server, _, cNexus, tcs) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        var outputComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            s => ThenReport(s.ClientTaskValueWithDuplexPipe.Named("pipe.readExact", ReadExact(Data.Length)), 1));
+        var sNexus = await ServerNexusAsync();
 
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            await outputComplete.Task.Timeout(1);
+            await pipe.Input.CompleteAsync().AsTask().Timeout(T(1));
             await Task.Delay(50);
-            var result = await pipe.Output.WriteAsync(Data).Timeout(1);
-            Assert.That(result.IsCompleted, Is.True);
 
-            var buffer = await pipe.Input.ReadAsync().Timeout(1);
-            pipe.Input.AdvanceTo(buffer.Buffer.Start);
+            // The server's reader is complete; the client's still receives.
+            await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+            await WaitForReportAsync(1);
+        }
 
-            var readResult = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.That(readResult.Buffer.ToArray(), Is.EqualTo(Data));
-            tcs.SetResult();
-        };
-
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
-        await pipe.Input.CompleteAsync().Timeout(1);
-        outputComplete.TrySetResult();
-
-        await pipe.Output.WriteAsync(Data).Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeNotifiesWhenReady(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeNotifiesWhenReady(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
-        {
-            await Task.Delay(10000);
-        };
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.AwaitSignal("release"));
+        var sNexus = await ServerNexusAsync();
 
-        var pipe = sNexus.Context.CreatePipe();
+        // OpenToClientAsync waits for the pipe to be ready while the client's method is still running.
+        await using (await OpenToClientAsync(sNexus))
+            await client.SignalAsync("release");
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await pipe.ReadyTask.Timeout(1);
+        await EndAsync(client);
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task Client_PipeReadyCancelsOnDisconnection(ClientTarget target)
+        => PipeCancelsOnDisconnection(target, pipe => pipe.WhenReadyAsync());
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeReadyCancelsOnDisconnection(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task Client_PipeCompleteCancelsOnDisconnection(ClientTarget target)
+        => PipeCancelsOnDisconnection(target, pipe => pipe.WhenCompletedAsync());
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_PipeNotifiesWhenComplete(ClientTarget target)
     {
-        var (server, client, _, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        var pipe = client.CreatePipe();
-
-        // Pause the receiving to test the cancellation
-        server.Server.Config.InternalOnReceive = async (session, sequence) =>
-        {
-            await client.DisconnectAsync().Timeout(1);
-            await Task.Delay(100000);
-        };
-
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(2);
-    }
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeCompleteCancelsOnDisconnection(Type type)
-    {
-        var (server, client, _, _) = await Setup(type);
-
-        var pipe = client.CreatePipe();
-
-        // Pause the receiving to test the cancellation
-        server.Server.Config.InternalOnReceive = async (session, sequence) =>
-        {
-            await client.DisconnectAsync().Timeout(1);
-            await Task.Delay(100000);
-        };
-
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-
-        await AssertThrows<TaskCanceledException>(async () => await pipe.CompleteTask).Timeout(2);
-    }
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_PipeNotifiesWhenComplete(Type type)
-    {
-        var (server, client, _, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        bool completedInvocation = false;
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        var completedInvocation = false;
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, _) =>
         {
             await Task.Delay(100);
             completedInvocation = true;
-        };
+        });
+        await using var client = await ConnectAsync(target, server);
 
-        var pipe = client.CreatePipe();
+        await using (var pipe = await client.CreatePipeAsync())
+        {
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
+            await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
+        }
 
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-
-        await pipe.CompleteTask.Timeout(1);
-        Assert.That(completedInvocation, Is.True);
+        await Assert.That(completedInvocation).IsTrue();
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(ClientTarget target)
     {
-        var (server, client, _, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        
-        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = (_, _) => ValueTask.CompletedTask);
+        await using var client = await ConnectAsync(target, server);
+        await using var other = await ConnectAsync(target, server);
 
-        var pipe = sNexus.Context.CreatePipe();
+        // A pipe of another client's session.
+        await using (var pipe = await other.CreatePipeAsync())
+        {
+            await AssertThrows<InvalidOperationException>(() =>
+                Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1))).Timeout(T(1));
+        }
 
-        await AssertThrows<InvalidOperationException>(() =>
-            client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1)).Timeout(1);
+        if (target.Language == ClientLanguages.CSharp)
+        {
+            // A pipe of the server's nexus: only a C# test can hold one.
+            var sNexus = await ServerNexusAsync();
+            await using var serverPipe = sNexus.Context.CreatePipe();
+            await AssertThrows<InvalidOperationException>(() =>
+                InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(serverPipe).Timeout(T(1))).Timeout(T(1));
+        }
+
+        await EndAsync(other);
+        await EndAsync(client);
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Client_ThrowsWhenPassingUsedPipe(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Client_ThrowsWhenPassingUsedPipe(ClientTarget target)
     {
-        var (server, client, _, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = (_, _) => ValueTask.CompletedTask);
+        await using var client = await ConnectAsync(target, server);
 
-        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
+        await using (var pipe = await client.CreatePipeAsync())
+        {
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
 
-        var pipe = client.CreatePipe();
-        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.CompleteTask.Timeout(1);
+            await AssertThrows<InvalidOperationException>(() =>
+                Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1))).Timeout(T(1));
+        }
 
-        await AssertThrows<InvalidOperationException>(() =>
-            client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1)).Timeout(1);
+        await EndAsync(client);
     }
 
+    /// <summary>
+    /// The server holds every frame from the client once the client's pipe invocation arrives, and the client
+    /// disconnects meanwhile: the pipe never becomes ready and <paramref name="wait"/> throws a cancellation.
+    /// </summary>
+    private async Task PipeCancelsOnDisconnection(ClientTarget target, Func<IRemotePipe, ValueTask> wait)
+    {
+        var release = Signal();
+        var clientReady = new TaskCompletionSource<IClientUnderTest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = await StartServerAsync(configure: config => ServerTaps.OnReceive(config, async (session, frame) =>
+        {
+            if (frame.Type != MessageType.Invocation)
+                return;
 
+            var connected = await clientReady.Task;
+            _ = connected.DisconnectAsync();
+            await release.Task;
+        }));
+        await using var client = await ConnectAsync(target, server);
+        clientReady.SetResult(client);
 
+        try
+        {
+            await using var pipe = await client.CreatePipeAsync();
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await AssertThrows<TaskCanceledException>(async () => await wait(pipe)).Timeout(T(2));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+
+        await EndAsync(client);
+    }
 }

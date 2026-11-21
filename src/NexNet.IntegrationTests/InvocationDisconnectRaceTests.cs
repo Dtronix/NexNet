@@ -1,5 +1,4 @@
 using NexNet.Invocation;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
@@ -10,9 +9,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationDisconnectRaceTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task CallRegisteredAfterCancelAll_ValueTask_CompletesCanceled(Type type)
     {
         var received = 0;
@@ -24,21 +22,20 @@ internal class InvocationDisconnectRaceTests : BaseTests
             await Task.Delay(Timeout.Infinite);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var manager = CancelAllBeforeNextRegistration(client.Session!.SessionInvocationStateManager);
 
-        await AssertThrows<TaskCanceledException>(async () =>
-            await client.Proxy.ServerData([1, 2, 3]).AsTask().Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
+            await client.Proxy.ServerData([1, 2, 3]).AsTask().Timeout(T(1)));
 
-        AssertNothingOutstanding(manager);
-        Assert.That(received, Is.EqualTo(0));
+        await AssertNothingOutstanding(manager);
+        await Assert.That(received).IsEqualTo(0);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task CallRegisteredAfterCancelAll_ValueTaskOfT_WithToken_CompletesCanceled(Type type)
     {
         var received = 0;
@@ -50,40 +47,40 @@ internal class InvocationDisconnectRaceTests : BaseTests
             return value;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var manager = CancelAllBeforeNextRegistration(client.Session!.SessionInvocationStateManager);
 
         using var cts = new CancellationTokenSource();
-        await AssertThrows<TaskCanceledException>(async () =>
-            await client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask().Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
+            await client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask().Timeout(T(1)));
 
         // A later cancellation of the token finds nothing to cancel and sends nothing.
         cts.Cancel();
-        AssertNothingOutstanding(manager);
-        Assert.That(received, Is.EqualTo(0));
+        await AssertNothingOutstanding(manager);
+        await Assert.That(received).IsEqualTo(0);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CallsAfterCancelAll_AllCompleteCanceled(Type type)
     {
         // Once the session is closing, every later call is canceled without being sent, not only the one in the race.
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerDataEvent = async (_, _) => await Task.Delay(Timeout.Infinite);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         var manager = (SessionInvocationStateManager)client.Session!.SessionInvocationStateManager;
         manager.CancelAll();
 
         var calls = Enumerable.Range(0, 8).Select(_ => client.Proxy.ServerData([1]).AsTask()).ToArray();
         foreach (var call in calls)
-            await AssertThrows<TaskCanceledException>(async () => await call.Timeout(1));
+            await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await call.Timeout(T(1)));
 
-        AssertNothingOutstanding(manager);
+        await AssertNothingOutstanding(manager);
     }
 
     /// <summary>
@@ -100,9 +97,9 @@ internal class InvocationDisconnectRaceTests : BaseTests
         return manager;
     }
 
-    private static void AssertNothingOutstanding(SessionInvocationStateManager manager)
+    private static async Task AssertNothingOutstanding(SessionInvocationStateManager manager)
     {
-        Assert.That(manager.OutstandingCount, Is.EqualTo(0));
-        Assert.That(manager.IsOutstanding(1), Is.False);
+        await Assert.That(manager.OutstandingCount).IsEqualTo(0);
+        await Assert.That(manager.IsOutstanding(1)).IsFalse();
     }
 }

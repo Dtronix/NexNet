@@ -1,14 +1,11 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
-
-[TestFixture]
 public class VersionedListFuzzTests
 {
     [Test]
-    public void FuzzTest_ProcessOperation_WithRandomValidOperations_DoesNotThrow()
+    public async Task FuzzTest_ProcessOperation_WithRandomValidOperations_DoesNotThrow()
     {
         var random = new Random(12345);
         var versionedList = new VersionedList<int>();
@@ -22,8 +19,8 @@ public class VersionedListFuzzTests
         {
             var seedOp = new InsertOperation<int>(i, random.Next());
             var returnedOp = versionedList.ProcessOperation(seedOp, versionedList.Version, out var seedResult);
-            Assert.That(seedResult, Is.EqualTo(ListProcessResult.Successful), "Seeding failed");
-            Assert.That(returnedOp, Is.Not.Null, "Returned operation failed");
+            await Assert.That(seedResult).IsEqualTo(ListProcessResult.Successful).Because("Seeding failed");
+            await Assert.That(returnedOp).IsNotNull().Because("Returned operation failed");
         }
 
         const int iterations = 50_000;
@@ -85,25 +82,22 @@ public class VersionedListFuzzTests
             // Choose a random valid baseVersion: [0 .. currentVersion]
             int baseVersion = random.Next((int)versionedList.MinValidVersion, versionedList.Version + 1);
 
-            Assert.DoesNotThrow(() =>
+            await Assert.That(() =>
                 {
                     var resultOp = versionedList.ProcessOperation(op, baseVersion, out var result);
                     
                     // result should always be a defined enum value
-                    Assert.That(Enum.IsDefined(typeof(ListProcessResult), result), Is.True,
-                        $"Iteration {i}: unexpected ListProcessResult '{result}'");
+                    CallbackAssert.That(Enum.IsDefined(typeof(ListProcessResult), result));
                     
                     // if null was returned, only BadOperation / InvalidVersion / OutOfOperationalRange are valid
                     if (resultOp is null)
                     {
                         badOpCounter++;
-                        Assert.That(result == ListProcessResult.BadOperation
+                        CallbackAssert.That(result == ListProcessResult.BadOperation
                                     || result == ListProcessResult.InvalidVersion
-                                    || result == ListProcessResult.OutOfOperationalRange,
-                            Is.True,
-                            $"Iteration {i}: returned null but result was {result}");
+                                    || result == ListProcessResult.OutOfOperationalRange);
                     }
-                }, $"Iteration {i}: throwing for operation {op.GetType().Name}");
+                }).ThrowsNothing();
         }
     }
     

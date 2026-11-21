@@ -1,57 +1,60 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Messages;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexusServerTests_SendInvocation : BaseTests
+/// <summary>
+/// The invocation frames the server sends to a client under test (P01b), observed as the server writes them; the
+/// client answers each one with its unscripted default result.
+/// </summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerVoid(Type type)
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerVoid(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.IgnoreReturn,
-            InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 0, // Invocations for void are always 0 as there is no returned value
             MethodId = 0
-        }, nexus => nexus.Context.Clients.Caller.ClientVoid());
+        }, nexus =>
+        {
+            nexus.Context.Clients.Caller.ClientVoid();
+            return ValueTask.CompletedTask;
+        });
     }
 
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerVoidWithParam(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerVoidWithParam(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.IgnoreReturn,
-            InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 0, // Invocations for void are always 0 as there is no returned value
             MethodId = 1
-        }, nexus => nexus.Context.Clients.Caller.ClientVoidWithParam(54321));
+        }, nexus =>
+        {
+            nexus.Context.Clients.Caller.ClientVoidWithParam(54321);
+            return ValueTask.CompletedTask;
+        });
     }
-    
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTask(Type type)
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTask(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
@@ -60,174 +63,135 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         }, nexus => nexus.Context.Clients.Caller.ClientTask());
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskWithParam(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskWithParam(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 3
         }, nexus => nexus.Context.Clients.Caller.ClientTaskWithParam(54321));
     }
 
-
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    public Task ServerSendsInvocationFor_ServerTaskValue(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls])]
+    public Task ServerSendsInvocationFor_ServerTaskValue(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 4
-        }, nexus => nexus.Context.Clients.Caller.ClientTaskValue());
+        }, async nexus => await nexus.Context.Clients.Caller.ClientTaskValue());
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskValueWithParam(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskValueWithParam(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 5
-        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithParam(54321));
+        }, async nexus => await nexus.Context.Clients.Caller.ClientTaskValueWithParam(54321));
     }
 
-
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskWithCancellation(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskWithCancellation(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 6
         }, nexus => nexus.Context.Clients.Caller.ClientTaskWithCancellation(CancellationToken.None));
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskWithValueAndCancellation(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskWithValueAndCancellation(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 7
         }, nexus => nexus.Context.Clients.Caller.ClientTaskWithValueAndCancellation(54321, CancellationToken.None));
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskValueWithCancellation(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskValueWithCancellation(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 8
-        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None));
+        }, async nexus => await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None));
     }
 
-
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public Task ServerSendsInvocationFor_ServerTaskValueWithValueAndCancellation(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task ServerSendsInvocationFor_ServerTaskValueWithValueAndCancellation(ClientTarget target)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
+        return InvokeFromServerAndVerifySent(target, new InvocationMessage()
         {
             Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
-            InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
+            InvocationId = 1,
             MethodId = 9
-        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(54321, CancellationToken.None));
+        }, async nexus => await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
-    
-    private async Task InvokeFromServerAndVerifySent(Type type, InvocationMessage expectedMessage, Action<ServerNexus> action)
+
+    private async Task InvokeFromServerAndVerifySent(ClientTarget target, InvocationMessage expectedMessage, Func<ServerNexus, ValueTask> action)
     {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-        
-        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus2 =>
-        {
-            action(nexus2);
-            return ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(1);
-
-        serverConfig.InternalOnSend = (_, bytes) =>
-        {
-            try
+        var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = await StartServerAsync(
+            nexus => nexus.OnConnectedEvent = async connected =>
             {
-                if (bytes[0] != (byte)MessageType.Invocation)
+                try
+                {
+                    await action(connected);
+                    invoked.TrySetResult();
+                }
+                catch (Exception e)
+                {
+                    invoked.TrySetException(e);
+                }
+            },
+            config => ServerTaps.OnSend(config, (_, frame) =>
+            {
+                if (frame.Type != MessageType.Invocation)
                     return;
 
-                var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                Assert.That(message, Is.Not.Null);
+                var message = TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body);
+                CallbackAssert.NotNull(message);
 
                 if (message == null)
                     return;
 
-                Assert.That(message.Arguments.ToArray(), Is.EqualTo(expectedMessage.Arguments.ToArray()));
-                Assert.That(message.Flags, Is.EqualTo(expectedMessage.Flags));
-                Assert.That(message.InvocationId, Is.EqualTo(expectedMessage.InvocationId));
-                Assert.That(message.MethodId, Is.EqualTo(expectedMessage.MethodId));
-                tcs.SetResult();
-            }
-            catch
-            {
-                // Not an invocationRequest.
-            }
+                CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
+                CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
+                CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
+                CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
+                tcs.TrySetResult();
+            }));
+        await using var client = await ConnectAsync(target, server);
 
-        };
-
-        await client.ConnectAsync().Timeout(1);
-
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(T(1));
+        await invoked.Task.Timeout(T(1));
+        await EndAsync(client);
     }
-
 }

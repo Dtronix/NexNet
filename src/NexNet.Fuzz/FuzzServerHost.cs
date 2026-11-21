@@ -31,10 +31,15 @@ internal sealed class FuzzServerHost
     {
         var host = new FuzzServerHost();
         // No linger after sending a disconnect message: it only adds wall time per input.
-        // Short idle timeout: a read loop held up inside a pipe write can't see the stream end, so only the idle
-        // timeout closes it. 2 s (checked every Timeout / 4) keeps that inside the harness timeout; a session still
+        // Short idle timeout (SessionHarness.IdleTimeout): a read loop held up inside a pipe write can't see the
+        // stream end, so only the idle timeout closes it. It must stay inside the harness timeout; a session still
         // open after it is a real hang.
-        var config = new FuzzServerConfig(host._listener) { Logger = host.Logger, DisconnectDelay = 0, Timeout = 2000 };
+        var config = new FuzzServerConfig(host._listener)
+        {
+            Logger = host.Logger,
+            DisconnectDelay = 0,
+            Timeout = (int)SessionHarness.IdleTimeout.TotalMilliseconds,
+        };
         configure?.Invoke(config);
         start(config).GetAwaiter().GetResult();
 

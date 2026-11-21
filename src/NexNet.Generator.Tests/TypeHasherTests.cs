@@ -1,15 +1,14 @@
 using NexNet.Generator.Serialization;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
 public class TypeHasherTests
 {
     [Test]
-    public void SimpleType_WithSpecialTypes()
+    public async Task SimpleType_WithSpecialTypes()
     {
         // Types without [NexusObject] are named (unsupported) types, hashed by .NET identity; their members are not walked
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             class SimpleMessage {
                 public int Value1;
@@ -20,10 +19,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NexusObjectType_WithSpecialTypes()
+    public async Task NexusObjectType_WithSpecialTypes()
     {
         // Special types are named leaves: shown by name, not walked
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -36,10 +35,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NullableTypes()
+    public async Task NullableTypes()
     {
         // Nullable<T> is shown as InnerType?; reference nullability (string?) is not part of the shape
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -51,9 +50,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ArrayTypes()
+    public async Task ArrayTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -66,9 +65,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NullableArrayTypes()
+    public async Task NullableArrayTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -80,9 +79,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void GenericTypes_CLR()
+    public async Task GenericTypes_CLR()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -94,10 +93,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void GenericTypes_WithUserClass()
+    public async Task GenericTypes_WithUserClass()
     {
         // UserData is walked because it's a [NexusObject], but its Int32 member is terminal
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -113,9 +112,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void DictionaryType()
+    public async Task DictionaryType()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -127,9 +126,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void EnumType()
+    public async Task EnumType()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -141,9 +140,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void EnumType_WithExplicitValues()
+    public async Task EnumType_WithExplicitValues()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -155,9 +154,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void EnumType_WithFlags()
+    public async Task EnumType_WithFlags()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -170,9 +169,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NexusUnion()
+    public async Task NexusUnion()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -192,10 +191,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NexusUnion_SortsByTag()
+    public async Task NexusUnion_SortsByTag()
     {
         // Even though attributes are in reverse order, output is sorted by union tag
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -215,10 +214,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NexusKey_MembersSortedByKey()
+    public async Task NexusKey_MembersSortedByKey()
     {
         // Members are sorted by NexusKey, not declaration order; SpecialTypes are terminal
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -231,10 +230,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void CyclicReference_SelfReferencing()
+    public async Task CyclicReference_SelfReferencing()
     {
         // A reference back to a type already on the walk is written as its index
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -246,9 +245,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void CyclicReference_MutualReference()
+    public async Task CyclicReference_MutualReference()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -265,9 +264,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NonNexusObject_UserType()
+    public async Task NonNexusObject_UserType()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -282,11 +281,11 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void CLRType_SystemNamespace()
+    public async Task CLRType_SystemNamespace()
     {
         // DateTime is a SpecialType in Roslyn (terminal, not walked)
         // Guid and TimeSpan are CLR types, hashed by .NET identity
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -299,9 +298,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NestedTypes()
+    public async Task NestedTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -316,9 +315,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ComplexNestedGenerics()
+    public async Task ComplexNestedGenerics()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -334,9 +333,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void IgnoresPrivateMembers()
+    public async Task IgnoresPrivateMembers()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -350,9 +349,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void IgnoresStaticMembers()
+    public async Task IgnoresStaticMembers()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -364,9 +363,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void StructType()
+    public async Task StructType()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -380,9 +379,9 @@ public class TypeHasherTests
     #region Deep Nested and Complex Type Tests
 
     [Test]
-    public void DeepNested_ThreeLevels()
+    public async Task DeepNested_ThreeLevels()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -403,9 +402,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void DeepNested_FiveLevels_WithNullables()
+    public async Task DeepNested_FiveLevels_WithNullables()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -436,9 +435,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void SelfReferencing_LinkedList()
+    public async Task SelfReferencing_LinkedList()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -451,9 +450,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void SelfReferencing_TreeStructure()
+    public async Task SelfReferencing_TreeStructure()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -468,9 +467,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void SelfReferencing_DeepChain_WithArrays()
+    public async Task SelfReferencing_DeepChain_WithArrays()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -487,9 +486,9 @@ public class TypeHasherTests
     #region Arity Tests
 
     [Test]
-    public void Arity_SingleGeneric()
+    public async Task Arity_SingleGeneric()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -501,9 +500,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Arity_DoubleGeneric()
+    public async Task Arity_DoubleGeneric()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -515,10 +514,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Arity_TripleGeneric()
+    public async Task Arity_TripleGeneric()
     {
         // Generic types always walk their type arguments, even if the generic itself is not a [NexusObject]
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -534,9 +533,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Arity_DifferentArities_DifferentHashes()
+    public async Task Arity_DifferentArities_DifferentHashes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -546,7 +545,7 @@ public class TypeHasherTests
             }
             """, "MessageWithList", "root: #0\n#0 object MessageWithList\n  0: List<Int32>");
 
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -558,9 +557,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Arity_NestedGenerics_DifferentArities()
+    public async Task Arity_NestedGenerics_DifferentArities()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -573,9 +572,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Arity_GenericWithNexusObject()
+    public async Task Arity_GenericWithNexusObject()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -596,9 +595,9 @@ public class TypeHasherTests
     #region Array Variations
 
     [Test]
-    public void Array_SingleDimension()
+    public async Task Array_SingleDimension()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -609,9 +608,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_MultiDimension_AllRanks()
+    public async Task Array_MultiDimension_AllRanks()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -625,9 +624,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_OfNexusObject()
+    public async Task Array_OfNexusObject()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -643,10 +642,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_OfArrays_JaggedArrays()
+    public async Task Array_OfArrays_JaggedArrays()
     {
         // Jagged arrays: an array whose element is an array
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -657,10 +656,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_OfNullableElements()
+    public async Task Array_OfNullableElements()
     {
         // int? elements keep their ?, string? elements lose it (reference nullability is not hashed)
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -672,9 +671,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_NullableArray_OfNullableElements()
+    public async Task Array_NullableArray_OfNullableElements()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -685,9 +684,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Array_MultiDim_Nullable()
+    public async Task Array_MultiDim_Nullable()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -702,9 +701,9 @@ public class TypeHasherTests
     #region Nullable Variations
 
     [Test]
-    public void Nullable_PrimitiveTypes()
+    public async Task Nullable_PrimitiveTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -719,9 +718,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Nullable_ReferenceTypes()
+    public async Task Nullable_ReferenceTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -733,9 +732,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Nullable_NexusObjectTypes()
+    public async Task Nullable_NexusObjectTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -750,9 +749,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Nullable_InGenerics()
+    public async Task Nullable_InGenerics()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -765,9 +764,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Nullable_DictionaryVariations()
+    public async Task Nullable_DictionaryVariations()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -784,9 +783,9 @@ public class TypeHasherTests
     #region Complex Deep Walk Scenarios
 
     [Test]
-    public void ComplexDeepWalk_TreeWithCollections()
+    public async Task ComplexDeepWalk_TreeWithCollections()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -814,9 +813,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ComplexDeepWalk_GraphWithAllTypes()
+    public async Task ComplexDeepWalk_GraphWithAllTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -854,9 +853,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ComplexDeepWalk_UnionWithDeepTypes()
+    public async Task ComplexDeepWalk_UnionWithDeepTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -896,9 +895,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ComplexDeepWalk_AllNullableVariants()
+    public async Task ComplexDeepWalk_AllNullableVariants()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -930,9 +929,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void ComplexDeepWalk_SelfReferencingTree_WithAllFeatures()
+    public async Task ComplexDeepWalk_SelfReferencingTree_WithAllFeatures()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -982,10 +981,10 @@ public class TypeHasherTests
     #region Built-in Types
 
     [Test]
-    public void NullableOfT_AndQuestionMark_WalkTheSame()
+    public async Task NullableOfT_AndQuestionMark_WalkTheSame()
     {
         // Nullable<int> and int? are the same type; both spellings produce the same member lines
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -999,9 +998,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Tuples_WalkTypeArguments()
+    public async Task Tuples_WalkTypeArguments()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -1015,9 +1014,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void NestedCollectionsAndTuples()
+    public async Task NestedCollectionsAndTuples()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
@@ -1029,10 +1028,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void BuiltInLeafTypes()
+    public async Task BuiltInLeafTypes()
     {
         // Types with built-in formatters are hashed by .NET identity; their members are not walked
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Numerics;
             using NexNet.Serialization;
@@ -1056,9 +1055,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void BuiltInGenericTypes()
+    public async Task BuiltInGenericTypes()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using System.Buffers;
             using System.Collections.Generic;
@@ -1085,10 +1084,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Enum_MembersSortedByValue()
+    public async Task Enum_MembersSortedByValue()
     {
         // Enums list their values in ascending order, not declaration order; names are not part of the shape
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -1100,9 +1099,9 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void Enum_FlagsWithCombinedValues()
+    public async Task Enum_FlagsWithCombinedValues()
     {
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -1115,10 +1114,10 @@ public class TypeHasherTests
     }
 
     [Test]
-    public void CyclicReference_SeenMultipleTimes()
+    public async Task CyclicReference_SeenMultipleTimes()
     {
         // Every repeated [NexusObject] is written as its index (#i), including references back to the root
-        AssertWalk("""
+        await AssertWalk("""
             using System;
             using NexNet.Serialization;
             [NexusObject]
@@ -1146,7 +1145,7 @@ public class TypeHasherTests
     #region Key Rules
 
     [Test]
-    public void ReorderingDeclarations_WithSameKeys_KeepsHash()
+    public async Task ReorderingDeclarations_WithSameKeys_KeepsHash()
     {
         var a = HashOf("""
             [NexusObject] class Message {
@@ -1162,59 +1161,59 @@ public class TypeHasherTests
                 [NexusKey(1)] public int Value2 { get; set; }
             }
             """);
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void FieldsAndProperties_HashTheSame()
+    public async Task FieldsAndProperties_HashTheSame()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1 { get; set; } [NexusKey(1)] public string Value2 { get; set; } }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void IgnoredAndUnkeyedMembers_DoNotAffectHash()
+    public async Task IgnoredAndUnkeyedMembers_DoNotAffectHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusIgnore] public long Ignored; private int _private; }");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void ChangingKey_ChangesHash()
+    public async Task ChangingKey_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public short Value1; [NexusKey(1)] public long Value2; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(1)] public short Value1; [NexusKey(0)] public long Value2; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void AddingKey_ChangesHash()
+    public async Task AddingKey_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public int Value2; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void RemovingKey_ChangesHash()
+    public async Task RemovingKey_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public int Value2; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void KeyGap_IsPartOfHash()
+    public async Task KeyGap_IsPartOfHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public int Value2; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(2)] public int Value2; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ChangingNestedMemberType_ChangesHash()
+    public async Task ChangingNestedMemberType_ChangesHash()
     {
         var a = HashOf("""
             [NexusObject] class Message { [NexusKey(0)] public Inner Value1; }
@@ -1224,11 +1223,11 @@ public class TypeHasherTests
             [NexusObject] class Message { [NexusKey(0)] public Inner Value1; }
             [NexusObject] class Inner { [NexusKey(0)] public long Value1; }
             """);
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ChangingUnionTag_ChangesHash()
+    public async Task ChangingUnionTag_ChangesHash()
     {
         const string cases = """
             [NexusObject] class A : IMessage { [NexusKey(0)] public int Value; }
@@ -1236,7 +1235,7 @@ public class TypeHasherTests
             """;
         var a = HashOf("[NexusObject] [NexusUnion<A>(0)] [NexusUnion<B>(1)] interface IMessage { }\n" + cases, "IMessage");
         var b = HashOf("[NexusObject] [NexusUnion<A>(1)] [NexusUnion<B>(0)] interface IMessage { }\n" + cases, "IMessage");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     #endregion
@@ -1244,47 +1243,47 @@ public class TypeHasherTests
     #region Hash Rules
 
     [Test]
-    public void RenamingType_KeepsHash()
+    public async Task RenamingType_KeepsHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }");
         var b = HashOf("[NexusObject] class Envelope { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }", "Envelope");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void RenamingMember_KeepsHash()
+    public async Task RenamingMember_KeepsHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Count; [NexusKey(1)] public string Text; }");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void RenamingEnumMember_KeepsHash()
+    public async Task RenamingEnumMember_KeepsHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A, B }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { X, Y }");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void ChangingEnumValue_ChangesHash()
+    public async Task ChangingEnumValue_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A = 0, B = 1 }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A = 0, B = 2 }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ChangingEnumUnderlyingType_ChangesHash()
+    public async Task ChangingEnumUnderlyingType_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind : int { A, B }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind : long { A, B }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ReferenceNullability_KeepsHash()
+    public async Task ReferenceNullability_KeepsHash()
     {
         var a = HashOf("""
             #nullable enable
@@ -1296,37 +1295,37 @@ public class TypeHasherTests
             [NexusObject] class Message { [NexusKey(0)] public string? Text; [NexusKey(1)] public Inner? Value; }
             [NexusObject] class Inner { [NexusKey(0)] public int Value1; }
             """);
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void ValueNullability_ChangesHash()
+    public async Task ValueNullability_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int? Value1; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ClassToStruct_ChangesHash()
+    public async Task ClassToStruct_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
         var b = HashOf("[NexusObject] struct Message { [NexusKey(0)] public int Value1; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void StructurallyIdenticalTypes_HashEqual()
+    public async Task StructurallyIdenticalTypes_HashEqual()
     {
         const string source = """
             [NexusObject] class Order { [NexusKey(0)] public int Id; [NexusKey(1)] public string Note; }
             [NexusObject] class Invoice { [NexusKey(0)] public int Number; [NexusKey(1)] public string Memo; }
             """;
-        Assert.That(HashOf(source, "Invoice"), Is.EqualTo(HashOf(source, "Order")));
+        await Assert.That(HashOf(source, "Invoice")).IsEqualTo(HashOf(source, "Order"));
     }
 
     [Test]
-    public void GenericNexusObjectMemberChange_ChangesHash()
+    public async Task GenericNexusObjectMemberChange_ChangesHash()
     {
         var a = HashOf("""
             [NexusObject] class Message { [NexusKey(0)] public Envelope<int> Value; }
@@ -1336,31 +1335,31 @@ public class TypeHasherTests
             [NexusObject] class Message { [NexusKey(0)] public Envelope<int> Value; }
             [NexusObject] class Envelope<T> { [NexusKey(0)] public T Value; [NexusKey(1)] public int Extra; }
             """);
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void NexusIgnoredKeyedMember_KeepsHash()
+    public async Task NexusIgnoredKeyedMember_KeepsHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)][NexusIgnore] public int X; }");
-        Assert.That(b, Is.EqualTo(a));
+        await Assert.That(b).IsEqualTo(a);
     }
 
     [Test]
-    public void CycleShape_ChangesHash()
+    public async Task CycleShape_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Node { [NexusKey(0)] public int Value; [NexusKey(1)] public Node? Next; }", "Node");
         var b = HashOf("[NexusObject] class Node { [NexusKey(0)] public int Value; [NexusKey(1)] public int Next; }", "Node");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     [Test]
-    public void ListToArray_ChangesHash()
+    public async Task ListToArray_ChangesHash()
     {
         var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public System.Collections.Generic.List<int> Values; }");
         var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int[] Values; }");
-        Assert.That(b, Is.Not.EqualTo(a));
+        await Assert.That(b).IsNotEqualTo(a);
     }
 
     #endregion
@@ -1369,16 +1368,15 @@ public class TypeHasherTests
     {
         var compilation = CSharpGeneratorRunner.CreateCompilation(source);
         var type = compilation.GetTypeByMetadataName(typeName)
-                   ?? throw new AssertionException($"Type '{typeName}' not found.");
+                   ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
         return ShapeHasher.HashWithListing(new ShapeBuilder(compilation).Get(type));
     }
 
-    private static void AssertWalk(string source, string typeName, string expected)
+    private static async Task AssertWalk(string source, string typeName, string expected)
     {
         var actual = Walk(source, typeName).Listing;
-        // On a mismatch, print the full listing as a C# literal (NUnit truncates long strings in its own message).
-        Assert.That(actual, Is.EqualTo(expected.ReplaceLineEndings("\n")),
-            "Actual listing: \"" + actual.Replace("\n", "\\n") + "\"");
+        // On a mismatch, print the full listing as a C# literal (the assertion message truncates long strings).
+        await Assert.That(actual).IsEqualTo(expected.ReplaceLineEndings("\n")).Because("Actual listing: \"" + actual.Replace("\n", "\\n") + "\"");
     }
 
     private static int HashOf(string source, string typeName = "Message")

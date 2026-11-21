@@ -87,51 +87,50 @@ public class GenPersonMirror
     [Key(3)] public List<string>? Tags { get; set; }
 }
 
-[TestFixture]
 public class GeneratedFormatterTests
 {
     [Test]
-    public void ObjectRoundTripsWithKeyGap()
+    public async Task ObjectRoundTripsWithKeyGap()
     {
         var person = new GenPerson { Id = 7, Name = "seven", Tags = ["a", "b"], Scores = [1.5, 2.5], Cache = new object() };
         var bytes = TestHelpers.Serialize(person);
 
         // array(5): 07, "seven", nil (key 2 unused), ["a","b"], ext78
-        Assert.That(Hex(bytes).StartsWith("9507a5736576656ec092a161a162"), Is.True, Hex(bytes));
+        await Assert.That(Hex(bytes).StartsWith("9507a5736576656ec092a161a162")).IsTrue().Because(Hex(bytes));
 
         var result = TestHelpers.Deserialize<GenPerson>(bytes)!;
-        Assert.That(result.Id, Is.EqualTo(7));
-        Assert.That(result.Name, Is.EqualTo("seven"));
-        Assert.That(result.Tags, Is.EqualTo(new[] { "a", "b" }));
-        Assert.That(result.Scores, Is.EqualTo(new[] { 1.5, 2.5 }));
-        Assert.That(result.Cache, Is.Null);
+        await Assert.That(result.Id).IsEqualTo(7);
+        await Assert.That(result.Name).IsEqualTo("seven");
+        await Assert.That(result.Tags).IsEquivalentTo(new[] { "a", "b" }, CollectionOrdering.Matching);
+        await Assert.That(result.Scores).IsEquivalentTo(new[] { 1.5, 2.5 }, CollectionOrdering.Matching);
+        await Assert.That(result.Cache).IsNull();
     }
 
     [Test]
-    public void ReferenceReadsGeneratedObject()
+    public async Task ReferenceReadsGeneratedObject()
     {
         var person = new GenPerson { Id = 3, Name = "x", Tags = ["t"] };
         var bytes = TestHelpers.Serialize(person);
 
         // The reference reader skips the unknown ext 78 at key 4 via the mirror's missing key.
         var mirror = MessagePackSerializer.Deserialize<GenPersonMirror>(bytes);
-        Assert.That(mirror.Id, Is.EqualTo(3));
-        Assert.That(mirror.Name, Is.EqualTo("x"));
-        Assert.That(mirror.Tags, Is.EqualTo(new[] { "t" }));
+        await Assert.That(mirror.Id).IsEqualTo(3);
+        await Assert.That(mirror.Name).IsEqualTo("x");
+        await Assert.That(mirror.Tags).IsEquivalentTo(new[] { "t" }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void GeneratedObjectReadsReferenceOutput()
+    public async Task GeneratedObjectReadsReferenceOutput()
     {
         var bytes = MessagePackSerializer.Serialize(new GenPersonMirror { Id = 11, Name = "ref", Tags = ["q"] });
         var person = TestHelpers.Deserialize<GenPerson>(bytes)!;
-        Assert.That(person.Id, Is.EqualTo(11));
-        Assert.That(person.Name, Is.EqualTo("ref"));
-        Assert.That(person.Tags, Is.EqualTo(new[] { "q" }));
+        await Assert.That(person.Id).IsEqualTo(11);
+        await Assert.That(person.Name).IsEqualTo("ref");
+        await Assert.That(person.Tags).IsEquivalentTo(new[] { "q" }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void PopulateResetsMembersMissingFromPayload()
+    public async Task PopulateResetsMembersMissingFromPayload()
     {
         var formatter = NexusFormatterRegistry.Get<GenPerson>();
         var existing = new GenPerson { Id = 1, Name = "old", Tags = ["stale"] };
@@ -146,14 +145,14 @@ public class GeneratedFormatterTests
         var reader = new MsgPackReader(bytes);
         GenPerson? value = existing;
         formatter.Deserialize(ref reader, ref value);
-        Assert.That(value, Is.SameAs(existing), "instance is reused");
-        Assert.That(value!.Id, Is.EqualTo(42));
-        Assert.That(value.Name, Is.Null);
-        Assert.That(value.Tags, Is.Null);
+        await Assert.That(value).IsSameReferenceAs(existing).Because("instance is reused");
+        await Assert.That(value!.Id).IsEqualTo(42);
+        await Assert.That(value.Name).IsNull();
+        await Assert.That(value.Tags).IsNull();
     }
 
     [Test]
-    public void ExtraMembersFromNewerPeerAreSkipped()
+    public async Task ExtraMembersFromNewerPeerAreSkipped()
     {
         // array(7): keys 0-4 as this version knows them, plus two unknown trailing members.
         var bytes = Write((ref MsgPackWriter w) =>
@@ -176,84 +175,84 @@ public class GeneratedFormatterTests
         var reader = new MsgPackReader(bytes);
         GenPerson? value = null;
         NexusFormatterRegistry.Get<GenPerson>().Deserialize(ref reader, ref value);
-        Assert.That(reader.End, Is.True);
-        Assert.That(value!.Id, Is.EqualTo(9));
-        Assert.That(value.Name, Is.EqualTo("newer"));
-        Assert.That(value.Tags, Is.EqualTo(new[] { "t" }));
-        Assert.That(value.Scores, Is.Null);
+        await Assert.That(reader.End).IsTrue();
+        await Assert.That(value!.Id).IsEqualTo(9);
+        await Assert.That(value.Name).IsEqualTo("newer");
+        await Assert.That(value.Tags).IsEquivalentTo(new[] { "t" }, CollectionOrdering.Matching);
+        await Assert.That(value.Scores).IsNull();
     }
 
     [Test]
-    public void StructRoundTrips()
+    public async Task StructRoundTrips()
     {
         var point = new GenPoint { X = -3, Y = 9 };
         var result = TestHelpers.Deserialize<GenPoint>(TestHelpers.Serialize(point));
-        Assert.That(result.X, Is.EqualTo(-3));
-        Assert.That(result.Y, Is.EqualTo(9));
+        await Assert.That(result.X).IsEqualTo(-3);
+        await Assert.That(result.Y).IsEqualTo(9);
     }
 
     [Test]
-    public void RecordWithConstructorRoundTrips()
+    public async Task RecordWithConstructorRoundTrips()
     {
         var pair = new GenPair(5, "five");
-        Assert.That(TestHelpers.Deserialize<GenPair>(TestHelpers.Serialize(pair)), Is.EqualTo(pair));
+        await Assert.That(TestHelpers.Deserialize<GenPair>(TestHelpers.Serialize(pair))).IsEqualTo(pair);
     }
 
     [Test]
-    public void PrivateMembersRoundTrip()
+    public async Task PrivateMembersRoundTrip()
     {
         var secret = new GenSecret(13, "n", 99);
         var result = TestHelpers.Deserialize<GenSecret>(TestHelpers.Serialize(secret))!;
-        Assert.That(result.Hidden, Is.EqualTo(13));
-        Assert.That(result.Name, Is.EqualTo("n"));
-        Assert.That(result.ReadOnlyAuto, Is.EqualTo(99));
+        await Assert.That(result.Hidden).IsEqualTo(13);
+        await Assert.That(result.Name).IsEqualTo("n");
+        await Assert.That(result.ReadOnlyAuto).IsEqualTo(99);
     }
 
     [Test]
-    public void InitAndRequiredMembersRoundTrip()
+    public async Task InitAndRequiredMembersRoundTrip()
     {
         var init = new GenInit { Id = 4, Label = "four" };
         var result = TestHelpers.Deserialize<GenInit>(TestHelpers.Serialize(init))!;
-        Assert.That(result.Id, Is.EqualTo(4));
-        Assert.That(result.Label, Is.EqualTo("four"));
+        await Assert.That(result.Id).IsEqualTo(4);
+        await Assert.That(result.Label).IsEqualTo("four");
     }
 
     [Test]
-    public void UnionRoundTrips()
+    public async Task UnionRoundTrips()
     {
         IGenShape circle = new GenCircle { Radius = 2 };
         IGenShape square = new GenSquare { Side = 3 };
 
         var circleBytes = TestHelpers.Serialize(circle);
-        Assert.That(Hex(circleBytes).StartsWith("920091cb"), Is.True, Hex(circleBytes));
+        await Assert.That(Hex(circleBytes).StartsWith("920091cb")).IsTrue().Because(Hex(circleBytes));
 
-        Assert.That(((GenCircle)TestHelpers.Deserialize<IGenShape>(circleBytes)!).Radius, Is.EqualTo(2));
-        Assert.That(((GenSquare)TestHelpers.Deserialize<IGenShape>(TestHelpers.Serialize(square))!).Side, Is.EqualTo(3));
-        Assert.That(TestHelpers.Deserialize<IGenShape>(TestHelpers.Serialize<IGenShape?>(null)), Is.Null);
+        await Assert.That(((GenCircle)TestHelpers.Deserialize<IGenShape>(circleBytes)!).Radius).IsEqualTo(2);
+        await Assert.That(((GenSquare)TestHelpers.Deserialize<IGenShape>(TestHelpers.Serialize(square))!).Side).IsEqualTo(3);
+        await Assert.That(TestHelpers.Deserialize<IGenShape>(TestHelpers.Serialize<IGenShape?>(null))).IsNull();
     }
 
     [Test]
-    public void UnknownUnionTagThrows()
+    public async Task UnknownUnionTagThrows()
     {
         var bytes = new byte[] { 0x92, 0x05, 0x90 };
-        Assert.Throws<NexusSerializationException>(() => TestHelpers.Deserialize<IGenShape>(bytes));
+        await Assert.That(() => TestHelpers.Deserialize<IGenShape>(bytes)).ThrowsExactly<NexusSerializationException>();
     }
 
     [Test]
-    public void GenericTypesFromAssemblyDeclarationsRoundTrip()
+    public async Task GenericTypesFromAssemblyDeclarationsRoundTrip()
     {
         var envelope = new Envelope<int> { Value = 12 };
-        Assert.That(TestHelpers.Deserialize<Envelope<int>>(TestHelpers.Serialize(envelope))!.Value, Is.EqualTo(12));
+        await Assert.That(TestHelpers.Deserialize<Envelope<int>>(TestHelpers.Serialize(envelope))!.Value).IsEqualTo(12);
 
         var personEnvelope = new Envelope<GenPerson> { Value = new GenPerson { Id = 2 } };
-        Assert.That(TestHelpers.Deserialize<Envelope<GenPerson>>(TestHelpers.Serialize(personEnvelope))!.Value!.Id, Is.EqualTo(2));
+        await Assert.That(TestHelpers.Deserialize<Envelope<GenPerson>>(TestHelpers.Serialize(personEnvelope))!.Value!.Id).IsEqualTo(2);
     }
 
     [Test]
-    public void UserFormatterIsRegistered()
+    public async Task UserFormatterIsRegistered()
     {
         var bytes = TestHelpers.Serialize(new ThirdParty { Value = 77 });
-        Assert.That(Hex(bytes), Is.EqualTo("4d"));
-        Assert.That(TestHelpers.Deserialize<ThirdParty>(bytes)!.Value, Is.EqualTo(77));
+        await Assert.That(Hex(bytes)).IsEqualTo("4d");
+        await Assert.That(TestHelpers.Deserialize<ThirdParty>(bytes)!.Value).IsEqualTo(77);
     }
 }

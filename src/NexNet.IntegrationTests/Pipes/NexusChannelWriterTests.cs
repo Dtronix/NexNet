@@ -4,7 +4,6 @@ using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -28,7 +27,7 @@ internal class NexusChannelWriterTests
 
         var message = TestSerialization.DeserializeChannelItem<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.That(message, Is.EqualTo(baseObject));
+        await Assert.That(message).IsEqualTo(baseObject);
     }
 
     [Test]
@@ -49,7 +48,7 @@ internal class NexusChannelWriterTests
 
         var message = TestSerialization.DeserializeChannelItem<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.That(message, Is.EqualTo(baseObject));
+        await Assert.That(message).IsEqualTo(baseObject);
     }
 
     [Test]
@@ -65,11 +64,11 @@ internal class NexusChannelWriterTests
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue).WithCredit();
         var writer = new NexusChannelWriter<byte[]>(nexusPipeWriter, maxItemSize: 100);
 
-        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[200]), Throws.InstanceOf<NexusMessageTooLargeException>());
-        Assert.That(sent, Is.Zero);
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[200]));
+        await Assert.That(sent).IsZero();
 
-        Assert.That(await writer.WriteAsync(new byte[10]).Timeout(1), Is.True);
-        Assert.That(sent, Is.EqualTo(1 + 12)); // prefix + bin8 header + 10 bytes
+        await Assert.That(await writer.WriteAsync(new byte[10]).Timeout(1)).IsTrue();
+        await Assert.That(sent).IsEqualTo(1 + 12); // prefix + bin8 header + 10 bytes
     }
 
     [Test]
@@ -83,8 +82,8 @@ internal class NexusChannelWriterTests
         var cts = new CancellationTokenSource(100);
         var writeResult = await writer.WriteAsync(ComplexMessage.Random(), cts.Token).Timeout(1);
 
-        Assert.That(writeResult, Is.False);
-        Assert.That(writer.IsComplete, Is.False);
+        await Assert.That(writeResult).IsFalse();
+        await Assert.That(writer.IsComplete).IsFalse();
     }
 
     [Test]
@@ -99,8 +98,8 @@ internal class NexusChannelWriterTests
         cts.Cancel();
         var writeResult = await writer.WriteAsync(ComplexMessage.Random(), cts.Token).Timeout(1);
 
-        Assert.That(writeResult, Is.False);
-        Assert.That(writer.IsComplete, Is.False);
+        await Assert.That(writeResult).IsFalse();
+        await Assert.That(writer.IsComplete).IsFalse();
     }
 
     private class DummyPipeStateManager : IPipeStateManager

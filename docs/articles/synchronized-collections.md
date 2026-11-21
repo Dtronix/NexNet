@@ -85,15 +85,30 @@ The convenience method `ConnectAsync()` combines `EnableAsync()` and waiting for
 await client.Proxy.IntList.ConnectAsync();
 ```
 
+Each `EnableAsync()` starts a fresh `ReadyTask`. It **fails** with an `InvalidOperationException` when the enable fails
+or the collection disconnects before its initial synchronization completes, so `ConnectAsync()` throws in that case
+instead of returning quietly. Once completed, `ReadyTask` keeps its outcome until the next `EnableAsync()`.
+
 ## Collection States
 
 Collections expose a `State` property of type `NexusCollectionState`:
 
 | State | Description |
 |-------|-------------|
-| `Disconnected` | Not connected to the server |
-| `Connecting` | Connection in progress |
-| `Connected` | Connected and synchronized |
+| `Disconnected` | Not enabled, enabled but not yet synchronized, or the collection pipe closed |
+| `Connected` | The initial synchronization completed |
+
+## Failures
+
+If the message processor of a client collection stops on an unexpected error, the collection is disabled: `State`
+becomes `Disconnected`, a pending `ReadyTask` fails and a pending `EnableAsync()` throws. A plain client list stays
+disabled until you call `EnableAsync()` or `ConnectAsync()` again, which resynchronizes it from the server. A relay
+re-enables itself.
+
+If the message processor of a server collection stops on an unexpected error, the server logs it, restarts the
+processor after a short backoff and closes the collection pipe of every client of that collection, so each client
+sees its collection disabled and must re-enable it. If it stops again after 5 restarts within one minute, the server stops the
+collection: its clients are disconnected from it and new enables are refused until the server restarts.
 
 ## Relay Mode
 
@@ -178,6 +193,7 @@ foreach (var state in client.Proxy.GameStates)
 - **Auto-reconnect**: Automatically reconnects to the parent collection if disconnected
 - **State synchronization**: Maintains full state sync with parent, including initial snapshot and incremental updates
 - **Event propagation**: `Changed` events fire for both local subscribers and connected clients
+- **Resync resets clients**: when the relay reconnects to the parent, or the parent's list is reset or an item moves in it, each client already connected receives the relay's whole list as a new reset and stays connected. The reset is written with backpressure, as a new client's snapshot is, so a large list reaches a slow client whole
 
 ### Monitoring Relay State
 
@@ -198,3 +214,4 @@ relay.DisconnectedTask.ContinueWith(_ =>
 
 - [Authorization](authorization.md) — Collection-level authorization with `[NexusAuthorize]`
 - [Duplex Pipes](duplex-pipes.md) — Low-level byte streaming (collections use pipes internally)
+- [Collection protocol](../internals/protocol-specification.md#12-collection-protocol) — Wire-level synchronization protocol and client state machine

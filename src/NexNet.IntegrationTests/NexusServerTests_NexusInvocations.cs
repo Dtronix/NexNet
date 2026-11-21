@@ -1,17 +1,12 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_NexusInvocations : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContext(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,8 +16,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 #pragma warning disable CS1998
         clientNexus.ClientTaskEvent = async _ => tcs.SetResult();
 #pragma warning restore CS1998
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var context = server.Server.ContextProvider.Rent();
         await context.Proxy.All.ClientTask();
@@ -30,12 +25,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContextAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -54,23 +45,19 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             await nexus.Context.Groups.AddAsync("myGroup");
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var context = server.Server.ContextProvider.Rent();
         await context.Proxy.All.ClientTask();
         await context.Proxy.Clients(context.Proxy.GetIds().ToArray()).ClientTask();
         await context.Proxy.Group("myGroup").ClientTask();
         await context.Proxy.Groups(["myGroup"]).ClientTask();
-        Assert.That(completed, Is.False);
+        await Assert.That(completed).IsFalse();
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -89,7 +76,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 await nexus.Context.Clients.Clients(server!.ContextProvider.Rent().Proxy.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(["myGroup"]).ClientTask();
-                Assert.That(completed, Is.False);
+                await Assert.That(completed).IsFalse();
                 tcs1.SetResult();
             };
         });
@@ -102,21 +89,17 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             completed = true;
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs1.Task.Timeout(1);
     }
 
     //Write a C# function which takes a byte array and outputs each byte individually
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -144,22 +127,18 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         clientNexus.ClientTaskValueEvent = _ => ValueTask.FromResult(54321);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var context = server.Server.ContextProvider.Rent();
 
         var result = await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue();
 
-        Assert.That(result, Is.EqualTo(54321));
+        await Assert.That(result).IsEqualTo(54321);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnAll(Type type)
     {
         var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -184,21 +163,17 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
 #pragma warning restore CS1998
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnOthers(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -225,22 +200,18 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         clientNexus1.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
         clientNexus2.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
 #pragma warning restore CS1998
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnClient(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -267,22 +238,18 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         clientNexus1.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
         clientNexus2.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
 #pragma warning restore CS1998
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnClients(Type type)
     {
         var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -309,10 +276,10 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
 #pragma warning restore CS1998
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);

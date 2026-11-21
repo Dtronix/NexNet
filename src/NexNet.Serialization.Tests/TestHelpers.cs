@@ -17,11 +17,21 @@ internal static class TestHelpers
         return buffer.WrittenSpan.ToArray();
     }
 
+    /// <summary>
+    /// Synchronous check for code that cannot await an assertion: code with a live <see cref="MsgPackReader"/>
+    /// (a ref struct) and CsCheck callbacks. Fails the test with <paramref name="message"/>.
+    /// </summary>
+    public static void Check(bool condition, string message)
+    {
+        if (!condition)
+            Assert.Fail(message);
+    }
+
     public static T Read<T>(byte[] data, ReadFunc<T> func, NexusSerializerOptions? options = null)
     {
         var reader = new MsgPackReader(data, options);
         var value = func(ref reader);
-        Assert.That(reader.End, Is.True, "Reader did not consume all bytes.");
+        Check(reader.End, "Reader did not consume all bytes.");
         return value;
     }
 
@@ -65,7 +75,7 @@ internal static class TestHelpers
         var reader = new MsgPackReader(data, options);
         T? value = default;
         NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref value);
-        Assert.That(reader.End, Is.True, "Reader did not consume all bytes.");
+        Check(reader.End, "Reader did not consume all bytes.");
         return value;
     }
 

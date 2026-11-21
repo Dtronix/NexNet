@@ -320,6 +320,92 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor TargetsOnClientNexus = new(
+        id: "NEXNET043",
+        title: "Targets set on a client nexus",
+        messageFormat: "The client nexus '{0}' sets Targets. Set Targets on the server nexus, or export the client with [assembly: NexusClientExport<TServer, TClient>(Targets = ...)].",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidTargetFormatter = new(
+        id: "NEXNET048",
+        title: "Invalid NexusTargetFormatter",
+        messageFormat: "The [NexusTargetFormatter] for '{0}' is invalid: {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TargetTypeUnsupported = new(
+        id: "NEXNET040",
+        title: "Type not representable in a target language",
+        messageFormat: "The type {0} cannot be represented in {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TargetNameCollision = new(
+        id: "NEXNET041",
+        title: "Name collision in a target language",
+        messageFormat: "Name collision ({0}): {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TargetWithoutOutput = new(
+        id: "NEXNET044",
+        title: "Target has no output directory",
+        messageFormat: "'{0}' opts in to the {1} target, but no output directory is configured for it, so no {1} code is generated. Set NexNet{1}OutputDir or add a NexNetTarget item with an OutputDir.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidTargetConfiguration = new(
+        id: "NEXNET045",
+        title: "Invalid target configuration",
+        messageFormat: "Invalid NexNet target configuration: {0}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TargetReferenceKey = new(
+        id: "NEXNET046",
+        title: "Set or dictionary key compares by reference in a target language",
+        messageFormat: "{0} uses a set element or dictionary key that compares by reference in {1}; a lookup with an equal value does not find the entry",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TargetFileCollision = new(
+        id: "NEXNET047",
+        title: "Target output file collision",
+        messageFormat: "Output file collision ({0}): {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidTestScaffolding = new(
+        id: "NEXNET049",
+        title: "Invalid NexusTestScaffolding",
+        messageFormat: "The C# test scaffolding of '{0}' cannot be generated: {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor? FindTargetDescriptor(string id) => id switch
+    {
+        "NEXNET040" => TargetTypeUnsupported,
+        "NEXNET041" => TargetNameCollision,
+        "NEXNET042" => DuplicateMethodName,
+        "NEXNET044" => TargetWithoutOutput,
+        "NEXNET045" => InvalidTargetConfiguration,
+        "NEXNET046" => TargetReferenceKey,
+        "NEXNET047" => TargetFileCollision,
+        "NEXNET048" => InvalidTargetFormatter,
+        "NEXNET049" => InvalidTestScaffolding,
+        _ => null
+    };
+
     public static DiagnosticDescriptor? FindSerializationDescriptor(string id) => id switch
     {
         "NEXNET028" => TypeNotSerializable,
