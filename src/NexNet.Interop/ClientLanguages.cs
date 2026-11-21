@@ -62,9 +62,8 @@ public static class ClientLanguages
     private const ClientCapabilities Browser = ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
         | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
 
-    // The Java runtime cannot yet complete a pipe's reading side alone or cancel a channel read.
-    private const ClientCapabilities JavaGaps = ClientCapabilities.Uds | ClientCapabilities.PipeInputCompletion
-        | ClientCapabilities.ChannelReadCancellation;
+    // The Java client has no UDS transport (D4).
+    private const ClientCapabilities JavaGaps = ClientCapabilities.Uds;
 
     private static readonly ClientTransport[] BrowserTransports = [ClientTransport.WebSocket, ClientTransport.WebSocketTls];
 
