@@ -3,16 +3,17 @@
 #
 #   .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java check --continue
 #
-# Why: Maven Central rate limits shared GitHub runner addresses. A throttled runner gets 429s, or 404s that Gradle
-# reports as "Could not find" (the plugin portal redirects Kotlin and other non-plugin artifacts to Central, so both
-# repositories fail together), and a job with no Gradle cache (any pull request into master or a feature branch)
-# downloads the whole build-logic classpath. Gradle's own retries (clients/java/gradle.properties, H29) cover 429s and
-# 5xx for about a minute but never a 404. The same job re-run minutes later passes.
+# Why: Maven Central answers some AWS-hosted GitHub runners (the runner log's "Cloud: AWS") with 404 for artifacts it
+# has, or with 429, and keeps doing so for minutes. Gradle reports the 404 as "Could not find" (the plugin portal
+# redirects Kotlin and other non-plugin artifacts to Central, so both repositories fail together), and Gradle's own
+# retries (clients/java/gradle.properties, H29) never retry a 404. A job with no Gradle cache (any pull request into
+# master) downloads the whole build-logic classpath, so it is the one that fails.
 #
-# The retry waits NEXNET_GRADLE_RETRY_DELAY seconds (default 60) and adds --refresh-dependencies, because Gradle
-# remembers a module it could not find (also in a restored Gradle User Home) and would not ask again, and
-# --no-configuration-cache, so nothing the failed configuration stored is reused. It retries only when the output shows
-# a resolution failure and no failing test or task of its own: a real failure is never retried.
+# The retry waits NEXNET_GRADLE_RETRY_DELAY seconds (default 15) and adds:
+#   --init-script gradle-central-mirror.init.gradle  download Central's artifacts from Google's mirror instead of Central
+#   --refresh-dependencies    Gradle remembers a module it could not find (also in a restored Gradle User Home)
+#   --no-configuration-cache  reuse nothing the failed configuration stored
+# It retries only when the output shows a resolution failure and no failing test: a real failure is never retried.
 set -uo pipefail
 
 if [ "$#" -eq 0 ]; then
@@ -46,7 +47,9 @@ grep -Eo "https?://(repo\.maven\.apache\.org|repo1\.maven\.org|plugins\.gradle\.
     curl -sSL -o /dev/null -m 20 -w '%{http_code} (%{url_effective})\n' "$url" || echo 'curl failed'
   done
 
-delay=${NEXNET_GRADLE_RETRY_DELAY:-60}
-echo "::warning title=Gradle dependency resolution failed::Retrying once in ${delay}s with --refresh-dependencies (H35): $*"
+# Absolute: Gradle resolves a relative --init-script against the -p directory.
+mirror_init="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gradle-central-mirror.init.gradle"
+delay=${NEXNET_GRADLE_RETRY_DELAY:-15}
+echo "::warning title=Gradle dependency resolution failed::Retrying once in ${delay}s from Google's Maven Central mirror (H35): $*"
 sleep "$delay"
-"$@" --refresh-dependencies --no-configuration-cache
+"$@" --init-script "$mirror_init" --refresh-dependencies --no-configuration-cache

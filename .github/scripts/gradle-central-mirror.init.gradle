@@ -1,0 +1,34 @@
+// Used only by .github/scripts/gradle-retry.sh, on the retry after a dependency-resolution failure (H35).
+//
+// Maven Central answers some AWS-hosted GitHub runners with 404 for artifacts it has (and with 429), for minutes at a
+// time, so re-running against Central from the same runner fails the same way. For the retry this script swaps Central
+// for Google's mirror of it in every settings file (pluginManagement and dependencyResolutionManagement, the included
+// build-logic too): the mirror goes first, and the Central repositories the settings declare keep their place but
+// match no module. Plugin markers still come from the plugin portal and Android artifacts from Google's repository.
+//
+// Every NexNet settings file declares its own plugin repositories, so adding one here never replaces the implicit
+// plugin portal.
+def centralMirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def centralHosts = ['repo.maven.apache.org', 'repo1.maven.org']
+
+def useMirror = { RepositoryHandler repositories ->
+    repositories.maven {
+        name = 'MavenCentralGoogleMirror'
+        url = centralMirror
+        content {
+            // Hosted only by Google's Android repository.
+            excludeGroupByRegex 'com\\.android.*'
+            excludeGroupByRegex 'androidx.*'
+        }
+    }
+    repositories.whenObjectAdded { repo ->
+        if (repo instanceof MavenArtifactRepository && centralHosts.contains(repo.url.host)) {
+            repo.content { excludeGroupByRegex '.*' }
+        }
+    }
+}
+
+beforeSettings { settings ->
+    useMirror(settings.pluginManagement.repositories)
+    useMirror(settings.dependencyResolutionManagement.repositories)
+}
