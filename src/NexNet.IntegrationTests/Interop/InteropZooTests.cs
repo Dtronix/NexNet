@@ -3,6 +3,8 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
 using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.InteropServer;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
@@ -10,38 +12,88 @@ using NexNet.Serialization;
 using NexNet.TestNexus.Interop;
 using NexNet.Transports;
 
+[assembly: NexNet.Interop.NexusTestScaffolding<NexNet.TestNexus.Interop.IInteropVersionedServerNexusV2, NexNet.TestNexus.Interop.IInteropVersionedClientNexus>]
+
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Interop;
 
 /// <summary>
-/// Smoke tests of the interop type zoo (NexNet.TestNexus) with the C# client over UDS, and of the server's raw frame
-/// injection hook (<c>NexusSession.InternalSendRawAsync</c>).
+/// End-to-end checks of the interop type zoo (NexNet.TestNexus) on every row of the client matrix: the client under test
+/// calls the C# interop server with edge values of every type the zoo covers, through pipes, channels and client nexus
+/// callbacks, and the server's raw frame injection hook (<c>NexusSession.InternalSendRawAsync</c>) feeds it a malformed
+/// remote error.
 /// </summary>
-internal class InteropZooTests : BaseTests
+/// <remarks>
+/// The golden vectors check each codec alone and <c>ServerReceivesInvocation_EveryZooType_EchoesSeededValues</c> checks
+/// seeded random values; these tests check the edge values (minimums and maximums, NaN, negative zero, nulls, empty
+/// containers, unions, sparse keys, a user formatter). They run over UDS, where the language has it, and WebSocket,
+/// which every language has.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class InteropZooTests(LanguageHostPool hosts) : BaseTests
 {
-    private sealed record Configs(ServerConfig Server, ClientConfig Client);
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
 
-    private async Task<(NexusClient<InteropClientNexus, InteropClientNexus.ServerProxy> Client, InteropClientNexus Nexus)> ConnectAsync(
+    /// <summary>
+    /// Starts an interop server of <see cref="InteropServerNexus"/>, then creates and connects the client of
+    /// <paramref name="target"/>. Dispose the server after the client.
+    /// </summary>
+    private static async Task<(InteropServer<InteropServerNexus, InteropServerNexus.ClientProxy> Server, IClientUnderTest Client)> ConnectAsync(
+        ClientTarget target,
         Action<InteropServerNexus>? nexusCreated = null,
-        Action<Configs>? configure = null)
+        InteropServerOptions? options = null,
+        Action<ClientSpec>? configure = null)
     {
-        var configs = new Configs(CreateServerConfig(Type.Uds), CreateClientConfig(Type.Uds));
-        configure?.Invoke(configs);
-        var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(configs.Server, nexusCreated);
-        var (client, nexus) = CreateClient<InteropClientNexus, InteropClientNexus.ServerProxy>(configs.Client);
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-        return (client, nexus);
+        target.SkipIfUnsupported();
+        var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(() =>
+        {
+            var nexus = new InteropServerNexus();
+            nexusCreated?.Invoke(nexus);
+            return nexus;
+        }, options).Timeout(T(TestTimeouts.Connect));
+
+        try
+        {
+            var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+            configure?.Invoke(spec);
+            var client = await MatrixTestBase.ConnectAsync<InteropClientNexus, InteropClientNexus.ServerProxy>(target, spec);
+            return (server, client);
+        }
+        catch
+        {
+            await server.DisposeAsync();
+            throw;
+        }
     }
+
+    private static Remote_IInteropServerNexus Proxy(IClientUnderTest client) => client.Proxy<Remote_IInteropServerNexus>();
+
+    private static InteropClientNexusScript Script(IClientUnderTest client) => client.Callbacks<InteropClientNexusScript>();
 
     private static byte[] Bytes<T>(T value) => NexusSerializer.Serialize(value);
 
-    [Test]
-    public async Task EchoesBuiltInTypes()
+    /// <summary>Asserts the client's leak audit, then disposes the client and its server.</summary>
+    private static async Task EndAsync(InteropServer<InteropServerNexus, InteropServerNexus.ClientProxy> server, IClientUnderTest client)
     {
-        var (client, _) = await ConnectAsync();
-        var proxy = client.Proxy;
+        try
+        {
+            await MatrixTestBase.EndAsync(client);
+        }
+        finally
+        {
+            await client.DisposeAsync();
+            await server.DisposeAsync();
+        }
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task EchoesBuiltInTypes(ClientTarget target)
+    {
+        var (server, client) = await ConnectAsync(target);
+        var proxy = Proxy(client);
 
         await Assert.That(await proxy.EchoBool(true)).IsTrue();
         await Assert.That(await proxy.EchoSByte(sbyte.MinValue)).IsEqualTo(sbyte.MinValue);
@@ -95,13 +147,15 @@ internal class InteropZooTests : BaseTests
         await Assert.That(await proxy.EchoValueTuple7(tuple7)).IsEqualTo(tuple7);
         await Assert.That(await proxy.EchoTuple(Tuple.Create(1, "one"))).IsEqualTo(Tuple.Create(1, "one"));
         await Assert.That(await proxy.EchoKeyValuePair(new KeyValuePair<string, int>("k", 1))).IsEqualTo(new KeyValuePair<string, int>("k", 1));
+        await EndAsync(server, client);
     }
 
     [Test]
-    public async Task EchoesPrimitiveArraysContainersAndEnums()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task EchoesPrimitiveArraysContainersAndEnums(ClientTarget target)
     {
-        var (client, _) = await ConnectAsync();
-        var proxy = client.Proxy;
+        var (server, client) = await ConnectAsync(target);
+        var proxy = Proxy(client);
 
         await Assert.That(await proxy.EchoSByteArray([sbyte.MinValue, 0, sbyte.MaxValue])).IsEquivalentTo(new[] { sbyte.MinValue, (sbyte)0, sbyte.MaxValue });
         await Assert.That(await proxy.EchoInt16Array([short.MinValue, short.MaxValue])).IsEquivalentTo(new[] { short.MinValue, short.MaxValue });
@@ -136,13 +190,15 @@ internal class InteropZooTests : BaseTests
         await Assert.That(await proxy.EchoFlags(InteropFlags.All)).IsEqualTo(InteropFlags.All);
         await Assert.That(await proxy.EchoLongEnum(InteropLongEnum.BeyondDouble)).IsEqualTo(InteropLongEnum.BeyondDouble);
         await Assert.That(await proxy.EchoEnum(InteropEnum.Min)).IsEqualTo(InteropEnum.Min);
+        await EndAsync(server, client);
     }
 
     [Test]
-    public async Task EchoesObjectsUnionsGenericsAndUserFormatter()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task EchoesObjectsUnionsGenericsAndUserFormatter(ClientTarget target)
     {
-        var (client, _) = await ConnectAsync();
-        var proxy = client.Proxy;
+        var (server, client) = await ConnectAsync(target);
+        var proxy = Proxy(client);
 
         var all = new InteropAllTypes
         {
@@ -223,116 +279,119 @@ internal class InteropZooTests : BaseTests
         await Assert.That(await proxy.EchoPoints([new(1, 1), new(2, 2)])).IsEquivalentTo(new List<InteropPoint> { new(1, 1), new(2, 2) });
 
         await Assert.That(await proxy.Combine("c", 2, point)).IsEqualTo(new InteropRecord("c", 2, point));
+        await EndAsync(server, client);
     }
 
     [Test]
-    public async Task LargeValuesPipesChannelsAndCallbacks()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task LargeValuesPipesChannelsAndCallbacks(ClientTarget target)
     {
-        var (client, clientNexus) = await ConnectAsync();
-        var proxy = client.Proxy;
+        var (server, client) = await ConnectAsync(target);
+        var proxy = Proxy(client);
 
         // Above one 64 KiB frame in both directions.
-        var large = await proxy.CreateBytes(200_000, 3).AsTask().Timeout(5);
+        var large = await proxy.CreateBytes(200_000, 3).AsTask().Timeout(T(5));
         await Assert.That(large).IsEquivalentTo(InteropServerNexus.Pattern(200_000, 3));
-        await Assert.That(await proxy.HashBytes(large).AsTask().Timeout(5)).IsEqualTo(InteropServerNexus.Hash(large));
-        await Assert.That(await proxy.EchoBytes(large).AsTask().Timeout(5)).IsEquivalentTo(large);
+        await Assert.That(await proxy.HashBytes(large).AsTask().Timeout(T(5))).IsEqualTo(InteropServerNexus.Hash(large));
+        await Assert.That(await proxy.EchoBytes(large).AsTask().Timeout(T(5))).IsEquivalentTo(large);
 
-        var pipe = clientNexus.Context.CreatePipe();
-        await proxy.EchoPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var data = InteropServerNexus.Pattern(100_000, 9);
-        await pipe.Output.WriteAsync(data);
-        await pipe.Output.CompleteAsync();
-        var received = new List<byte>();
-        while (true)
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            var result = await pipe.Input.ReadAsync().AsTask().Timeout(5);
-            received.AddRange(result.Buffer.ToArray());
-            pipe.Input.AdvanceTo(result.Buffer.End);
-            if (result.IsCompleted)
-                break;
+            await proxy.EchoPipe(pipe).AsTask().Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
+            await pipe.WritePatternAsync(9, 100_000).AsTask().Timeout(T(5));
+            await pipe.CompleteAsync().AsTask().Timeout(T(1));
+            await Assert.That(await pipe.DrainAsync().AsTask().Timeout(T(5))).IsEqualTo(PipePattern.Digest(100_000, 9));
         }
 
-        await Assert.That(received.ToArray()).IsEquivalentTo(data);
-
-        var channel = client.CreateChannel<InteropItem>();
-        await proxy.EchoItemChannel(channel).Timeout(1);
         var items = Enumerable.Range(0, 50).Select(i => new InteropItem(i, "item" + i)).ToList();
-        var writer = await channel.GetWriterAsync().AsTask().Timeout(1);
-        await writer.WriteAsync(items);
-        await writer.CompleteAsync();
-        var echoed = new List<InteropItem>();
-        await foreach (var item in await channel.GetReaderAsync())
-            echoed.Add(item);
-        await Assert.That(echoed).IsEquivalentTo(items);
+        await using (var channel = await client.CreatePipeAsync())
+        {
+            await proxy.EchoItemChannel(channel).AsTask().Timeout(T(1));
+            await channel.WhenReadyAsync().AsTask().Timeout(T(1));
+            var writer = await channel.GetChannelWriterAsync<InteropItem>().AsTask().Timeout(T(1));
+            var reader = await channel.GetChannelReaderAsync<InteropItem>().AsTask().Timeout(T(1));
+            await Assert.That(await writer.WriteManyAsync(items).AsTask().Timeout(T(1))).IsTrue();
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
+            await Assert.That(await reader.ReadAllAsync().AsTask().Timeout(T(5))).IsEquivalentTo(items, CollectionOrdering.Matching);
+        }
 
-        await Assert.That(await proxy.CallClientEchoString("back").AsTask().Timeout(1)).IsEqualTo("back");
+        // The server calls the client nexus, which hands the value back.
+        Script(client).ClientEchoString.Forward(args => ValueTask.FromResult<string?>(args.value));
+        await Assert.That(await proxy.CallClientEchoString("back").AsTask().Timeout(T(1))).IsEqualTo("back");
 
-        // Both notifications are fire-and-forget and invocations run concurrently, so no later call on the session
-        // guarantees they have been handled: wait for them instead.
-        var clientNotified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        clientNexus.ClientNotifyHandler = _ => clientNotified.TrySetResult();
-        await proxy.CallClientNotify("hello").Timeout(1);
-        await clientNotified.Task.Timeout(5);
-        await Assert.That(clientNexus.Notifications.ToArray()).IsEquivalentTo(new[] { "hello" });
+        // The notification is fire-and-forget, so no later call on the session guarantees it was handled: wait for it.
+        await proxy.CallClientNotify("hello").AsTask().Timeout(T(1));
+        var notified = await Script(client).ClientNotify.NextCallAsync().AsTask().Timeout(T(5));
+        await Assert.That(notified.message).IsEqualTo("hello");
 
         proxy.Notify("one");
-        await proxy.Ping().Timeout(1);
+        await client.BarrierAsync().Timeout(T(1));
+        await proxy.Ping().AsTask().Timeout(T(1));
         await Assert.That(await proxy.WaitNotificationsAsync(1, TimeSpan.FromSeconds(5))).IsEquivalentTo(new[] { "one" });
-        await Assert.That(await proxy.SlowEcho(4, 10).AsTask().Timeout(1)).IsEqualTo(4);
+        await Assert.That(await proxy.SlowEcho(4, 10).AsTask().Timeout(T(1))).IsEqualTo(4);
+        await EndAsync(server, client);
     }
 
     [Test]
-    public async Task AuthorizesByIdentity()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthorizesByIdentity(ClientTarget target)
     {
-        var (client, _) = await ConnectAsync(
-            nexus => nexus.TokenValidator = (token, _) => ValueTask.FromResult<IIdentity?>(
-                new DefaultIdentity { DisplayName = token == null ? null : Encoding.UTF8.GetString(token.Value.Span) }),
-            configs =>
+        var (server, client) = await ConnectAsync(
+            target,
+            options: new InteropServerOptions
             {
-                configs.Server.Authenticate = true;
-                configs.Client.Authenticate = () => Encoding.UTF8.GetBytes(InteropServerNexus.ReaderIdentity);
-            });
+                TokenValidator = (token, _) => ValueTask.FromResult<IIdentity?>(
+                    new DefaultIdentity { DisplayName = token == null ? null : Encoding.UTF8.GetString(token.Value.Span) }),
+            },
+            configure: spec => spec.AuthToken = InteropServerNexus.ReaderIdentity);
+        var proxy = Proxy(client);
 
-        await Assert.That(await client.Proxy.GetIdentity().AsTask().Timeout(1)).IsEqualTo(InteropServerNexus.ReaderIdentity);
-        await Assert.That(await client.Proxy.ReadSecret().AsTask().Timeout(1)).IsEqualTo(InteropServerNexus.Secret);
-        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () => await client.Proxy.AdminEcho(1).AsTask().Timeout(1));
+        await Assert.That(await proxy.GetIdentity().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.ReaderIdentity);
+        await Assert.That(await proxy.ReadSecret().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.Secret);
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () => await proxy.AdminEcho(1).AsTask().Timeout(T(1)));
+        await EndAsync(server, client);
     }
 
     [Test]
-    public async Task VersionOneClientConnectsToVersionTwoServer()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task VersionOneClientConnectsToVersionTwoServer(ClientTarget target)
     {
-        var server = CreateServer<InteropVersionedServerNexus, InteropVersionedServerNexus.ClientProxy>(CreateServerConfig(Type.Uds), null);
-        var (v1, _) = CreateClient<InteropVersionedClientNexusV1, InteropVersionedClientNexusV1.ServerProxy>(CreateClientConfig(Type.Uds));
-        var (v2, _) = CreateClient<InteropVersionedClientNexusV2, InteropVersionedClientNexusV2.ServerProxy>(CreateClientConfig(Type.Uds));
-        await server.StartAsync().Timeout(1);
-        await v1.ConnectAsync().Timeout(1);
-        await v2.ConnectAsync().Timeout(1);
+        target.SkipIfUnsupported();
+        await using var server = await InteropServerHost.StartAsync<InteropVersionedServerNexus, InteropVersionedServerNexus.ClientProxy>(() => new())
+            .Timeout(T(TestTimeouts.Connect));
+        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+        await using var v1 = await MatrixTestBase.ConnectAsync<InteropVersionedClientNexusV1, InteropVersionedClientNexusV1.ServerProxy>(target, spec);
+        await using var v2 = await MatrixTestBase.ConnectAsync<InteropVersionedClientNexusV2, InteropVersionedClientNexusV2.ServerProxy>(target, spec.Clone());
 
-        await Assert.That(await v1.Proxy.Add(2, 3).AsTask().Timeout(1)).IsEqualTo(5);
-        await Assert.That(await v2.Proxy.CreateItem(1, "x").AsTask().Timeout(1)).IsEqualTo(new InteropItem(1, "x"));
+        await Assert.That(await v1.Proxy<IInteropVersionedServerNexusV1>().Add(2, 3).AsTask().Timeout(T(1))).IsEqualTo(5);
+        await Assert.That(await v2.Proxy<IInteropVersionedServerNexusV2>().CreateItem(1, "x").AsTask().Timeout(T(1))).IsEqualTo(new InteropItem(1, "x"));
+        await MatrixTestBase.EndAsync(v1);
+        await MatrixTestBase.EndAsync(v2);
     }
 
     [Test]
-    public async Task InjectedFrame_MalformedRemoteErrorDetail_ThrowsPlainException()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task InjectedFrame_MalformedRemoteErrorDetail_ThrowsPlainException(ClientTarget target)
     {
         var invocationId = new TaskCompletionSource<ushort>(TaskCreationOptions.RunContinuationsAsynchronously);
         var serverNexus = new TaskCompletionSource<InteropServerNexus>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (client, _) = await ConnectAsync(
+        var (server, client) = await ConnectAsync(
+            target,
             nexus => serverNexus.TrySetResult(nexus),
-            configs => configs.Client.InternalOnSend = (_, sent) =>
+            new InteropServerOptions
             {
-                if (sent.Length <= 3 || sent[0] != (byte)MessageType.Invocation)
-                    return;
-                var reader = new MsgPackReader(new ReadOnlyMemory<byte>(sent, 3, sent.Length - 3), NexusSerializerOptions.Untrusted);
-                reader.ReadArrayHeader();
-                invocationId.TrySetResult(reader.ReadUInt16());
+                ConfigureEndpoint = (_, config) => ServerTaps.OnReceive(config, (_, frame) =>
+                {
+                    if (frame.Type == MessageType.Invocation)
+                        invocationId.TrySetResult(TestSerialization.DeserializeMessage<InvocationMessage>(frame.Body).InvocationId);
+                }),
             });
 
         // The server answers this call only after a minute; the injected frame completes it first.
-        var call = client.Proxy.Delay(60_000, 1, CancellationToken.None).AsTask();
-        var id = await invocationId.Task.Timeout(1);
-        var nexus = await serverNexus.Task.Timeout(1);
+        var call = Proxy(client).Delay(60_000, 1, CancellationToken.None).AsTask();
+        var id = await invocationId.Task.Timeout(T(1));
+        var nexus = await serverNexus.Task.Timeout(T(1));
 
         // InvocationResult [id, Exception, detail] whose detail is a string instead of [code, type, message].
         var body = new ArrayBufferWriter<byte>();
@@ -348,11 +407,12 @@ internal class InteropZooTests : BaseTests
         body.WrittenSpan.CopyTo(frame.AsSpan(3));
 
         var session = (NexusSession<InteropServerNexus, InteropServerNexus.ClientProxy>)nexus.SessionContext.Session;
-        await session.InternalSendRawAsync(frame).AsTask().Timeout(1);
+        await session.InternalSendRawAsync(frame).AsTask().Timeout(T(1));
 
-        var exception = await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(async () => await call.Timeout(1));
+        var exception = await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(async () => await call.Timeout(T(1)));
         await Assert.That(exception!.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteMessage).IsNull();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Connected);
+        await EndAsync(server, client);
     }
 }
