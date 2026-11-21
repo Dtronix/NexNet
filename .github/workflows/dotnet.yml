@@ -35,6 +35,8 @@ env:
   # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
   # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
   # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
+  # A pull request into master reads only master's cache, so it can start empty. Every Gradle command therefore runs
+  # through .github/scripts/gradle-retry.sh (H35), which re-runs it once when it fails on dependency resolution.
   NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
@@ -221,7 +223,7 @@ jobs:
     - name: Java client jars (never published)
       shell: bash
       run: |
-        clients/java/gradlew -p clients/java \
+        .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java \
           :nexnet-client:assemble :nexnet-client-kotlin:assemble :nexnet-client-okhttp:assemble :nexnet-client-micrometer:assemble
         mkdir -p client-artifacts/java
         cp clients/java/nexnet-client*/build/libs/*.jar client-artifacts/java/
