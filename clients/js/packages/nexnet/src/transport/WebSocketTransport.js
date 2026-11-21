@@ -97,9 +97,11 @@ export class BrowserWebSocketTransport extends TransportBase {
 /**
  * Opens a WebSocket transport (`ClientConfig.webSocket`) with the platform `WebSocket`. TLS, headers and the HTTP
  * status of a failed upgrade are under the platform's control: a browser reports every failure the same way, so it is
- * `SocketError` with `transportError` `InternalError`. That includes an upgrade the server refuses with `401` or
- * `403` (ASP.NET authentication), which the Node transport reports as `AuthenticationError`; a refused greeting token
- * (`authenticate`) is still `AuthenticationError` in a browser, because it is refused over an open socket.
+ * `SocketError` with `transportError` `InternalError`. That includes an upgrade the server refuses with `403` (an
+ * `Origin` outside NexNet.Asp `AllowedOrigins`), which the Node transport reports as `AuthenticationError`. A refused
+ * authentication is `AuthenticationError` in a browser too: NexNet.Asp refuses a failed ASP.NET authentication (cookie
+ * or query-string token) over the open socket (`DisconnectReason.Authentication`), as it does a refused greeting token
+ * (`authenticate`).
  *
  * @type {import('./ITransport.js').TransportFactory}
  */
@@ -130,7 +132,8 @@ export async function webSocketTransport(config, { signal }) {
       cleanup();
       reject(transportError(
         `WebSocket connection to ${url.href} failed. The browser does not say why: the server may be unreachable, the ` +
-        'TLS handshake may have failed, or the server may have refused the upgrade (HTTP 401 or 403, for example).',
+        'TLS handshake may have failed, or the server may have refused the upgrade (HTTP 403 for an origin it does not ' +
+        'allow, for example).',
       ));
     };
     const onAbort = () => {
