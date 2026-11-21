@@ -34,11 +34,22 @@ final class PipeEntry {
     private volatile NexusChannelReader<Object> reader;
     private volatile TypedCodec<Object> readerCodec;
     volatile boolean disposed;
+    /**
+     * True for a pipe a {@code pipe.hold} step holds (a pipe the server opened): disposing the entry completes
+     * {@link #released}, which ends the step, instead of closing the pipe; the runtime closes it when the method returns.
+     */
+    final boolean held;
+    final CompletableFuture<Void> released = new CompletableFuture<>();
 
     PipeEntry(ClientEntry owner, String handle, NexusDuplexPipe pipe) {
+        this(owner, handle, pipe, false);
+    }
+
+    PipeEntry(ClientEntry owner, String handle, NexusDuplexPipe pipe, boolean held) {
         this.owner = owner;
         this.handle = handle;
         this.pipe = pipe;
+        this.held = held;
     }
 
     @SuppressWarnings("unchecked")
@@ -88,6 +99,29 @@ final class PipeEntry {
             offset[0] += count;
             return pipe.write(ByteBuffer.wrap(chunk)).thenApply(v -> true);
         }).thenApply(v -> Protocol.empty());
+    }
+
+    /**
+     * {@code pipe.tryWrite}: {@code ok} false when the writing side is complete (the peer completed its input or the
+     * pipe, or the session ended) instead of failing.
+     */
+    CompletableFuture<Map<String, Object>> tryWrite(Args args) {
+        byte[] data = Base64.getDecoder().decode(args.str("b64"));
+        CompletableFuture<Map<String, Object>> done = new CompletableFuture<>();
+        pipe.write(ByteBuffer.wrap(data)).whenComplete((v, e) -> {
+            if (e == null) {
+                done.complete(Protocol.map("ok", true));
+            } else {
+                Throwable cause = Errors.unwrap(e);
+                if (cause instanceof IllegalStateException
+                    || cause instanceof com.dtronix.nexnet.session.SessionClosedException) {
+                    done.complete(Protocol.map("ok", false));
+                } else {
+                    done.completeExceptionally(cause);
+                }
+            }
+        });
+        return done;
     }
 
     /** Appends the next chunk of input to the buffer; false at the end of input. */
@@ -252,6 +286,10 @@ final class PipeEntry {
 
     void dispose() {
         disposed = true;
+        if (held) {
+            released.complete(null);
+            return;
+        }
         try {
             pipe.close();
         } catch (RuntimeException ignored) {

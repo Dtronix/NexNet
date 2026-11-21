@@ -396,6 +396,13 @@ final class InteropHost {
                 // A pipe the session's end tore down before it was ready never completed: C# cancels its CompleteTask.
                 return canceledOnSessionEnd(pipe.pipe.completed().thenCompose(v -> pipe.pipe.ready()));
             }
+            case "pipe.accept":
+                return clientOnly(scope, args).acceptPipe(args.str("name"));
+            case "pipe.tryWrite":
+                return pipe(scope, args).tryWrite(args);
+            case "pipe.completeInput":
+                // The Java runtime has no way to complete a pipe's reading side alone (capability PipeInputCompletion).
+                throw HostError.notSupported("The Java client cannot complete a pipe's reading side alone.");
             case "pipe.dispose": {
                 Object value = scope.find(args.str("pipe"));
                 if (value instanceof PipeEntry) {
@@ -413,6 +420,10 @@ final class InteropHost {
             case "channel.reader":
                 return pipe(scope, args).channelReader(args.str("type"));
             case "channel.read":
+                if (args.optObj("cancel") != null) {
+                    // The Java runtime cannot cancel a channel read (capability ChannelReadCancellation).
+                    throw HostError.notSupported("The Java client cannot cancel a channel read.");
+                }
                 return pipe(scope, args).channelRead(args.int32("max"));
             case "channel.readAll":
                 return pipe(scope, args).channelReadAll();
