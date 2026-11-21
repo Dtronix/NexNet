@@ -77,12 +77,6 @@ internal static class ClientParityExceptions
     private const string ExceptionTypeName =
         "By design: exception type names are language-specific; the other languages check the error kind and message.";
 
-    private const string PendingListOps =
-        "Pending Q02: the harness has no list mode/isReadOnly or disabled operation (IRemoteList), although Java and JS implement them.";
-
-    private const string PendingSnapshot =
-        "Pending Q05: the harness has no snapshot operation, so the invocation table and session budget are checked on the C# client only. The leak audit covers what the other clients hold.";
-
     /// <summary>The exceptions.</summary>
     internal static readonly ParityException[] All =
     [
@@ -111,15 +105,5 @@ internal static class ClientParityExceptions
         new("NexusServerTests_NexusDuplexPipe.Server_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.NoRunnableRow, ParityLanguages.All, ServerPipeObject),
         new("NexusClientTests_NexusDuplexPipe.Client_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ServerPipeObject),
         new("RemoteExceptionDetailTests.TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ExceptionTypeName),
-
-        // Harness gaps with a card (B).
-        new("NexusListTests.IsReadOnly_IsFalseOnBidirectional", ParityGap.NoRunnableRow, ParityLanguages.All, PendingListOps),
-        new("NexusListTests.IsReadOnly_IsFalseOnServerToClient", ParityGap.NoRunnableRow, ParityLanguages.All, PendingListOps),
-        new("NexusListTests_Events.ClientDisconnectionTaskCompletesOnDisconnect", ParityGap.NoRunnableRow, ParityLanguages.All, PendingListOps),
-        new("FlowControlTests.ClosedPipes_FreeTheirIdsAndBudget", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PendingSnapshot),
-        new("NexusClientTests_Cancellation.AlreadyCanceledToken_ValueTask_ThrowsAndSendsNothing", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PendingSnapshot),
-        new("NexusClientTests_Cancellation.AlreadyCanceledToken_ValueTaskOfT_ThrowsAndSendsNothing", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PendingSnapshot),
-        new("NexusClientTests_Cancellation.CanceledInvocationReleasesItsIdOnTheCanceledReply", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PendingSnapshot),
-        new("NexusClientTests_Cancellation.CancellationOfAQueuedInvocation_CancelsItWhenItStarts", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PendingSnapshot),
     ];
 }
