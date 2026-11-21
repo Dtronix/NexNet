@@ -1,5 +1,6 @@
 package com.dtronix.nexnet.interop.host;
 
+import com.dtronix.nexnet.CancellationToken;
 import com.dtronix.nexnet.pipes.NexusChannelReader;
 import com.dtronix.nexnet.pipes.NexusChannelWriter;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
@@ -122,6 +123,18 @@ final class PipeEntry {
             }
         });
         return done;
+    }
+
+    /**
+     * {@code pipe.completeInput}: completes the reading side only. Bytes this entry buffered are dropped with the
+     * pipe's, and later reads see the end of input.
+     */
+    CompletableFuture<Map<String, Object>> completeInput() {
+        synchronized (lock) {
+            buffered = new byte[0];
+            ended = true;
+        }
+        return pipe.completeInput().thenApply(v -> Protocol.empty());
     }
 
     /** Appends the next chunk of input to the buffer; false at the end of input. */
@@ -249,13 +262,13 @@ final class PipeEntry {
         });
     }
 
-    CompletableFuture<Map<String, Object>> channelRead(int max) {
+    CompletableFuture<Map<String, Object>> channelRead(int max, CancellationToken cancellationToken) {
         if (max < 1) {
             throw HostError.badRequest("channel.read needs max >= 1.");
         }
         NexusChannelReader<Object> r = requireReader();
         TypedCodec<Object> codec = readerCodec;
-        return r.readBatch(max).thenApply(batch -> {
+        return r.readBatch(max, cancellationToken).thenApply(batch -> {
             List<Object> items = new ArrayList<>(batch.size());
             for (Object item : batch) {
                 items.add(codec.toJson(item));
