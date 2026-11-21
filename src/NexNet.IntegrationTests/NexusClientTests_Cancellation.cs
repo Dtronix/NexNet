@@ -146,7 +146,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task CanceledInvocationReleasesItsIdOnTheCanceledReply(ClientTarget target)
     {
         // The server honors the token and replies Canceled; the id is reserved until then.
@@ -182,7 +182,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task CancellationOfAQueuedInvocation_CancelsItWhenItStarts(ClientTarget target)
     {
         // One execution slot: the second call is still queued on the server when its cancellation arrives.
@@ -307,7 +307,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task RemoteMethodCanceledOnItsOwn_CancelsTheCaller(ClientTarget target)
     {
         // Without a reply the caller, which has no token, would wait forever.

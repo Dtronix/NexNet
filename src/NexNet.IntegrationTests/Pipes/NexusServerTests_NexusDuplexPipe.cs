@@ -439,7 +439,7 @@ internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Server_PipesThrowWhenInvokingOnMultipleConnections(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -475,7 +475,7 @@ internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Server_PipesAllowInvocationOnSingleConnections(ClientTarget target)
     {
         await using var server = await StartServerAsync();
