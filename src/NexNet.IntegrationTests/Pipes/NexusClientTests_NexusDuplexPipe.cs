@@ -21,9 +21,6 @@ namespace NexNet.IntegrationTests.Pipes;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    private const string NoPipeHandler =
-        "no host handler can write to a pipe the server opened or report what the client's pipe saw";
-
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReceivesFullFrames(ClientTarget target)
@@ -155,31 +152,17 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponCompleteAsync(ClientTarget target)
     {
-        RequireInProc(target, NoPipeHandler);
-        var tcs = Signal();
         await using var server = await StartServerAsync();
-        await using var client = await ConnectAsync(target, server);
-        InProc(client).Nexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            FlushResult result = default;
-            for (var i = 0; i < 20; i++)
-            {
-                result = await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
-                if (result.IsCompleted)
-                    break;
-
-                await Task.Delay(100);
-            }
-
-            await Assert.That(result.IsCompleted).IsTrue();
-            tcs.SetResult();
-        };
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
         var sNexus = await ServerNexusAsync();
 
         await using (var pipe = await OpenToClientAsync(sNexus))
         {
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
             await pipe.CompleteAsync().AsTask().Timeout(T(1));
-            await tcs.Task.Timeout(T(3));
+
+            // The client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 20, 100)).IsTrue();
         }
 
         await EndAsync(client);
@@ -189,22 +172,18 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeReaderCompletesUponDisconnection(ClientTarget target)
     {
-        RequireInProc(target, NoPipeHandler);
-        var tcs = Signal();
         await using var server = await StartServerAsync();
-        await using var client = await ConnectAsync(target, server);
-        InProc(client).Nexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            var result = await pipe.Input.ReadAsync().AsTask().Timeout(T(1));
-            await Assert.That(result.IsCompleted).IsTrue();
-            tcs.SetResult();
-        };
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
         var sNexus = await ServerNexusAsync();
 
         await using (await OpenToClientAsync(sNexus))
         {
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
             await client.DisconnectAsync().Timeout(T(1));
-            await tcs.Task.Timeout(T(1));
+
+            // A read waits for at least one byte unless the pipe completed.
+            var read = await held.ReadAsync(1, Data.Length).AsTask().Timeout(T(1));
+            await Assert.That(read.Length).IsEqualTo(0);
         }
 
         await EndAsync(client);
@@ -214,26 +193,17 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponDisconnection(ClientTarget target)
     {
-        RequireInProc(target, NoPipeHandler);
-        var tcs = Signal();
-        var tcsDisconnected = Signal();
         await using var server = await StartServerAsync();
-        await using var client = await ConnectAsync(target, server);
-        InProc(client).Nexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            await tcsDisconnected.Task.Timeout(T(1));
-            await Task.Delay(150);
-            var result = await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
-            await Assert.That(result.IsCompleted).IsTrue();
-            tcs.SetResult();
-        };
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
         var sNexus = await ServerNexusAsync();
 
         await using (await OpenToClientAsync(sNexus))
         {
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
             await client.DisconnectAsync().Timeout(T(1));
-            tcsDisconnected.SetResult();
-            await tcs.Task.Timeout(T(1));
+
+            // The client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 20, 50)).IsTrue();
         }
 
         await EndAsync(client);
@@ -263,28 +233,17 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_PipeWriterCompletesUponWriterCompletion(ClientTarget target)
     {
-        RequireInProc(target, NoPipeHandler);
-        var tcs = Signal();
         await using var server = await StartServerAsync();
-        await using var client = await ConnectAsync(target, server);
-        InProc(client).Nexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            FlushResult? result = null;
-            while (result == null || !result.Value.IsCompleted)
-            {
-                result = await pipe.Output.WriteAsync(Data).AsTask().Timeout(T(1));
-                await Task.Delay(1);
-            }
-
-            await Assert.That(result.Value.IsCompleted).IsTrue();
-            tcs.SetResult();
-        };
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.hold", Hold("pipe")));
         var sNexus = await ServerNexusAsync();
 
         await using (var pipe = await OpenToClientAsync(sNexus))
         {
+            await using var held = await client.AcceptPipeAsync("pipe").Timeout(T(1));
             await pipe.Input.CompleteAsync().AsTask().Timeout(T(1));
-            await tcs.Task.Timeout(T(1));
+
+            // The server's reader is complete: the client's writes report the pipe complete.
+            await Assert.That(await WriteUntilCompleteAsync(held, 100, 10)).IsTrue();
         }
 
         await EndAsync(client);
@@ -384,18 +343,27 @@ internal class NexusClientTests_NexusDuplexPipe(LanguageHostPool hosts) : Matrix
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(ClientTarget target)
     {
-        // C#-runtime specific: only a C# test can hand the client a pipe object of another nexus.
-        RequireInProc(target, "the test passes a C# server pipe to the client's proxy");
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = (_, _) => ValueTask.CompletedTask);
         await using var client = await ConnectAsync(target, server);
-        var sNexus = await ServerNexusAsync();
+        await using var other = await ConnectAsync(target, server);
 
-        await using (var pipe = sNexus.Context.CreatePipe())
+        // A pipe of another client's session.
+        await using (var pipe = await other.CreatePipeAsync())
         {
             await AssertThrows<InvalidOperationException>(() =>
-                InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1))).Timeout(T(1));
+                Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1))).Timeout(T(1));
         }
 
+        if (target.Language == ClientLanguages.CSharp)
+        {
+            // A pipe of the server's nexus: only a C# test can hold one.
+            var sNexus = await ServerNexusAsync();
+            await using var serverPipe = sNexus.Context.CreatePipe();
+            await AssertThrows<InvalidOperationException>(() =>
+                InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(serverPipe).Timeout(T(1))).Timeout(T(1));
+        }
+
+        await EndAsync(other);
         await EndAsync(client);
     }
 
