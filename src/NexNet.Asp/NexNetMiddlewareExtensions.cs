@@ -155,6 +155,21 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     internal static async Task<bool> ApplyAuthentication(HttpContext context, AspServerConfig config, string? accessTokenQueryParameter)
     {
+        if (await AuthenticateRequest(context, config, accessTokenQueryParameter).ConfigureAwait(false))
+            return true;
+
+        // Notify the connecting client with Unauthorized.
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return false;
+    }
+
+    /// <summary>
+    /// Runs the configured ASP.NET authentication, as <see cref="ApplyAuthentication(HttpContext, AspServerConfig, string?)"/>
+    /// does, without answering the request: on failure the caller decides how the client is refused.
+    /// </summary>
+    /// <returns>True if the connection should continue (authenticated, or authentication disabled).</returns>
+    internal static async Task<bool> AuthenticateRequest(HttpContext context, AspServerConfig config, string? accessTokenQueryParameter)
+    {
         if (!config.AspEnableAuthentication)
             return true;
 
@@ -195,9 +210,6 @@ public static partial class NexNetMiddlewareExtensions
 
         // Log the failure.
         config.Logger?.LogInfo(authResult.Failure, "Authentication failed");
-                    
-        // Notify the connecting client with Unauthorized.
-        context.Response.StatusCode = 401;
         return false;
     }
 
