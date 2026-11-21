@@ -93,6 +93,10 @@ export declare class NexusSession {
     get transportIsSecure(): boolean;
     /** @returns {unknown} */
     get remoteCertificate(): unknown;
+    /** The server's address as the transport reports it, or null. @returns {string | null} */
+    get remoteAddress(): string | null;
+    /** The server's port as the transport reports it, or null. @returns {number | null} */
+    get remotePort(): number | null;
     /** The resolved client options. @returns {import('./options.js').ResolvedClientOptions} */
     get options(): import('./options.js').ResolvedClientOptions;
     /** Largest value this side may send: the smaller of its own `maxMessageSize` and the peer's (§5). @returns {number} */

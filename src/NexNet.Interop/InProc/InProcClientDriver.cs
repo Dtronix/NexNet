@@ -106,6 +106,15 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         => Task.FromResult(_client.State == ConnectionState.Connected ? Nexus.Context.RemoteCertificate?.RawData : null);
 
     /// <inheritdoc />
+    public Task<bool> GetIsSecureAsync() => Task.FromResult(_client.IsSecure);
+
+    /// <inheritdoc />
+    public Task<RemoteEndpoint> GetRemoteEndpointAsync()
+        => Task.FromResult(_client.State == ConnectionState.Connected
+            ? new RemoteEndpoint(Nexus.Context.RemoteAddress, Nexus.Context.RemotePort)
+            : RemoteEndpoint.None);
+
+    /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

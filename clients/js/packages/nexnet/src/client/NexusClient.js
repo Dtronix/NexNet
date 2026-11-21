@@ -181,6 +181,25 @@ export class NexusClient extends EventTarget {
     return this.#session?.remoteCertificate ?? null;
   }
 
+  /**
+   * The server's address on the current connection (C# `Context.RemoteAddress`, Java `remoteAddress()`): the IP
+   * address of the Node socket's peer on every Node transport, or the socket path for UDS. Null when not connected, and
+   * always in the browser, which does not expose it.
+   * @returns {string | null}
+   */
+  get remoteAddress() {
+    return this.#session?.remoteAddress ?? null;
+  }
+
+  /**
+   * The server's port on the current connection (C# `Context.RemotePort`, Java `remotePort()`) on the Node TCP-based
+   * transports. Null when not connected, for UDS, and always in the browser.
+   * @returns {number | null}
+   */
+  get remotePort() {
+    return this.#session?.remotePort ?? null;
+  }
+
   /** Resolves when the current session ends (after reconnection gives up). @returns {Promise<void>} */
   get disconnected() {
     return this.#disconnected;

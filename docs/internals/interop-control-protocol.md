@@ -234,6 +234,8 @@ before a response is sent arrives before that response.
 | `client.dispose` | `{h}` | `{}`; releases the handle and everything the client owns. Disposing twice is not an error. |
 | `client.state` | `{h}` | `{state}`: a `ConnectionState` name (`Disconnected`, `Connecting`, `Connected`, `Reconnecting`, `Disconnecting`). |
 | `client.remoteCertificate` | `{h}` | `{der}`: the certificate the server presented on the client's current connection, as base64 DER; `null` when the client is not `Connected` or its transport has no TLS. A host without the `RemoteCertificate` capability (the browser) answers `null`. Client handles only. |
+| `client.isSecure` | `{h}` | `{secure}`: whether the client's transport encrypts the connection (C# `IsSecure`, Java `isSecure()`, JS `isSecure`): true for TLS, HTTPS, WSS and UDS. Known before the client connects. Client handles only. |
+| `client.remoteEndpoint` | `{h}` | `{address, port}`: the server's address (text form of the IP address, or the socket path for UDS) and port as the client's current connection reports them; each is `null` when the transport does not report it, and both are `null` when the client is not `Connected`. The Java and Node clients report the peer of the underlying socket on every transport (no port for UDS); the browser cannot see it and always answers `null`s. Client handles only. |
 | `client.awaitState` | `{h, state}` | `{}` once the state is reached (at once if it is current). Bounded by `timeoutMs`. |
 | `client.awaitReady` | `{h}` | `{}` once connected and ready for invocations. Bounded by `timeoutMs`. |
 | `client.awaitDisconnected` | `{h}` | `{reason}`: a `DisconnectReason` name, once the current session is disconnected (at once if it already is). Bounded by `timeoutMs`. |

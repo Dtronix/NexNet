@@ -15,6 +15,18 @@ export type ClientContext<TProxy extends import('./ProxyBase.js').ProxyBase> = {
      * The session ID, or null before the handshake completes.
      */
     sessionId: bigint | null;
+    /**
+     * True when the transport encrypts the connection (`NexusClient.isSecure`).
+     */
+    isSecure: boolean;
+    /**
+     * The server's address (`NexusClient.remoteAddress`), or null.
+     */
+    remoteAddress: string | null;
+    /**
+     * The server's port (`NexusClient.remotePort`), or null.
+     */
+    remotePort: number | null;
     createPipe: () => import('../contract/pipes.js').NexusDuplexPipe;
     createChannel: CreateChannel;
     disconnect: () => Promise<void>;
@@ -54,6 +66,9 @@ export type AttachedClient = {
     _session: {
         id: bigint | null;
     } | null;
+    isSecure: boolean;
+    remoteAddress: string | null;
+    remotePort: number | null;
     createPipe: () => import('../contract/pipes.js').NexusDuplexPipe;
     createChannel: CreateChannel;
     disconnect: () => Promise<void>;

@@ -229,6 +229,30 @@ final class ClientEntry extends Driven implements ScriptHost {
         }
     }
 
+    /**
+     * Whether the client's transport encrypts the connection (§6.4 {@code client.isSecure}).
+     *
+     * @return {@link NexusClient#isSecure()}
+     */
+    boolean isSecure() {
+        return client.isSecure();
+    }
+
+    /**
+     * The server's address and port on the current connection (§6.4 {@code client.remoteEndpoint}).
+     *
+     * @return {@code {address, port}}: both null when the client is not connected; the port is null when the transport
+     *     reports none
+     */
+    Map<String, Object> remoteEndpoint() {
+        NexusSession session = client.session();
+        if (client.state() != ConnectionState.CONNECTED || session == null) {
+            return Protocol.map("address", null, "port", null);
+        }
+        int port = session.transport().remotePort();
+        return Protocol.map("address", session.transport().remoteAddress(), "port", port < 0 ? null : port);
+    }
+
     Map<String, Object> advanceTime(long millis) {
         if (fakeTime == null) {
             throw new HostError(HostError.INVALID_OPERATION,

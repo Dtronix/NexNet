@@ -220,6 +220,10 @@ internal sealed class InProcPooledClient<TServerProxy> : IClientUnderTest
 
     public Task<byte[]?> GetRemoteCertificateAsync() => throw new NotSupportedException();
 
+    public Task<bool> GetIsSecureAsync() => throw new NotSupportedException();
+
+    public Task<RemoteEndpoint> GetRemoteEndpointAsync() => throw new NotSupportedException();
+
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         // The rental raises no state events: poll.

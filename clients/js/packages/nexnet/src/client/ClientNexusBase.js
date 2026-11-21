@@ -22,6 +22,9 @@ import { notImplemented } from '../contract/internal.js';
  * @typedef {object} ClientContext
  * @property {TProxy} proxy The server proxy.
  * @property {bigint | null} sessionId The session ID, or null before the handshake completes.
+ * @property {boolean} isSecure True when the transport encrypts the connection (`NexusClient.isSecure`).
+ * @property {string | null} remoteAddress The server's address (`NexusClient.remoteAddress`), or null.
+ * @property {number | null} remotePort The server's port (`NexusClient.remotePort`), or null.
  * @property {() => import('../contract/pipes.js').NexusDuplexPipe} createPipe
  * @property {CreateChannel} createChannel
  * @property {() => Promise<void>} disconnect
@@ -54,6 +57,9 @@ import { notImplemented } from '../contract/internal.js';
  * @typedef {object} AttachedClient
  * @property {any} proxy
  * @property {{ id: bigint | null } | null} _session
+ * @property {boolean} isSecure
+ * @property {string | null} remoteAddress
+ * @property {number | null} remotePort
  * @property {() => import('../contract/pipes.js').NexusDuplexPipe} createPipe
  * @property {CreateChannel} createChannel
  * @property {() => Promise<void>} disconnect
@@ -75,6 +81,15 @@ export function bindNexusClient(nexus, client) {
     },
     get sessionId() {
       return client._session?.id ?? null;
+    },
+    get isSecure() {
+      return client.isSecure;
+    },
+    get remoteAddress() {
+      return client.remoteAddress;
+    },
+    get remotePort() {
+      return client.remotePort;
     },
     createPipe: () => client.createPipe(),
     createChannel: /** @type {CreateChannel} */ (

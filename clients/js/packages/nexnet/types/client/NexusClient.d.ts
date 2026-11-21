@@ -99,6 +99,19 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
      * @returns {unknown}
      */
     get remoteCertificate(): unknown;
+    /**
+     * The server's address on the current connection (C# `Context.RemoteAddress`, Java `remoteAddress()`): the IP
+     * address of the Node socket's peer on every Node transport, or the socket path for UDS. Null when not connected, and
+     * always in the browser, which does not expose it.
+     * @returns {string | null}
+     */
+    get remoteAddress(): string | null;
+    /**
+     * The server's port on the current connection (C# `Context.RemotePort`, Java `remotePort()`) on the Node TCP-based
+     * transports. Null when not connected, for UDS, and always in the browser.
+     * @returns {number | null}
+     */
+    get remotePort(): number | null;
     /** Resolves when the current session ends (after reconnection gives up). @returns {Promise<void>} */
     get disconnected(): Promise<void>;
     /**

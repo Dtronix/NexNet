@@ -72,7 +72,10 @@ export function udsTransport(config, { signal }) {
     socket.once('error', onError);
     socket.once('connect', () => {
       socket.off('error', onError);
-      resolve(new SocketTransport(socket, { name: 'uds', isSecure: true }));
+      const transport = new SocketTransport(socket, { name: 'uds', isSecure: true });
+      // A UDS peer has no address of its own: report the socket path, as C# does.
+      transport.remoteAddress = path;
+      resolve(transport);
     });
     return () => socket.destroy();
   });

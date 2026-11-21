@@ -182,6 +182,16 @@ export class NexusSession {
     return this.#transport.remoteCertificate ?? null;
   }
 
+  /** The server's address as the transport reports it, or null. @returns {string | null} */
+  get remoteAddress() {
+    return this.#transport.remoteAddress ?? null;
+  }
+
+  /** The server's port as the transport reports it, or null. @returns {number | null} */
+  get remotePort() {
+    return this.#transport.remotePort ?? null;
+  }
+
   /** The resolved client options. @returns {import('./options.js').ResolvedClientOptions} */
   get options() {
     return this.#options;
