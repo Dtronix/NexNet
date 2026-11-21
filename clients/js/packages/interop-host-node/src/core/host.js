@@ -1357,6 +1357,16 @@ export class Host {
       const cert = /** @type {{ raw?: Uint8Array } | null} */ (entry.client.state === ConnectionState.Connected ? entry.client.remoteCertificate : null);
       return { der: cert?.raw ? toBase64(cert.raw) : null };
     });
+    op('client.isSecure', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.isSecure');
+      return { secure: entry.client.isSecure };
+    });
+    op('client.remoteEndpoint', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.remoteEndpoint');
+      // The peer of the Node socket; null in the browser, which does not expose it.
+      if (entry.client.state !== ConnectionState.Connected) return { address: null, port: null };
+      return { address: entry.client.remoteAddress, port: entry.client.remotePort };
+    });
     op('client.awaitState', async (args, ctx) => {
       const entry = this.#invoker(ctx, args.h);
       const value = stateValue(requireString(args.state, 'state'));
