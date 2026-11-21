@@ -171,6 +171,12 @@ public enum ClientCapabilities
 
     /// <summary>Provides a client pool.</summary>
     ClientPool = 1 << 10,
+
+    /// <summary>Completes the reading side of a pipe alone (<see cref="IRemotePipe.CompleteInputAsync"/>).</summary>
+    PipeInputCompletion = 1 << 11,
+
+    /// <summary>Cancels a pending channel read without losing items (<see cref="IRemoteChannelReader{T}.ReadBatchAsync(int, RemoteCancel)"/>).</summary>
+    ChannelReadCancellation = 1 << 12,
 }
 
 /// <summary>

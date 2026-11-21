@@ -14,6 +14,7 @@ import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.collections.NexusListChange;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
+import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
@@ -49,12 +50,20 @@ final class ClientEntry extends Driven implements ScriptHost {
     private final Map<String, CompletableFuture<Void>> signals = new ConcurrentHashMap<>();
     private final Map<String, Registration> watches = new ConcurrentHashMap<>();
     final List<PipeEntry> pipes = new CopyOnWriteArrayList<>();
+    /** Pipes {@code pipe.hold} steps published, by name, and the {@code pipe.accept} requests waiting for one. */
+    private final Map<String, HeldBox> held = new ConcurrentHashMap<>();
     private volatile NexusSession lastSession;
     /** The reason of the last failed connection attempt; cleared when a session is established. */
     private volatile String lastFailure;
     private volatile boolean disposed;
     /** The error the onInvocationException hook returns ({@code ClientSpec.onInvocationException}), or null. */
     private final NexusRemoteError invocationError;
+
+    /** The held pipes published under one name (§6.9 {@code pipe.hold}). */
+    private static final class HeldBox {
+        final java.util.ArrayDeque<PipeEntry> ready = new java.util.ArrayDeque<>();
+        final java.util.ArrayDeque<CompletableFuture<PipeEntry>> waiters = new java.util.ArrayDeque<>();
+    }
 
     /** The script of a slot (§6.6). */
     private static final class Slot {
@@ -319,7 +328,9 @@ final class ClientEntry extends Driven implements ScriptHost {
                     break;
                 }
                 case "named":
-                    wait = NamedHandlers.run(host.timer, step.str("handler"), step.optObj("options"), call, token);
+                    wait = "pipe.hold".equals(step.str("handler"))
+                        ? hold(step.optObj("options"), call)
+                        : NamedHandlers.run(host.timer, step.str("handler"), step.optObj("options"), call, token);
                     break;
                 default:
                     return Async.failed(HostError.notSupported("Unknown script step '" + kind + "'."));
@@ -359,6 +370,51 @@ final class ClientEntry extends Driven implements ScriptHost {
         pipes.add(pipe);
         scope.put(pipe.handle, pipe);
         return pipe;
+    }
+
+    /**
+     * {@code pipe.hold} (§6.9): registers the pipe the server passed to the method as a pipe handle of this client,
+     * publishes it for {@code pipe.accept} and completes when the handle is disposed (or the client is). It ignores the
+     * call's cancellation, so the runner still drives the pipe after a disconnect.
+     */
+    private CompletableFuture<?> hold(Args options, ScriptCall call) {
+        String name = options == null ? null : options.optStr("name");
+        if (name == null || name.isEmpty()) {
+            throw HostError.badRequest("pipe.hold needs the option 'name'.");
+        }
+        if (!(call.pipe() instanceof NexusDuplexPipe)) {
+            throw new IllegalStateException("The handler 'pipe.hold' needs a method that takes a pipe.");
+        }
+        PipeEntry pipe = new PipeEntry(this, host.newHandle("p"), (NexusDuplexPipe) call.pipe(), true);
+        pipes.add(pipe);
+        scope.put(pipe.handle, pipe);
+        HeldBox box = held.computeIfAbsent(name, k -> new HeldBox());
+        synchronized (box) {
+            boolean taken = false;
+            while (!taken && !box.waiters.isEmpty()) {
+                // A waiter whose request timed out is already complete: skip it.
+                taken = box.waiters.poll().complete(pipe);
+            }
+            if (!taken) {
+                box.ready.add(pipe);
+            }
+        }
+        return CompletableFuture.anyOf(pipe.released, Async.whenCanceled(lifetime.token()));
+    }
+
+    /** {@code pipe.accept} (§6.7): the next pipe published under {@code name}, waiting for one. */
+    CompletableFuture<Map<String, Object>> acceptPipe(String name) {
+        HeldBox box = held.computeIfAbsent(name, k -> new HeldBox());
+        CompletableFuture<PipeEntry> next = new CompletableFuture<>();
+        synchronized (box) {
+            PipeEntry ready = box.ready.poll();
+            if (ready != null) {
+                next.complete(ready);
+            } else {
+                box.waiters.add(next);
+            }
+        }
+        return next.thenApply(pipe -> Protocol.map("pipe", pipe.handle));
     }
 
     // ------------------------------------------------------------------ collections (§6.10)

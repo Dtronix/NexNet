@@ -55,10 +55,16 @@ public static class ClientLanguages
     private const ClientCapabilities Everything =
         ClientCapabilities.AuthorizationHeader | ClientCapabilities.ClientCertificate | ClientCapabilities.Pinning
         | ClientCapabilities.CustomCa | ClientCapabilities.RemoteCertificate | ClientCapabilities.HttpSocket
-        | ClientCapabilities.Tcp | ClientCapabilities.Uds | ClientCapabilities.FakeTime | ClientCapabilities.ClientPool;
+        | ClientCapabilities.Tcp | ClientCapabilities.Uds | ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
+        | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
 
     // Browsers: WebSocket only, and none of the TLS or header controls (gotcha 3).
-    private const ClientCapabilities Browser = ClientCapabilities.FakeTime | ClientCapabilities.ClientPool;
+    private const ClientCapabilities Browser = ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
+        | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
+
+    // The Java runtime cannot yet complete a pipe's reading side alone or cancel a channel read.
+    private const ClientCapabilities JavaGaps = ClientCapabilities.Uds | ClientCapabilities.PipeInputCompletion
+        | ClientCapabilities.ChannelReadCancellation;
 
     private static readonly ClientTransport[] BrowserTransports = [ClientTransport.WebSocket, ClientTransport.WebSocketTls];
 
@@ -72,7 +78,7 @@ public static class ClientLanguages
         [BrowserChromium] = new(BrowserChromium, BrowserTransports, Browser),
         [BrowserFirefox] = new(BrowserFirefox, BrowserTransports, Browser),
         [BrowserWebKit] = new(BrowserWebKit, BrowserTransports, Browser),
-        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~ClientCapabilities.Uds),
+        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~JavaGaps),
     };
 
     /// <summary>

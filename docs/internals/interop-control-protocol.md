@@ -87,7 +87,7 @@ know (so a later minor addition is not a breaking change) and MUST fail the conn
 | `runtime` | string | Free text: runtime name and version (`node 22.11.0`, `OpenJDK 21.0.5`, `Chrome 131`). |
 | `lib` | string | Free text: the NexNet client library and its version. |
 | `schemaHash` | string | Lower-case hex SHA-256 of the bytes of the `nexnet-ir.json` the host's generated code was built from (§4.6). |
-| `capabilities` | string[] | Names of the `ClientCapabilities` flags the client supports (`AuthorizationHeader`, `ClientCertificate`, `Pinning`, `CustomCa`, `RemoteCertificate`, `HttpSocket`, `Tcp`, `Uds`, `Quic`, `FakeTime`, `ClientPool`). Unknown names are ignored. |
+| `capabilities` | string[] | Names of the `ClientCapabilities` flags the client supports (`AuthorizationHeader`, `ClientCertificate`, `Pinning`, `CustomCa`, `RemoteCertificate`, `HttpSocket`, `Tcp`, `Uds`, `Quic`, `FakeTime`, `ClientPool`, `PipeInputCompletion`, `ChannelReadCancellation`). Unknown names are ignored. |
 | `transports` | string[] | Names of the `ClientTransport` values the client implements (`Tcp`, `TcpTls`, `Uds`, `HttpSocket`, `HttpSocketTls`, `WebSocket`, `WebSocketTls`). `Quic` is a C#-only transport: only the in-process C# driver runs it, and no language host lists it. |
 | `maxConcurrency` | int ≥ 1 | How many tests the host can run at once. The runner never runs more tests at once on this host. |
 | `pid` | int? | The process id of the host (for thread dumps); absent in a browser. |
@@ -277,7 +277,9 @@ name and its wire id (the host MAY use either the name or the id; they always ag
 | `token.dispose` | `{token}` | `{}`; releases it. |
 
 - `args` is the array of the serialized arguments in wire order, each in typed JSON (golden format, `tests/golden/README.md`).
-- `pipe` is the pipe handle passed for the method's `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter.
+- `pipe` is the pipe handle passed for the method's `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter. A pipe of
+  another client of the scope is handed to the runtime as is: the runtime refuses it (kind `InvalidOperation`), which is
+  how a test passes a pipe of the wrong session.
 - `cancel` is `{afterMs}` (a host-side timer cancels the call that many milliseconds after it is handed to the runtime,
   so the race under test does not include the control connection) or `{token}` (the call observes that token). A call
   whose token is canceled before it is sent fails with kind `Canceled` and is not sent (C# `TaskCanceledException`, Java `CancellationException`, JavaScript `AbortError`; never a default value).
@@ -330,9 +332,12 @@ identified by its name. The host decides what the client does when the server ca
 | `pipe.write` | `{pipe, b64}` or `{pipe, pattern:{seed, length}}` | `{}` once written (flushed into the pipe, subject to its flow control). `b64`: base64 bytes. `pattern`: `length` bytes of the deterministic pattern: byte `i` is `(i * 31 + seed) mod 256` (`PipePattern`). Fails with `InvalidOperation` if the pipe completes first. |
 | `pipe.read` | `{pipe, min, max}` | `{b64}`: at least `min` (≥ 0) and at most `max` (≥ 1) bytes; fewer, possibly none, when the other side completes. |
 | `pipe.drain` | `{pipe}` | `{length, sha256}`: reads until the other side completes; lower-case hex SHA-256 of everything read. |
+| `pipe.tryWrite` | `{pipe, b64}` | `{ok}`: writes the bytes as `pipe.write` does, but a pipe whose writing side is complete (the other side completed its reading side or the whole pipe, or the session ended) is a result, not an error: `ok` is false and the bytes were not all delivered (C# `FlushResult.IsCompleted`). |
 | `pipe.complete` | `{pipe}` | `{}`; completes the writing side. |
+| `pipe.completeInput` | `{pipe}` | `{}`; completes the reading side only (C# `Input.CompleteAsync()`): the other side's writes see the pipe complete, and this side can still write. Capability `PipeInputCompletion`; a host without it fails with `NotSupported`. |
 | `pipe.whenComplete` | `{pipe}` | `{}` once the pipe is complete in both directions. Bounded by `timeoutMs`. |
-| `pipe.dispose` | `{pipe}` | `{}`; releases the pipe. Disposing twice is not an error. |
+| `pipe.dispose` | `{pipe}` | `{}`; releases the pipe. Disposing twice is not an error. A held pipe (`pipe.accept`) is not disposed: its `pipe.hold` step ends, and the client runtime completes the pipe when its method returns. |
+| `pipe.accept` | `{h, name}` | `{pipe}`: the next pipe a `pipe.hold` step (§6.9) of client `h` published under `name`, waiting until one is (bounded by `timeoutMs`). The handle takes every pipe and channel op above, so the test drives a pipe the server opened like one of its own. Each published pipe is accepted once, in publication order. |
 
 Reading grants the other side pipe credit (never the arrival of bytes; context §6).
 
@@ -348,7 +353,7 @@ with declared types by full metadata name, for example `long`, `string`, `NexNet
 | `channel.write` | `{pipe, items}` | `{ok}`: false when the channel is complete. Several items are written as one batch. |
 | `channel.complete` | `{pipe}` | `{}`; completes the channel writer. |
 | `channel.reader` | `{pipe, type}` | `{}`. Uses the pipe as the reader of a channel of `type`. |
-| `channel.read` | `{pipe, max}` | `{items, complete}`: up to `max` (≥ 1) items, waiting for at least one unless the channel is complete; `complete` is true once the channel is complete and drained (then `items` is empty). |
+| `channel.read` | `{pipe, max, cancel?}` | `{items, complete}`: up to `max` (≥ 1) items, waiting for at least one unless the channel is complete; `complete` is true once the channel is complete and drained (then `items` is empty). `cancel` is `{afterMs}` or `{token}` as in `invoke` (§6.5): a read canceled before an item arrives fails with kind `Canceled` and consumes nothing, so the next read gets the items that arrive later. Capability `ChannelReadCancellation`; a host without it fails a read with `cancel` with `NotSupported`. |
 | `channel.readAll` | `{pipe}` | `{items}`: every item until the channel completes. Bounded by `timeoutMs`. |
 
 ### 6.9 Named handlers (`named` script steps)
@@ -361,10 +366,12 @@ Built into every host; they act on the pipe or channel argument of the call (a m
 | `pipe.echo` | | Writes back every byte it reads until the server completes its side, then completes the pipe. |
 | `pipe.drain` | | Reads until the server completes its side, then completes the pipe. |
 | `pipe.readExact` | `length` | Reads `length` bytes (fewer if the server completes first), then completes the pipe. |
+| `pipe.hold` | `name` (string, required) | Publishes the call's pipe to the runner under `name` (`pipe.accept`, §6.7) and waits until the runner disposes that handle (or the client is disposed, or the scope ends); then the call returns. It ignores the call's cancellation, so the runner can still drive the pipe after a disconnect. Does not read, write or complete the pipe. Pipes only: a channel method fails the call with `InvalidOperation`. |
 | `channel.echo` | | Writes back every item it reads until the server completes, then completes the channel. |
 | `channel.pump` | `count` (int ≥ 0, required), `size` (int ≥ 0, default 0), `delayMs` (int ≥ 0, default 0) | Writes `count` items, one at a time, waiting `delayMs` after each item but the last, then completes the channel. Does not read. Item `i` (0-based) depends on the channel's item type: an integer type (`sbyte` … `ulong`): the number `i` (wrapped to the type's width); `string`: `size` characters, character `j` being `'a' + (i + j) mod 26`; `byte[]`: the first `size` bytes of the pipe pattern of seed `i` (`PipePattern`). Any other item type fails the call with `NotSupported`. |
 
-The C# reference implementation of every handler above is `InProcNamedHandlers` (`src/NexNet.Interop/InProc`).
+The C# reference implementation of every handler above is `InProcNamedHandlers` (`src/NexNet.Interop/InProc`), except
+`pipe.hold`, which needs the client's state: `InProcClientDriver.HoldAsync`.
 
 ### 6.10 Synchronized collections
 

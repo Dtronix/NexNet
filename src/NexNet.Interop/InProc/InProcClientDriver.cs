@@ -6,6 +6,7 @@ using NexNet.Interop.Reflection;
 using NexNet.Interop.Scripting;
 using NexNet.Invocation;
 using NexNet.Messages;
+using NexNet.Pipes;
 
 namespace NexNet.Interop.InProc;
 
@@ -27,6 +28,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly ConcurrentDictionary<Type, object> _proxies = new();
     private readonly ConcurrentDictionary<string, object> _lists = new(StringComparer.Ordinal);
     private readonly ConcurrentBag<InProcRemotePipe> _pipes = new();
+    private readonly ConcurrentDictionary<string, System.Threading.Channels.Channel<InProcRemotePipe>> _held = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _lifetime = new();
     private ConnectionState _lastState = ConnectionState.Disconnected;
     private int _disposed;
@@ -45,7 +47,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         _client = new NexusClient<TClientNexus, TServerProxy>(config, Nexus);
         _invoker = new InProcInvoker(() => _client.Proxy);
 
-        var interpreter = new ScriptInterpreter(_signals, _invoker, InProcNamedHandlers.RunAsync);
+        var interpreter = new ScriptInterpreter(_signals, _invoker, RunNamedAsync);
         var binder = new InProcScriptBinder(interpreter, () => _lifetime.Token);
 
         // The script facade of the client nexus is bound up front, so an unscripted method behaves as on every other
@@ -173,6 +175,13 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     }
 
     /// <inheritdoc />
+    public async Task<IRemotePipe> AcceptPipeAsync(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return await Held(name).Reader.ReadAsync(_lifetime.Token).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public IRemoteList<T> List<T>(string collectionName)
     {
         ArgumentNullException.ThrowIfNull(collectionName);
@@ -234,6 +243,44 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
 
         return new LeakReport(openClients, openPipes, 0, pending, watches, details);
     }
+
+    /// <summary>
+    /// The built-in handlers: <c>pipe.hold</c> needs this client's state (<see cref="AcceptPipeAsync"/>); the others are
+    /// <see cref="InProcNamedHandlers"/>.
+    /// </summary>
+    private ValueTask<JsonNode?> RunNamedAsync(NamedStep step, ScriptCall call)
+        => step.Handler == "pipe.hold" ? HoldAsync(step, call) : InProcNamedHandlers.RunAsync(step, call);
+
+    /// <summary>
+    /// <c>pipe.hold</c> (option <c>name</c>): publishes the call's pipe for <see cref="AcceptPipeAsync"/> and keeps the
+    /// method running until the test disposes it, whatever happens to the call (a disconnect cancels the call, and the
+    /// test still drives the pipe). Ends early only when the driver is disposed.
+    /// </summary>
+    private async ValueTask<JsonNode?> HoldAsync(NamedStep step, ScriptCall call)
+    {
+        var name = step.Options?["name"]?.GetValue<string>();
+        if (string.IsNullOrEmpty(name))
+            throw new ArgumentException("pipe.hold needs the option 'name'.");
+        if (call.Pipe is not INexusDuplexPipe pipe)
+            throw new InvalidOperationException("The handler 'pipe.hold' needs a method that takes a pipe.");
+
+        var held = new InProcRemotePipe(pipe, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        _pipes.Add(held);
+        await Held(name).Writer.WriteAsync(held).ConfigureAwait(false);
+        try
+        {
+            await held.Released.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            // The driver is disposed.
+        }
+
+        return null;
+    }
+
+    private System.Threading.Channels.Channel<InProcRemotePipe> Held(string name)
+        => _held.GetOrAdd(name, static _ => System.Threading.Channels.Channel.CreateUnbounded<InProcRemotePipe>());
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()

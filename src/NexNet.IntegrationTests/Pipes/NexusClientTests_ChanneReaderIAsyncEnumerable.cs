@@ -9,8 +9,6 @@ namespace NexNet.IntegrationTests.Pipes;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    private const string NoReadCancel = "a remote channel read cannot be canceled";
-
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task IAsyncEnumerable(ClientTarget target)
@@ -74,10 +72,9 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic], Requires = ClientCapabilities.ChannelReadCancellation)]
     public async Task CancelsRead(ClientTarget target)
     {
-        RequireInProc(target, NoReadCancel);
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await ChannelWriter<int>(pipe);
@@ -86,28 +83,24 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
         });
         await using var client = await ConnectAsync(target, server);
 
-        await using (var pipe = InProc(client).Client.CreatePipe())
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            await InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-            await pipe.ReadyTask.Timeout(T(1));
-            var messageReceivedCount = 0;
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
 
-            using var cts = new CancellationTokenSource(50);
-            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
-                messageReceivedCount++;
-
-            await Assert.That(messageReceivedCount).IsEqualTo(0);
-            await pipe.CompleteTask.Timeout(T(1));
+            // The server writes its item after 200 ms: the read is canceled before it arrives.
+            var reader = await pipe.GetChannelReaderAsync<int>();
+            await AssertThrows<TaskCanceledException>(async () => await reader.ReadBatchAsync(10, RemoteCancel.After(50))).Timeout(T(1));
+            await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
         }
 
         await EndAsync(client);
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic], Requires = ClientCapabilities.ChannelReadCancellation)]
     public async Task CancelsAndResumesRead(ClientTarget target)
     {
-        RequireInProc(target, NoReadCancel);
         await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await ChannelWriter<int>(pipe);
@@ -116,23 +109,19 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
         });
         await using var client = await ConnectAsync(target, server);
 
-        await using (var pipe = InProc(client).Client.CreatePipe())
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            await InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-            await pipe.ReadyTask.Timeout(T(1));
-            var messageReceivedCount = 0;
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
 
-            using var cts = new CancellationTokenSource(50);
-            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
-                messageReceivedCount++;
+            // The server writes its item after 200 ms: the first read is canceled before it arrives and takes nothing,
+            // so the next read still gets it.
+            var reader = await pipe.GetChannelReaderAsync<int>();
+            await AssertThrows<TaskCanceledException>(async () => await reader.ReadBatchAsync(10, RemoteCancel.After(50))).Timeout(T(1));
 
-            await Assert.That(messageReceivedCount).IsEqualTo(0);
-
-            await foreach (var _ in await ChannelReader<int>(pipe))
-                messageReceivedCount++;
-
-            await Assert.That(messageReceivedCount).IsEqualTo(1);
-            await pipe.CompleteTask.Timeout(T(1));
+            var items = await reader.ReadAllAsync().AsTask().Timeout(T(1));
+            await Assert.That(items).IsEquivalentTo([1], CollectionOrdering.Matching);
+            await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
         }
 
         await EndAsync(client);

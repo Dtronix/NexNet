@@ -9,12 +9,21 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
 
     public string Handle { get; } = handle;
 
+    private RemoteClientDriver Driver => driver;
+
     public async ValueTask WhenReadyAsync() => await Call("pipe.ready", null, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
 
     public async ValueTask WhenCompletedAsync() => await Call("pipe.whenComplete", null, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> data)
         => await Call("pipe.write", new JsonObject { ["b64"] = Convert.ToBase64String(data.Span) }, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+
+    public async ValueTask<bool> TryWriteAsync(ReadOnlyMemory<byte> data)
+    {
+        var result = await Call("pipe.tryWrite", new JsonObject { ["b64"] = Convert.ToBase64String(data.Span) }, RemoteClientDriver.DefaultWaitMs)
+            .ConfigureAwait(false);
+        return result["ok"]?.GetValue<bool>() == true;
+    }
 
     public async ValueTask WritePatternAsync(int seed, long length)
     {
@@ -38,6 +47,8 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
     }
 
     public async ValueTask CompleteAsync() => await Call("pipe.complete", null, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
+
+    public async ValueTask CompleteInputAsync() => await Call("pipe.completeInput", null, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
 
     public async ValueTask<IRemoteChannelWriter<T>> GetChannelWriterAsync<T>()
     {
@@ -95,11 +106,24 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
 
     private sealed class Reader<T>(RemotePipe pipe, TypedCodec<T> codec) : IRemoteChannelReader<T>
     {
-        public async ValueTask<IReadOnlyList<T>> ReadBatchAsync(int maximum)
+        public ValueTask<IReadOnlyList<T>> ReadBatchAsync(int maximum) => ReadBatchAsync(maximum, RemoteCancel.None);
+
+        public async ValueTask<IReadOnlyList<T>> ReadBatchAsync(int maximum, RemoteCancel cancel)
         {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximum);
-            var result = await pipe.Call("channel.read", new JsonObject { ["max"] = maximum }, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
-            return Decode(result);
+            ArgumentNullException.ThrowIfNull(cancel);
+            var args = new JsonObject { ["max"] = maximum };
+            if (RemoteInvoker.Cancel(pipe.Driver, cancel, out var token) is { } json)
+                args["cancel"] = json;
+            try
+            {
+                var result = await pipe.Call("channel.read", args, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+                return Decode(result);
+            }
+            finally
+            {
+                token?.Dispose();
+            }
         }
 
         public async ValueTask<IReadOnlyList<T>> ReadAllAsync()

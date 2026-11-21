@@ -12,7 +12,9 @@ namespace NexNet.IntegrationTests;
 /// A pipe the server opens to the client reaches the client's <c>ClientTaskValueWithDuplexPipe</c>, which the test
 /// scripts with the hosts' built-in handlers (<c>pipe.echo</c>, <c>pipe.drain</c>, <c>pipe.readExact</c>). A handler
 /// that ends with <see cref="ThenReport{TArgs, TResult}"/> calls the server's <c>ServerTaskWithParam</c> once it is
-/// done, which the test waits for with <see cref="WaitForReportAsync"/>.
+/// done, which the test waits for with <see cref="WaitForReportAsync"/>. A test that drives the client's side of such a
+/// pipe itself scripts <c>pipe.hold</c> with <see cref="Hold"/> and takes the pipe with
+/// <see cref="IClientUnderTest.AcceptPipeAsync"/>.
 /// </remarks>
 internal abstract partial class MatrixTestBase
 {
@@ -31,6 +33,26 @@ internal abstract partial class MatrixTestBase
     {
         var value = await _reports.Reader.ReadAsync().AsTask().Timeout(T(seconds));
         await Assert.That(value).IsEqualTo(expected);
+    }
+
+    /// <summary>The options of the <c>pipe.hold</c> handler: publishes the pipe under <paramref name="name"/>.</summary>
+    protected static JsonObject Hold(string name) => new() { ["name"] = name };
+
+    /// <summary>
+    /// Writes <see cref="Data"/> to <paramref name="pipe"/> up to <paramref name="attempts"/> times,
+    /// <paramref name="delayMs"/> apart, until a write reports the pipe complete; returns whether one did.
+    /// </summary>
+    protected static async Task<bool> WriteUntilCompleteAsync(IRemotePipe pipe, int attempts, int delayMs)
+    {
+        for (var i = 0; i < attempts; i++)
+        {
+            if (!await pipe.TryWriteAsync(Data).AsTask().Timeout(T(1)))
+                return true;
+
+            await Task.Delay(delayMs);
+        }
+
+        return false;
     }
 
     /// <summary>The options of the <c>pipe.readExact</c> handler.</summary>

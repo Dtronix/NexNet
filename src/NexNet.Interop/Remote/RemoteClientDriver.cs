@@ -162,6 +162,14 @@ public sealed class RemoteClientDriver : IClientUnderTest
     }
 
     /// <inheritdoc />
+    public async Task<IRemotePipe> AcceptPipeAsync(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var result = await CallAsync("pipe.accept", new JsonObject { ["name"] = name }, DefaultWaitMs).ConfigureAwait(false);
+        return new RemotePipe(this, result["pipe"]!.GetValue<string>());
+    }
+
+    /// <inheritdoc />
     public IRemoteList<T> List<T>(string collectionName)
     {
         ArgumentNullException.ThrowIfNull(collectionName);
