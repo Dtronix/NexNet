@@ -22,6 +22,7 @@ import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
+import com.dtronix.nexnet.session.Jitter;
 import com.dtronix.nexnet.session.LoopbackTransport;
 import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
@@ -68,7 +69,7 @@ class NexusListClientTest {
     }
 
     final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> daemon(r, "test-callbacks"));
-    final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "test-invocations"));
+    final ExecutorService invocations = Jitter.executor(Executors.newCachedThreadPool(r -> daemon(r, "test-invocations")));
     NexusSession session;
     volatile InvocationRuntime runtime;
     PipeManager pipes;
