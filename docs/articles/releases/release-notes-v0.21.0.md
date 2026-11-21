@@ -100,6 +100,16 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   its stream cannot, the client disposes the connection and throws `TransportException` (`ConnectionTimeout` for a
   cancel or timeout, the mapped `QuicError` otherwise); before, the connection stayed open until the server's idle
   timeout ([#120](https://github.com/Dtronix/NexNet/pull/120), [#144](https://github.com/Dtronix/NexNet/pull/144), [#186](https://github.com/Dtronix/NexNet/pull/186)).
+- **Behavior change: NexNet.Asp refuses a failed WebSocket authentication inside the protocol.** With
+  `AspEnableAuthentication`, a WebSocket request that fails ASP.NET authentication (header, cookie or
+  `AccessTokenQueryParameter` token) is no longer answered `401`: the server accepts the WebSocket, sends its preamble
+  and answers the client's greeting with `DisconnectReason.Authentication`. No session is created and the nexus is not
+  involved. Browsers cannot read the status of a refused upgrade, so a `401` looked to them like a network failure
+  (`InternalError`); every client (C#, Java, Node and browsers) now reports `TransportError.AuthenticationError`, as
+  for a refused greeting token.
+  HttpSocket still answers `401`, and an `Origin` outside `AllowedOrigins` is still answered `403`.
+  - **Migration:** a C#, Java or Node client already reported `AuthenticationError`. Code that inspected the HTTP status
+    of a refused WebSocket upgrade (a proxy, or a raw WebSocket client) sees a `101` followed by the refusal instead.
 
 ## New features
 

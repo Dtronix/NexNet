@@ -108,11 +108,18 @@ public static partial class NexNetMiddlewareExtensions
                     return;
                 }
 
-                if (!await ApplyAuthentication(context, config, config.AccessTokenQueryParameter).ConfigureAwait(false))
-                    return;
-                
+                var authenticated = await AuthenticateRequest(context, config, config.AccessTokenQueryParameter).ConfigureAwait(false);
+
                 var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
+
+                // A failed ASP.NET authentication is refused inside the NexNet protocol rather than with HTTP 401, which
+                // a browser cannot see: every client then reports the refusal as an authentication error.
+                if (!authenticated)
+                {
+                    await WebSocketAuthenticationRefusal.RefuseAsync(context, config, cts.Token).ConfigureAwait(false);
+                    return;
+                }
                 
                 using var websocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
                 using var pipe = IWebSocketPipe.Create(websocket, new WebSocketPipeOptions()

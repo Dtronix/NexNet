@@ -1,8 +1,11 @@
-﻿using NexNet.Asp.HttpSocket;
+﻿using System.Net;
+using System.Net.WebSockets;
+using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Messages;
 using NexNet.Transports;
 
 namespace NexNet.IntegrationTests;
@@ -13,9 +16,9 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 /// <remarks>
 /// The header tests need <see cref="ClientCapabilities.AuthorizationHeader"/>, which browsers lack; the query-string
-/// token tests run on every row, browsers included. A browser cannot see the HTTP status of a refused WebSocket upgrade,
-/// so on browser rows a refused authentication is <see cref="TransportError.InternalError"/>
-/// (<see cref="AuthRefusedError"/>; a documented browser parity limit, J34).
+/// token tests run on every row, browsers included. The WebSocket endpoint refuses a failed authentication inside the
+/// NexNet protocol (S40), so browsers, which cannot see the HTTP status of a refused upgrade, report
+/// <see cref="TransportError.AuthenticationError"/> like every other client.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTests
@@ -50,17 +53,6 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         config.AspEnableAuthentication = true;
         config.AspAuthenticationScheme = scheme;
     }
-
-    /// <summary>
-    /// The error a client of <paramref name="target"/> reports when ASP.NET authentication refuses its upgrade.
-    /// <see cref="TransportError.AuthenticationError"/>, except in a browser: the platform <c>WebSocket</c> hides the
-    /// HTTP status of a refused upgrade, so the JS client reports every connect failure as
-    /// <see cref="TransportError.InternalError"/> (docs/internals/js-runtime-contract.md, transport errors).
-    /// </summary>
-    private static TransportError AuthRefusedError(ClientTarget target)
-        => target.Language.StartsWith("browser-", StringComparison.Ordinal)
-            ? TransportError.InternalError
-            : TransportError.AuthenticationError;
 
     private static async Task AssertConnectFails(IClientUnderTest client, TransportError error)
     {
@@ -106,7 +98,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         var (_, created) = await CreateAsync(target, config => EnableBearerAuthentication(config));
         await using var client = created;
 
-        await AssertConnectFails(client, AuthRefusedError(target));
+        await AssertConnectFails(client, TransportError.AuthenticationError);
         await MatrixTestBase.EndAsync(client);
     }
 
@@ -164,7 +156,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         if (succeeds)
             await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         else
-            await AssertConnectFails(client, AuthRefusedError(target));
+            await AssertConnectFails(client, TransportError.AuthenticationError);
 
         await MatrixTestBase.EndAsync(client);
     }
@@ -185,7 +177,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await Assert.That(GetAccessTokenQueryParameter(server!)).IsNull();
-        await AssertConnectFails(client, AuthRefusedError(target));
+        await AssertConnectFails(client, TransportError.AuthenticationError);
         await MatrixTestBase.EndAsync(client);
     }
 
@@ -209,6 +201,47 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
 
         await AssertConnectFails(client, TransportError.AuthenticationError);
         await MatrixTestBase.EndAsync(client);
+    }
+
+    /// <summary>
+    /// The WebSocket endpoint accepts the upgrade of a request that fails ASP.NET authentication and refuses it inside
+    /// the NexNet protocol: the server preamble, then the disconnect byte <c>Authentication</c> (29) in answer to the
+    /// greeting, then a normal close (S40).
+    /// </summary>
+    [Test]
+    public async Task WebSocketRefusesFailedAuthenticationInProtocol()
+    {
+        var serverConfig = (AspServerConfig)CreateServerConfig(Type.WebSocket);
+        EnableBearerAuthentication(serverConfig);
+        var server = CreateServer(serverConfig, null, AspCreateAuthServices, AspAppAuthConfigure);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var url = ((HttpClientConfig)CreateClientConfig(Type.WebSocket)).Url;
+
+        using var socket = new ClientWebSocket();
+        socket.Options.CollectHttpResponseDetails = true;
+        await socket.ConnectAsync(url, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
+        await Assert.That(socket.HttpStatusCode).IsEqualTo(HttpStatusCode.SwitchingProtocols);
+
+        // Preamble, then a ClientGreeting header with an empty body: the refusal does not decode the greeting.
+        byte[] preamble = [(byte)'N', (byte)'n', (byte)'P', 0x14, 0, 0, 0, 1];
+        byte[] greeting = [.. preamble, 100, 0, 0];
+        await socket.SendAsync(greeting, WebSocketMessageType.Binary, true, CancellationToken.None)
+            .Timeout(T(TestTimeouts.Connect));
+
+        var received = new List<byte>();
+        var buffer = new byte[64];
+        while (true)
+        {
+            var result = await socket.ReceiveAsync(buffer, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
+            if (result.MessageType == WebSocketMessageType.Close)
+                break;
+            received.AddRange(buffer.AsSpan(0, result.Count));
+        }
+
+        byte[] expected = [.. preamble, (byte)DisconnectReason.Authentication];
+        await Assert.That(received.ToArray()).IsEquivalentTo(expected);
+        await Assert.That(socket.CloseStatus).IsEqualTo(WebSocketCloseStatus.NormalClosure);
+        await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
     }
 
     private static void SetAccessTokenQueryParameter(AspServerConfig config, string? name)

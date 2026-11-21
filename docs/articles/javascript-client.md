@@ -381,11 +381,12 @@ The full table is in [Multi-language Clients: Type mapping](multi-language-clien
 - **No headers, client certificates, custom CA or pinning.** Authenticate with the greeting token
   (`authenticate`). If the server uses ASP.NET authentication, use cookies or the opt-in
   `AccessTokenQueryParameter`.
-- **A refused upgrade looks like any other connect failure.** Browsers hide the HTTP status of a failed WebSocket
-  upgrade, so when ASP.NET authentication refuses the cookie or query-string token (HTTP 401/403), `connect()` rejects
-  with `transportError` `InternalError`, the same as an unreachable server; Node reports `AuthenticationError`. A
-  token refused by the greeting (`authenticate`) is reported as `AuthenticationError` in browsers too, so prefer it
-  when the client must tell a bad credential from a network failure.
+- **A refused credential is `AuthenticationError`.** When ASP.NET authentication refuses the cookie or query-string
+  token, NexNet.Asp accepts the WebSocket and refuses the session inside the protocol, so `connect()` rejects with
+  `transportError` `AuthenticationError` in browsers as in Node, the same as for a token refused by the greeting
+  (`authenticate`). Browsers hide the HTTP status of a refused WebSocket upgrade, so an upgrade the server does refuse
+  (`403` for an origin outside `AllowedOrigins`) looks like any other connect failure: `InternalError`, as for an
+  unreachable server.
 - **`AllowedOrigins`.** When the server relies on cookies, set `WebSocketServerConfig.AllowedOrigins` to your
   site's origins to prevent cross-site WebSocket hijacking (see
   [ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients)).
