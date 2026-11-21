@@ -165,7 +165,7 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> aut
 }
 ```
 
-- With `AspEnableAuthentication = true` it is the principal of `AspAuthenticationScheme` (or the default scheme when none is set); a request that fails it is answered 401 and never reaches the nexus.
+- With `AspEnableAuthentication = true` it is the principal of `AspAuthenticationScheme` (or the default scheme when none is set); a request that fails it never reaches the nexus. HttpSocket answers it `401`; WebSocket accepts the upgrade and refuses the session inside the NexNet protocol with `DisconnectReason.Authentication`, so browsers, which cannot read the status of a refused upgrade, report `AuthenticationError` like other clients.
 - With `AspEnableAuthentication = false` it is whatever the pipeline set, for example `UseAuthentication` with a default scheme; otherwise ASP.NET's empty, unauthenticated principal.
 - It is captured once when the connection is accepted and is not re-validated during the session. Only the principal is kept, not the `HttpContext`.
 - It is extra input, not the session's identity: with `Authenticate = true`, `OnAuthenticate` still decides, and returning null refuses the connection. `Context.Identity` is what `OnAuthenticate` returns.
