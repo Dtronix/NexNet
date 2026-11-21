@@ -50,8 +50,9 @@ internal class WebSocketTransport : ITransport
         User = user;
     }
 
+    // Client side: the remote endpoint is the socket peer the connector reached (the server, or an HTTP proxy).
     private WebSocketTransport(IWebSocketPipe pipe, ClientWebSocket client, HttpConnector connector)
-        : this(pipe, null, null, connector.TakeServerCertificate())
+        : this(pipe, connector.RemoteEndPoint.Address, connector.RemoteEndPoint.Port, connector.TakeServerCertificate())
     {
         _client = client;
         _connector = connector;

@@ -50,8 +50,9 @@ internal class HttpSocketTransport : ITransport
         User = user;
     }
 
+    // Client side: the remote endpoint is the socket peer the connector reached (the server, or an HTTP proxy).
     private HttpSocketTransport(HttpSocketDuplexPipe pipe, HttpResponseMessage response, HttpConnector connector)
-        : this(pipe, null, null, connector.TakeServerCertificate())
+        : this(pipe, connector.RemoteEndPoint.Address, connector.RemoteEndPoint.Port, connector.TakeServerCertificate())
     {
         _response = response;
         _connector = connector;
