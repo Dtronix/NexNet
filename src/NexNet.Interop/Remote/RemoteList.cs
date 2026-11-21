@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using NexNet.Collections;
 
 namespace NexNet.Interop.Remote;
 
@@ -47,6 +48,17 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
         var result = await driver.CallAsync("list.snapshot", new JsonObject { ["collection"] = ControlJson.ToJson(Collection) }, RemoteClientDriver.DefaultOpMs)
             .ConfigureAwait(false);
         return (result["items"] as JsonArray ?? new JsonArray()).Select(n => codec.Decode(n)!).ToArray();
+    }
+
+    public async ValueTask<RemoteListState> GetStateAsync()
+    {
+        var result = await driver.CallAsync("list.state", new JsonObject { ["collection"] = ControlJson.ToJson(Collection) }, RemoteClientDriver.DefaultOpMs)
+            .ConfigureAwait(false);
+        return new RemoteListState(
+            Enum.Parse<RemoteCollectionMode>(result["mode"]!.GetValue<string>()),
+            Enum.Parse<NexusCollectionState>(result["state"]!.GetValue<string>()),
+            result["disabled"]!.GetValue<bool>(),
+            result["readOnly"]?.GetValue<bool>());
     }
 
     public ValueTask<IRemoteListWatch<T>> WatchAsync() => WatchAsync(throws: false);

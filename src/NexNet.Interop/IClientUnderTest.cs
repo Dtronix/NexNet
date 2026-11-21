@@ -1,3 +1,4 @@
+using NexNet.Diagnostics;
 using NexNet.Messages;
 
 namespace NexNet.Interop;
@@ -103,6 +104,23 @@ public interface IClientUnderTest : IAsyncDisposable
     /// forget invocations sent, control requests processed).
     /// </summary>
     Task BarrierAsync();
+
+    /// <summary>
+    /// The receive budget of the client's current session (control protocol §6.4 <c>client.budget</c>): the limit and the
+    /// bytes reserved now (pipe windows, the invocation queue, large values). Null when the client has no session.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<NexusBudgetSnapshot?> GetBudgetAsync()
+        => throw new NotSupportedException($"{Target}: the budget of a pooled client is not available.");
+
+    /// <summary>
+    /// How many outbound invocations the client's current session still awaits a result for (control protocol §6.4
+    /// <c>client.outstanding</c>; the <c>invocations.awaitingResults</c> of the runtime's session snapshot). 0 when the
+    /// client has no session.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<int> GetOutstandingInvocationsAsync()
+        => throw new NotSupportedException($"{Target}: the invocations of a pooled client are not available.");
 
     /// <summary>Moves the client's test clock (<see cref="ClientSpec.FakeTime"/>) forward.</summary>
     /// <exception cref="InvalidOperationException">The client was not created with <see cref="ClientSpec.FakeTime"/>.</exception>

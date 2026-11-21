@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
+using NexNet.Diagnostics;
 using NexNet.Interop.Reflection;
 using NexNet.Messages;
 
@@ -109,6 +110,19 @@ public sealed class RemoteClientDriver : IClientUnderTest
         var result = await CallAsync("client.remoteEndpoint", null, DefaultOpMs).ConfigureAwait(false);
         return new RemoteEndpoint(result["address"]?.GetValue<string>(), result["port"]?.GetValue<int>());
     }
+
+    /// <inheritdoc />
+    public async Task<NexusBudgetSnapshot?> GetBudgetAsync()
+    {
+        var budget = (await CallAsync("client.budget", null, DefaultOpMs).ConfigureAwait(false))["budget"] as JsonObject;
+        return budget == null
+            ? null
+            : new NexusBudgetSnapshot { Limit = budget["limit"]!.GetValue<long>(), Reserved = budget["reserved"]!.GetValue<long>() };
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetOutstandingInvocationsAsync()
+        => (await CallAsync("client.outstanding", null, DefaultOpMs).ConfigureAwait(false))["invocations"]!.GetValue<int>();
 
     /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)

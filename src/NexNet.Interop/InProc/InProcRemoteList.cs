@@ -45,6 +45,10 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
 
     public ValueTask<IReadOnlyList<T>> SnapshotAsync() => new(list.ToArray());
 
+    // The C# list does not expose its mode: it is the one it was declared with, which the descriptor holds.
+    public ValueTask<RemoteListState> GetStateAsync()
+        => new(new RemoteListState(Collection.Mode, list.State, list.DisabledTask.IsCompleted, list.IsReadOnly));
+
     public ValueTask<IRemoteListWatch<T>> WatchAsync() => WatchAsync(throws: false);
 
     /// <summary>
