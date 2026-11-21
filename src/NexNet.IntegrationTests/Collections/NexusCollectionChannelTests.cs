@@ -10,7 +10,7 @@ namespace NexNet.IntegrationTests.Collections;
 internal class NexusCollectionChannelTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ServerProcessChannel_HandlesCapacityLimit(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -35,7 +35,7 @@ internal class NexusCollectionChannelTests(LanguageHostPool hosts) : MatrixTestB
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ClientMessageChannel_HandlesSaturation(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -60,7 +60,7 @@ internal class NexusCollectionChannelTests(LanguageHostPool hosts) : MatrixTestB
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ConcurrentOperations_DoNotBlockChannel(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);

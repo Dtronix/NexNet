@@ -39,7 +39,7 @@ internal class LargeValueTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task FireAndForgetLargeArgument_IsDelivered(ClientTarget target)
     {
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -57,7 +57,7 @@ internal class LargeValueTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task BroadcastLargeArgument_ReachesEveryClient(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -79,7 +79,7 @@ internal class LargeValueTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task LargeArgumentWithoutBudget_ThrowsBusyAndTheSessionStaysUp(ClientTarget target)
     {
         // 1.5 MiB budget; 4 credits reserve 256 KiB of it. A held 900 KiB argument leaves no room for a second.

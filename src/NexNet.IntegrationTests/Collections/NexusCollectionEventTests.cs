@@ -11,7 +11,7 @@ namespace NexNet.IntegrationTests.Collections;
 internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task EventRacing_DoesNotCauseTimeout(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -35,7 +35,7 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task MultipleEventSubscribers_HandleConcurrency(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -67,7 +67,7 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task EventException_DoesNotBreakSystem(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -97,7 +97,7 @@ internal class NexusCollectionEventTests(LanguageHostPool hosts) : MatrixTestBas
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ServerToClientCollection_ServerCanModify(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);

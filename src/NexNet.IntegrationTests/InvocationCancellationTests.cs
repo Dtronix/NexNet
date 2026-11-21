@@ -13,7 +13,7 @@ namespace NexNet.IntegrationTests;
 internal class InvocationCancellationTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ConcurrentCallsToOneMethod_AreCanceledIndividually(ClientTarget target)
     {
         var release = Signal();
@@ -72,7 +72,7 @@ internal class InvocationCancellationTests(LanguageHostPool hosts) : MatrixTestB
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task OverlappingFireAndForgetCalls_ShareTheSessionToken_CanceledOnDisconnect(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -110,7 +110,7 @@ internal class InvocationCancellationTests(LanguageHostPool hosts) : MatrixTestB
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task FireAndForgetCalls_UnaffectedByPreSendCancellation(ClientTarget target)
     {
         // Broadcasts and void methods do not wait for a result: an already canceled token neither throws nor stops

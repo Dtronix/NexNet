@@ -615,7 +615,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task InsertAsync_OnEmptyAtZero_ReturnsTrue(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -687,7 +687,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task InsertAsync_NegativeIndex_Throws(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -699,7 +699,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Enumeration_YieldsElementsInOrder(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -715,7 +715,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ClientDisconnectsAndClearsLocalList(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -732,7 +732,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ClientDisconnectsAndReconnects(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -750,7 +750,7 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task RemoveAttAsync_NegativeIndex_Throws(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);

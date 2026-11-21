@@ -77,7 +77,7 @@ internal partial class NexusServerTests_SendInvocation(LanguageHostPool hosts) :
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket])]
     public Task ServerSendsInvocationFor_ServerTaskValue(ClientTarget target)
     {
         return InvokeFromServerAndVerifySent(target, new InvocationMessage()

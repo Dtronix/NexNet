@@ -485,7 +485,7 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ServerDisabledTaskThrows(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);

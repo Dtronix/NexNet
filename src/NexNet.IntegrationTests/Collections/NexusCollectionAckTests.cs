@@ -12,7 +12,7 @@ namespace NexNet.IntegrationTests.Collections;
 internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -30,7 +30,7 @@ internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -57,7 +57,7 @@ internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
@@ -79,7 +79,7 @@ internal class NexusCollectionAckTests(LanguageHostPool hosts) : MatrixTestBase(
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task DisconnectDuringOperation_CompletesWithFalse(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);

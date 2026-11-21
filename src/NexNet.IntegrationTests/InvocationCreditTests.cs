@@ -62,7 +62,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task CallCanceledWhileWaitingForCredit_IsNeverSent(ClientTarget target)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -101,7 +101,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(ClientTarget target)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -171,7 +171,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task FireAndForgetBurst_StaysWithinCredit(ClientTarget target)
     {
         // Fire-and-forget calls use credit too: a burst much larger than the credits is paced, not a violation.
@@ -319,7 +319,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Broadcasts_ArriveInOrderAtEachClient(ClientTarget target)
     {
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
@@ -364,7 +364,7 @@ internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Broadcast_WritesOneEncodedFrameToEveryClient(ClientTarget target)
     {
         var frames = new List<byte[]>();

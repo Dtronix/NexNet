@@ -93,7 +93,7 @@ internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ItemLargerThanThePeerAccepts_ThrowsAndTheChannelStaysUsable(ClientTarget target)
     {
         var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -155,7 +155,7 @@ internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task ClosedPipes_FreeTheirIdsAndBudget(ClientTarget target)
     {
         // More pipes than there are pipe IDs, one after another: each ID returns once both sides closed it.
@@ -194,7 +194,7 @@ internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task OpeningMoreThanMaxPipes_IsRefusedAndTheSessionStaysUp(ClientTarget target)
     {
         await using var server = await StartServerAsync(

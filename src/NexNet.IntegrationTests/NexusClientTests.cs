@@ -289,7 +289,7 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls], CSharpTransports = [ClientTransport.Quic])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectsOnDisconnect(ClientTarget target)
     {
         await using var server = await StartDedicatedServer(AbruptStop());
@@ -642,7 +642,7 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls], CSharpTransports = [ClientTransport.Quic])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket], CSharpTransports = [ClientTransport.Quic])]
     public async Task ServerRejectsAuth_SendsDisconnect(ClientTarget target)
     {
         // Signaled when any frame the server sends is the authentication disconnect.

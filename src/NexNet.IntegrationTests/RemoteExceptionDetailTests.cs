@@ -185,7 +185,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     /// an injected Exception result (H02 frame injection) instead of running it.
     /// </summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task InjectedExceptionResults_ParseLikeTheCSharpClient(ClientTarget target)
     {
         var arrived = Channel.CreateUnbounded<(INexusSession Session, ushort InvocationId)>();
@@ -290,7 +290,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     // ----- End to end -----
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task NoneByDefault_ExceptionResultBytesAreUnchanged(ClientTarget target)
     {
         await Assert.That(CreateServerConfig(Type.Uds).RemoteExceptionDetail).IsEqualTo(RemoteExceptionDetail.None);
@@ -331,7 +331,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(ClientTarget target)
     {
         var fail = true;
@@ -354,7 +354,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task TypeAndMessage_TruncatesLongMessage(ClientTarget target)
     {
         var longMessage = new string('x', 5000);
@@ -371,7 +371,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task TypeAndMessage_LimitFailureCarriesItsType(ClientTarget target)
     {
         await using var server = await StartServerAsync(configure: config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
@@ -386,7 +386,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Hook_ResultIsSentWhateverTheSetting(ClientTarget target)
     {
         Exception? seen = null;
@@ -414,7 +414,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Hook_ReturningNull_FallsBackToTheSetting(ClientTarget target)
     {
         await using var server = await StartServerAsync(
@@ -435,7 +435,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(ClientTarget target)
     {
         var fail = true;
@@ -461,7 +461,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -486,7 +486,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Hook_ServerCallingClient_CarriesApplicationError(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -509,7 +509,7 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
 
     /// <summary>An application error with a message and no code (C-10): the code stays null on every client.</summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task Hook_ServerCallingClient_MessageOnlyApplicationError(ClientTarget target)
     {
         await using var server = await StartServerAsync();

@@ -145,7 +145,7 @@ internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task DoesNotReconnectAfterServerShutdown_WithDefaultPolicy(ClientTarget target)
     {
         // The server sends its ServerShutdown signal on stop (the signal is not disabled here).
