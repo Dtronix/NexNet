@@ -16,7 +16,6 @@ import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.session.NexusSession;
-import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptCall;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptHost;
@@ -98,7 +97,7 @@ final class ClientEntry extends Driven implements ScriptHost {
 
     private static <P> NexusClient<P> newClient(ScaffoldingExport<P> export, SpecMapper.Setup setup, ScriptHost host) {
         return NexusClient.create(setup.config, export.handshake(), export.createNexus(host), export.proxyFactory(),
-            NexusConnector.defaults(), setup.timers, setup.sessionOptions);
+            setup.connector, setup.timers, setup.sessionOptions);
     }
 
     private void onState(ConnectionState state) {

@@ -9,7 +9,6 @@ import com.dtronix.nexnet.pool.NexusClientPool;
 import com.dtronix.nexnet.pool.NexusClientPoolConfig;
 import com.dtronix.nexnet.pool.NexusClientPoolConnectionException;
 import com.dtronix.nexnet.pool.RentedNexusClient;
-import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptHost;
 import java.util.Arrays;
@@ -106,7 +105,7 @@ final class PoolEntry {
                                            SpecMapper.Setup setup) {
         return new NexusClientPool<>(config, () -> {
             NexusClient<P> client = NexusClient.create(setup.config, typed.handshake(),
-                typed.createNexus(UNSCRIPTED), typed.proxyFactory(), NexusConnector.defaults(), setup.timers,
+                typed.createNexus(UNSCRIPTED), typed.proxyFactory(), setup.connector, setup.timers,
                 setup.sessionOptions);
             Pooled pooled = new Pooled("pc" + nextClient.incrementAndGet(), client);
             clients.add(client);

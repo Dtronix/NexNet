@@ -47,6 +47,11 @@ final class InteropHost {
     private static final List<String> TRANSPORTS = Arrays.asList(
         "Tcp", "TcpTls", "HttpSocket", "HttpSocketTls", "WebSocket", "WebSocketTls");
 
+    /** The capabilities of the OkHttp mode ({@link Connectors}): no HttpSocket or TCP transport. */
+    private static final List<String> OKHTTP_CAPABILITIES = Arrays.asList(
+        "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "RemoteCertificate", "FakeTime",
+        "ClientPool", "PipeInputCompletion", "ChannelReadCancellation");
+
     private final ControlChannel channel;
     final ExecutorService workers = Executors.newCachedThreadPool(daemon("nexnet-host-worker"));
     final ScheduledExecutorService timer;
@@ -94,10 +99,11 @@ final class InteropHost {
             "token", token,
             "lang", "java",
             "runtime", System.getProperty("java.vm.name", "Java") + " " + System.getProperty("java.version", "?"),
-            "lib", "com.dtronix:nexnet-client " + NexusRuntime.VERSION,
+            "lib", "com.dtronix:nexnet-client " + NexusRuntime.VERSION
+                + (Connectors.okHttp() ? " (WebSocket: com.dtronix:nexnet-client-okhttp)" : ""),
             "schemaHash", Scaffolding.SCHEMA_HASH,
-            "capabilities", CAPABILITIES,
-            "transports", TRANSPORTS,
+            "capabilities", Connectors.okHttp() ? OKHTTP_CAPABILITIES : CAPABILITIES,
+            "transports", Connectors.okHttp() ? Connectors.OKHTTP_TRANSPORTS : TRANSPORTS,
             "maxConcurrency", (long) MAX_CONCURRENCY,
             "pid", ProcessHandle.current().pid());
         channel.send(hello);

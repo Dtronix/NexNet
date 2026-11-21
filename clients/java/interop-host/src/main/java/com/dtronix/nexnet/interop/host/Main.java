@@ -32,6 +32,13 @@ public final class Main {
             System.exit(2);
             return;
         }
+        try {
+            Connectors.parse(System.getenv(Connectors.ENVIRONMENT_VARIABLE));
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.exit(2);
+            return;
+        }
         int colon = control.lastIndexOf(':');
         String hostName = control.substring(0, colon);
         int port = Integer.parseInt(control.substring(colon + 1));
@@ -45,6 +52,7 @@ public final class Main {
                     System.err.println("Uncaught exception on " + thread.getName() + ": " + Errors.stack(error));
                     host.hostError("Uncaught exception on " + thread.getName() + ": " + error, error);
                 });
+                Connectors.warmUp();
                 host.hello(token);
                 host.run();
             }

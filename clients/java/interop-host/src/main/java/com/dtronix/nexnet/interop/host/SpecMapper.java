@@ -9,6 +9,7 @@ import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.session.SessionTimers;
+import com.dtronix.nexnet.transport.Transport;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -41,10 +42,13 @@ final class SpecMapper {
         final FakeTimers fakeTime;
         /** The error the client nexus's onInvocationException hook returns, or null for no hook. */
         final NexusRemoteError invocationError;
+        /** The connector of the spec's transport ({@link Connectors}). */
+        final Transport.Connector connector;
 
         Setup(ClientConfig config, SessionOptions sessionOptions, SessionTimers timers, FakeTimers fakeTime,
-              NexusRemoteError invocationError) {
+              NexusRemoteError invocationError, Transport.Connector connector) {
             this.config = config;
+            this.connector = connector;
             this.sessionOptions = sessionOptions;
             this.timers = timers;
             this.fakeTime = fakeTime;
@@ -100,8 +104,10 @@ final class SpecMapper {
                 throw HostError.notSupported("The Java client has no " + transport + " transport.");
         }
 
+        TlsOptions tlsOptions = null;
         if (secure) {
-            builder.tls(tls(spec, transport.equals("TcpTls")));
+            tlsOptions = tls(spec, transport.equals("TcpTls"));
+            builder.tls(tlsOptions);
         } else if (spec.has("caPem") || spec.has("pinSha256") || spec.has("clientCertificatePem")) {
             throw HostError.badRequest("TLS options need a TLS transport, not " + transport + ".");
         }
@@ -175,7 +181,8 @@ final class SpecMapper {
             fake = fakeTime != null ? fakeTime : new FakeTimers();
             timers = fake;
         }
-        return new Setup(builder.build(), options, timers, fake, invocationError);
+        return new Setup(builder.build(), options, timers, fake, invocationError,
+            Connectors.select(transport, tlsOptions));
     }
 
     /** The error of {@code onInvocationException} ({@code {code?, message?}}), or null when the spec has no hook. */
