@@ -17,7 +17,7 @@ import {
 } from '@dtronix/nexnet';
 import { encodeFrame, ControlProtocolError } from './framing.js';
 import { HostError, ThrowingWatchError, badRequest, notSupported, unknownHandle, invalidOperation, toWireError, nativeError, messageOf, NOT_CONNECTED } from './errors.js';
-import { stateName, stateValue, reasonName, resultStateName, levelOrder, levelName, runtimeLevel } from './names.js';
+import { stateName, stateValue, reasonName, resultStateName, levelOrder, levelName, runtimeLevel, collectionModeName, collectionStateName } from './names.js';
 import { parseSpec, parsePoolOptions } from './spec.js';
 import { FakeClock, TrackingClock, systemClock } from './clock.js';
 import { ClientScripts, SILENT_SCRIPTS, validateSteps, isChannelClosed } from './scripts.js';
@@ -419,6 +419,23 @@ class FutureEntry {
 }
 
 /** @typedef {ClientEntry | RentalEntry | PoolEntry | PipeEntry | FutureEntry} Entry */
+
+/**
+ * The parts of a client's session snapshot (`NexusClient.getSnapshot()`) that `client.budget` and
+ * `client.outstanding` read (§6.4).
+ * @typedef {object} SnapshotPart
+ * @property {{ limit: number, reserved: number }} budget
+ * @property {{ awaitingResults: number }} invocations
+ */
+
+/**
+ * The session snapshot of a client, or null when it has no session.
+ * @param {{ getSnapshot(): object | null }} client
+ * @returns {SnapshotPart | null}
+ */
+function snapshotOf(client) {
+  return /** @type {SnapshotPart | null} */ (client.getSnapshot());
+}
 
 /**
  * The C# `NexusCollectionChangedAction` event of a runtime `NexusListChange` (§7.6).
@@ -1367,6 +1384,15 @@ export class Host {
       if (entry.client.state !== ConnectionState.Connected) return { address: null, port: null };
       return { address: entry.client.remoteAddress, port: entry.client.remotePort };
     });
+    op('client.budget', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.budget');
+      const budget = snapshotOf(entry.client)?.budget ?? null;
+      return { budget: budget ? { limit: budget.limit, reserved: budget.reserved } : null };
+    });
+    op('client.outstanding', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.outstanding');
+      return { invocations: snapshotOf(entry.client)?.invocations.awaitingResults ?? 0 };
+    });
     op('client.awaitState', async (args, ctx) => {
       const entry = this.#invoker(ctx, args.h);
       const value = stateValue(requireString(args.state, 'state'));
@@ -1738,6 +1764,20 @@ export class Host {
       const entry = this.#client(ctx, args.h, 'list.snapshot');
       const { list, codec } = this.#list(entry, args.collection);
       return { items: list.toArray().map((item) => codec.toJson(item)) };
+    });
+    op('list.state', async (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'list.state');
+      const { list } = this.#list(entry, args.collection);
+      // Whether the disabled promise has settled: a settled promise's reaction runs before the one queued after it.
+      const pending = Symbol('pending');
+      let disabled;
+      try {
+        disabled = (await Promise.race([list.disabled, Promise.resolve(pending)])) !== pending;
+      } catch {
+        disabled = true;
+      }
+      // The JS list has no read-only flag (C# IsReadOnly): its mode tells whether the client can change it.
+      return { mode: collectionModeName(list.mode), state: collectionStateName(list.state), disabled };
     });
     op('list.watch', (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'list.watch');

@@ -307,6 +307,10 @@ final class InteropHost {
                 return done(Protocol.map("secure", clientOnly(scope, args).isSecure()));
             case "client.remoteEndpoint":
                 return done(clientOnly(scope, args).remoteEndpoint());
+            case "client.budget":
+                return done(clientOnly(scope, args).budget());
+            case "client.outstanding":
+                return done(clientOnly(scope, args).outstanding());
             case "client.awaitState":
                 return driven(scope, args).awaitState(args.str("state"));
             case "client.awaitReady":
@@ -453,6 +457,8 @@ final class InteropHost {
                 return clientOnly(scope, args).listOp(args);
             case "list.snapshot":
                 return done(clientOnly(scope, args).listSnapshot(args));
+            case "list.state":
+                return done(clientOnly(scope, args).listState(args));
             case "list.watch":
                 return done(clientOnly(scope, args).listWatch(args));
             case "list.unwatch":
