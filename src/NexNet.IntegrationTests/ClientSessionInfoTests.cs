@@ -12,10 +12,9 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The remote endpoint is not the same on every language, and the expectations below say so per row
-/// (<see cref="ExpectedEndpoint"/>): the C# WebSocket and HttpSocket clients report none, while the Java and Node
-/// clients report the peer of their socket on every transport. A browser cannot see the peer of its WebSocket, so its
-/// rows expect nothing (a platform limit, like the server certificate).
+/// Every client reports the peer of its socket as the remote endpoint, on every transport (<see cref="ExpectedEndpoint"/>).
+/// The one exception is the browser: it cannot see the peer of its WebSocket, so its rows expect nothing (a platform
+/// limit, like the server certificate).
 /// </para>
 /// <para>QUIC is a C#-only row (<see cref="ClientMatrixAttribute.CSharpTransports"/>).</para>
 /// </remarks>
@@ -65,11 +64,6 @@ internal class ClientSessionInfoTests(LanguageHostPool hosts) : MatrixTestBase(h
     {
         // The browser does not expose the peer of a WebSocket.
         if (target.Language.StartsWith("browser-", StringComparison.Ordinal))
-            return RemoteEndpoint.None;
-
-        // The C# WebSocket and HttpSocket client transports report no remote endpoint; Java and Node report the socket's peer.
-        if (target.Language == ClientLanguages.CSharp
-            && target.Transport is ClientTransport.HttpSocket or ClientTransport.HttpSocketTls or ClientTransport.WebSocket or ClientTransport.WebSocketTls)
             return RemoteEndpoint.None;
 
         // A Unix domain socket has no port; the address is the socket path.
