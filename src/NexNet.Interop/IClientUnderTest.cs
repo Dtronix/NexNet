@@ -66,6 +66,16 @@ public interface IClientUnderTest : IAsyncDisposable
     /// <summary>Creates a duplex pipe to pass to a server method.</summary>
     Task<IRemotePipe> CreatePipeAsync();
 
+    /// <summary>
+    /// The pipe a <c>pipe.hold</c> script step of this client published under <paramref name="name"/> (control protocol
+    /// §6.9): a pipe the server opened, passed to a client nexus method, that the test then drives like one of its own.
+    /// Waits until the step runs. The method stays running until the pipe is disposed, which releases it to the client
+    /// runtime instead of disposing it.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is not scripted (a pooled client).</exception>
+    Task<IRemotePipe> AcceptPipeAsync(string name)
+        => throw new NotSupportedException($"{Target}: this client has no scripted client nexus to hold pipes.");
+
     /// <summary>The client view of the server nexus collection named <paramref name="collectionName"/>.</summary>
     IRemoteList<T> List<T>(string collectionName);
 

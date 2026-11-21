@@ -24,6 +24,14 @@ public interface IRemotePipe : IAsyncDisposable
     /// <summary>Writes bytes to the other side.</summary>
     ValueTask WriteAsync(ReadOnlyMemory<byte> data);
 
+    /// <summary>
+    /// Writes bytes to the other side and reports whether the pipe is still open: false when its writing side is
+    /// complete (the other side completed its reading side or the whole pipe, or the session ended), so the bytes were
+    /// not all delivered. Unlike <see cref="WriteAsync"/>, a completed pipe is a result, not an error (C#
+    /// <c>FlushResult.IsCompleted</c>).
+    /// </summary>
+    ValueTask<bool> TryWriteAsync(ReadOnlyMemory<byte> data);
+
     /// <summary>Writes <paramref name="length"/> bytes of the deterministic pattern of <paramref name="seed"/>.</summary>
     ValueTask WritePatternAsync(int seed, long length);
 
@@ -35,6 +43,12 @@ public interface IRemotePipe : IAsyncDisposable
 
     /// <summary>Completes the writing side.</summary>
     ValueTask CompleteAsync();
+
+    /// <summary>
+    /// Completes the reading side only (C# <c>Input.CompleteAsync()</c>): the other side's writes report the pipe
+    /// complete, and this side can still write. Needs <c>ClientCapabilities.PipeInputCompletion</c>.
+    /// </summary>
+    ValueTask CompleteInputAsync();
 
     /// <summary>Uses the pipe as the writer of a channel of <typeparamref name="T"/> (codec from <see cref="TypedCodecs"/>).</summary>
     ValueTask<IRemoteChannelWriter<T>> GetChannelWriterAsync<T>();
@@ -61,6 +75,13 @@ public interface IRemoteChannelReader<T>
 {
     /// <summary>Reads up to <paramref name="maximum"/> items; empty when the channel is complete.</summary>
     ValueTask<IReadOnlyList<T>> ReadBatchAsync(int maximum);
+
+    /// <summary>
+    /// Reads up to <paramref name="maximum"/> items, waiting for at least one until <paramref name="cancel"/>; empty
+    /// when the channel is complete. A canceled read throws <see cref="TaskCanceledException"/> and consumes no item, so
+    /// the next read gets the items that arrive after it. Needs <c>ClientCapabilities.ChannelReadCancellation</c>.
+    /// </summary>
+    ValueTask<IReadOnlyList<T>> ReadBatchAsync(int maximum, RemoteCancel cancel);
 
     /// <summary>Reads until the channel completes.</summary>
     ValueTask<IReadOnlyList<T>> ReadAllAsync();
