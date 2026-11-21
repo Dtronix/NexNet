@@ -1,5 +1,5 @@
 /**
- * The leak-audit counters (H05): `counters()` sums the process-wide counters of every runtime layer. After every
+ * The leak-audit counters: `counters()` sums the process-wide counters of every runtime layer. After every
  * client has disconnected and every pool is disposed they must all be zero.
  * @module
  */

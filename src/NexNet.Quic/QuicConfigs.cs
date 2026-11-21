@@ -87,7 +87,6 @@ public class QuicServerConfig : ServerConfig
     }
 
 
-    /// <param name="cancellationToken"></param>
     /// <inheritdoc />
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {

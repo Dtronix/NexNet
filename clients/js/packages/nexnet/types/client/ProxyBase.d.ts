@@ -1,5 +1,5 @@
 /**
- * Base class of generated server proxies (J07). Contract: `src/contract/proxy.js`.
+ * Base class of generated server proxies. Contract: `src/contract/proxy.js`.
  * @module
  */
 export type ProxySession = object;

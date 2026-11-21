@@ -1,5 +1,5 @@
 /**
- * Diagnostics (J10): leak-audit counters and client snapshots.
+ * Diagnostics: leak-audit counters and client snapshots.
  * @module
  */
 
@@ -13,7 +13,7 @@ export { getClientSnapshot, SnapshotFields } from './snapshot.js';
 export { getSessionCounters, getInvocationCounters, getPipeCounters };
 
 /**
- * The diagnostics namespace: `diagnostics.counters()` for the H05 leak audit.
+ * The diagnostics namespace: `diagnostics.counters()` for the interop harness leak audit.
  */
 export const diagnostics = Object.freeze({
   counters,

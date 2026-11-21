@@ -42,7 +42,7 @@ export const DEFAULT_PING_INTERVAL = 10_000;
 export const MIN_DERIVED_PING_INTERVAL = 1_000;
 
 /**
- * The ping interval for a server that advertised `idleTimeoutMs` (S04; C# `ClientConfig.GetEffectivePingInterval`).
+ * The ping interval for a server that advertised `idleTimeoutMs` (C# `ClientConfig.GetEffectivePingInterval`).
  * An explicit interval is used as is. Otherwise a third of the advertised idle timeout, at least
  * {@link MIN_DERIVED_PING_INTERVAL}; {@link DEFAULT_PING_INTERVAL} when the server advertised none (null or 0).
  * @param {number | null} configured The resolved `pingInterval` option; null to derive it.
@@ -145,7 +145,7 @@ export function describeTransport(kind, transportConfig) {
     case 'uds':
       return { name: 'uds', isSecure: true };
     default:
-      // Unreachable for a validated kind; any transport that does not declare itself secure is not (F05).
+      // Unreachable for a validated kind; any transport that does not declare itself secure is not.
       return { name: String(kind), isSecure: false };
   }
 }

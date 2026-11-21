@@ -1,6 +1,6 @@
 /**
  * Node-only additions. Reachable only from the `node` entry; must never be imported by the browser entry.
- * J06 implements the transports (`src/transport/node/`).
+ * The transports are implemented in `src/transport/node/`.
  * @module
  */
 

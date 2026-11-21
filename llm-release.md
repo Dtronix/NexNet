@@ -116,6 +116,7 @@ empty.
 ### Index and table of contents
 
 - `docs/articles/releases/index.md`: add a row at the top of the table: `| [vX.Y.Z](release-notes-vX.Y.Z.md) | YYYY-MM-DD | <one-line summary> |`.
+  If the row is already there with `Unreleased`, replace `Unreleased` with the date.
 - `docs/articles/releases/toc.yml`: add the entry below `Overview` if it isn't there yet.
 
 ### Check the release body
@@ -125,6 +126,10 @@ python .github/scripts/release-notes.py vX.Y.Z <scratch>/body.md
 ```
 
 The script must succeed. Its output must start at `## Highlights` (the title and Released lines are removed).
+
+There is no change-log page or script in the repository. For v0.21.0, the full per-PR change log is a comment on
+PR #326 (<https://github.com/Dtronix/NexNet/pull/326#issuecomment-7053892215>); the notes page links it from Highlights
+and from its `## Full change log` section, so the GitHub release body links it too. Check that the link is in `body.md`.
 
 ## 4. Version bump
 
@@ -236,7 +241,7 @@ curl -s https://api.nuget.org/v3-flatcontainer/nexnet.quic/index.json
 ```
 
 The tag run must also list the `javascript-client` and `java-client` artifacts (`gh run view <tag run id>`). They are
-not attached to the GitHub release and are not published anywhere (D30).
+not attached to the GitHub release and are not published anywhere.
 
 Report: the run result, the release URL, and the NuGet version for each package. Also report the master build and
 the docs deploy runs.

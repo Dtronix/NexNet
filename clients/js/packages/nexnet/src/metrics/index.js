@@ -1,5 +1,5 @@
 /**
- * Metrics (J10): the C# instrument catalog and a client tracker.
+ * Metrics: the C# instrument catalog and a client tracker.
  * @module
  */
 

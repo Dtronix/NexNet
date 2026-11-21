@@ -1,5 +1,5 @@
 /**
- * Plumbing shared by the built-in transports (J06): connect-error construction, and the {@link TransportBase} class
+ * Plumbing shared by the built-in transports: connect-error construction, and the {@link TransportBase} class
  * that buffers data and the close until the session registers its callbacks. Platform-neutral: reachable from the
  * browser entry, so it must not import `node:*`.
  * @module

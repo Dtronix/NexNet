@@ -3,7 +3,7 @@
  * `TimeSpan`) are milliseconds; IDs are as on the wire (`id` is a bigint). The field names are checked against
  * `tests/golden/snapshot-fields.json`, exported from the C# records.
  *
- * Every layer provides its part (J17): `session.snapshot()` → {@link SessionSnapshotPart},
+ * Every layer provides its part: `session.snapshot()` → {@link SessionSnapshotPart},
  * `invocationManager.snapshot()` → {@link NexusInvocationSnapshot}, and `session.pipeSnapshots()` /
  * `session.largeMessageSnapshots()`, which the pipe and invocation layers feed through `session.addSnapshotSource`.
  * A field is null only where the C# field is null (`endpoint` on a client, a wait or a time that has not started).

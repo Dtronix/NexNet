@@ -1,6 +1,6 @@
 /**
  * One NexNet session over a connected transport: framing, handshake, keepalive, timeouts and disconnect (protocol
- * spec §1, §2, §5, §9). Invocations, pipes and collections (J07–J09) plug in through {@link NexusSession#setHandler},
+ * spec §1, §2, §5, §9). Invocations, pipes and collections plug in through {@link NexusSession#setHandler},
  * {@link NexusSession#send}, {@link NexusSession#controlSender}, {@link NexusSession#onClose} and
  * {@link NexusSession#addProgressProbe}.
  *
@@ -53,7 +53,7 @@ export declare class NexusSession {
     peerMaxMessageSize: number;
     /** The peer's advertised `invocationCredits`; 0 before the handshake. */
     peerInvocationCredits: number;
-    /** The server's advertised idle timeout (S04), or null when it does not send one. @type {number | null} */
+    /** The server's advertised idle timeout, or null when it does not send one. @type {number | null} */
     idleTimeoutMs: number | null;
     /** The ping interval in use; 0 before the handshake. */
     pingInterval: number;

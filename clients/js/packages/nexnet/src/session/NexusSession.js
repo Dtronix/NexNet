@@ -1,6 +1,6 @@
 /**
  * One NexNet session over a connected transport: framing, handshake, keepalive, timeouts and disconnect (protocol
- * spec §1, §2, §5, §9). Invocations, pipes and collections (J07–J09) plug in through {@link NexusSession#setHandler},
+ * spec §1, §2, §5, §9). Invocations, pipes and collections plug in through {@link NexusSession#setHandler},
  * {@link NexusSession#send}, {@link NexusSession#controlSender}, {@link NexusSession#onClose} and
  * {@link NexusSession#addProgressProbe}.
  *
@@ -106,7 +106,7 @@ export class NexusSession {
   peerMaxMessageSize = 0;
   /** The peer's advertised `invocationCredits`; 0 before the handshake. */
   peerInvocationCredits = 0;
-  /** The server's advertised idle timeout (S04), or null when it does not send one. @type {number | null} */
+  /** The server's advertised idle timeout, or null when it does not send one. @type {number | null} */
   idleTimeoutMs = null;
   /** The ping interval in use; 0 before the handshake. */
   pingInterval = 0;
@@ -556,12 +556,12 @@ export class NexusSession {
 
     if (sendByte && this.#started) {
       // The byte queues behind any write in flight and the frames already queued (§5.6). A transport write that never settles (a stuck socket) must not
-      // hold the close: past the limit the session closes without the byte (J20).
+      // hold the close: past the limit the session closes without the byte.
       const limit = this.#disconnectWriteLimit();
       const finished = this.#writer.finish(encodeHeaderOnly(reason));
       const written = limit > 0 ? await this.#within(finished, limit) : false;
       const delayMs = this.#options.disconnectDelay;
-      // Real time, never the injected clock (C# Task.Delay, Java SessionTimers.system(); J26): the delay gives the
+      // Real time, never the injected clock (C# Task.Delay, Java SessionTimers.system()): the delay gives the
       // network wall-clock time to carry the byte (§5.6), and a test clock that no longer moves must not hold the
       // session in Disconnecting.
       if (written && delayMs > 0) await new Promise((resolve) => { this.#timer(delayMs, () => resolve(undefined), systemClock); });
@@ -595,7 +595,7 @@ export class NexusSession {
    * what is left of `progressTimeout` (§9) for the transport write in flight, if any. A write running past
    * `progressTimeout` is a stall and will not carry the byte, so the wait is then 0: a graceful close, idle timeout or
    * stall over a transport whose write never resolves ends within `progressTimeout` (plus `disconnectDelay` once the
-   * byte is written) of that write's start. The limit is measured on the session clock and waited in real time (J26).
+   * byte is written) of that write's start. The limit is measured on the session clock and waited in real time.
    * @returns {number} Milliseconds; 0 when the byte can't be written in time.
    */
   #disconnectWriteLimit() {
@@ -605,7 +605,7 @@ export class NexusSession {
 
   /**
    * Resolves `promise`'s value, or false after `ms` of real time: a stuck write is real work that an injected clock
-   * does not drive (J26, as Java's close fallback).
+   * does not drive (as Java's close fallback).
    * @param {Promise<boolean>} promise
    * @param {number} ms
    * @returns {Promise<boolean>}

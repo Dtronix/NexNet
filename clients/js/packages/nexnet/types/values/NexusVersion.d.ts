@@ -4,7 +4,7 @@
  */
 /**
  * C# `System.Version`. `build` and `revision` are -1 when absent, as in C#.
- * Exported as both `NexusVersion` and `Version` (the name the G03 type mapper emits).
+ * Exported as both `NexusVersion` and `Version` (the name the generator type mapper emits).
  */
 export declare class NexusVersion {
     /**

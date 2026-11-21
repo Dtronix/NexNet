@@ -1,5 +1,5 @@
 /**
- * Process-wide observers of session starts, and the per-session hook points the metrics layer (J17) uses. Internal to
+ * Process-wide observers of session starts, and the per-session hook points the metrics layer uses. Internal to
  * the runtime: the package entries do not export them.
  *
  * The metrics layer learns of every session through {@link addSessionObserver} as the session starts (its transport

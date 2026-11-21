@@ -309,7 +309,7 @@ export class PipeCore {
 
   /**
    * The session ended (C# `CancelAll`). An open pipe completes both directions (buffered data stays readable); a
-   * pipe that never opened fails as canceled, with the disconnect reason as the cause (amendment C-2).
+   * pipe that never opened fails as canceled, with the disconnect reason as the cause.
    * @param {number} reason
    */
   sessionEnded(reason) {

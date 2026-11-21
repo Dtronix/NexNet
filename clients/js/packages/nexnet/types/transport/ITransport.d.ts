@@ -1,5 +1,5 @@
 /**
- * Transport contract between the session (J05) and the transports (J06). Interface only.
+ * Transport contract between the session and the transports. Interface only.
  * @module
  */
 export type Transport = {

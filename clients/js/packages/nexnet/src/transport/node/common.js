@@ -1,6 +1,6 @@
 /// <reference types="node" />
 /**
- * Node transport helpers (J06): TLS options, connect-error mapping and abort handling. Node only.
+ * Node transport helpers: TLS options, connect-error mapping and abort handling. Node only.
  * @module
  */
 

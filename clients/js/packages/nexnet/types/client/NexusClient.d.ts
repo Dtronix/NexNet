@@ -1,6 +1,6 @@
 /**
- * The client (J05): connect, handshake, state machine, events, plaintext warning and disconnect.
- * Reconnection, pooling and full snapshots are J10. Invocations (J07) and pipes (J08) attach to each session before it
+ * The client: connect, handshake, state machine, events, plaintext warning and disconnect.
+ * Reconnection, pooling and full snapshots live in their own modules. Invocations and pipes attach to each session before it
  * starts (`attachSessionLayers`).
  * @module
  */
@@ -270,14 +270,14 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
     createChannel<T>(formatter: import('../contract/codec.js').Formatter<T>): import('../contract/pipes.js').NexusDuplexChannel<T>;
     /**
      * Diagnostic snapshot, field names as C# `NexusClientSnapshot` camelCased; null when not connected.
-     * J05 fills the session fields; J10 adds the rest.
+     * The session layer fills the session fields; reconnection, pool and metrics fill the rest.
      * @returns {object | null}
      */
     getSnapshot(): object | null;
     /** Same as {@link NexusClient#disconnect}. @returns {Promise<void>} */
     [Symbol.asyncDispose](): Promise<void>;
     /**
-     * One connect attempt (C# `TryConnectAsyncCore`). J10 calls it with `isReconnecting` for reconnects.
+     * One connect attempt (C# `TryConnectAsyncCore`). The reconnect loop calls it with `isReconnecting`.
      *
      * @protected
      * @param {boolean} isReconnecting

@@ -1,5 +1,5 @@
 /**
- * Loggers (J10). Implement {@link import('../contract/config.js').NexusLogger}.
+ * Loggers. Implement {@link import('../contract/config.js').NexusLogger}.
  * @module
  */
 export { NexusLogLevelOrder, NexusLogLevelTag, NexusLogBehaviors } from './levels.js';

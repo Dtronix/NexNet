@@ -12,7 +12,7 @@ export type PipeControlSource = {
     takePendingControl: () => Uint8Array[];
 };
 /**
- * A pipe with control state to send (J08). The pipe queues itself at most once until drained.
+ * A pipe with control state to send. The pipe queues itself at most once until drained.
  *
  * @typedef {object} PipeControlSource
  * @property {() => Uint8Array[]} takePendingControl Returns the frames to send now (window updates, state updates).

@@ -617,7 +617,7 @@ export class NexusList extends EventTarget {
     if (run === null) return Promise.reject(new NexusError('The collection is not enabled.'));
     return run.exclusive(async () => {
       // A request made while the enable runs waits for the initial state, then is built from it (C# OperationLock
-      // and Java K09 behave the same). An enable that fails answers it with false.
+      // and the Java client behave the same). An enable that fails answers it with false.
       if (!(await run.synced.promise)) return false;
       const writer = run.writer;
       if (run.stopped || writer === null) return false;

@@ -1,5 +1,5 @@
 /**
- * The client. Implemented in `src/client/NexusClient.js` (J05); this file re-exports it.
+ * The client. Implemented in `src/client/NexusClient.js`; this file re-exports it.
  * @module
  */
 

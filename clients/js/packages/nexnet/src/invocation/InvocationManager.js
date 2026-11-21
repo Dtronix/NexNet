@@ -95,7 +95,7 @@ function abortTags(inbound, reason) {
  */
 
 /**
- * Pipe and channel resolution for dispatched invocations; installed by the pipe layer (J08).
+ * Pipe and channel resolution for dispatched invocations; installed by the pipe layer.
  *
  * @typedef {object} PipeHooks
  * @property {(pipeId: number, ctx: import('../contract/nexus.js').DispatchContext) => import('../contract/pipes.js').NexusDuplexPipe} pipe
@@ -227,11 +227,11 @@ export class InvocationManager {
   #lastQueueWarning = -Infinity;
   #queueWarningsSuppressed = 0;
 
-  /** The session's receive budget; the pipe layer (J08) reserves its windows from it. @type {SessionBudget} */
+  /** The session's receive budget; the pipe layer reserves its windows from it. @type {SessionBudget} */
   budget;
   /** @type {LargeMessageReceiver} */
   #receiver;
-  /** Installed by the pipe layer (J08). @type {PipeHooks | null} */
+  /** Installed by the pipe layer. @type {PipeHooks | null} */
   pipeHooks = null;
 
   /**
@@ -977,7 +977,7 @@ export class InvocationManager {
   }
 
   /**
-   * The rejection of a call still pending when the session ends: canceled, as in C# and spec §4.5 (amendment C-2),
+   * The rejection of a call still pending when the session ends: canceled, as in C# and spec §4.5,
    * with the transport error carrying the disconnect reason as its `cause`.
    * @param {number} [reason]
    * @returns {DOMException}
@@ -1004,7 +1004,7 @@ export class InvocationManager {
 }
 
 /**
- * An `AbortError` whose `cause` is a `NexusTransportError` with the disconnect reason (amendment C-2). `cause` is
+ * An `AbortError` whose `cause` is a `NexusTransportError` with the disconnect reason. `cause` is
  * set as an own property: not every platform's `DOMException` constructor accepts it.
  * @param {number} reason
  * @returns {DOMException}

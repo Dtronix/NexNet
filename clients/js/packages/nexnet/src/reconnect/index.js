@@ -1,5 +1,5 @@
 /**
- * Reconnection (J10). Mirrors C# `IReconnectionPolicy`/`DefaultReconnectionPolicy` and the client's reconnect loop.
+ * Reconnection. Mirrors C# `IReconnectionPolicy`/`DefaultReconnectionPolicy` and the client's reconnect loop.
  * @module
  */
 

@@ -105,9 +105,9 @@ export declare function getInvocationManager(session: import('../session/NexusSe
 export declare function releaseInvocationSlot(ctx: import('../contract/nexus.js').DispatchContext): void;
 export declare class InvocationManager {
     #private;
-    /** The session's receive budget; the pipe layer (J08) reserves its windows from it. @type {SessionBudget} */
+    /** The session's receive budget; the pipe layer reserves its windows from it. @type {SessionBudget} */
     budget: SessionBudget;
-    /** Installed by the pipe layer (J08). @type {PipeHooks | null} */
+    /** Installed by the pipe layer. @type {PipeHooks | null} */
     pipeHooks: PipeHooks | null;
     /**
      * @param {import('../session/NexusSession.js').NexusSession} session
@@ -180,7 +180,7 @@ export declare class InvocationManager {
     }): Promise<Uint8Array | null>;
 }
 /**
- * An `AbortError` whose `cause` is a `NexusTransportError` with the disconnect reason (amendment C-2). `cause` is
+ * An `AbortError` whose `cause` is a `NexusTransportError` with the disconnect reason. `cause` is
  * set as an own property: not every platform's `DOMException` constructor accepts it.
  * @param {number} reason
  * @returns {DOMException}
