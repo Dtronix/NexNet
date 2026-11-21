@@ -320,16 +320,18 @@ jobs:
           if-no-files-found: ignore
 
   # Bucket-A interop rows (D23/D24) against each language host. Every row is required: a failing interop test fails
-  # the job.
+  # the job. java-okhttp is the JVM host with NEXNET_JAVA_WEBSOCKET=okhttp (Q08): its WebSocket and WebSocketTls rows run
+  # on the OkHttp connector (nexnet-client-okhttp), and it reports no other transport, so their rows are skipped.
   interop:
     if: ${{ !inputs.only-android }}
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
-        lang: [node, java, browser-chromium]
+        lang: [node, java, java-okhttp, browser-chromium]
     env:
-      NEXNET_TEST_LANGS: ${{ matrix.lang }}
+      NEXNET_TEST_LANGS: ${{ matrix.lang == 'java-okhttp' && 'java' || matrix.lang }}
+      NEXNET_JAVA_WEBSOCKET: ${{ matrix.lang == 'java-okhttp' && 'okhttp' || '' }}
       NEXNET_REQUIRE_SDKS: '1'
     steps:
       - uses: actions/checkout@v7
@@ -351,20 +353,20 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - uses: actions/setup-node@v7
-        if: matrix.lang != 'java'
+        if: ${{ !startsWith(matrix.lang, 'java') }}
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: clients/js/package-lock.json
 
       - uses: actions/setup-java@v6
-        if: matrix.lang == 'java'
+        if: startsWith(matrix.lang, 'java')
         with:
           distribution: temurin
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
-        if: matrix.lang == 'java'
+        if: startsWith(matrix.lang, 'java')
         with:
           cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
@@ -373,7 +375,7 @@ jobs:
 
       # The host build commands are fixed by docs/internals/interop-control-protocol.md §10.
       - name: Build the Node/browser host
-        if: matrix.lang != 'java'
+        if: ${{ !startsWith(matrix.lang, 'java') }}
         run: |
           npm ci --prefix clients/js
           npm run build:interop-host --prefix clients/js
@@ -384,7 +386,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build the JVM host
-        if: matrix.lang == 'java'
+        if: startsWith(matrix.lang, 'java')
         run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
@@ -392,7 +394,7 @@ jobs:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
           dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
-          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]"
+          --treenode-filter "/*/*/*/*[Lang=${{ env.NEXNET_TEST_LANGS }}]"
           -- --report-trx
 
       - name: Upload interop results
