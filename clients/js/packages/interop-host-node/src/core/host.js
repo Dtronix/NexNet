@@ -1292,6 +1292,12 @@ export class Host {
       const state = entry instanceof RentalEntry ? entry.rental.state : entry.client.state;
       return { state: stateName(state) };
     });
+    op('client.remoteCertificate', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.remoteCertificate');
+      // Node's X509Certificate on the Node TLS transports; null otherwise (and always in the browser).
+      const cert = /** @type {{ raw?: Uint8Array } | null} */ (entry.client.state === ConnectionState.Connected ? entry.client.remoteCertificate : null);
+      return { der: cert?.raw ? toBase64(cert.raw) : null };
+    });
     op('client.awaitState', async (args, ctx) => {
       const entry = this.#invoker(ctx, args.h);
       const value = stateValue(requireString(args.state, 'state'));

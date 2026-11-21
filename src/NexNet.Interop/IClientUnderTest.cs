@@ -31,6 +31,14 @@ public interface IClientUnderTest : IAsyncDisposable
     /// <summary>The current connection state.</summary>
     Task<ConnectionState> GetStateAsync();
 
+    /// <summary>
+    /// The certificate the server presented on the client's current connection, as DER bytes: null when the client is not
+    /// connected or its transport has no TLS. The browser cannot read the peer certificate
+    /// (<see cref="ClientCapabilities.RemoteCertificate"/> is absent there).
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<byte[]?> GetRemoteCertificateAsync();
+
     /// <summary>Waits until the client reaches state <paramref name="state"/>.</summary>
     /// <exception cref="TimeoutException">Not reached within <paramref name="seconds"/>.</exception>
     Task WaitForStateAsync(ConnectionState state, double seconds);

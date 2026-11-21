@@ -100,6 +100,10 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     public Task<ConnectionState> GetStateAsync() => Task.FromResult(_client.State);
 
     /// <inheritdoc />
+    public Task<byte[]?> GetRemoteCertificateAsync()
+        => Task.FromResult(_client.State == ConnectionState.Connected ? Nexus.Context.RemoteCertificate?.RawData : null);
+
+    /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

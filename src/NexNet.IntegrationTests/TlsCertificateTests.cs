@@ -6,7 +6,6 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
-using NexNet.Interop.InProc;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Quic;
 using NexNet.Transports;
@@ -158,16 +157,13 @@ internal class TlsCertificateTests(LanguageHostPool hosts) : MatrixTestBase(host
         spec.CaPem = TestCaPem;
         await using var client = await CreateClientAsync(target, spec);
 
-        // IClientUnderTest cannot read the client's remote certificate yet; only the C# client is checked.
-        if (client is not InProcClientDriver<ClientNexus, ClientNexus.ServerProxy> inProc)
-        {
-            Skip.Test("IClientUnderTest has no query for the client's remote certificate yet (P01d follow-up).");
-            return;
-        }
-
+        await Assert.That(await client.GetRemoteCertificateAsync()).IsNull();
         await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(inProc.Nexus.Context.RemoteCertificate?.Thumbprint).IsEqualTo(ServerCertificate.Thumbprint);
+        var der = await client.GetRemoteCertificateAsync();
+        await Assert.That(der).IsNotNull();
+        using var seen = X509CertificateLoader.LoadCertificate(der!);
+        await Assert.That(seen.Thumbprint).IsEqualTo(ServerCertificate.Thumbprint);
         await EndAsync(client);
     }
 

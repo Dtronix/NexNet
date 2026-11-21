@@ -218,6 +218,8 @@ internal sealed class InProcPooledClient<TServerProxy> : IClientUnderTest
 
     public Task<ConnectionState> GetStateAsync() => Task.FromResult(_rented.State);
 
+    public Task<byte[]?> GetRemoteCertificateAsync() => throw new NotSupportedException();
+
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         // The rental raises no state events: poll.

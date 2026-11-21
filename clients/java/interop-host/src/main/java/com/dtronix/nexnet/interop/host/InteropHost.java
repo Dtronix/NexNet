@@ -41,8 +41,8 @@ final class InteropHost {
     static final int MAX_CONCURRENCY = 8;
 
     private static final List<String> CAPABILITIES = Arrays.asList(
-        "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "HttpSocket", "Tcp", "FakeTime",
-        "ClientPool");
+        "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "RemoteCertificate", "HttpSocket", "Tcp",
+        "FakeTime", "ClientPool");
 
     private static final List<String> TRANSPORTS = Arrays.asList(
         "Tcp", "TcpTls", "HttpSocket", "HttpSocketTls", "WebSocket", "WebSocketTls");
@@ -295,6 +295,8 @@ final class InteropHost {
             }
             case "client.state":
                 return done(Protocol.map("state", driven(scope, args).state()));
+            case "client.remoteCertificate":
+                return done(Protocol.map("der", clientOnly(scope, args).remoteCertificate()));
             case "client.awaitState":
                 return driven(scope, args).awaitState(args.str("state"));
             case "client.awaitReady":
