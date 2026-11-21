@@ -2,7 +2,8 @@
 // android.util.Log logging, a lifecycle- and network-aware connection keeper and java.time converters. An AAR built with
 // the Android Gradle plugin; settings.gradle.kts includes it only when ANDROID_HOME is set (D26), so the gate
 // (check) needs no Android SDK. The Android CI job (pull requests that touch the Java client, and weekly) builds it
-// and runs src/androidTest on an API-24 emulator.
+// and runs src/androidTest on Android emulators: everything on API 24, and the java.time device test, which API 24
+// skips, on API 26 (K47).
 // Built and tested, not published (D30).
 //
 // The device tests also compile the Java client of the interop test nexus (src/NexNet.TestNexus), which the Android job's
