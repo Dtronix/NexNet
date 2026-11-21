@@ -26,6 +26,7 @@ export type Formatter<T> = import('./contract/codec.js').Formatter<T>;
 export type SerializerOptions = import('./contract/codec.js').SerializerOptions;
 export type ClientConfig = import('./contract/config.js').ClientConfig;
 export type TlsOptions = import('./contract/config.js').TlsOptions;
+export type QueryToken = import('./contract/config.js').QueryToken;
 export type WebSocketTransportConfig = import('./contract/config.js').WebSocketTransportConfig;
 export type HttpSocketTransportConfig = import('./contract/config.js').HttpSocketTransportConfig;
 export type TcpTransportConfig = import('./contract/config.js').TcpTransportConfig;
@@ -53,6 +54,7 @@ export type NexusClientPoolConfig = import('./contract/pool.js').NexusClientPool
 /** @typedef {import('./contract/codec.js').SerializerOptions} SerializerOptions */
 /** @typedef {import('./contract/config.js').ClientConfig} ClientConfig */
 /** @typedef {import('./contract/config.js').TlsOptions} TlsOptions */
+/** @typedef {import('./contract/config.js').QueryToken} QueryToken */
 /** @typedef {import('./contract/config.js').WebSocketTransportConfig} WebSocketTransportConfig */
 /** @typedef {import('./contract/config.js').HttpSocketTransportConfig} HttpSocketTransportConfig */
 /** @typedef {import('./contract/config.js').TcpTransportConfig} TcpTransportConfig */

@@ -126,6 +126,27 @@ describe('Node WebSocket transport', () => {
     expect(t.name).toBe('ws://');
   });
 
+  it('appends queryToken URL-encoded to the request target, after the URL query; errors do not show it', async () => {
+    /** @type {string[]} */
+    const seen = [];
+    const url = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.write(webSocket101(req));
+    }, { path: '/nexus?x=1' });
+    const t = await connect(url, { queryToken: { name: 'access_token', value: 'a b&c=/é' } });
+    cleanup.push(() => t.close());
+    expect(seen[0]).toBe('/nexus?x=1&access_token=a%20b%26c%3D%2F%C3%A9');
+
+    const refused = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.end(httpStatus(401));
+    });
+    const error = await connect(refused, { queryToken: { name: 'token', value: 'secret' } }).catch((e) => e);
+    expect(seen[1]).toBe('/nexus?token=secret');
+    expect(error).toMatchObject({ transportError: 'AuthenticationError', status: 401 });
+    expect(String(error.message)).not.toContain('secret');
+  });
+
   it('delivers bytes that arrive in the same packet as the 101 first', async () => {
     const url = await server(({ req, socket }) => {
       socket.write(Buffer.concat([webSocket101(req), serverFrame(Opcode.Binary, PREAMBLE.subarray(0, 5)), serverFrame(Opcode.Binary, PREAMBLE.subarray(5))]));

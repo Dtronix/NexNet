@@ -529,8 +529,12 @@ violation or a text message. A write on an ended transport rejects with `Connect
 HTTP-based transports in Node, extra upgrade headers, an `Authorization` header for example, go in
 `config.webSocket.headers` or `config.httpSocket.headers`; the transport sets its own upgrade headers (`Connection`,
 `Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
-cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook ([#110](https://github.com/Dtronix/NexNet/pull/110)) goes in the URL
-(`wss://host/nexus?token=…`), in Node as well as in browsers.
+cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook ([#110](https://github.com/Dtronix/NexNet/pull/110)) goes in
+`config.webSocket.queryToken` or `config.httpSocket.queryToken` (`{ name, value }`, Java `ClientConfig.Builder.queryToken`),
+in Node as well as in browsers. The transport appends `name=value`, each URL-encoded with `encodeURIComponent`, to
+the URL's query, after any query the URL already has; transport error messages show the configured URL without it.
+The name must be a non-empty string and the value a string (`TypeError` otherwise). Putting the token in the URL
+yourself still works, but the token then shows in error messages.
 
 **Refused authentication in browsers.** The platform `WebSocket` fails a refused upgrade the same way as an
 unreachable server or a TLS failure (close code 1006, no status, no reason). NexNet.Asp therefore does not refuse a

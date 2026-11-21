@@ -6,7 +6,7 @@
  */
 
 import { cancellationError } from '../contract/errors.js';
-import { TransportBase, concatChunks, toUrl, transportError } from './TransportBase.js';
+import { TransportBase, appendQueryToken, concatChunks, toUrl, transportError } from './TransportBase.js';
 
 /** Buffered bytes above which `write` waits for the socket to drain. */
 export const WEBSOCKET_HIGH_WATER_MARK = 1024 * 1024;
@@ -102,6 +102,7 @@ export class BrowserWebSocketTransport extends TransportBase {
  * authentication is `AuthenticationError` in a browser too: NexNet.Asp refuses a failed ASP.NET authentication (cookie
  * or query-string token) over the open socket (`DisconnectReason.Authentication`), as it does a refused greeting token
  * (`authenticate`).
+ * `queryToken` is appended to the URL's query string; messages show the URL without it.
  *
  * @type {import('./ITransport.js').TransportFactory}
  */
@@ -112,8 +113,10 @@ export async function webSocketTransport(config, { signal }) {
   const WebSocketCtor = globalThis.WebSocket;
   if (typeof WebSocketCtor !== 'function') throw transportError('WebSocket is not available on this platform.');
 
+  const target = new URL(url.href);
+  target.search = appendQueryToken(url.search, options.queryToken);
   // No protocols argument: NexNet requests no subprotocol (§13.7).
-  const socket = new WebSocketCtor(url.href);
+  const socket = new WebSocketCtor(target.href);
   const transport = new BrowserWebSocketTransport(socket, url);
   await new Promise((resolve, reject) => {
     const cleanup = () => {

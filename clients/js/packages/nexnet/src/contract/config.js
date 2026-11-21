@@ -27,11 +27,23 @@
  */
 
 /**
+ * A token sent in the query string of the WebSocket or HttpSocket upgrade request, for servers that accept one
+ * (NexNet.Asp `AccessTokenQueryParameter`). The transport appends `name=value`, each URL-encoded, to the URL's
+ * query; error messages show the URL without it. Browsers cannot send upgrade headers, so this is their way to pass
+ * an ASP.NET token. Prefer a header in Node: query strings are often logged. Java `ClientConfig.Builder.queryToken`.
+ *
+ * @typedef {object} QueryToken
+ * @property {string} name The query parameter name; not empty.
+ * @property {string} value The token.
+ */
+
+/**
  * WebSocket transport (`ws:` or `wss:`); browser and Node. Binary messages only, no subprotocol.
  *
  * @typedef {object} WebSocketTransportConfig
  * @property {string | URL} url
  * @property {Record<string, string>} [headers] Extra upgrade request headers. Node only.
+ * @property {QueryToken | null} [queryToken] Query-string token for the upgrade request; browser and Node.
  * @property {TlsOptions} [tls] Node only.
  */
 
@@ -41,6 +53,7 @@
  * @typedef {object} HttpSocketTransportConfig
  * @property {string | URL} url
  * @property {Record<string, string>} [headers] Extra upgrade request headers.
+ * @property {QueryToken | null} [queryToken] Query-string token for the upgrade request.
  * @property {TlsOptions} [tls]
  */
 

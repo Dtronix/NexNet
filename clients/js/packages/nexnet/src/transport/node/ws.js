@@ -366,7 +366,7 @@ export class NodeWebSocketTransport extends TransportBase {
 /**
  * Opens a WebSocket transport (`ClientConfig.webSocket`) with the RFC 6455 client: `ws:` over `http`, `wss:` over
  * `https` with the TLS options. Sends `config.headers` (an `Authorization` header, for example) with the upgrade
- * request; a query-string token goes in the URL. A refused upgrade rejects with `status` set: `401`/`403` are
+ * request, and appends `config.queryToken` to the request target. A refused upgrade rejects with `status` set: `401`/`403` are
  * `AuthenticationError`, `5xx` `InternalError`, others `ProtocolError`. A `3xx` redirect is never followed.
  *
  * @type {import('../ITransport.js').TransportFactory}
@@ -389,6 +389,7 @@ export async function nodeWebSocketTransport(config, { signal }) {
       'Sec-WebSocket-Version': '13',
       'Sec-WebSocket-Key': key,
     },
+    queryToken: options.queryToken,
     tls: options.tls,
     signal,
   });

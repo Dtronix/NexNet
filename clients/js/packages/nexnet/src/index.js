@@ -110,6 +110,7 @@ export { diagnostics } from './diagnostics/index.js';
 /** @typedef {import('./contract/codec.js').SerializerOptions} SerializerOptions */
 /** @typedef {import('./contract/config.js').ClientConfig} ClientConfig */
 /** @typedef {import('./contract/config.js').TlsOptions} TlsOptions */
+/** @typedef {import('./contract/config.js').QueryToken} QueryToken */
 /** @typedef {import('./contract/config.js').WebSocketTransportConfig} WebSocketTransportConfig */
 /** @typedef {import('./contract/config.js').HttpSocketTransportConfig} HttpSocketTransportConfig */
 /** @typedef {import('./contract/config.js').TcpTransportConfig} TcpTransportConfig */

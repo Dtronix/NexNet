@@ -21,12 +21,36 @@ async function server(handler) {
   return `ws://127.0.0.1:${s.port}/nexus`;
 }
 
-/** @param {string} url */
-function connect(url) {
-  return webSocketTransport({ webSocket: { url } }, { signal: noSignal() });
+/**
+ * @param {string} url
+ * @param {Partial<import('../../src/contract/config.js').WebSocketTransportConfig>} [extra]
+ */
+function connect(url, extra = {}) {
+  return webSocketTransport({ webSocket: { url, ...extra } }, { signal: noSignal() });
 }
 
 describe.skipIf(typeof globalThis.WebSocket !== 'function')('platform WebSocket transport', () => {
+  it('appends queryToken URL-encoded to the URL query; a failure message does not show it', async () => {
+    /** @type {string[]} */
+    const seen = [];
+    const url = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.write(webSocket101(req));
+    });
+    const t = await connect(url + '?x=1', { queryToken: { name: 'access_token', value: 'a b&c' } });
+    cleanup.push(() => t.close());
+    expect(seen[0]).toBe('/nexus?x=1&access_token=a%20b%26c');
+
+    const refused = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.end(httpStatus(401));
+    });
+    const error = await connect(refused, { queryToken: { name: 'token', value: 'secret' } }).catch((e) => e);
+    expect(seen[1]).toBe('/nexus?token=secret');
+    expect(error).toMatchObject({ name: 'NexusTransportError' });
+    expect(String(error.message)).not.toContain('secret');
+  });
+
   it('is the core entry\'s webSocket factory', () => {
     expect(NexusClient.transports.webSocket).toBe(webSocketTransport);
   });
