@@ -92,7 +92,7 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  */
 
 /**
- * Logger sink. J10 adds the console and rolling loggers. Token bytes are never logged.
+ * Logger sink. `src/logging/` provides the console and rolling loggers. Token bytes are never logged.
  *
  * @typedef {object} NexusLogger
  * @property {(level: NexusLogLevel, message: string, error?: unknown) => void} log

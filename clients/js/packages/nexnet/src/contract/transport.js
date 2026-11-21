@@ -1,5 +1,5 @@
 /**
- * Transport contract between the session (J05) and the transports (J06).
+ * Transport contract between the session and the transports.
  * Implemented in `src/transport/ITransport.js`; this file re-exports it.
  * @module
  */

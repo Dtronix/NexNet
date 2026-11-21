@@ -1,5 +1,5 @@
 /**
- * Process-wide diagnostic counters of the pipe layer, for leak audits (H05): after every client has disconnected
+ * Process-wide diagnostic counters of the pipe layer, for leak audits: after every client has disconnected
  * they must all be zero.
  * @module
  */

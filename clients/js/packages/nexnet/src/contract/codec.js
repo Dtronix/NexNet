@@ -1,6 +1,6 @@
 /**
  * MessagePack codec contract: writer, reader, `Formatter<T>` and the formatter registry.
- * Implemented in `src/serialization/` (J02); this file re-exports it.
+ * Implemented in `src/serialization/`; this file re-exports it.
  * @module
  */
 

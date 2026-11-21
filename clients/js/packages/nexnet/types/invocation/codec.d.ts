@@ -1,6 +1,6 @@
 /**
  * Where the invocation layer gets its payload codec: argument writers, result readers and dispatch readers. The
- * default is the public `MsgPackWriter`/`MsgPackReader` (J02). Tests may swap in another codec with
+ * default is the public `MsgPackWriter`/`MsgPackReader`. Tests may swap in another codec with
  * {@link setInvocationCodec}; generated code never does.
  * @module
  */

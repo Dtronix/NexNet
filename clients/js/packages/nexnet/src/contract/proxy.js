@@ -1,5 +1,5 @@
 /**
- * Base class of generated server proxies. Implemented in `src/client/ProxyBase.js` (J07); this file re-exports it.
+ * Base class of generated server proxies. Implemented in `src/client/ProxyBase.js`; this file re-exports it.
  * @module
  */
 

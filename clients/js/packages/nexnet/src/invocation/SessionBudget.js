@@ -1,6 +1,6 @@
 /**
  * A session's receive memory budget (protocol spec §9, C# `SessionBudget`). Counts reservations, not allocations:
- * the invocation queue, every large message being received and (J08) every pipe window are reserved from it.
+ * the invocation queue, every large message being received and every pipe window are reserved from it.
  * @module
  */
 

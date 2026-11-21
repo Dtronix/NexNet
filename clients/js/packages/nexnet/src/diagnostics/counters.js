@@ -1,5 +1,5 @@
 /**
- * The leak-audit counters (H05): `counters()` sums the process-wide counters of every runtime layer. After every
+ * The leak-audit counters: `counters()` sums the process-wide counters of every runtime layer. After every
  * client has disconnected and every pool is disposed they must all be zero.
  * @module
  */
@@ -9,7 +9,7 @@ import { getInvocationCounters } from '../invocation/diagnostics.js';
 import { getPipeCounters } from '../pipes/diagnostics.js';
 
 /**
- * Counters of the J10 features: reconnection, pool, metrics and browser lifecycle.
+ * Counters of the client features: reconnection, pool, metrics and browser lifecycle.
  * @typedef {object} OpsCounters
  * @property {number} timers Reconnect delays and pool health-check timers running.
  * @property {number} subscriptions Event listeners the runtime holds on clients and platform objects (reconnection,

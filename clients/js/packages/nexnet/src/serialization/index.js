@@ -1,6 +1,6 @@
 /**
  * The MessagePack codec: writer, reader, `Formatter<T>`, the built-in formatters and the formatter registry
- * (the formatter API contract of J02; protocol specification §10, §11).
+ * (the formatter API contract; protocol specification §10, §11).
  * @module
  */
 

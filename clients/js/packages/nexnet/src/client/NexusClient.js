@@ -1,6 +1,6 @@
 /**
- * The client (J05): connect, handshake, state machine, events, plaintext warning and disconnect.
- * Reconnection, pooling and full snapshots are J10. Invocations (J07) and pipes (J08) attach to each session before it
+ * The client: connect, handshake, state machine, events, plaintext warning and disconnect.
+ * Reconnection, pooling and full snapshots live in their own modules. Invocations and pipes attach to each session before it
  * starts (`attachSessionLayers`).
  * @module
  */
@@ -347,7 +347,7 @@ export class NexusClient extends EventTarget {
 
   /**
    * Diagnostic snapshot, field names as C# `NexusClientSnapshot` camelCased; null when not connected.
-   * J05 fills the session fields; J10 adds the rest.
+   * The session layer fills the session fields; reconnection, pool and metrics fill the rest.
    * @returns {object | null}
    */
   getSnapshot() {
@@ -360,7 +360,7 @@ export class NexusClient extends EventTarget {
   }
 
   /**
-   * One connect attempt (C# `TryConnectAsyncCore`). J10 calls it with `isReconnecting` for reconnects.
+   * One connect attempt (C# `TryConnectAsyncCore`). The reconnect loop calls it with `isReconnecting`.
    *
    * @protected
    * @param {boolean} isReconnecting
@@ -384,7 +384,7 @@ export class NexusClient extends EventTarget {
     this.#warnPlaintextOnce();
     this.#setState(isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting);
 
-    // F05: the token is acquired before the transport connects, bounded by the handshake timeout. A failing provider
+    // The token is acquired before the transport connects, bounded by the handshake timeout. A failing provider
     // opens no connection.
     /** @type {Uint8Array | null} */
     let token;
@@ -465,8 +465,8 @@ export class NexusClient extends EventTarget {
 
   /**
    * Attaches the per-session layers before the session starts, so frames that arrive in the same read as the
-   * ServerGreeting find their handlers. The invocation layer (J07) fails its pending calls when the session closes; the
-   * pipe layer (J08) resolves pipe parameters of dispatched invocations and ends its pipes with the session.
+   * ServerGreeting find their handlers. The invocation layer fails its pending calls when the session closes; the
+   * pipe layer resolves pipe parameters of dispatched invocations and ends its pipes with the session.
    * @param {NexusSession} session
    */
   #attachSessionLayers(session) {

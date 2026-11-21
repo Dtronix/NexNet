@@ -1,6 +1,6 @@
 /**
  * The MessagePack subset the session needs for protocol message bodies (§4), and the encoders and decoders of the
- * session-level messages. Payload values (arguments, results, channel items) use the J02 codec, not this.
+ * session-level messages. Payload values (arguments, results, channel items) use the payload codec (`src/serialization/`), not this.
  *
  * Integers are written canonically, as C# MessagePack does: non-negative values in the smallest unsigned format,
  * negative values in the smallest signed format. Readers accept any integer format whose value is in range.
@@ -132,7 +132,7 @@ export type ServerGreeting = {
     idleTimeoutMs: number | null;
 };
 /**
- * ServerGreeting body (§4.2). `idleTimeoutMs` is the S04 trailing field: null when the server does not send it.
+ * ServerGreeting body (§4.2). `idleTimeoutMs` is a trailing field: null when the server does not send it.
  *
  * @typedef {object} ServerGreeting
  * @property {number} version The client nexus hash the server expects.

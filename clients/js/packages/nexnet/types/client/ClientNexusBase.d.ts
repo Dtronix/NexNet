@@ -1,5 +1,5 @@
 /**
- * Base class of generated client nexuses (J07). Contract: `src/contract/nexus.js`.
+ * Base class of generated client nexuses. Contract: `src/contract/nexus.js`.
  * @module
  */
 export type CreateChannel = {

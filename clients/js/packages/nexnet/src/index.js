@@ -5,7 +5,7 @@
  */
 
 export { MsgPackWriter, MsgPackReader, FormatterRegistry, tupleFormatter } from './contract/codec.js';
-// J02: the built-in formatters generated code composes, the decode error and the serializer presets.
+// The built-in formatters generated code composes, the decode error and the serializer presets.
 export {
   NexusSerializationError,
   NexusSerializerOptions,

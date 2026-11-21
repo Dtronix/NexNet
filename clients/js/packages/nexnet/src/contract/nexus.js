@@ -1,5 +1,5 @@
 /**
- * Base class of generated client nexuses. Implemented in `src/client/ClientNexusBase.js` (J07); this file
+ * Base class of generated client nexuses. Implemented in `src/client/ClientNexusBase.js`; this file
  * re-exports it.
  * @module
  */

@@ -11,7 +11,7 @@ import { encodeFrame, encodeHeaderOnly } from './frames.js';
 import { encodeInvocationCancellation, encodeInvocationCredit, encodeMessageAbort } from './wire.js';
 
 /**
- * A pipe with control state to send (J08). The pipe queues itself at most once until drained.
+ * A pipe with control state to send. The pipe queues itself at most once until drained.
  *
  * @typedef {object} PipeControlSource
  * @property {() => Uint8Array[]} takePendingControl Returns the frames to send now (window updates, state updates).

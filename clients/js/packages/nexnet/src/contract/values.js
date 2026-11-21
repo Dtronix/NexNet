@@ -1,7 +1,7 @@
 /**
  * Value types for C# primitives that have no exact JS equivalent. They keep the exact C# value (ticks, kind, offset,
  * decimal bits) instead of converting to a lossy native type.
- * Implemented in `src/values/` (J02); this file re-exports them.
+ * Implemented in `src/values/`; this file re-exports them.
  * @module
  */
 

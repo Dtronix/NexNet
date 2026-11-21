@@ -1,5 +1,5 @@
 /**
- * Synchronized collections. Implemented in `src/collections/` (J09); this file re-exports them.
+ * Synchronized collections. Implemented in `src/collections/`; this file re-exports them.
  * @module
  */
 export { NexusList } from '../collections/NexusList.js';

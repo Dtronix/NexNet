@@ -1,5 +1,5 @@
 /**
- * Client pool. Implemented in `src/pool/` (J10); this file re-exports it. Mirrors C# `NexusClientPool`.
+ * Client pool. Implemented in `src/pool/`; this file re-exports it. Mirrors C# `NexusClientPool`.
  * @module
  */
 
