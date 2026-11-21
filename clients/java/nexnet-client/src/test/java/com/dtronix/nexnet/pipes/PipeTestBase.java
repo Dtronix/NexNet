@@ -9,6 +9,7 @@ import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
+import com.dtronix.nexnet.session.Jitter;
 import com.dtronix.nexnet.session.LoopbackTransport;
 import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
@@ -53,7 +54,7 @@ abstract class PipeTestBase {
     }
 
     final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> daemon(r, "test-callbacks"));
-    final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "test-invocations"));
+    final ExecutorService invocations = Jitter.executor(Executors.newCachedThreadPool(r -> daemon(r, "test-invocations")));
     final TestNexus nexus = new TestNexus();
     final List<CountDownLatch> latches = new ArrayList<>();
     /** Results of client methods that run until the test ends; completed in {@link #tearDown()}. */

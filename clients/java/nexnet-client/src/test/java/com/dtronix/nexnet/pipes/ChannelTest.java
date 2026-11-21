@@ -274,9 +274,11 @@ class ChannelTest extends PipeTestBase {
 
     /**
      * Random windows, frame sizes, item sizes and batch sizes in both directions: every item arrives in order and
-     * nothing stalls. The same property as the JS test (J08).
+     * nothing stalls. The same property as the JS test (J08). A stall fails the 5 s message waits or the 20 s read;
+     * the test's own limit only bounds its 25 seeds, which take far longer than usual on a loaded machine (K44).
      */
     @Test
+    @Timeout(300)
     void randomizedChannelsPreserveTheStreamWithoutStalling() throws Exception {
         for (int seed = 1; seed <= 25; seed++) {
             runRandomized(seed);

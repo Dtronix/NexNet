@@ -15,6 +15,7 @@ import com.dtronix.nexnet.NexusUnauthorizedException;
 import com.dtronix.nexnet.serialization.GoldenFiles;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
+import com.dtronix.nexnet.session.Jitter;
 import com.dtronix.nexnet.session.LoopbackTransport;
 import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
@@ -466,7 +467,7 @@ class GoldenInvocationVectorsTest {
     /** A connected session and invocation runtime, with a scripted server. */
     private static final class Fixture implements AutoCloseable {
         final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> daemon(r, "golden-callbacks"));
-        final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "golden-invocations"));
+        final ExecutorService invocations = Jitter.executor(Executors.newCachedThreadPool(r -> daemon(r, "golden-invocations")));
         final InvocationRuntimeTest.TestNexus nexus = new InvocationRuntimeTest.TestNexus();
         final ManualTimers timers = new ManualTimers();
         final NexusSession session;

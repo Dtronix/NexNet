@@ -20,6 +20,7 @@ import com.dtronix.nexnet.NexusRuntime;
 import com.dtronix.nexnet.NexusUnauthorizedException;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
+import com.dtronix.nexnet.session.Jitter;
 import com.dtronix.nexnet.session.LoopbackTransport;
 import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
@@ -98,7 +99,8 @@ class InvocationRuntimeTest {
         callbackThread.set(thread);
         return thread;
     });
-    private final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "test-invocations"));
+    private final Jitter.Tracked invocations =
+        Jitter.executor(Executors.newCachedThreadPool(r -> daemon(r, "test-invocations")));
     private final TestNexus nexus = new TestNexus();
     private final List<NexusSession> sessions = new ArrayList<>();
     private final List<CountDownLatch> latches = new ArrayList<>();
@@ -606,6 +608,9 @@ class InvocationRuntimeTest {
         // Nothing runs before dispatching starts (after onConnected).
         assertTrue(nexus.threads.isEmpty());
         assertEquals(1, runtime.inboundInvocations());
+        // The reader hands the token's cancellation to the invocation executor (its callbacks are user code), so the
+        // cancellation has landed only once that task has run; nothing else is on the executor before dispatching.
+        assertTrue(invocations.awaitIdle(5, TimeUnit.SECONDS), "the cancellation ran");
         runtime.startDispatching();
         assertArrayEquals(array(5, 4), peer.expect(MessageTypes.INVOCATION_RESULT).body);
     }

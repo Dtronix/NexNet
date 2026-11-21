@@ -12,6 +12,8 @@ public final class LoopbackTransport implements Transport {
     private final BytePipe toServer = new BytePipe();
     private final boolean secure;
     private final FakeServer server;
+    /** The client's writing end; pauses at random when {@link Jitter} is on. */
+    private final OutputStream output = Jitter.output(toServer.output());
     /** Completes with the reason when the client closes the transport. */
     public final CompletableFuture<DisconnectReason> closed = new CompletableFuture<>();
 
@@ -43,7 +45,7 @@ public final class LoopbackTransport implements Transport {
 
     @Override
     public OutputStream output() {
-        return toServer.output();
+        return output;
     }
 
     @Override
