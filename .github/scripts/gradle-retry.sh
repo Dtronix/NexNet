@@ -35,7 +35,7 @@ real='tests completed, [0-9]+ failed|There were failing tests|Tests on .+ failed
 
 if ! grep -Eq "$resolution" "$log"; then exit "$status"; fi
 if grep -Eq "$real" "$log"; then
-  echo "gradle-retry: not retrying; the build also failed on a test or task (above)."
+  echo "gradle-retry: not retrying; tests failed too (above)."
   exit "$status"
 fi
 
