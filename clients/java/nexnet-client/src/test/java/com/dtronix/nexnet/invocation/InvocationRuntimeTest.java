@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -109,6 +110,8 @@ class InvocationRuntimeTest {
     private Peer peer;
     private final ManualTimers timers = new ManualTimers();
     private int progressTimeoutMillis = 30_000;
+    /** The runtime's invocation executor; {@link #invocations} unless a test sets another before connecting. */
+    private Executor invocationExecutor = invocations;
 
     private static Thread daemon(Runnable runnable, String name) {
         Thread thread = new Thread(runnable, name);
@@ -123,7 +126,7 @@ class InvocationRuntimeTest {
             .options(sessionOptions.withDisconnectDelayMillis(0)).build();
         sessions.add(session);
         runtime = InvocationRuntime.builder(session, HANDSHAKE, nexus).options(options).codec(TestCodec.INSTANCE)
-            .callbackExecutor(callbacks).invocationExecutor(invocations).build();
+            .callbackExecutor(callbacks).invocationExecutor(invocationExecutor).build();
         session.setMessageHandler(runtime);
         CompletableFuture<Void> ready = session.start();
         peer = new Peer(server);
@@ -585,9 +588,8 @@ class InvocationRuntimeTest {
         assertArrayEquals(array(5, 4), peer.expect(MessageTypes.INVOCATION_RESULT).body);
     }
 
-    @Test
-    void aQueuedInvocationCanceledBeforeItStartsRunsWithACanceledToken() throws Exception {
-        connect(32, InvocationOptions.defaults(), false);
+    /** Method 0 answers canceled when its token is already canceled as it starts, and 0x01 otherwise. */
+    private void answerCanceledWhenStartedCanceled() {
         nexus.methods.put(0, (args, ctx) -> {
             CompletableFuture<byte[]> result = new CompletableFuture<>();
             if (ctx.cancellationToken().isCancellationRequested()) {
@@ -597,6 +599,10 @@ class InvocationRuntimeTest {
             }
             return ctx.result(result, TestCodec.BYTES);
         });
+    }
+
+    /** Queues invocation 5 and its cancellation while dispatching is off; returns once the reader handled both. */
+    private void queueInvocationAndItsCancellation() throws Exception {
         // An outbound call whose result is sent last: frames are handled in order, so once its result is in, the
         // reader has handled the invocation and its cancellation too.
         CompletableFuture<Void> barrier = runtime.invokeTask(2, ArgumentWriter.NONE, null);
@@ -608,11 +614,67 @@ class InvocationRuntimeTest {
         // Nothing runs before dispatching starts (after onConnected).
         assertTrue(nexus.threads.isEmpty());
         assertEquals(1, runtime.inboundInvocations());
-        // The reader hands the token's cancellation to the invocation executor (its callbacks are user code), so the
-        // cancellation has landed only once that task has run; nothing else is on the executor before dispatching.
-        assertTrue(invocations.awaitIdle(5, TimeUnit.SECONDS), "the cancellation ran");
+    }
+
+    @Test
+    void aQueuedInvocationCanceledBeforeItStartsRunsWithACanceledToken() throws Exception {
+        connect(32, InvocationOptions.defaults(), false);
+        answerCanceledWhenStartedCanceled();
+        queueInvocationAndItsCancellation();
+        // K46: the reader cancels the token of an invocation that has not started at once, so nothing needs to run
+        // on the invocation executor first.
         runtime.startDispatching();
         assertArrayEquals(array(5, 4), peer.expect(MessageTypes.INVOCATION_RESULT).body);
+    }
+
+    @Test
+    void aQueuedInvocationCanceledBeforeItStartsRunsCanceledWhateverTheExecutorsOrder() throws Exception {
+        // K46: a multi-threaded executor can start the invocation before a cancellation handed to it. Hold the tasks
+        // and run them newest first, one at a time, so a cancellation sent through the executor would come too late.
+        HeldExecutor held = new HeldExecutor(invocations);
+        invocationExecutor = held;
+        connect(32, InvocationOptions.defaults(), false);
+        answerCanceledWhenStartedCanceled();
+        queueInvocationAndItsCancellation();
+        runtime.startDispatching();
+        held.releaseNewestFirst();
+        assertArrayEquals(array(5, 4), peer.expect(MessageTypes.INVOCATION_RESULT).body);
+    }
+
+    /** Holds tasks until {@link #releaseNewestFirst()}, then passes them to the jittered executor. */
+    private static final class HeldExecutor implements Executor {
+        private final Jitter.Tracked target;
+        private final List<Runnable> held = new ArrayList<>();
+        private boolean released;
+
+        HeldExecutor(Jitter.Tracked target) {
+            this.target = target;
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            synchronized (held) {
+                if (!released) {
+                    held.add(command);
+                    return;
+                }
+            }
+            target.execute(command);
+        }
+
+        /** Runs the held tasks newest first, each to its end (and what it started) before the next. */
+        void releaseNewestFirst() throws InterruptedException {
+            List<Runnable> tasks;
+            synchronized (held) {
+                released = true;
+                tasks = new ArrayList<>(held);
+                held.clear();
+            }
+            for (int i = tasks.size() - 1; i >= 0; i--) {
+                target.execute(tasks.get(i));
+                assertTrue(target.awaitIdle(5, TimeUnit.SECONDS), "held task ran");
+            }
+        }
     }
 
     @Test
