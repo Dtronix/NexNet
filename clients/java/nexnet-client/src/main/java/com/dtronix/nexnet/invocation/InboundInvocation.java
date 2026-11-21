@@ -31,6 +31,8 @@ final class InboundInvocation implements InvocationContext {
     /** When it was queued, on the session clock; set before it is queued. */
     long queuedNanos;
     private final List<NexusDuplexPipe> pipes = new ArrayList<>();
+    /** Set when the invocation starts running user code; guarded by this invocation's monitor. */
+    private boolean started;
 
     InboundInvocation(InvocationRuntime runtime, int invocationId, int methodId, int flags, byte[] body,
                       int argumentsOffset, int argumentsLength, long reserved, boolean separatePool,
@@ -54,6 +56,29 @@ final class InboundInvocation implements InvocationContext {
 
     CancellationTokenSource cancellationSource() {
         return cancellation;
+    }
+
+    /**
+     * Marks the invocation as started, just before its dispatch runs user code. From then on a cancellation can run
+     * callbacks the method registered, so it goes through the invocation executor.
+     */
+    synchronized void markStarted() {
+        started = true;
+    }
+
+    /**
+     * Cancels the token at once when the invocation has not started (K46): nothing can have registered a callback on
+     * it yet, so canceling runs no user code on the calling thread, and the invocation starts canceled whatever the
+     * executor's order.
+     *
+     * @return true when the token was canceled; false when the invocation has started
+     */
+    synchronized boolean cancelIfNotStarted() {
+        if (started) {
+            return false;
+        }
+        cancellation.cancel();
+        return true;
     }
 
     /** Claims the right to send the result; true for the first caller only. */

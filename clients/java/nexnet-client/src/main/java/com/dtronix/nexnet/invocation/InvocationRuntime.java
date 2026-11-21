@@ -1032,6 +1032,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     /** Runs one invocation on the invocation executor. */
     private void run(InboundInvocation invocation) {
+        invocation.markStarted();
         CompletableFuture<Void> done;
         try {
             MsgPackReader reader = codec.reader(invocation.body, invocation.argumentsOffset,
@@ -1343,9 +1344,12 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         }
         // Not tracked: completed already, never received, or fire-and-forget.
         if (invocation != null) {
-            // The token's callbacks are user code: never on the reader thread. A queued invocation starts canceled.
-            CancellationTokenSource source = invocation.cancellationSource();
-            NexusExecutors.execute(invocationExecutor, source::cancel);
+            // A queued invocation has no callbacks on its token yet: cancel it now, so it starts canceled on any
+            // executor (K46). Once it runs, the callbacks are user code: never on the reader thread.
+            if (!invocation.cancelIfNotStarted()) {
+                CancellationTokenSource source = invocation.cancellationSource();
+                NexusExecutors.execute(invocationExecutor, source::cancel);
+            }
         }
     }
 
