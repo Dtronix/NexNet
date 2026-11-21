@@ -24,15 +24,18 @@ namespace NexNet.InteropServer;
 /// or <see cref="InteropServerHost.AddServerAsync{TServerNexus,TClientProxy}"/>.
 /// </summary>
 /// <remarks>
-/// NexNet does not report the port a TCP listener bound, so the TCP and TLS listeners do not bind port 0: the first
-/// start picks free ports and retries with new ones while a port turns out to be taken. Restarts keep the ports.
-/// Kestrel and the QUIC listener bind port 0; QUIC keeps the port it was given on restarts.
+/// NexNet does not report the port a TCP listener bound, so the TCP, TLS and QUIC listeners do not bind port 0: the
+/// first start picks free ports from <see cref="InteropPorts"/> (below the OS ephemeral range, so no client socket
+/// takes one while the server is stopped) and retries with new ones while a port turns out to be taken. Restarts keep
+/// the ports and the UDS path, and retry for a short while when a port is still taken. Kestrel binds port 0.
 /// </remarks>
 public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable, IInteropServerLifetime
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     private const int MaxBindAttempts = 5;
+    private const int MaxRestartBindAttempts = 20;
+    private static readonly TimeSpan RestartBindRetryDelay = TimeSpan.FromMilliseconds(50);
 
     private readonly bool _ownsHost;
     private readonly string _udsDirectory;
@@ -114,6 +117,9 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
             [InteropEndpointKind.Uds] = new UdsServerConfig
             {
                 EndPoint = new UnixDomainSocketEndPoint(Path.Combine(_udsDirectory, "s")),
+                // The folder is this server's own; a socket file left in it by a listener that did not clean up
+                // (a crash) must not fail a restart.
+                RemoveStaleSocketFile = true,
             },
             [InteropEndpointKind.HttpSocket] = new HttpSocketServerConfig { Path = pathPrefix + "/hs" },
             [InteropEndpointKind.HttpSocketTls] = new HttpSocketServerConfig { Path = pathPrefix + "/hss" },
@@ -190,20 +196,23 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     }
 
     /// <summary>
-    /// Starts the server: the first time on newly picked TCP and TLS ports, afterwards on the same ones.
+    /// Starts the server: the first time on newly picked TCP, TLS and QUIC ports, afterwards on the same ones.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var tcp = (TcpServerConfig)_configs[InteropEndpointKind.Tcp];
         var tls = (TcpServerConfig)_configs[InteropEndpointKind.TcpTls];
+        var quic = _configs.TryGetValue(InteropEndpointKind.Quic, out var quicConfig) ? (QuicServerConfig)quicConfig : null;
 
         for (var attempt = 1; ; attempt++)
         {
             if (!_portsAssigned)
             {
-                tcp.EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort());
-                tls.EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort());
+                tcp.EndPoint = new IPEndPoint(IPAddress.Loopback, InteropPorts.Next());
+                tls.EndPoint = new IPEndPoint(IPAddress.Loopback, InteropPorts.Next());
+                if (quic != null)
+                    quic.EndPoint = new IPEndPoint(IPAddress.Loopback, InteropPorts.Next());
             }
 
             try
@@ -217,20 +226,19 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
             {
                 // Another process took a picked port between the probe and the bind; pick new ones.
             }
+            catch (TransportException e) when (e.Error == TransportError.AddressInUse
+                                               && _portsAssigned
+                                               && attempt < MaxRestartBindAttempts)
+            {
+                // A restart must keep its ports, as clients hold the endpoints. The ports are outside the ephemeral
+                // range, so only another process probing or binding the same port can hold one: wait for it to let go.
+                await Task.Delay(RestartBindRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         if (!_portsAssigned)
         {
             _portsAssigned = true;
-            IPEndPoint? quicEndPoint = null;
-            if (_configs.TryGetValue(InteropEndpointKind.Quic, out var quicConfig))
-            {
-                // Bound on port 0: keep the picked port for restarts.
-                var quicName = InteropEndpointKind.Quic.GetEndpointName();
-                quicEndPoint = Server.Endpoints.Single(e => e.Name == quicName).BoundEndPoint as IPEndPoint
-                               ?? throw new InvalidOperationException("The QUIC listener reported no bound end point.");
-                ((QuicServerConfig)quicConfig).EndPoint = quicEndPoint;
-            }
 
             Endpoints = new InteropEndpoints(
                 (IPEndPoint)tcp.EndPoint,
@@ -240,7 +248,7 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
                 AspUri(Host.HttpsBaseUri, InteropEndpointKind.HttpSocketTls, "https"),
                 AspUri(Host.HttpBaseUri, InteropEndpointKind.WebSocket, "ws"),
                 AspUri(Host.HttpsBaseUri, InteropEndpointKind.WebSocketTls, "wss"),
-                quicEndPoint);
+                (IPEndPoint?)quic?.EndPoint);
         }
     }
 
@@ -251,20 +259,6 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
 
     private Uri AspUri(Uri baseUri, InteropEndpointKind kind, string scheme)
         => new UriBuilder(baseUri) { Scheme = scheme, Path = ((AspServerConfig)_configs[kind]).Path }.Uri;
-
-    private static int FreeTcpPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try
-        {
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        finally
-        {
-            listener.Stop();
-        }
-    }
 
     /// <summary>
     /// Creates a C# client configuration that connects to <paramref name="kind"/>. TLS endpoints are validated
