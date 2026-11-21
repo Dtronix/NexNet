@@ -24,6 +24,8 @@ env:
   # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
   # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
   # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
+  # A pull request into master reads only master's cache, so it can start empty. Every Gradle command therefore runs
+  # through .github/scripts/gradle-retry.sh (H35), which re-runs it once when it fails on dependency resolution.
   NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
@@ -140,7 +142,7 @@ jobs:
 
       - name: Build the JVM host
         if: matrix.lang == 'java'
-        run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}, every transport)
         env:
@@ -218,7 +220,7 @@ jobs:
         run: |
           dotnet build src -c Release --maxcpucount:1
           if [ "${{ matrix.lang }}" = java ]; then
-            clients/java/gradlew -p clients/java :interop-host:installInteropHost
+            .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
           else
             npm ci --prefix clients/js
             npm run build:interop-host --prefix clients/js

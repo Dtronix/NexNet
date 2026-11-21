@@ -37,6 +37,8 @@ env:
   # Gradle User Home cache (H29). setup-gradle only writes on the default branch by default, so train pushes never saved
   # an entry and every Gradle job resolved its whole classpath from Maven Central and the plugin portal (429 rate
   # limits). Pushes to master and train/** (and the weekly run on master) write; pull requests and tags only restore.
+  # A pull request into master reads only master's cache, so it can start empty. Every Gradle command therefore runs
+  # through .github/scripts/gradle-retry.sh (H35), which re-runs it once when it fails on dependency resolution.
   NEXNET_GRADLE_CACHE_READ_ONLY: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/heads/train/') }}
 
 jobs:
@@ -111,7 +113,7 @@ jobs:
 
       - name: Java golden replay
         if: steps.replay.outputs.java == 'true'
-        run: clients/java/gradlew -p clients/java :nexnet-client:test --tests '*Golden*'
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client:test --tests '*Golden*'
 
   js:
     if: ${{ !inputs.only-android }}
@@ -204,7 +206,7 @@ jobs:
 
       - name: gradlew check (unit tests, golden vectors, javadoc, Animal Sniffer API 24)
         run: >-
-          clients/java/gradlew -p clients/java check --continue
+          .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java check --continue
           -Pnexnet.testJava=${{ matrix.test-java }}
           -Porg.gradle.java.installations.fromEnv=JAVA_HOME_11_X64,JAVA_HOME_21_X64
 
@@ -263,7 +265,7 @@ jobs:
         run: npm ci --prefix clients/js
 
       - name: Build the nexnet-client jar
-        run: clients/java/gradlew -p clients/java :nexnet-client:jar
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client:jar
 
       # --minimum-expected-tests guards against discovering fewer tests; raise it when tests are added.
       - name: Generator tests with javac and tsc (NEXNET_REQUIRE_SDKS=1)
@@ -300,7 +302,7 @@ jobs:
         shell: bash
         run: |
           log="$RUNNER_TEMP/emitted-consumer-test.log"
-          clients/java/gradlew -p clients/java :nexnet-client:emittedConsumerTest --console=plain 2>&1 | tee "$log"
+          .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client:emittedConsumerTest --console=plain 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           if ! grep -Eq '^> Task :nexnet-client:emittedConsumerTest$' "$log"; then
@@ -383,7 +385,7 @@ jobs:
 
       - name: Build the JVM host
         if: matrix.lang == 'java'
-        run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
         env:
@@ -485,7 +487,7 @@ jobs:
         run: sdkmanager --install "platforms;android-24" "platforms;android-${ANDROID_COMPILE_SDK}" "build-tools;${ANDROID_BUILD_TOOLS}"
 
       - name: Build the core JAR
-        run: clients/java/gradlew -p clients/java :nexnet-client:jar
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client:jar
 
       - name: D8 and R8 at --min-api 24
         shell: bash
@@ -514,7 +516,7 @@ jobs:
 
       - name: Build the AAR
         if: steps.module.outputs.aar == 'true'
-        run: clients/java/gradlew -p clients/java :nexnet-client-android:assembleRelease
+        run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client-android:assembleRelease
 
       - uses: actions/setup-dotnet@v6
         if: steps.module.outputs.aar == 'true'
@@ -539,7 +541,7 @@ jobs:
         # Its root project is emitted-consumer-test, so clients/java/gradle.properties does not apply (K39 watch item):
         # the H29 download retries are passed here.
         run: >-
-          clients/java/gradlew -p clients/java/nexnet-client/emitted-consumer-test consumerCheck
+          .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java/nexnet-client/emitted-consumer-test consumerCheck
           "-Pnexnet.emitted.dir=$GITHUB_WORKSPACE/src/NexNet.Generator.IntegrationSample/generated/java"
           -Pnexnet.emittedConsumer.android=true
           -Dorg.gradle.internal.repository.max.tentatives=6 -Dorg.gradle.internal.repository.initial.backoff=2000
@@ -599,7 +601,7 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
+          script: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
 
       # connectedCheck prints no test counts, and the smoke tests skip themselves without the endpoint arguments, so a
       # broken argument hand-off would still pass. Lists every device test and fails if none ran or a smoke test skipped.
