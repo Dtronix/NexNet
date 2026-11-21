@@ -10,8 +10,8 @@ namespace NexNet.IntegrationTests;
 /// <summary>Synchronized collection helpers of <see cref="MatrixTestBase"/> (P01f).</summary>
 /// <remarks>
 /// The client's list is read through <see cref="IRemoteList{T}"/> snapshots and its change events through a watch
-/// (<see cref="WatchAsync"/>). Tests of C#-only list members (<c>IsReadOnly</c>, <c>CopyTo</c>, <c>DisabledTask</c>),
-/// and of a throwing change handler, drive the C# client directly and skip other languages visibly
+/// (<see cref="WatchAsync"/>), its mode, state and disabled signal through <see cref="IRemoteList{T}.GetStateAsync"/>.
+/// Tests of C#-only list members (<c>CopyTo</c>) drive the C# client directly and skip other languages visibly
 /// (<see cref="RequireInProc"/>).
 /// </remarks>
 internal abstract partial class MatrixTestBase

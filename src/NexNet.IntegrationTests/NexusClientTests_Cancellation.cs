@@ -176,7 +176,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await call.Timeout(T(1)));
 
         await Assert.That(await canceledReply.Task.Timeout(T(1))).IsEqualTo((ushort)1);
-        await AssertNotOutstandingInProc(client, 1);
+        await AssertNotOutstanding(client, 1);
         await WaitForStateAsync(client, ConnectionState.Connected);
         await EndAsync(client);
     }
@@ -243,7 +243,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
 
         // The second call starts with its token already canceled and replies Canceled, releasing its id.
         await secondCanceledReply.Task.Timeout(T(1));
-        await AssertNotOutstandingInProc(client, 2);
+        await AssertNotOutstanding(client, 2);
         await EndAsync(client);
     }
 
@@ -269,7 +269,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
             await proxy.ServerTaskValueWithCancellation(cts.Token).Timeout(T(1)));
 
         // Never sent and no id taken: the next call is the only one the server sees.
-        await AssertNotOutstandingInProc(client, 1);
+        await AssertNotOutstanding(client, 1);
         await Assert.That(await proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(T(1))).IsEqualTo(1);
         await Assert.That(Volatile.Read(ref received)).IsEqualTo(1);
         await Assert.That(Volatile.Read(ref invocations)).IsEqualTo(1);
@@ -298,7 +298,7 @@ internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTes
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
             await proxy.ServerTaskWithCancellation(cts.Token).Timeout(T(1)));
 
-        await AssertNotOutstandingInProc(client, 1);
+        await AssertNotOutstanding(client, 1);
         await proxy.ServerTaskWithCancellation(CancellationToken.None).Timeout(T(1));
         await Assert.That(Volatile.Read(ref received)).IsEqualTo(1);
         await Assert.That(Volatile.Read(ref invocations)).IsEqualTo(1);

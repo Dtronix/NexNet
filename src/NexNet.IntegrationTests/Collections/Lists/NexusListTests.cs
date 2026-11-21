@@ -454,12 +454,14 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task IsReadOnly_IsFalseOnBidirectional(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
 
-        await Assert.That(InProc(s.Client).Client.Proxy.IntListBi.IsReadOnly).IsFalse();
+        // The client may change a bidirectional list. Java and JavaScript have no read-only flag: their mode says it.
+        var state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.BiDirectional);
+        await Assert.That(state.IsReadOnly ?? false).IsFalse();
         await s.EndAsync();
     }
 
@@ -467,12 +469,13 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task IsReadOnly_IsFalseOnServerToClient(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
-        var relay = InProc(s.Client).Client.Proxy.IntListRelay;
-        await relay.EnableAsync().Timeout(T(1));
+        var relay = s.Client.List<int>(nameof(IServerNexus.IntListRelay));
+        await relay.EnableAsync().AsTask().Timeout(T(1));
 
-        await Assert.That(relay.IsReadOnly).IsFalse();
+        var state = await relay.GetStateAsync().AsTask().Timeout(T(1));
+        await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.Relay);
+        await Assert.That(state.IsReadOnly ?? false).IsFalse();
         await s.EndAsync();
     }
 

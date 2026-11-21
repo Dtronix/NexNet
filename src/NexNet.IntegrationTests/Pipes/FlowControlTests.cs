@@ -172,8 +172,7 @@ internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
         // Reserved for the session's lifetime: the invocation queue (InvocationCredits x 64 KiB).
         var serverBudget = (await serverSession.Task.Timeout(T(1))).Budget;
         var serverBaseline = serverBudget.Reserved;
-        var clientBudget = target.Language == ClientLanguages.CSharp ? InProc(client).Client.Session!.Budget : null;
-        var clientBaseline = clientBudget?.Reserved;
+        var clientBaseline = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
 
         for (var i = 0; i < 300; i++)
         {
@@ -184,11 +183,18 @@ internal class FlowControlTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
             await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
         }
 
-        // Every window reserved by the server (and by the C# client) was released.
-        await WaitUntil(() => serverBudget.Reserved == serverBaseline && (clientBudget == null || clientBudget.Reserved == clientBaseline));
+        // Every window reserved by the server and by the client was released.
+        await WaitUntil(() => serverBudget.Reserved == serverBaseline);
         await Assert.That(serverBudget.Reserved).IsEqualTo(serverBaseline);
-        if (clientBudget != null)
-            await Assert.That(clientBudget.Reserved).IsEqualTo(clientBaseline!.Value);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(T(1));
+        var clientReserved = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+        while (clientReserved != clientBaseline && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+            clientReserved = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+        }
+
+        await Assert.That(clientReserved).IsEqualTo(clientBaseline);
 
         await EndAsync(client);
     }
