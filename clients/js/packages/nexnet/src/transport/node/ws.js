@@ -242,6 +242,8 @@ export class NodeWebSocketTransport extends TransportBase {
     if (typeof (/** @type {any} */ (socket).getPeerX509Certificate) === 'function') {
       this.remoteCertificate = /** @type {import('node:tls').TLSSocket} */ (socket).getPeerX509Certificate() ?? null;
     }
+    this.remoteAddress = socket.remoteAddress ?? null;
+    this.remotePort = socket.remotePort ?? null;
     this.#decoder = new FrameDecoder({
       onBinary: (data) => this._deliver(data),
       onControl: (opcode, payload) => this.#onControl(opcode, payload),

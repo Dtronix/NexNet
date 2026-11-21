@@ -284,8 +284,8 @@ Conversions:
 - `connect({signal})`, `tryConnect({signal})` → `ConnectionResult` (`success`, `state`, `disconnectReason`, `error`),
   `disconnect()`, `[Symbol.asyncDispose]()`. On a connected client `connect`/`tryConnect` succeed and do nothing (C#
   parity); during an attempt they share that attempt's result.
-- `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `disconnected` (a promise, below),
-  `reconnection` (below), `config`, `nexus`.
+- `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `remoteAddress`, `remotePort`, `disconnected`
+  (a promise, below), `reconnection` (below), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
 - Events (`CustomEvent`, dispatched from a microtask, never re-entrantly from a transport callback):
   - `statechange`, `detail: { state, previous }` (both `ConnectionState` values), on every change of `state`;
@@ -342,12 +342,19 @@ transport a client logs `NexNet: unencrypted transport (<transport>); credential
 once per instance, on the first connect. Plaintext stays allowed; the warning and `isSecure` make it visible.
 
 The `Transport` interface between the session and the transports: `write(chunks)`, `onData(cb)`, `onClose(cb)`,
-`close(reason)`, `isSecure`, `remoteCertificate`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
+`close(reason)`, `isSecure`, `remoteCertificate`, `remoteAddress`, `remotePort`, `name`. A `TransportFactory` is `(config, {signal}) => Promise<Transport>`.
 The Node TLS transports (`tcpTls`, `https:` HttpSocket, `wss:` WebSocket) set `remoteCertificate` to the server's
 `X509Certificate` (`node:crypto`); every other transport, the browser WebSocket included, sets it to null. The session
 exposes it as `session.remoteCertificate`, and `NexusClient.remoteCertificate` returns the current session's value:
 null when not connected (before the first connect, after a disconnect, between reconnect attempts) and on non-TLS
 transports. Its JSDoc type is `unknown` so the platform-neutral declarations do not depend on Node types.
+
+`remoteAddress` (`string | null`) and `remotePort` (`number | null`) are the server's endpoint (C# `Context.RemoteAddress`/
+`RemotePort`, Java `remoteAddress()`/`remotePort()`). Every Node transport sets them from its socket's peer
+(`socket.remoteAddress`/`remotePort`); UDS reports the socket path and no port, as C# does. The browser WebSocket
+cannot see the peer and leaves both null. The session exposes the transport's values, and `NexusClient` returns the
+current session's: null when not connected. Unlike the C# client, whose WebSocket and HttpSocket transports report no
+endpoint, the Node (and Java) WebSocket and HttpSocket transports report the socket's peer.
 
 ### 3.4 Generated-code base classes (`proxy.js`, `nexus.js`)
 
@@ -381,7 +388,8 @@ session. Its options:
 `ClientNexusBase<TProxy>` (base of `<Client>NexusBase`):
 
 - hooks `onConnected(isReconnected)`, `onDisconnected(reason)` and `onReconnecting()`, no-ops by default, may be async;
-- `context`: a `ClientContext` with `proxy`, `sessionId`, `createPipe`, `createChannel` and `disconnect`;
+- `context`: a `ClientContext` with `proxy`, `sessionId`, `isSecure`, `remoteAddress`, `remotePort`, `createPipe`,
+  `createChannel` and `disconnect`;
 - `_dispatch(methodId, reader, ctx)`: the generated override switches on `methodId`, reads the arguments array from
   `reader`, calls the method and reports a `ValueTask<T>` result with `ctx.writeResult(formatter, value)`. `ctx` is a
   `DispatchContext`: `invocationId`, `signal` (the C# `CancellationToken`), `writeResult`, `pipe(pipeId)` and

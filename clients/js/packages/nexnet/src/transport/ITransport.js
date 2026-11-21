@@ -18,6 +18,10 @@ import { notImplemented } from '../contract/internal.js';
  * @property {(reason?: unknown) => Promise<void>} close
  * @property {boolean} isSecure True for TLS, WSS, HTTPS and UDS. Any transport that does not declare itself secure is not.
  * @property {unknown} remoteCertificate The server certificate on Node TLS transports, otherwise null.
+ * @property {string | null} [remoteAddress] The server's address (the IP address of the Node socket's peer, or the socket
+ *   path for UDS); null or absent when the transport does not expose it (the browser WebSocket).
+ * @property {number | null} [remotePort] The server's port on the Node TCP-based transports; null or absent otherwise
+ *   (UDS, browser).
  * @property {string} name Transport name used in logs and the plaintext warning (`'TCP'`, `'ws'`, …).
  */
 

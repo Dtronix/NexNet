@@ -30,6 +30,8 @@ export class SocketTransport extends TransportBase {
     if (typeof (/** @type {any} */ (socket).getPeerX509Certificate) === 'function') {
       this.remoteCertificate = /** @type {import('node:tls').TLSSocket} */ (socket).getPeerX509Certificate() ?? null;
     }
+    this.remoteAddress = socket.remoteAddress ?? null;
+    this.remotePort = socket.remotePort ?? null;
     if (head !== undefined && head.length > 0) this._deliver(head);
     this.#socketClosed = new Promise((resolve) => socket.once('close', () => resolve(undefined)));
     socket.on('data', (/** @type {Buffer} */ data) => this._deliver(data));

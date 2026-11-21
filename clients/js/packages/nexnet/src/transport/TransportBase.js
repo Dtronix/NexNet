@@ -70,6 +70,10 @@ export class TransportBase {
   isSecure;
   /** @type {unknown} */
   remoteCertificate = null;
+  /** @type {string | null} */
+  remoteAddress = null;
+  /** @type {number | null} */
+  remotePort = null;
   /** @type {string} */
   name;
 
