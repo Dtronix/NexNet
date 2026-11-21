@@ -457,7 +457,8 @@ jobs:
   # D26: the only place the Android SDK is used. Builds the -android AAR (K13), dexes the core JAR at --min-api 24 with
   # D8 and R8, compiles the runtime and every optional module in the form the generator emits them (K37) and dexes
   # that form at --min-api 24 (K38), and smoke-tests on an API-24 emulator against the interop server, reachable from
-  # it at 10.0.2.2: connect, invoke and pipe echo through the generated client of the interop test nexus (K36).
+  # it at 10.0.2.2: connect, invoke and pipe echo through the generated client of the interop test nexus (K36). A second
+  # emulator at API 26 runs the java.time device test, which API 24 skips (K47).
   # Runs when android-changes says so (H30); weekly.yml also runs it on master as a drift check (only-android).
   android:
     needs: android-changes
@@ -593,6 +594,39 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Writes the checker the "Device test results" steps run. connectedCheck prints no test counts, and the smoke tests
+      # skip themselves without the endpoint arguments, so a broken argument hand-off would still pass: the checker lists
+      # every device test of one emulator run and fails if none ran, one failed, or a required class did not run and pass.
+      # Arguments: results directory, API level, required test class (simple name).
+      - name: Write the device test results checker
+        if: steps.module.outputs.smoke == 'true'
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/device-results.py" <<'EOF'
+          import glob, os, sys
+          import xml.etree.ElementTree as ET
+          results, api, required = sys.argv[1], sys.argv[2], sys.argv[3]
+          files = glob.glob(os.path.join(results, '**', '*.xml'), recursive=True)
+          cases = [c for f in files for c in ET.parse(f).getroot().iter('testcase')]
+          def state(c):
+              return 'failed' if c.find('failure') is not None or c.find('error') is not None else 'skipped' if c.find('skipped') is not None else 'passed'
+          for c in cases:
+              print(f"  {state(c):7} {c.get('classname')}.{c.get('name')} ({c.get('time')} s)")
+          count = lambda cs, s: sum(1 for c in cs if state(c) == s)
+          req = [c for c in cases if c.get('classname', '').endswith('.' + required)]
+          line = (f"Device tests on the API {api} emulator: {len(cases)} ({count(cases, 'passed')} passed, {count(cases, 'failed')} failed, "
+                  f"{count(cases, 'skipped')} skipped); {required}: {len(req)} ({count(req, 'passed')} passed)")
+          print(line)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(line + '\n')
+          if not cases:
+              sys.exit(f'::error::No device test results on API {api} ({results}).')
+          if count(cases, 'failed'):
+              sys.exit(f'::error::{count(cases, "failed")} device test(s) failed on API {api}.')
+          if not req or count(req, 'passed') != len(req):
+              sys.exit(f'::error::{required} did not run and pass on API {api} (skipped, or endpoint arguments missing?).')
+          EOF
+
       - name: Smoke test on an API 24 emulator (connect, invoke, pipe)
         if: steps.module.outputs.smoke == 'true'
         uses: reactivecircus/android-emulator-runner@v2
@@ -600,34 +634,43 @@ jobs:
           api-level: 24
           arch: x86_64
           target: default
+          avd-name: nexnet-api24
           disable-animations: true
           script: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck $NEXNET_ANDROID_ARGS
 
-      # connectedCheck prints no test counts, and the smoke tests skip themselves without the endpoint arguments, so a
-      # broken argument hand-off would still pass. Lists every device test and fails if none ran or a smoke test skipped.
-      - name: Device test results
+      # Moved out of the build directory so the API 26 run below cannot mix with or replace them.
+      - name: Device test results (API 24)
         if: steps.module.outputs.smoke == 'true' && !cancelled()
-        shell: python3 {0}
+        shell: bash
         run: |
-          import glob, os, sys
-          import xml.etree.ElementTree as ET
-          files = glob.glob('clients/java/nexnet-client-android/build/outputs/androidTest-results/connected/**/*.xml', recursive=True)
-          cases = [c for f in files for c in ET.parse(f).getroot().iter('testcase')]
-          def state(c):
-              return 'failed' if c.find('failure') is not None or c.find('error') is not None else 'skipped' if c.find('skipped') is not None else 'passed'
-          for c in cases:
-              print(f"  {state(c):7} {c.get('classname')}.{c.get('name')} ({c.get('time')} s)")
-          count = lambda cs, s: sum(1 for c in cs if state(c) == s)
-          smoke = [c for c in cases if c.get('classname', '').endswith('.InteropServerSmokeTest')]
-          line = (f"Device tests on the API 24 emulator: {len(cases)} ({count(cases, 'passed')} passed, {count(cases, 'failed')} failed, "
-                  f"{count(cases, 'skipped')} skipped); InteropServerSmokeTest: {len(smoke)} ({count(smoke, 'passed')} passed)")
-          print(line)
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write(line + '\n')
-          if not cases:
-              sys.exit('::error::No device test results (androidTest-results/connected).')
-          if not smoke or count(smoke, 'passed') != len(smoke):
-              sys.exit('::error::InteropServerSmokeTest did not run and pass on every transport (endpoint arguments missing?).')
+          dest="$RUNNER_TEMP/device-results/api24"
+          mkdir -p "$dest"
+          src=clients/java/nexnet-client-android/build/outputs/androidTest-results/connected
+          if [ -d "$src" ]; then mv "$src"/* "$dest"/ 2>/dev/null || true; fi
+          python3 "$RUNNER_TEMP/device-results.py" "$dest" 24 InteropServerSmokeTest
+
+      # K47: java.time is API 26 (without desugaring), so NexusJavaTimeDeviceTest (@SdkSuppress(minSdkVersion = 26)) is
+      # skipped on API 24. A second emulator at API 26 runs that class only; everything else stays on API 24.
+      - name: java.time device test on an API 26 emulator
+        if: steps.module.outputs.smoke == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          arch: x86_64
+          target: default
+          avd-name: nexnet-api26
+          disable-animations: true
+          script: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :nexnet-client-android:connectedCheck -Pandroid.testInstrumentationRunnerArguments.class=com.dtronix.nexnet.android.NexusJavaTimeDeviceTest
+
+      - name: Device test results (API 26)
+        if: steps.module.outputs.smoke == 'true' && !cancelled()
+        shell: bash
+        run: |
+          dest="$RUNNER_TEMP/device-results/api26"
+          mkdir -p "$dest"
+          src=clients/java/nexnet-client-android/build/outputs/androidTest-results/connected
+          if [ -d "$src" ]; then mv "$src"/* "$dest"/ 2>/dev/null || true; fi
+          python3 "$RUNNER_TEMP/device-results.py" "$dest" 26 NexusJavaTimeDeviceTest
 
       - name: Upload Android results
         if: failure()
@@ -636,6 +679,7 @@ jobs:
           name: android-results
           path: |
             ${{ runner.temp }}/interop-server.log
+            ${{ runner.temp }}/device-results/
             clients/java/**/build/outputs/androidTest-results/
             clients/java/**/build/reports/
           if-no-files-found: ignore
