@@ -20,7 +20,10 @@ import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptCall;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptHost;
 import com.dtronix.nexnet.testnexus.scaffolding.TypedCodec;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -193,6 +196,27 @@ final class ClientEntry extends Driven implements ScriptHost {
             client.close();
         } catch (RuntimeException ignored) {
             // Closing anyway.
+        }
+    }
+
+    /**
+     * The certificate the server presented on the current connection, as base64 DER (§6.4 {@code client.remoteCertificate}).
+     *
+     * @return the base64 DER, or null when the client is not connected or its transport has no TLS
+     */
+    String remoteCertificate() {
+        NexusSession session = client.session();
+        if (client.state() != ConnectionState.CONNECTED || session == null) {
+            return null;
+        }
+        X509Certificate certificate = session.remoteCertificate();
+        if (certificate == null) {
+            return null;
+        }
+        try {
+            return Base64.getEncoder().encodeToString(certificate.getEncoded());
+        } catch (CertificateEncodingException e) {
+            throw new HostError(HostError.INVALID_OPERATION, "The server certificate cannot be encoded: " + e.getMessage());
         }
     }
 

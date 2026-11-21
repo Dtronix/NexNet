@@ -233,6 +233,7 @@ before a response is sent arrives before that response.
 | `client.disconnect` | `{h}` | `{}`, once the client is `Disconnected`. |
 | `client.dispose` | `{h}` | `{}`; releases the handle and everything the client owns. Disposing twice is not an error. |
 | `client.state` | `{h}` | `{state}`: a `ConnectionState` name (`Disconnected`, `Connecting`, `Connected`, `Reconnecting`, `Disconnecting`). |
+| `client.remoteCertificate` | `{h}` | `{der}`: the certificate the server presented on the client's current connection, as base64 DER; `null` when the client is not `Connected` or its transport has no TLS. A host without the `RemoteCertificate` capability (the browser) answers `null`. Client handles only. |
 | `client.awaitState` | `{h, state}` | `{}` once the state is reached (at once if it is current). Bounded by `timeoutMs`. |
 | `client.awaitReady` | `{h}` | `{}` once connected and ready for invocations. Bounded by `timeoutMs`. |
 | `client.awaitDisconnected` | `{h}` | `{reason}`: a `DisconnectReason` name, once the current session is disconnected (at once if it already is). Bounded by `timeoutMs`. |

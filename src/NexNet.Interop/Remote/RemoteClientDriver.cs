@@ -93,6 +93,13 @@ public sealed class RemoteClientDriver : IClientUnderTest
         => Enum.Parse<ConnectionState>((await CallAsync("client.state", null, DefaultOpMs).ConfigureAwait(false))["state"]!.GetValue<string>());
 
     /// <inheritdoc />
+    public async Task<byte[]?> GetRemoteCertificateAsync()
+    {
+        var der = (await CallAsync("client.remoteCertificate", null, DefaultOpMs).ConfigureAwait(false))["der"]?.GetValue<string>();
+        return der == null ? null : Convert.FromBase64String(der);
+    }
+
+    /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         try

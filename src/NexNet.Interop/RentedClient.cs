@@ -58,6 +58,10 @@ internal sealed class RentedClient : IRentedClientUnderTest
         => IsReturned ? Task.FromResult(ConnectionState.Disconnected) : _inner.GetStateAsync();
 
     /// <inheritdoc />
+    public Task<byte[]?> GetRemoteCertificateAsync()
+        => throw new NotSupportedException($"{Target}: a pool rental has no remote certificate query.");
+
+    /// <inheritdoc />
     public Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         if (!IsReturned)
