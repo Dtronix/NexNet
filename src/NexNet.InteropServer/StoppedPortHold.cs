@@ -4,31 +4,38 @@ using System.Net.Sockets;
 namespace NexNet.InteropServer;
 
 /// <summary>
-/// Keeps the TCP, TLS and QUIC ports of a stopped interop server bound (not listening) until the server starts again,
-/// so no other server can listen on them meanwhile and a client's connection attempt is refused (TCP) or unanswered
-/// (QUIC).
+/// Keeps the ports of a stopped test server bound (not listening) until it starts again, so no server of another test
+/// process can listen on them meanwhile and a client's connection attempt is refused (TCP) or unanswered (QUIC). Also
+/// gives a test an address with nothing listening on it (no server at all).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="InteropPorts"/> keeps ports unique within one process only. Without a hold, a server of another test
-/// process can pick a stopped server's port and listen on it, and a "reconnect to the stopped server" attempt reaches
-/// that server instead of failing (S50).
+/// <see cref="InteropPorts"/> and the integration tests' <c>TestPorts</c> keep ports unique within one process only.
+/// Without a hold, a server of another test process can pick a stopped server's port and listen on it, and a
+/// "reconnect to the stopped server" attempt reaches that server instead of failing (S50).
 /// </para>
 /// <para>
-/// Each port is bound as the port allocators probe it: exclusively on Windows, where a plain binding does not keep
+/// Each TCP port is bound as the port allocators probe it: exclusively on Windows, where a plain binding does not keep
 /// another socket that asks for address reuse off the port. When the exclusive binding is refused (Windows refuses
 /// it while a closed connection of the port is in TIME_WAIT), a plain binding holds the port.
 /// </para>
 /// <para>
-/// A stopped TCP listener frees its port at once, so a TCP or TLS port that cannot be bound within
-/// <see cref="BindTimeout"/> fails the stop with <see cref="InvalidOperationException"/>: another process holds it,
-/// and a test relying on the server being unreachable would be silently wrong. A stopped QUIC listener does not free
-/// its UDP port at once: msquic keeps its binding (exclusive) for seconds after the listener stops, often until the
-/// process reuses it for the restart. The UDP port is therefore taken in the background, as soon as msquic lets go of
-/// it, until the hold is disposed.
+/// On Linux and macOS, .NET binds every TCP socket with <c>SO_REUSEADDR</c>, so a TCP socket that does not listen keeps
+/// no other socket off its port, not even a listener (H53). The allocators only hand out a port whose TCP and UDP
+/// ports are both free, so the hold also binds the UDP port of the same number, which no other socket can share there;
+/// a client's TCP connection attempt is still refused, as nothing listens on the port. On Windows the UDP port of a TCP
+/// port is taken when it is free, and skipped otherwise: the exclusive TCP binding already keeps the allocators off.
+/// </para>
+/// <para>
+/// A stopped TCP listener frees its port at once, so a TCP port that cannot be held within <see cref="BindTimeout"/>
+/// fails the hold with <see cref="InvalidOperationException"/>: another process holds it, and a test relying on the
+/// server being unreachable would be silently wrong. A stopped QUIC listener does not free its UDP port at once:
+/// msquic keeps its binding (exclusive) for seconds after the listener stops, often until the process reuses it for
+/// the restart. A QUIC port is therefore taken in the background, as soon as msquic lets go of it, until the hold is
+/// disposed.
 /// </para>
 /// </remarks>
-internal sealed class StoppedPortHold : IDisposable
+public sealed class StoppedPortHold : IDisposable
 {
     /// <summary>How long a TCP port that is taken is retried before the hold fails.</summary>
     internal static readonly TimeSpan BindTimeout = TimeSpan.FromSeconds(2);
@@ -48,14 +55,27 @@ internal sealed class StoppedPortHold : IDisposable
     /// Binds the TCP and TLS ports of <paramref name="endpoints"/>, starts taking its QUIC port (UDP), and returns the
     /// hold.
     /// </summary>
-    /// <exception cref="InvalidOperationException">A TCP port could not be bound within <see cref="BindTimeout"/>.</exception>
-    public static async Task<StoppedPortHold> TakeAsync(InteropEndpoints endpoints)
+    /// <exception cref="InvalidOperationException">A TCP port could not be held within <see cref="BindTimeout"/>.</exception>
+    public static Task<StoppedPortHold> TakeAsync(InteropEndpoints endpoints)
     {
+        ArgumentNullException.ThrowIfNull(endpoints);
+        return TakeAsync([endpoints.Tcp, endpoints.TcpTls], endpoints.Quic is { } quic ? [quic] : []);
+    }
+
+    /// <summary>
+    /// Binds the TCP ports of <paramref name="tcpEndPoints"/> (TCP, TLS, HTTP), starts taking the QUIC ports of
+    /// <paramref name="quicEndPoints"/> (UDP), and returns the hold.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A TCP port could not be held within <see cref="BindTimeout"/>.</exception>
+    public static async Task<StoppedPortHold> TakeAsync(IEnumerable<IPEndPoint> tcpEndPoints, IEnumerable<IPEndPoint> quicEndPoints)
+    {
+        ArgumentNullException.ThrowIfNull(tcpEndPoints);
+        ArgumentNullException.ThrowIfNull(quicEndPoints);
         var hold = new StoppedPortHold();
         try
         {
-            await hold.BindTcpAsync(endpoints.Tcp).ConfigureAwait(false);
-            await hold.BindTcpAsync(endpoints.TcpTls).ConfigureAwait(false);
+            foreach (var endPoint in tcpEndPoints)
+                await hold.BindTcpAsync(endPoint).ConfigureAwait(false);
         }
         catch
         {
@@ -63,8 +83,8 @@ internal sealed class StoppedPortHold : IDisposable
             throw;
         }
 
-        if (endpoints.Quic is { } quic)
-            _ = hold.BindUdpInBackgroundAsync(quic);
+        foreach (var endPoint in quicEndPoints)
+            _ = hold.BindUdpInBackgroundAsync(endPoint);
 
         return hold;
     }
@@ -72,13 +92,24 @@ internal sealed class StoppedPortHold : IDisposable
     private async Task BindTcpAsync(IPEndPoint endPoint)
     {
         var deadline = DateTime.UtcNow + BindTimeout;
+        await BindUntilAsync(endPoint, SocketType.Stream, ProtocolType.Tcp, deadline).ConfigureAwait(false);
+
+        // The UDP port of the same number: the only binding that keeps the port allocators off it on Linux and macOS.
+        if (OperatingSystem.IsWindows())
+            TryBind(endPoint, SocketType.Dgram, ProtocolType.Udp, out _);
+        else
+            await BindUntilAsync(endPoint, SocketType.Dgram, ProtocolType.Udp, deadline).ConfigureAwait(false);
+    }
+
+    private async Task BindUntilAsync(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType, DateTime deadline)
+    {
         SocketException? last;
-        while (!TryBind(endPoint, SocketType.Stream, ProtocolType.Tcp, out last))
+        while (!TryBind(endPoint, socketType, protocolType, out last))
         {
             if (DateTime.UtcNow >= deadline)
             {
                 throw new InvalidOperationException(
-                    $"Could not hold TCP port {endPoint} of the stopped interop server ({last?.SocketErrorCode}: "
+                    $"Could not hold {protocolType} port {endPoint} of the stopped test server ({last?.SocketErrorCode}: "
                     + $"{last?.Message}). Another process holds it, so a client could reach that process instead of "
                     + "being refused.",
                     last);

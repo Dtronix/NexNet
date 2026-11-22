@@ -334,10 +334,10 @@ public class InteropServerSelfTests
         foreach (var client in clients)
             await client.DisposeAsync();
 
-        // No other socket can bind a port, as another server would to listen on it, and a connection is refused. The
-        // QUIC port is held by msquic at first, then by the hold.
+        // The port allocators skip every port, so no server of another test process picks one, and a connection is
+        // refused. The QUIC port is held by msquic at first, then by the hold.
         foreach (var (endPoint, protocol) in held)
-            await Assert.That(TryBind(endPoint, protocol)).IsNotEqualTo(SocketError.Success)
+            await Assert.That(ProbeAsAllocators(endPoint, protocol)).IsNotEqualTo(SocketError.Success)
                 .Because($"{protocol} {endPoint} must be held while the server is stopped");
 
         using (var probe = new Socket(SocketType.Stream, ProtocolType.Tcp))
@@ -362,6 +362,36 @@ public class InteropServerSelfTests
         foreach (var (endPoint, protocol) in held.Where(h => h.Protocol == ProtocolType.Tcp))
             await Assert.That(TryBind(endPoint, protocol)).IsEqualTo(SocketError.Success)
                 .Because($"{protocol} {endPoint} must be released when the server is disposed");
+    }
+
+    /// <summary>
+    /// Binds the port as the port allocators (InteropPorts, TestPorts) probe it: a TCP port exclusively on Windows and
+    /// its UDP port too, a QUIC port over UDP. On Linux and macOS a TCP binding can share a port with one that does not
+    /// listen (.NET sets SO_REUSEADDR), so only the UDP port of a held TCP port keeps the allocators off (H53).
+    /// </summary>
+    private static SocketError ProbeAsAllocators(IPEndPoint endPoint, ProtocolType protocol)
+    {
+        if (protocol == ProtocolType.Udp)
+            return TryBind(endPoint, protocol);
+
+        using var tcp = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        using var udp = new Socket(endPoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                tcp.ExclusiveAddressUse = true;
+                udp.ExclusiveAddressUse = true;
+            }
+
+            tcp.Bind(endPoint);
+            udp.Bind(endPoint);
+            return SocketError.Success;
+        }
+        catch (SocketException e)
+        {
+            return e.SocketErrorCode;
+        }
     }
 
     private static SocketError TryBind(IPEndPoint endPoint, ProtocolType protocol)
