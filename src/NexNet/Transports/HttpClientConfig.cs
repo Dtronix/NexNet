@@ -20,6 +20,25 @@ public abstract class HttpClientConfig : ClientConfig
     public AuthenticationHeaderValue? AuthenticationHeader { get; set; }
 
     /// <summary>
+    /// Custom headers of the WebSocket or HttpSocket upgrade request, for servers that read the HTTP request (NexNet.Asp
+    /// middleware, a reverse proxy). Empty by default. Each name and value is checked when it is set
+    /// (<see cref="UpgradeHeaderCollection"/>): the headers the transport sets (<c>Host</c>, <c>Connection</c>,
+    /// <c>Upgrade</c>, <c>Sec-WebSocket-*</c>, <c>Content-Length</c>, <c>Transfer-Encoding</c>), content headers, and
+    /// names or values with CR, LF or other control characters throw <see cref="ArgumentException"/>.
+    /// <c>Authorization</c> may be set here; <see cref="AuthenticationHeader"/>, when not null, replaces it.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var config = new WebSocketClientConfig
+    /// {
+    ///     Url = new Uri("wss://example.com/nexus"),
+    ///     UpgradeHeaders = { ["X-Tenant"] = "acme" },
+    /// };
+    /// </code>
+    /// </example>
+    public UpgradeHeaderCollection UpgradeHeaders { get; } = new();
+
+    /// <summary>
     /// TLS options for <c>https</c>/<c>wss</c> URLs: client certificates, server certificate validation, protocols
     /// and revocation checking. Null uses the platform defaults (no client certificate, system chain validation).
     /// </summary>

@@ -98,7 +98,7 @@ public sealed class ClientSpec
     /// <summary>
     /// Custom headers of the WebSocket or HttpSocket upgrade request, name to value (Java
     /// <c>ClientConfig.Builder.header</c>, JS <c>webSocket.headers</c>/<c>httpSocket.headers</c>); HTTP transports only
-    /// (<see cref="ClientCapabilities.UpgradeHeaders"/>). The C# client has no such option, and a browser cannot send
+    /// (<see cref="ClientCapabilities.UpgradeHeaders"/>). C# <c>HttpClientConfig.UpgradeHeaders</c>; a browser cannot send
     /// headers.
     /// </summary>
     public Dictionary<string, string>? UpgradeHeaders { get; set; }

@@ -90,7 +90,14 @@ internal class HttpSocketTransport : ITransport
             };
             message.Headers.Connection.Add("Upgrade");
             message.Headers.Upgrade.Add(new ProductHeaderValue(HttpHeaderConstants.UpgradeHttpSocket));
-            message.Headers.Authorization = config.AuthenticationHeader;
+            foreach (var (name, value) in config.UpgradeHeaders)
+                message.Headers.TryAddWithoutValidation(name, value);
+            if (config.AuthenticationHeader != null)
+            {
+                // The typed header wins over an Authorization entry of UpgradeHeaders.
+                message.Headers.Remove("Authorization");
+                message.Headers.Authorization = config.AuthenticationHeader;
+            }
 
             response = await connector.Invoker.SendAsync(message, cancellationTokenRegistration.Token)
                 .ConfigureAwait(false);

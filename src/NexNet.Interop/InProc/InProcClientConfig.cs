@@ -77,8 +77,14 @@ public static class InProcClientConfig
             http.AuthenticationHeader = AuthenticationHeaderValue.Parse(spec.AuthorizationHeader);
         }
 
-        if (spec.UpgradeHeaders is { Count: > 0 })
-            throw new NotSupportedException("The C# client has no custom upgrade headers, only an Authorization header (ClientSpec.AuthorizationHeader).");
+        if (spec.UpgradeHeaders is { Count: > 0 } upgradeHeaders)
+        {
+            if (config is not HttpClientConfig http)
+                throw new NotSupportedException($"Upgrade headers need an HTTP transport, not {transport}.");
+            // A refused name or value throws ArgumentException: BadRequest, as on the other hosts.
+            foreach (var (name, value) in upgradeHeaders)
+                http.UpgradeHeaders[name] = value;
+        }
 
         if (spec.AuthToken is { } authToken)
             config.Authenticate = () => Encoding.UTF8.GetBytes(authToken);

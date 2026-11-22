@@ -263,6 +263,10 @@ new QuicServerConfig {
 new WebSocketClientConfig { Url = new Uri("ws://localhost:5000/nexus") };
 new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 // Both support: AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
+// and UpgradeHeaders = { ["X-Tenant"] = "acme" } (custom upgrade-request headers; names ignore case, a name set again
+// replaces it; ArgumentException on set for non-token names, CR/LF/control/non-Latin-1 values, Host, Connection,
+// Upgrade, Sec-WebSocket-*, Content-Length, Transfer-Encoding and other content headers). AuthenticationHeader, when
+// set, replaces an "Authorization" entry. Java: ClientConfig.Builder.header; Node: webSocket/httpSocket.headers.
 // https:// / wss://: SslClientAuthenticationOptions (client certificate, server certificate validation/pinning);
 // copied per connection, never modified. Null = no client certificate, system chain validation.
 new HttpSocketClientConfig {
