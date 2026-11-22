@@ -1,6 +1,8 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Pipes.Broadcast;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -10,8 +12,12 @@ namespace NexNet.IntegrationTests.Collections;
 /// client that falls too far behind the live changes is closed instead of silently losing items (F26).
 /// </summary>
 [NotInParallel("stress")]
-internal class NexusCollectionLargeSnapshotTests : NexusCollectionBaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionLargeSnapshotTests(LanguageHostPool hosts) : NexusCollectionBaseTests
 {
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
+
     [Test]
     [Transports(Type.Uds, Type.Tcp)]
     public async Task LargeSnapshot_SlowClient_ReceivesEveryItem(Type type)
@@ -198,21 +204,23 @@ internal class NexusCollectionLargeSnapshotTests : NexusCollectionBaseTests
     }
 
     [Test]
-    public async Task VeryLargeSnapshot_ReceivesEveryItem()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task VeryLargeSnapshot_ReceivesEveryItem(ClientTarget target)
     {
         const int count = 1_000_000;
-        var (server, client, _) = await ConnectServerAndClient(Type.Uds);
-        var serverList = (NexusListServer<int>)server.NexusCreatedQueue.First().IntListBi;
+        var (spec, nexuses) = await StartMatrixServerAsync(target);
+        await using var client = await ConnectMatrixClientAsync(target, spec);
+        var serverList = (NexusListServer<int>)nexuses.First().IntListBi;
         serverList.TestResetTo(Enumerable.Range(0, count));
 
-        var list = client.Proxy.IntListBi;
-        await Assert.That(await list.EnableAsync().Timeout(60)).IsTrue();
+        var list = IntListBi(client);
+        await Assert.That(await list.EnableAsync().AsTask().Timeout(T(60))).IsTrue();
 
-        using (Assert.Multiple())
-        {
-            await Assert.That(list.Count).IsEqualTo(count);
-            await Assert.That(list.SequenceEqual(Enumerable.Range(0, count))).IsTrue();
-        }
+        var items = await list.WaitForAsync(l => l.Count == count, TimeSpan.FromSeconds(T(60)));
+        await Assert.That(items.SequenceEqual(Enumerable.Range(0, count))).IsTrue();
+
+        await list.DisableAsync().AsTask().Timeout(T(5));
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]

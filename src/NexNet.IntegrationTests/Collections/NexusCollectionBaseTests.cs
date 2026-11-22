@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using NexNet.Collections.Lists;
+using NexNet.Interop;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
@@ -144,4 +146,42 @@ internal class NexusCollectionBaseTests : BaseTests
         return (client, relayList);
     }
 
+    // ----- Client matrix (the client under test of each ClientTarget row) -----
+
+    /// <summary>
+    /// Starts a C# server of <see cref="ServerNexus"/> for <paramref name="target"/>'s transport. Returns the spec its
+    /// clients connect with and the nexus of each session, in connection order; the server collections (such as
+    /// <c>IntListBi</c>) are the same on every nexus.
+    /// </summary>
+    protected async Task<(ClientSpec Spec, ConcurrentQueue<ServerNexus> Nexuses)> StartMatrixServerAsync(ClientTarget target)
+    {
+        target.SkipIfUnsupported();
+        var type = MatrixTestBase.ToType(target.Transport);
+        var nexuses = new ConcurrentQueue<ServerNexus>();
+        var server = CreateServer(CreateServerConfig(type), nexuses.Enqueue);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        return (MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger), nexuses);
+    }
+
+    /// <summary>Creates and connects a client of <paramref name="target"/> with <paramref name="spec"/>.</summary>
+    protected static Task<IClientUnderTest> ConnectMatrixClientAsync(ClientTarget target, ClientSpec spec)
+        => MatrixTestBase.ConnectAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec.Clone());
+
+    /// <summary>The client's view of <c>IntListBi</c>.</summary>
+    protected static IRemoteList<int> IntListBi(IClientUnderTest client) => client.List<int>(nameof(IServerNexus.IntListBi));
+
+    /// <summary>Waits until the client's list holds exactly <paramref name="expected"/>, in order.</summary>
+    protected static async Task WaitForItemsAsync(IRemoteList<int> list, IReadOnlyList<int> expected, string because)
+    {
+        try
+        {
+            await list.WaitForAsync(items => items.SequenceEqual(expected), TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)));
+        }
+        catch (TimeoutException)
+        {
+            // Reported by the assertion below.
+        }
+
+        await Assert.That(await list.SnapshotAsync().AsTask().Timeout(T(1))).IsEquivalentTo(expected, CollectionOrdering.Matching).Because(because);
+    }
 }
