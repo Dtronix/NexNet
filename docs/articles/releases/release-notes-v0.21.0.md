@@ -292,7 +292,7 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
 - **A connect fails at once when the transport closes during it.** When a send found the transport already closed (for
   example a WebSocket server that sends a text message right after the upgrade), the session disconnected while still
   holding its write lock, so the disconnect waited out its 5 s write-lock timeout before `ConnectAsync` failed. The
-  send now releases the lock first ([#PR](https://github.com/Dtronix/NexNet/pull/PR)).
+  send now releases the lock first ([#363](https://github.com/Dtronix/NexNet/pull/363)).
 
 ## Documentation
 
