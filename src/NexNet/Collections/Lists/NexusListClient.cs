@@ -32,7 +32,11 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource;
     
     public int Count => _itemList.Count;
-    public bool IsReadOnly { get; } = false;
+    /// <summary>
+    /// True when the client may not change the list: any mode but BiDirectional (ServerToClient and Relay), whose writes
+    /// <see cref="ThrowIfReadOnly"/> refuses.
+    /// </summary>
+    public bool IsReadOnly => Mode != NexusCollectionMode.BiDirectional;
     
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
     
