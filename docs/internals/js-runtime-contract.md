@@ -553,7 +553,13 @@ violation or a text message. A write on an ended transport rejects with `Connect
 **Credentials.** The greeting token (`authenticate`) is the canonical credential for every transport, because browsers cannot set an `Authorization` header on a WebSocket. For the
 HTTP-based transports in Node, extra upgrade headers, an `Authorization` header for example, go in
 `config.webSocket.headers` or `config.httpSocket.headers`; the transport sets its own upgrade headers (`Connection`,
-`Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. Browsers
+`Upgrade` and, for WebSocket, `Sec-WebSocket-Version` and `Sec-WebSocket-Key`) after them. The client checks the
+headers when it is created (`resolveClientOptions`), with the rules of C# `UpgradeHeaderCollection` and Java
+`ClientConfig.Builder.header`: a name must be an HTTP token, set once ignoring case, and not one the transport sets
+(`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`, `Transfer-Encoding`); a value must be a
+Latin-1 string with no control character but tab (no CR or LF). `Authorization` is allowed. A refused header throws
+`TypeError` (the interop host answers `BadRequest`). Unlike C#, the Java and JavaScript clients do not refuse the
+content headers (`Content-Type`, `Expires`, ...). Browsers
 cannot send custom headers on a WebSocket, so a token for a NexNet.Asp query-string hook ([#110](https://github.com/Dtronix/NexNet/pull/110)) goes in
 `config.webSocket.queryToken` or `config.httpSocket.queryToken` (`{ name, value }`, Java `ClientConfig.Builder.queryToken`),
 in Node as well as in browsers. The transport appends `name=value`, each URL-encoded with `encodeURIComponent`, to

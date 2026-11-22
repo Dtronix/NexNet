@@ -28,6 +28,11 @@ describe('ClientSpec', () => {
     expect(http).toEqual({ url: 'http://localhost:5003/h', headers: { Authorization: 'Bearer x' } });
     const custom = parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', authorizationHeader: 'Bearer x', upgradeHeaders: { 'X-A': 'a' } }, node).config.webSocket;
     expect(custom).toEqual({ url: 'ws://h/ws', headers: { 'X-A': 'a', Authorization: 'Bearer x' } });
+    // The typed header replaces an authorization entry whatever its case, so only one Authorization is sent.
+    const lower = parseSpec({ transport: 'HttpSocket', address: 'http://h/h', authorizationHeader: 'Bearer x', upgradeHeaders: { authorization: 'Bearer y', 'X-A': 'a' } }, node).config.httpSocket;
+    expect(lower).toEqual({ url: 'http://h/h', headers: { 'X-A': 'a', Authorization: 'Bearer x' } });
+    const untyped = parseSpec({ transport: 'HttpSocket', address: 'http://h/h', upgradeHeaders: { authorization: 'Bearer y' } }, node).config.httpSocket;
+    expect(untyped).toEqual({ url: 'http://h/h', headers: { authorization: 'Bearer y' } });
   });
 
   it('maps the common options', () => {

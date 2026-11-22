@@ -36,6 +36,38 @@ internal partial class AspClientServerTests
     }
 
     /// <summary>
+    /// A header the client refuses fails client creation on every language that sends headers (J43): a header the
+    /// transport sets (<c>Host</c>, <c>Sec-WebSocket-Key</c>), a name that is not an HTTP token, and a value with CR/LF.
+    /// C# <c>UpgradeHeaderCollection</c> and Java <c>ClientConfig.Builder.header</c> throw at once, JS at
+    /// <c>createClient</c> (<c>TypeError</c>); every host answers <c>BadRequest</c>, which the harness raises as
+    /// <see cref="ArgumentException"/>.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.UpgradeHeaders)]
+    public async Task RefusedUpgradeHeaderFailsClientCreation(ClientTarget target)
+    {
+        var type = MatrixTestBase.ToType(target.Transport);
+        (string Name, string Value)[] refused =
+        [
+            ("Host", "evil.example"),
+            ("Sec-WebSocket-Key", "x"),
+            ("X Space", "x"),
+            ("X-Injected", "a\r\nX-Smuggled: 1"),
+        ];
+        foreach (var (name, value) in refused)
+        {
+            var spec = MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger);
+            spec.UpgradeHeaders = new Dictionary<string, string> { [name] = value };
+            await Assert.That(async () =>
+                {
+                    await using var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+                })
+                .ThrowsExactly<ArgumentException>()
+                .Because($"the {name} header must be refused");
+        }
+    }
+
+    /// <summary>
     /// The typed <see cref="ClientSpec.AuthorizationHeader"/> wins over an <c>Authorization</c> entry of
     /// <see cref="ClientSpec.UpgradeHeaders"/>, and the other entries are sent with it, on every language (H57): C#
     /// <c>AuthenticationHeader</c>, Java <c>ClientConfig.Builder.authorization</c> and the Node header options. Not the

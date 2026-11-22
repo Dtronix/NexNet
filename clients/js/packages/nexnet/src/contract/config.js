@@ -42,7 +42,11 @@
  *
  * @typedef {object} WebSocketTransportConfig
  * @property {string | URL} url
- * @property {Record<string, string>} [headers] Extra upgrade request headers. Node only.
+ * @property {Record<string, string>} [headers] Extra upgrade request headers. Node only. Checked when the client is
+ *   created, as C# `UpgradeHeaders` and Java `ClientConfig.Builder.header`: a name must be an HTTP token and not one
+ *   the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`,
+ *   `Transfer-Encoding`), and set once ignoring case; a value must be Latin-1 with no control character but tab (no
+ *   CR or LF). `Authorization` is allowed. A refused header throws `TypeError`.
  * @property {QueryToken | null} [queryToken] Query-string token for the upgrade request; browser and Node.
  * @property {TlsOptions} [tls] Node only.
  */
@@ -52,7 +56,8 @@
  *
  * @typedef {object} HttpSocketTransportConfig
  * @property {string | URL} url
- * @property {Record<string, string>} [headers] Extra upgrade request headers.
+ * @property {Record<string, string>} [headers] Extra upgrade request headers, checked as
+ *   {@link WebSocketTransportConfig}`.headers`.
  * @property {QueryToken | null} [queryToken] Query-string token for the upgrade request.
  * @property {TlsOptions} [tls]
  */

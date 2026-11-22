@@ -257,9 +257,15 @@ export function parseSpec(spec, limits) {
 
   /** @type {Record<string, any>} */
   const config = {};
+  // The typed Authorization header replaces an Authorization entry of upgradeHeaders, whatever its case (H57). A header
+  // the client refuses (a transport header, a CR/LF value) fails createClient with a TypeError, which the host
+  // answers as BadRequest, as the Java host does (J43).
   /** @type {Record<string, string> | undefined} */
   const headers = authorization !== undefined || custom !== undefined
-    ? { ...custom, ...(authorization !== undefined ? { Authorization: authorization } : {}) }
+    ? {
+      ...Object.fromEntries(Object.entries(custom ?? {}).filter(([name]) => authorization === undefined || name.toLowerCase() !== 'authorization')),
+      ...(authorization !== undefined ? { Authorization: authorization } : {}),
+    }
     : undefined;
   switch (transport) {
     case 'Tcp':
