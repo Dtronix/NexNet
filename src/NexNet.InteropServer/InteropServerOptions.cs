@@ -56,6 +56,21 @@ public sealed class InteropServerOptions
     /// socket paths are limited to about 100 characters.
     /// </summary>
     public string? UdsDirectory { get; set; }
+
+    /// <summary>
+    /// Makes the server hold its authentication numbered <paramref name="authentication"/> (counted from 1 over the
+    /// server's life: the first connect is 1, the next session that reaches the server 2, ...) until the test calls
+    /// <see cref="InteropAuthenticationHold.Release"/>. It sets <see cref="TokenValidator"/>, so every endpoint requires
+    /// authentication; a validator already set still decides each authentication once it is not held.
+    /// </summary>
+    /// <param name="authentication">The authentication to hold.</param>
+    /// <returns>The hold: it reports when the authentication is held and releases it.</returns>
+    public InteropAuthenticationHold HoldAuthentication(int authentication)
+    {
+        var hold = new InteropAuthenticationHold(authentication, TokenValidator);
+        TokenValidator = hold.ValidateAsync;
+        return hold;
+    }
 }
 
 /// <summary>
