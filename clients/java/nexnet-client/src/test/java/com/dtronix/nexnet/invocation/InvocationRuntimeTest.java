@@ -306,15 +306,22 @@ class InvocationRuntimeTest {
         assertTrue(call.cancel(true));
         assertTrue(call.isCancelled());
         assertArrayEquals(array(1), peer.expect(MessageTypes.INVOCATION_CANCELLATION).body);
+        // Complete, so not awaited (as in C# and JS), but its id stays reserved for the late result.
+        assertEquals(0, runtime.snapshot(session.nanoTime()).awaitingResults());
+        assertEquals(1, runtime.reservedIdCount());
 
         // The id stays reserved until the late result, which is consumed without a protocol error.
         CompletableFuture<byte[]> second = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
         assertEquals(2, idOf(peer.expect(MessageTypes.INVOCATION)));
+        assertEquals(1, runtime.snapshot(session.nanoTime()).awaitingResults());
+        assertEquals(2, runtime.reservedIdCount());
         peer.send(MessageTypes.INVOCATION_RESULT, array(1, 1, new byte[] {0x01}));
         peer.send(MessageTypes.INVOCATION_RESULT, array(2, 1, new byte[] {0x02}));
         assertArrayEquals(new byte[] {0x02}, await(second));
         assertTrue(session.isConnected());
         assertEquals(0, runtime.pendingCalls());
+        assertEquals(0, runtime.reservedIdCount());
+        assertEquals(0, runtime.snapshot(session.nanoTime()).awaitingResults());
     }
 
     @Test

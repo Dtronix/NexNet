@@ -121,6 +121,23 @@ public final class Diagnostics {
             session.bytesReceived());
     }
 
+    /**
+     * How many outbound invocation ids the client's current session holds: result calls awaiting their result, calls
+     * canceled after send whose late result has not arrived yet, and streamed IgnoreReturn arguments still being sent.
+     * Unlike the snapshot's {@code awaitingResults}, a call canceled after send counts until its reply releases the
+     * id, so this reaches 0 only when every id was released.
+     *
+     * @param client the client
+     * @return the count, 0 when the client has no session
+     */
+    public static int reservedInvocationIds(NexusClient<?> client) {
+        NexusSession session = client.session();
+        if (session == null || !(session.messageHandler() instanceof InvocationRuntime)) {
+            return 0;
+        }
+        return ((InvocationRuntime) session.messageHandler()).reservedIdCount();
+    }
+
     /** The time between two session clock readings, in whole milliseconds as C# reports it. */
     private static NexusTimeSpan since(long nowNanos, long thenNanos) {
         return NexusTimeSpan.ofMillis(Math.max(0, nowNanos - thenNanos) / 1_000_000);

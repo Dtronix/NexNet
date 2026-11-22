@@ -15,7 +15,6 @@ import com.dtronix.nexnet.collections.NexusListChange;
 import com.dtronix.nexnet.collections.NexusListClient;
 import com.dtronix.nexnet.diagnostics.Diagnostics;
 import com.dtronix.nexnet.diagnostics.NexusBudgetSnapshot;
-import com.dtronix.nexnet.diagnostics.NexusInvocationSnapshot;
 import com.dtronix.nexnet.diagnostics.NexusSessionSnapshot;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
@@ -269,14 +268,13 @@ final class ClientEntry extends Driven implements ScriptHost {
     }
 
     /**
-     * The outbound invocations the current session awaits a result for (§6.4 {@code client.outstanding}).
+     * The outbound invocation ids the current session holds (§6.4 {@code client.outstanding}), including a call
+     * canceled after send until its reply releases the id.
      *
-     * @return {@code {invocations}}: the snapshot's {@code awaitingResults}, 0 when the client has no session
+     * @return {@code {invocations}}: {@link Diagnostics#reservedInvocationIds}, 0 when the client has no session
      */
     Map<String, Object> outstanding() {
-        NexusSessionSnapshot snapshot = Diagnostics.snapshot(client);
-        NexusInvocationSnapshot invocations = snapshot == null ? null : snapshot.invocations();
-        return Protocol.map("invocations", invocations == null ? 0L : (long) invocations.awaitingResults());
+        return Protocol.map("invocations", (long) Diagnostics.reservedInvocationIds(client));
     }
 
     Map<String, Object> advanceTime(long millis) {
