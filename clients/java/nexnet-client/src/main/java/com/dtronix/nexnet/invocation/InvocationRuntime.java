@@ -56,6 +56,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
@@ -98,6 +99,8 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     static final int MAX_DETAIL_MESSAGE_LENGTH = 2048;
     /** Budget reserved per advertised invocation credit for the invocation queue (specification section 9). */
     static final int QUEUE_RESERVATION_PER_CREDIT = 64 * 1024;
+    /** The queue warning is logged at most once per this interval (C# 30 s). */
+    private static final long QUEUE_WARNING_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final byte[] EMPTY_ARGUMENTS = {(byte) 0x90};
 
     /** A large message this side is sending. */
@@ -125,11 +128,14 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         final ArrayDeque<InboundInvocation> queue = new ArrayDeque<>();
         final int slots;
         final Map<String, String> tags;
+        /** The option that sets {@link #slots}, as the queue warning names it. */
+        final String limitName;
         int free;
 
         Pool(int slots, boolean separate) {
             this.slots = slots;
             this.free = slots;
+            this.limitName = separate ? "maxSeparatePoolInvocations" : "maxConcurrentInvocations";
             this.tags = Collections.singletonMap(MetricTags.INVOCATION_POOL, separate ? "separate" : "normal");
         }
     }
@@ -160,6 +166,11 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     private int lastId;
     private boolean dispatching;
     private boolean closed;
+    /** Guards the queue warning's rate limit, shared by both pools. */
+    private final Object queueWarningLock = new Object();
+    private boolean queueWarned;
+    private long lastQueueWarningNanos;
+    private int queueWarningsSuppressed;
 
     private volatile MessageHandler next = MessageHandler.UNHANDLED;
     private volatile @Nullable PipeManager pipes;
@@ -1033,16 +1044,46 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             return;
         }
         boolean metered = session.hasMetricsSinks();
-        long now = metered ? session.nanoTime() : 0;
+        int threshold = options.invocationQueueWarningThresholdMillis();
+        long now = metered || threshold > 0 ? session.nanoTime() : 0;
         for (InboundInvocation invocation : start) {
+            long waitNanos = Math.max(0, now - invocation.queuedNanos);
             if (metered) {
-                session.recordMetric(NexusInstruments.INVOCATION_QUEUE_WAIT,
-                    Math.max(0, now - invocation.queuedNanos) / 1_000_000_000.0, pool.tags);
+                session.recordMetric(NexusInstruments.INVOCATION_QUEUE_WAIT, waitNanos / 1_000_000_000.0, pool.tags);
+            }
+            if (threshold > 0) {
+                checkQueueWait(invocation, pool, threshold, waitNanos, now);
             }
             // Dequeued for execution: the server may queue another (specification section 8).
             returnInvocationCredit();
             NexusExecutors.execute(invocationExecutor, () -> run(invocation));
         }
+    }
+
+    /**
+     * Warns, at most once per 30 s (shared by both pools), when an invocation waited longer than
+     * {@link InvocationOptions#invocationQueueWarningThresholdMillis()} for its execution slot (C#
+     * {@code NexusSession.RecordQueueWait}).
+     */
+    private void checkQueueWait(InboundInvocation invocation, Pool pool, int threshold, long waitNanos, long now) {
+        long waitMillis = TimeUnit.NANOSECONDS.toMillis(waitNanos);
+        if (waitMillis <= threshold) {
+            return;
+        }
+        int suppressed;
+        synchronized (queueWarningLock) {
+            if (queueWarned && now - lastQueueWarningNanos < QUEUE_WARNING_INTERVAL_NANOS) {
+                queueWarningsSuppressed++;
+                return;
+            }
+            queueWarned = true;
+            lastQueueWarningNanos = now;
+            suppressed = queueWarningsSuppressed;
+            queueWarningsSuppressed = 0;
+        }
+        log(NexusLogLevel.WARNING, "Invocation of method " + invocation.methodId + " waited " + waitMillis
+            + " ms for an execution slot (" + pool.limitName + " " + pool.slots + ", threshold " + threshold + " ms)"
+            + (suppressed > 0 ? " (" + suppressed + " more since the last warning)." : "."), null);
     }
 
     private void returnInvocationCredit() {

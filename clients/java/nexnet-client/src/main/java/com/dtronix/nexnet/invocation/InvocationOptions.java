@@ -3,7 +3,7 @@ package com.dtronix.nexnet.invocation;
 /**
  * The invocation limits of a client session. Immutable; start from {@link #defaults()}, which are the C# untrusted
  * defaults ({@code MaxConcurrentConnectionInvocations} 2, {@code MaxSeparatePoolInvocations} 4,
- * {@code SessionBudget} 16 MiB, {@code RemoteExceptionDetail.None}).
+ * {@code SessionBudget} 16 MiB, {@code RemoteExceptionDetail.None}, {@code InvocationQueueWarningThreshold} 5000 ms).
  */
 public final class InvocationOptions {
     /** The default {@link #maxConcurrentInvocations()}. */
@@ -12,17 +12,21 @@ public final class InvocationOptions {
     public static final int DEFAULT_MAX_SEPARATE_POOL_INVOCATIONS = 4;
     /** The default {@link #sessionBudget()}: 16 MiB. */
     public static final long DEFAULT_SESSION_BUDGET = 16L * 1024 * 1024;
+    /** The default {@link #invocationQueueWarningThresholdMillis()}: 5 s. */
+    public static final int DEFAULT_INVOCATION_QUEUE_WARNING_THRESHOLD_MILLIS = 5000;
 
     private static final InvocationOptions DEFAULTS = new InvocationOptions(DEFAULT_MAX_CONCURRENT_INVOCATIONS,
-        DEFAULT_MAX_SEPARATE_POOL_INVOCATIONS, DEFAULT_SESSION_BUDGET, RemoteExceptionDetail.NONE);
+        DEFAULT_MAX_SEPARATE_POOL_INVOCATIONS, DEFAULT_SESSION_BUDGET, RemoteExceptionDetail.NONE,
+        DEFAULT_INVOCATION_QUEUE_WARNING_THRESHOLD_MILLIS);
 
     private final int maxConcurrentInvocations;
     private final int maxSeparatePoolInvocations;
     private final long sessionBudget;
     private final RemoteExceptionDetail remoteExceptionDetail;
+    private final int invocationQueueWarningThresholdMillis;
 
     private InvocationOptions(int maxConcurrentInvocations, int maxSeparatePoolInvocations, long sessionBudget,
-                              RemoteExceptionDetail remoteExceptionDetail) {
+                              RemoteExceptionDetail remoteExceptionDetail, int invocationQueueWarningThresholdMillis) {
         if (maxConcurrentInvocations < 1 || maxConcurrentInvocations > 1000) {
             throw new IllegalArgumentException("maxConcurrentInvocations must be 1 to 1000");
         }
@@ -35,10 +39,14 @@ public final class InvocationOptions {
         if (remoteExceptionDetail == null) {
             throw new NullPointerException("remoteExceptionDetail");
         }
+        if (invocationQueueWarningThresholdMillis < 0 || invocationQueueWarningThresholdMillis > 600_000) {
+            throw new IllegalArgumentException("invocationQueueWarningThresholdMillis must be 0 to 600000");
+        }
         this.maxConcurrentInvocations = maxConcurrentInvocations;
         this.maxSeparatePoolInvocations = maxSeparatePoolInvocations;
         this.sessionBudget = sessionBudget;
         this.remoteExceptionDetail = remoteExceptionDetail;
+        this.invocationQueueWarningThresholdMillis = invocationQueueWarningThresholdMillis;
     }
 
     /**
@@ -89,13 +97,26 @@ public final class InvocationOptions {
     }
 
     /**
+     * How long, in milliseconds, an invocation from the server may wait for an execution slot before the client logs
+     * a warning naming the method, the wait and the pool limit (C# {@code InvocationQueueWarningThreshold}). The
+     * warning is logged at most once every 30 seconds per session, with the number of slow invocations since the last
+     * one. 0 disables it.
+     *
+     * @return milliseconds, 0 to 600000
+     */
+    public int invocationQueueWarningThresholdMillis() {
+        return invocationQueueWarningThresholdMillis;
+    }
+
+    /**
      * A copy with another {@link #maxConcurrentInvocations()}.
      *
      * @param value 1 to 1000
      * @return the options
      */
     public InvocationOptions withMaxConcurrentInvocations(int value) {
-        return new InvocationOptions(value, maxSeparatePoolInvocations, sessionBudget, remoteExceptionDetail);
+        return new InvocationOptions(value, maxSeparatePoolInvocations, sessionBudget, remoteExceptionDetail,
+            invocationQueueWarningThresholdMillis);
     }
 
     /**
@@ -105,7 +126,8 @@ public final class InvocationOptions {
      * @return the options
      */
     public InvocationOptions withMaxSeparatePoolInvocations(int value) {
-        return new InvocationOptions(maxConcurrentInvocations, value, sessionBudget, remoteExceptionDetail);
+        return new InvocationOptions(maxConcurrentInvocations, value, sessionBudget, remoteExceptionDetail,
+            invocationQueueWarningThresholdMillis);
     }
 
     /**
@@ -116,7 +138,7 @@ public final class InvocationOptions {
      */
     public InvocationOptions withSessionBudget(long value) {
         return new InvocationOptions(maxConcurrentInvocations, maxSeparatePoolInvocations, value,
-            remoteExceptionDetail);
+            remoteExceptionDetail, invocationQueueWarningThresholdMillis);
     }
 
     /**
@@ -126,6 +148,18 @@ public final class InvocationOptions {
      * @return the options
      */
     public InvocationOptions withRemoteExceptionDetail(RemoteExceptionDetail value) {
-        return new InvocationOptions(maxConcurrentInvocations, maxSeparatePoolInvocations, sessionBudget, value);
+        return new InvocationOptions(maxConcurrentInvocations, maxSeparatePoolInvocations, sessionBudget, value,
+            invocationQueueWarningThresholdMillis);
+    }
+
+    /**
+     * A copy with another {@link #invocationQueueWarningThresholdMillis()}.
+     *
+     * @param value milliseconds, 0 (no warning) to 600000
+     * @return the options
+     */
+    public InvocationOptions withInvocationQueueWarningThresholdMillis(int value) {
+        return new InvocationOptions(maxConcurrentInvocations, maxSeparatePoolInvocations, sessionBudget,
+            remoteExceptionDetail, value);
     }
 }

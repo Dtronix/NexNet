@@ -18,6 +18,8 @@ import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.NexusRemoteInvocationException;
 import com.dtronix.nexnet.NexusRuntime;
 import com.dtronix.nexnet.NexusUnauthorizedException;
+import com.dtronix.nexnet.logging.NexusLogLevel;
+import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
 import com.dtronix.nexnet.session.Jitter;
@@ -38,6 +40,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,6 +50,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -112,6 +116,8 @@ class InvocationRuntimeTest {
     private int progressTimeoutMillis = 30_000;
     /** The runtime's invocation executor; {@link #invocations} unless a test sets another before connecting. */
     private Executor invocationExecutor = invocations;
+    /** The runtime's logger; none unless a test sets one before connecting. */
+    private NexusLogger logger;
 
     private static Thread daemon(Runnable runnable, String name) {
         Thread thread = new Thread(runnable, name);
@@ -126,7 +132,7 @@ class InvocationRuntimeTest {
             .options(sessionOptions.withDisconnectDelayMillis(0)).build();
         sessions.add(session);
         runtime = InvocationRuntime.builder(session, HANDSHAKE, nexus).options(options).codec(TestCodec.INSTANCE)
-            .callbackExecutor(callbacks).invocationExecutor(invocationExecutor).build();
+            .callbackExecutor(callbacks).invocationExecutor(invocationExecutor).logger(logger).build();
         session.setMessageHandler(runtime);
         CompletableFuture<Void> ready = session.start();
         peer = new Peer(server);
@@ -537,6 +543,73 @@ class InvocationRuntimeTest {
         assertArrayEquals(array(2, 1, new byte[] {0x02}), peer.expect(MessageTypes.INVOCATION_RESULT).body);
         peer.awaitCredits(2);
         assertEquals(1, peak.get());
+    }
+
+    /**
+     * Runs three invocations through one slot: the first holds it while the clock moves 150 ms, so the other two
+     * each wait 150 ms for it. Returns the warnings logged.
+     */
+    private List<String> queueThreeInvocationsBehindASlowOne(int thresholdMillis) throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        logger = (level, category, exception, message) -> {
+            if (level == NexusLogLevel.WARNING) {
+                warnings.add(message);
+            }
+        };
+        connect(32, InvocationOptions.defaults().withMaxConcurrentInvocations(1)
+            .withInvocationQueueWarningThresholdMillis(thresholdMillis), true);
+        BlockingQueue<CompletableFuture<Void>> started = new LinkedBlockingQueue<>();
+        nexus.methods.put(0, (args, ctx) -> {
+            CompletableFuture<Void> done = new CompletableFuture<>();
+            started.add(done);
+            return done;
+        });
+        peer.send(MessageTypes.INVOCATION, invocation(1, 0, 0, SMALL_ARGS));
+        CompletableFuture<Void> first = started.poll(5, TimeUnit.SECONDS);
+        assertTrue(first != null, "the first invocation started");
+        peer.send(MessageTypes.INVOCATION, invocation(2, 0, 0, SMALL_ARGS));
+        peer.send(MessageTypes.INVOCATION, invocation(3, 0, 0, SMALL_ARGS));
+        waitFor(() -> runtime.queued(false) == 2);
+        timers.advance(150);
+        first.complete(null);
+        // A warning is decided when the invocation is dequeued, before it starts.
+        CompletableFuture<Void> second = started.poll(5, TimeUnit.SECONDS);
+        assertTrue(second != null, "the second invocation started");
+        second.complete(null);
+        CompletableFuture<Void> third = started.poll(5, TimeUnit.SECONDS);
+        assertTrue(third != null, "the third invocation started");
+        third.complete(null);
+        return warnings;
+    }
+
+    @Test
+    void anInvocationThatWaitedLongerThanTheThresholdLogsAWarningAtMostOncePer30Seconds() throws Exception {
+        List<String> warnings = queueThreeInvocationsBehindASlowOne(100);
+        // The third invocation also waited 150 ms, but within 30 s of the first warning: it is only counted.
+        assertEquals(Arrays.asList("Invocation of method 0 waited 150 ms for an execution slot "
+            + "(maxConcurrentInvocations 1, threshold 100 ms)."), warnings);
+    }
+
+    @Test
+    void aZeroQueueWarningThresholdNeverWarns() throws Exception {
+        assertEquals(Arrays.asList(), queueThreeInvocationsBehindASlowOne(0));
+    }
+
+    @Test
+    void theQueueWarningThresholdDefaultsTo5SecondsAndRanges0To600000() {
+        assertEquals(5000, InvocationOptions.defaults().invocationQueueWarningThresholdMillis());
+        assertEquals(0, InvocationOptions.defaults().withInvocationQueueWarningThresholdMillis(0)
+            .invocationQueueWarningThresholdMillis());
+        assertEquals(600_000, InvocationOptions.defaults().withInvocationQueueWarningThresholdMillis(600_000)
+            .invocationQueueWarningThresholdMillis());
+        assertThrows(IllegalArgumentException.class,
+            () -> InvocationOptions.defaults().withInvocationQueueWarningThresholdMillis(-1));
+        assertThrows(IllegalArgumentException.class,
+            () -> InvocationOptions.defaults().withInvocationQueueWarningThresholdMillis(600_001));
+        // The other copies keep the threshold.
+        assertEquals(250, InvocationOptions.defaults().withInvocationQueueWarningThresholdMillis(250)
+            .withMaxConcurrentInvocations(3).withMaxSeparatePoolInvocations(5).withSessionBudget(1 << 20)
+            .withRemoteExceptionDetail(RemoteExceptionDetail.TYPE_AND_MESSAGE).invocationQueueWarningThresholdMillis());
     }
 
     @Test
