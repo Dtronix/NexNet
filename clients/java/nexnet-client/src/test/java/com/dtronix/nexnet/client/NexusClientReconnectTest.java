@@ -83,6 +83,49 @@ class NexusClientReconnectTest {
     }
 
     @Test
+    void reportsDisconnectingAndDisconnectedBeforeReconnecting() throws Exception {
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(config(), server);
+        try {
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
+            client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> states.contains(ConnectionState.CONNECTED));
+
+            // C# and JS: the lost session reports Disconnecting and Disconnected, then the loop Reconnecting (K54).
+            server.disconnect(0, 30);
+            TestClients.waitFor(() -> server.transports.size() == 2 && states.size() >= 6);
+            Thread.sleep(100);
+            assertEquals(List.of(ConnectionState.CONNECTING, ConnectionState.CONNECTED,
+                ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
+                ConnectionState.RECONNECTING, ConnectionState.CONNECTED), states);
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
+    void reportsDisconnectingAndDisconnectedForALostSessionWithoutAPolicy() throws Exception {
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(server);
+        try {
+            client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
+            server.disconnect(0, 30);
+            client.disconnected().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> states.contains(ConnectionState.DISCONNECTED));
+            Thread.sleep(100);
+            assertEquals(List.of(ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED), states);
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
     void staysReconnectingBetweenFailedAttempts() throws Exception {
         TestClients.Server server = new TestClients.Server();
         NexusClient<TestProxy> client = TestClients.client(config(), server);
@@ -102,7 +145,8 @@ class NexusClientReconnectTest {
             server.refuse = false;
             TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
             TestClients.waitFor(() -> states.contains(ConnectionState.CONNECTED));
-            assertEquals(List.of(ConnectionState.RECONNECTING, ConnectionState.CONNECTED), states);
+            assertEquals(List.of(ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
+                ConnectionState.RECONNECTING, ConnectionState.CONNECTED), states);
         } finally {
             client.close();
         }
@@ -150,9 +194,12 @@ class NexusClientReconnectTest {
             assertEquals(2, controller.attempts());
             assertTrue(controller.idle().isDone());
             TestClients.waitFor(() -> client.state() == ConnectionState.DISCONNECTED);
-            // Reconnecting through both failed attempts, then Disconnected once (C# parity).
-            TestClients.waitFor(() -> states.contains(ConnectionState.DISCONNECTED));
-            assertEquals(List.of(ConnectionState.RECONNECTING, ConnectionState.DISCONNECTED), states);
+            // The lost session's own states, Reconnecting through both failed attempts, then Disconnected once when
+            // the loop gives up (C# parity).
+            TestClients.waitFor(() -> states.size() >= 4);
+            Thread.sleep(100);
+            assertEquals(List.of(ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
+                ConnectionState.RECONNECTING, ConnectionState.DISCONNECTED), states);
         } finally {
             client.close();
         }
