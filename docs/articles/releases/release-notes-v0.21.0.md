@@ -150,6 +150,13 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   server or the network ends a session, the Java client now reports `CONNECTED` → `DISCONNECTING` → `DISCONNECTED`
   and then, with a reconnection policy, `RECONNECTING` → `CONNECTED`, as the C# and JavaScript clients do. Before, it
   went straight from `CONNECTED` to `RECONNECTING` (or to `DISCONNECTED` without a policy).
+- **Behavior change: the JavaScript client checks upgrade headers when it is created.** `webSocket.headers` and
+  `httpSocket.headers` follow the rules of C# `UpgradeHeaderCollection` and Java `ClientConfig.Builder.header`: a
+  header the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`,
+  `Transfer-Encoding`), a name that is not an HTTP token or is set twice ignoring case, or a value with CR, LF or
+  another control or non-Latin-1 character makes `createClient` throw `TypeError`. Before, Node sent the headers as
+  given (a `Host` entry replaced the real one) and a CR/LF value failed only at connect. Tested on every client
+  language that sends headers.
 
 ## New features
 
