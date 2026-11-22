@@ -275,7 +275,7 @@ language-idiomatic APIs are not matrix tests.
 | Tests that need a client certificate, a custom CA, certificate pinning or the server certificate | Browser | The browser does the TLS and exposes none of it to page JavaScript. The WSS rows prove the default-trust path |
 | `NonAspTransport_SessionUserIsNull` | Browser | It tests the TCP, TLS and UDS transports, which browsers do not have |
 
-**By design** (the C# API has no counterpart, or the counterpart is idiomatic and unit-tested in its own language):
+**By design** (C#-only behavior or API, or a counterpart that is idiomatic and unit-tested in its own language):
 
 | Exception | Languages | Reason |
 |---|---|---|
