@@ -222,7 +222,8 @@ harness (`src/NexNet.Interop/ClientLanguages.cs`).
 | TCP, TCP + TLS | Yes | Yes | Yes | No |
 | Unix domain sockets | Yes | **No** | Yes | No |
 | QUIC | Yes | **No** | **No** | No |
-| HTTP headers on the upgrade (`Authorization`, custom) | Yes | Yes | Yes | **No** |
+| `Authorization` header on the upgrade | Yes | Yes | Yes | **No** |
+| Custom headers on the upgrade | **No** | Yes | Yes | **No** |
 | TLS client certificate | Yes | Yes | Yes | **No** |
 | Custom CA, certificate pinning | Yes | Yes | Yes | **No** |
 | Server certificate (`RemoteCertificate`) | Yes | Yes | Yes | **No** |
@@ -287,6 +288,8 @@ language-idiomatic APIs are not matrix tests.
 | C# API semantics: `ValueTask` consumption, `AsyncLocal` and execution-context flow, the C# pool's nexus factory, a custom transport's `IsSecureTransport` override, setting both `Authenticate` and `AuthenticateAsync` | Java, JavaScript | C#-only API. These are C# tests, not matrix tests |
 | Java executors (`callbackExecutor`, `invocationExecutor`), pipe `InputStream`/`OutputStream` adapters, Kotlin coroutine and flow wrappers | Java only | Java-idiomatic API; unit-tested in the Java suite |
 | JavaScript `EventTarget` events, `AbortSignal` cancellation, Web Streams pipes | JavaScript only | JavaScript-idiomatic API; the matrix tests the behavior behind them through the harness |
+| Custom upgrade headers: `ClientConfig.Builder.header` (read back with `ClientConfig.upgradeHeaders()`) in Java, `webSocket.headers` and `httpSocket.headers` in JavaScript on Node. Tested on the matrix (`CustomUpgradeHeaderReachesTheServer`) | C# | The C# client sends only an `Authorization` header (`HttpClientConfig.AuthenticationHeader`); put other request data in the greeting token or the URL. Browsers cannot send headers (platform limit above) |
+| Reconnection controller: Java `NexusClient.reconnection()` (`ReconnectController`, with `ReconnectListener`) and JavaScript `client.reconnection` (`ReconnectController`, an `EventTarget`) | C# | The C# client reconnects through its `ReconnectionPolicy` and reports it as state changes (`Reconnecting`) and the client nexus's `OnReconnecting`; it has no separate controller object. The reconnection behavior is tested on every language; the controller objects are unit-tested in their own language |
 | Query-string token: `queryToken` option in Java (`ClientConfig.Builder.queryToken`) and JavaScript (`webSocket.queryToken`, `httpSocket.queryToken`) | C# | The C# client takes the token in the URL (`wss://host/nexus?access_token=…`); the server sees the same request |
 | Android module (`NexusConnectionKeeper`, `AndroidNexusLogger`, `NexusJavaTime`) | Java (Android) | Runs as a device smoke test on an emulator (connect, invoke, pipe echo), not on the matrix; the lifecycle logic is unit-tested |
 

@@ -65,6 +65,9 @@ internal static class ClientParityExceptions
     private const string BrowserAuthorizationHeader =
         "Platform limit: the browser WebSocket API cannot set an Authorization header. The query-string token tests in AspClientServerTests cover the replacement on the browser.";
 
+    private const string BrowserUpgradeHeader =
+        "Platform limit: the browser WebSocket API cannot set request headers. The query-string token tests in AspClientServerTests cover the replacement on the browser.";
+
     private const string BrowserHttpSocket =
         "Platform limit: a browser has no HttpSocket transport (page JS cannot take over an HTTP connection). The WebSocket rows of ClientTransportConformanceTests.UpgradeRedirect_IsNotFollowed_FailsWithProtocolError cover the browser's upgrade handling.";
 
@@ -93,6 +96,7 @@ internal static class ClientParityExceptions
         new("AspClientServerTests.ServerIgnoresAuthenticationWhenNotEnabled", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspClientServerTests.ClientDoesNotConnectWhenServerSelectsBadAuthScheme", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspClientServerTests.AuthorizationHeaderWinsOverQueryStringToken", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
+        new("AspClientServerTests.CustomUpgradeHeaderReachesTheServer", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserUpgradeHeader),
         new("AspSessionUserTests.OnAuthenticate_SeesAspPrincipalClaims", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspSessionUserTests.NexusAuthenticationStillDecides_WithAspPrincipal", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("TlsCertificateTests.TrustedTestCa_AcceptsServerCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),

@@ -62,6 +62,9 @@ public static class ClientLanguages
     private const ClientCapabilities Browser = ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
         | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
 
+    // Custom upgrade headers: Java and Node only. The C# client has an Authorization header and no other.
+    private const ClientCapabilities JavaAndNode = Everything | ClientCapabilities.UpgradeHeaders;
+
     // The Java client has no UDS transport (D4).
     private const ClientCapabilities JavaGaps = ClientCapabilities.Uds;
 
@@ -73,11 +76,11 @@ public static class ClientLanguages
     private static readonly ConcurrentDictionary<string, ClientLanguageInfo> Languages = new(StringComparer.Ordinal)
     {
         [CSharp] = new(CSharp, ClientTransports.All, Everything | ClientCapabilities.Quic),
-        [Node] = new(Node, NodeTransports, Everything),
+        [Node] = new(Node, NodeTransports, JavaAndNode),
         [BrowserChromium] = new(BrowserChromium, BrowserTransports, Browser),
         [BrowserFirefox] = new(BrowserFirefox, BrowserTransports, Browser),
         [BrowserWebKit] = new(BrowserWebKit, BrowserTransports, Browser),
-        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~JavaGaps),
+        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), JavaAndNode & ~JavaGaps),
     };
 
     /// <summary>

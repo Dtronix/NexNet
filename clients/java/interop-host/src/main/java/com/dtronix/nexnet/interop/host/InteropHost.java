@@ -42,7 +42,7 @@ final class InteropHost {
 
     private static final List<String> CAPABILITIES = Arrays.asList(
         "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "RemoteCertificate", "HttpSocket", "Tcp",
-        "FakeTime", "ClientPool", "PipeInputCompletion", "ChannelReadCancellation");
+        "FakeTime", "ClientPool", "PipeInputCompletion", "ChannelReadCancellation", "UpgradeHeaders");
 
     private static final List<String> TRANSPORTS = Arrays.asList(
         "Tcp", "TcpTls", "HttpSocket", "HttpSocketTls", "WebSocket", "WebSocketTls");
@@ -50,7 +50,7 @@ final class InteropHost {
     /** The capabilities of the OkHttp mode ({@link Connectors}): no HttpSocket or TCP transport. */
     private static final List<String> OKHTTP_CAPABILITIES = Arrays.asList(
         "AuthorizationHeader", "ClientCertificate", "Pinning", "CustomCa", "RemoteCertificate", "FakeTime",
-        "ClientPool", "PipeInputCompletion", "ChannelReadCancellation");
+        "ClientPool", "PipeInputCompletion", "ChannelReadCancellation", "UpgradeHeaders");
 
     private final ControlChannel channel;
     final ExecutorService workers = Executors.newCachedThreadPool(daemon("nexnet-host-worker"));

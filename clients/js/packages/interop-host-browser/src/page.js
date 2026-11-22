@@ -7,7 +7,7 @@
 
 import { Host, FrameDecoder } from '../../interop-host-node/src/core/index.js';
 
-/** Capabilities of a browser client (§4.1): no Authorization header, client certificate, pinning or custom CA. */
+/** Capabilities of a browser client (§4.1): no Authorization or other upgrade header, client certificate, pinning or custom CA. */
 export const BROWSER_CAPABILITIES = Object.freeze(['FakeTime', 'ClientPool']);
 
 /** Transports of a browser client (D6). */

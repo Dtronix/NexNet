@@ -14,7 +14,7 @@ import { generatedDir, formattersDir, hostPackageDir, parseArgs, GENERATE_COMMAN
 
 /** Capabilities of the Node client (control protocol §4.1): everything but QUIC; UDS where AF_UNIX is (not Windows). */
 export function nodeCapabilities() {
-  const capabilities = ['AuthorizationHeader', 'ClientCertificate', 'Pinning', 'CustomCa', 'RemoteCertificate', 'HttpSocket', 'Tcp', 'FakeTime', 'ClientPool'];
+  const capabilities = ['AuthorizationHeader', 'ClientCertificate', 'Pinning', 'CustomCa', 'RemoteCertificate', 'HttpSocket', 'Tcp', 'FakeTime', 'ClientPool', 'UpgradeHeaders'];
   // Node's UDS path on Windows is a named pipe, not the AF_UNIX socket the server listens on: a capability skip.
   if (process.platform !== 'win32') capabilities.push('Uds');
   return capabilities;

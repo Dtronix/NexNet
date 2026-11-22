@@ -177,6 +177,13 @@ public enum ClientCapabilities
 
     /// <summary>Cancels a pending channel read without losing items (<see cref="IRemoteChannelReader{T}.ReadBatchAsync(int, RemoteCancel)"/>).</summary>
     ChannelReadCancellation = 1 << 12,
+
+    /// <summary>
+    /// Sends custom headers on the WebSocket and HttpSocket upgrade request (<see cref="ClientSpec.UpgradeHeaders"/>):
+    /// Java (<c>ClientConfig.Builder.header</c>) and Node (<c>webSocket.headers</c>, <c>httpSocket.headers</c>). The C#
+    /// client sends only an <c>Authorization</c> header (<see cref="AuthorizationHeader"/>), and a browser none.
+    /// </summary>
+    UpgradeHeaders = 1 << 13,
 }
 
 /// <summary>
