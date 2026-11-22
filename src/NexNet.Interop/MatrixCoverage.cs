@@ -7,8 +7,8 @@ using System.Text.RegularExpressions;
 namespace NexNet.Interop;
 
 /// <summary>
-/// The coverage report of the client matrix: what each language (and variant) ran, passed, failed and skipped, and the
-/// combinations the matrix generated no row for, by reason. The matrix attributes record both: the combinations left out
+/// The coverage report of the client matrix: what each language (and variant) ran, passed, failed and skipped, the rows
+/// that failed (with the first line of their message), and the combinations the matrix generated no row for, by reason. The matrix attributes record both: the combinations left out
 /// when they build a test's rows, the results when a row ends. A test-session hook writes the report when
 /// <see cref="ReportVariable"/> names a directory (<see cref="WriteRequestedReportAsync"/>).
 /// </summary>
@@ -20,7 +20,8 @@ namespace NexNet.Interop;
 /// environment (no msquic, no symlinks).
 /// </para>
 /// <para>
-/// The report is deterministic: rows, reasons and tests are sorted ordinally, and it holds no time or path.
+/// The report is deterministic: rows, reasons and tests are sorted ordinally, and it holds no time or path (beyond what a
+/// failed row's message says).
 /// </para>
 /// </remarks>
 public static class MatrixCoverage
@@ -88,9 +89,36 @@ public static class MatrixCoverage
         var reason = outcome == RowOutcome.Skipped
             ? context.Execution.SkipReason ?? result?.OverrideReason ?? result?.Exception?.Message ?? ""
             : null;
-        var row = new RowResult(details.ClassType.Name + "." + details.MethodName, context.Metadata.DisplayName, target, outcome, reason);
+        var message = outcome == RowOutcome.Failed
+            ? FirstLine(result?.Exception?.Message) ?? FirstLine(result?.OverrideReason) ?? result?.Exception?.GetType().Name ?? result?.State.ToString() ?? ""
+            : null;
+        var row = new RowResult(details.ClassType.Name + "." + details.MethodName, context.Metadata.DisplayName, target, outcome, reason, message);
         Results.AddOrUpdate(context.Id, row, (_, old) => old.Outcome == RowOutcome.Skipped && outcome != RowOutcome.Skipped ? old : row);
         return default;
+    }
+
+    /// <summary>The longest failure message the report keeps; a longer first line is cut and ends with "...".</summary>
+    public const int MaxMessageLength = 300;
+
+    /// <summary>
+    /// The first non-blank line of <paramref name="message"/>, trimmed and cut to <see cref="MaxMessageLength"/>; null
+    /// when there is none.
+    /// </summary>
+    public static string? FirstLine(string? message)
+    {
+        if (message == null)
+            return null;
+        foreach (var line in message.AsSpan().EnumerateLines())
+        {
+            var trimmed = line.Trim();
+            if (trimmed.IsEmpty)
+                continue;
+            return trimmed.Length <= MaxMessageLength
+                ? trimmed.ToString()
+                : string.Concat(trimmed[..(MaxMessageLength - 3)], "...");
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -151,7 +179,16 @@ public static class MatrixCoverage
             .ThenBy(s => s.DisplayName, StringComparer.Ordinal)
             .ToArray();
 
-        return new CoverageReport(clients, missing, skipped);
+        var failed = rows
+            .Where(r => r.Outcome == RowOutcome.Failed)
+            .Select(r => new FailedRow(r.Test, r.DisplayName, r.Target.ToString(), FirstLine(r.FailureMessage) ?? ""))
+            .OrderBy(f => f.Test, StringComparer.Ordinal)
+            .ThenBy(f => f.DisplayName, StringComparer.Ordinal)
+            .ThenBy(f => f.Row, StringComparer.Ordinal)
+            .ThenBy(f => f.Message, StringComparer.Ordinal)
+            .ToArray();
+
+        return new CoverageReport(clients, missing, skipped, failed);
     }
 
     /// <summary>
@@ -210,7 +247,9 @@ public enum RowOutcome
 /// <param name="Target">The row.</param>
 /// <param name="Outcome">How it ended.</param>
 /// <param name="SkipReason">Why it was skipped; null when it was not.</param>
-public sealed record RowResult(string Test, string DisplayName, ClientTarget Target, RowOutcome Outcome, string? SkipReason);
+/// <param name="FailureMessage">Why it failed (the exception's message; the report keeps its first line); null when it did not fail.</param>
+public sealed record RowResult(
+    string Test, string DisplayName, ClientTarget Target, RowOutcome Outcome, string? SkipReason, string? FailureMessage = null);
 
 /// <summary>What one language (and variant) ran.</summary>
 /// <param name="Language">The language.</param>
@@ -241,14 +280,23 @@ public sealed record NotApplicableCoverage(string Language, string Reason, int R
 /// <param name="Cited">Whether the reason cites a card (<see cref="MatrixCoverage.IsCited"/>).</param>
 public sealed record SkippedRow(string Test, string DisplayName, string Row, string Reason, bool Cited);
 
+/// <summary>A failed row (failed, timed out or canceled).</summary>
+/// <param name="Test">The test, as <c>Class.Method</c>.</param>
+/// <param name="DisplayName">The test's display name.</param>
+/// <param name="Row">The row (<see cref="ClientTarget.ToString"/>).</param>
+/// <param name="Message">The first line of the failure message (<see cref="MatrixCoverage.FirstLine"/>).</param>
+public sealed record FailedRow(string Test, string DisplayName, string Row, string Message);
+
 /// <summary>The coverage report of a test run (<see cref="MatrixCoverage"/>).</summary>
 /// <param name="Clients">What each language and variant ran.</param>
 /// <param name="NotApplicable">The combinations left out, by language and reason.</param>
 /// <param name="Skipped">The skipped rows.</param>
+/// <param name="Failed">The failed rows.</param>
 public sealed record CoverageReport(
     IReadOnlyList<ClientCoverage> Clients,
     IReadOnlyList<NotApplicableCoverage> NotApplicable,
-    IReadOnlyList<SkippedRow> Skipped)
+    IReadOnlyList<SkippedRow> Skipped,
+    IReadOnlyList<FailedRow> Failed)
 {
     /// <summary>The JSON form (indented, LF line ends).</summary>
     public string ToJson()
@@ -280,6 +328,13 @@ public sealed record CoverageReport(
                 ["reason"] = s.Reason,
                 ["cited"] = s.Cited,
             }).ToArray()),
+            ["failed"] = new JsonArray(Failed.Select(f => (JsonNode)new JsonObject
+            {
+                ["test"] = f.Test,
+                ["displayName"] = f.DisplayName,
+                ["row"] = f.Row,
+                ["message"] = f.Message,
+            }).ToArray()),
             ["uncitedSkips"] = Skipped.Count(s => !s.Cited),
         };
         return json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }).ReplaceLineEndings("\n") + "\n";
@@ -299,6 +354,18 @@ public sealed record CoverageReport(
         md.Append("| Client | Rows run | Passed | Failed | Skipped | Other |\n|---|---:|---:|---:|---:|---:|\n");
         foreach (var c in Clients)
             md.Append($"| {Cell(c.Label)} | {c.Run} | {c.Passed} | {c.Failed} | {c.Skipped} | {c.Other} |\n");
+
+        md.Append("\n### Failed rows\n\n");
+        if (Failed.Count == 0)
+        {
+            md.Append("None.\n");
+        }
+        else
+        {
+            md.Append("| Test | Row | Message |\n|---|---|---|\n");
+            foreach (var f in Failed)
+                md.Append($"| {Cell(f.DisplayName)} | {Cell(f.Row)} | {Cell(f.Message)} |\n");
+        }
 
         md.Append("\n### Not applicable (no row generated)\n\n");
         if (NotApplicable.Count == 0)
