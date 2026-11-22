@@ -11,7 +11,9 @@ import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins }
 
 /**
  * Opens a plain TCP transport (`ClientConfig.tcp`). Sets `TCP_NODELAY` (§13.2).
- * @type {import('../ITransport.js').TransportFactory}
+ * @param {import('../../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('../ITransport.js').Transport>} Satisfies {@link import('../ITransport.js').TransportFactory}.
  */
 export function tcpTransport(config, { signal }) {
   const { host, port } = /** @type {import('../../contract/config.js').TcpTransportConfig} */ (config.tcp);
@@ -32,7 +34,9 @@ export function tcpTransport(config, { signal }) {
  * Opens a TLS-over-TCP transport (`ClientConfig.tcpTls`). No ALPN (§13.3). A certificate or handshake failure
  * rejects with `transportError` `AuthenticationError` (`DisconnectReason.Authentication`), and so does a chain that
  * matches none of `tls.pins` (checked after the handshake, before the transport is returned).
- * @type {import('../ITransport.js').TransportFactory}
+ * @param {import('../../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('../ITransport.js').Transport>} Satisfies {@link import('../ITransport.js').TransportFactory}.
  */
 export function tcpTlsTransport(config, { signal }) {
   const { host, port, tls: tlsOptions } = /** @type {import('../../contract/config.js').TcpTlsTransportConfig} */ (config.tcpTls);
@@ -61,7 +65,9 @@ export function tcpTlsTransport(config, { signal }) {
 /**
  * Opens a Unix domain socket transport (`ClientConfig.uds`, §13.4). On Windows, Node connects `path` as a named
  * pipe, not as an `AF_UNIX` socket.
- * @type {import('../ITransport.js').TransportFactory}
+ * @param {import('../../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('../ITransport.js').Transport>} Satisfies {@link import('../ITransport.js').TransportFactory}.
  */
 export function udsTransport(config, { signal }) {
   const { path } = /** @type {import('../../contract/config.js').UdsTransportConfig} */ (config.uds);
