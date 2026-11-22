@@ -371,7 +371,9 @@ export class NodeWebSocketTransport extends TransportBase {
  * request, and appends `config.queryToken` to the request target. A refused upgrade rejects with `status` set: `401`/`403` are
  * `AuthenticationError`, `5xx` `InternalError`, others `ProtocolError`. A `3xx` redirect is never followed.
  *
- * @type {import('../ITransport.js').TransportFactory}
+ * @param {import('../../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('../ITransport.js').Transport>} Satisfies {@link import('../ITransport.js').TransportFactory}.
  */
 export async function nodeWebSocketTransport(config, { signal }) {
   const options = /** @type {import('../../contract/config.js').WebSocketTransportConfig} */ (config.webSocket);

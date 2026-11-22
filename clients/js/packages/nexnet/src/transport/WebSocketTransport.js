@@ -104,7 +104,9 @@ export class BrowserWebSocketTransport extends TransportBase {
  * (`authenticate`).
  * `queryToken` is appended to the URL's query string; messages show the URL without it.
  *
- * @type {import('./ITransport.js').TransportFactory}
+ * @param {import('../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('./ITransport.js').Transport>} Satisfies {@link import('./ITransport.js').TransportFactory}.
  */
 export async function webSocketTransport(config, { signal }) {
   const options = /** @type {import('../contract/config.js').WebSocketTransportConfig} */ (config.webSocket);

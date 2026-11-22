@@ -16,7 +16,9 @@ export const HTTP_SOCKET_UPGRADE = 'nexnet-httpsockets';
  * first. `401`/`403` reject with `transportError` `AuthenticationError`; a `2xx` answer, and a `3xx` redirect (never
  * followed), is `ProtocolError`; any other status is a connect failure (`InternalError`). `status` is set on each.
  *
- * @type {import('../ITransport.js').TransportFactory}
+ * @param {import('../../contract/config.js').ClientConfig} config
+ * @param {{ signal: AbortSignal }} options
+ * @returns {Promise<import('../ITransport.js').Transport>} Satisfies {@link import('../ITransport.js').TransportFactory}.
  */
 export async function httpSocketTransport(config, { signal }) {
   const options = /** @type {import('../../contract/config.js').HttpSocketTransportConfig} */ (config.httpSocket);
