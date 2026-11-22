@@ -15,14 +15,6 @@ internal class NexusCollectionDisableFreesPipeTests(LanguageHostPool hosts) : Ma
 {
     private const int Cycles = 1000;
 
-    /// <summary>
-    /// Why the Java and JavaScript rows are skipped: a runtime gap with a follow-up card (Q05 report), listed in
-    /// <c>ClientParityExceptions</c>.
-    /// </summary>
-    internal const string DisableReturnsEarly =
-        "the Java and JavaScript clients return from DisableAsync before the collection's pipe is freed, so with one pipe slot "
-        + "an enable right after it is refused (Busy) and the snapshot still shows the pipe (S23 parity, follow-up card)";
-
     /// <summary>The pipes open on the client's session.</summary>
     private static async Task<int> OpenPipesAsync(IClientUnderTest client)
         => (await client.GetSnapshotAsync().Timeout(T(1)))!.Pipes.Count;
@@ -31,7 +23,6 @@ internal class NexusCollectionDisableFreesPipeTests(LanguageHostPool hosts) : Ma
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task DisableAsync_FreesThePipeBeforeReturning(ClientTarget target)
     {
-        RequireInProc(target, DisableReturnsEarly);
         await using var server = await StartServerAsync();
         await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
         var list = client.List<int>(IntListBi);
@@ -45,10 +36,9 @@ internal class NexusCollectionDisableFreesPipeTests(LanguageHostPool hosts) : Ma
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task EnableDisableCycles_WithOnePipeSlot_AllSucceed(ClientTarget target)
     {
-        RequireInProc(target, DisableReturnsEarly);
         await using var server = await StartServerAsync();
         await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
         var list = client.List<int>(IntListBi);
@@ -70,10 +60,9 @@ internal class NexusCollectionDisableFreesPipeTests(LanguageHostPool hosts) : Ma
     /// refused for that.
     /// </summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task EnableDisableCycles_WithOnePipeSlotOnBothSides_AllSucceed(ClientTarget target)
     {
-        RequireInProc(target, DisableReturnsEarly);
         await using var server = await StartServerAsync(configure: config => config.MaxPipes = 1);
         await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
         var list = client.List<int>(IntListBi);
