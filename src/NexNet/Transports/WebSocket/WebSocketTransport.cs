@@ -102,6 +102,10 @@ internal class WebSocketTransport : ITransport
         {
             client.Options.CollectHttpResponseDetails = true;
 
+            foreach (var (name, value) in config.UpgradeHeaders)
+                client.Options.SetRequestHeader(name, value);
+
+            // The typed header wins over an Authorization entry of UpgradeHeaders (SetRequestHeader replaces).
             if (config.AuthenticationHeader != null)
                 client.Options.SetRequestHeader("Authorization", config.AuthenticationHeader.ToString());
 
