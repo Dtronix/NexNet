@@ -103,7 +103,7 @@ internal partial class NexusClientTests
         lock (states)
             recorded = states.ToArray();
         await Assert.That(recorded).IsEquivalentTo(
-            [ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected],
+            [ConnectionState.Connecting, ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected],
             CollectionOrdering.Matching);
     }
 

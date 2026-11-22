@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using NexNet.Internals;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
@@ -568,16 +570,17 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     /// <summary>
     /// The exact state changes while the client reconnects: it stays Reconnecting between failed attempts (it does not
     /// report each attempt's own disconnect) and raises Connected, Disconnecting, Disconnected, Reconnecting, Connected.
-    /// The attempt count shows several attempts failed while it stayed Reconnecting. Not on QUIC: an attempt to the
-    /// stopped server can outlast the connection timeout by seconds (S47), too slow for three attempts.
+    /// The attempt count shows several attempts failed while it stayed Reconnecting. A QUIC attempt to the stopped
+    /// server gets no answer and lasts the connection timeout (S47), so the waits allow that many timeouts.
     /// </summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectingStateChangedSequenceBetweenRetries(ClientTarget target)
     {
         await using var server = await StartDedicatedServer(AbruptStop());
         await using var client = await Connect(target, server, spec =>
         {
+            spec.ConnectionTimeoutMs = (int)(T(TestTimeouts.Connect) * 1000);
             spec.ReconnectDelaysMs = [20];
             spec.ReconnectContinuously = true;
         });
@@ -587,19 +590,22 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
         var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
         await server.StopAsync();
+        var held = new HeldPorts(server.Endpoints);
         await disconnected;
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
 
         // Several attempts fail against the stopped server; the client stays Reconnecting throughout.
         var attempts = 0;
-        var deadline = DateTime.UtcNow.AddSeconds(T(TestTimeouts.Connect));
+        var deadline = DateTime.UtcNow.AddSeconds(T(TestTimeouts.Connect) * 4);
         while ((attempts = (await client.GetStateHistoryAsync()).ReconnectAttempts) < 3 && DateTime.UtcNow < deadline)
             await Task.Delay(10);
         await Assert.That(attempts).IsGreaterThanOrEqualTo(3);
         await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Reconnecting);
 
+        held.Dispose();
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await WaitForReconnected(client, T(TestTimeouts.Connect));
+        // An attempt that started before the server did may last its connection timeout before the next one connects.
+        await WaitForReconnected(client, T(TestTimeouts.Connect) * 2);
 
         var history = await WaitForHistoryAsync(client, ConnectionState.Connected, after: connect.States.Count);
         await Assert.That(history.States.Skip(connect.States.Count)).IsEquivalentTo(
@@ -614,12 +620,13 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     /// Disconnected once, after the policy's two attempts.
     /// </summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectingStateChangedSequenceWhenThePolicyGivesUp(ClientTarget target)
     {
         await using var server = await StartDedicatedServer(AbruptStop());
         await using var client = await Connect(target, server, spec =>
         {
+            spec.ConnectionTimeoutMs = (int)(T(TestTimeouts.Connect) * 1000);
             spec.ReconnectDelaysMs = [20, 20];
             spec.ReconnectContinuously = false;
         });
@@ -629,9 +636,11 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
         var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
         await server.StopAsync();
+        using var held = new HeldPorts(server.Endpoints);
         await disconnected;
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
-        await client.WaitForStateAsync(ConnectionState.Disconnected, T(TestTimeouts.Connect * 3));
+        // A QUIC attempt to the stopped server lasts the connection timeout: two of them.
+        await client.WaitForStateAsync(ConnectionState.Disconnected, T(TestTimeouts.Connect * 4));
 
         var history = await WaitForHistoryAsync(client, ConnectionState.Disconnected, after: connect.States.Count + 3);
         await Assert.That(history.States.Skip(connect.States.Count)).IsEquivalentTo(
@@ -642,15 +651,58 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     /// <summary>
-    /// The state changes of the first connect, with no reconnection attempt: Connected, which the Java and JS clients
-    /// precede with Connecting (the C# client reports no Connecting through StateChanged).
+    /// The state changes of the first connect, with no reconnection attempt: Connecting, then Connected, on every
+    /// language.
     /// </summary>
     private static async Task AssertConnectHistory(ClientStateHistory connect)
     {
-        var expected = connect.States.Count == 2 ? [ConnectionState.Connecting, ConnectionState.Connected] : new[] { ConnectionState.Connected };
-        await Assert.That(connect.States).IsEquivalentTo(expected, CollectionOrdering.Matching)
+        await Assert.That(connect.States).IsEquivalentTo([ConnectionState.Connecting, ConnectionState.Connected], CollectionOrdering.Matching)
             .Because($"the states of the first connect were {string.Join(", ", connect.States)}");
         await Assert.That(connect.ReconnectAttempts).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// Holds the TCP, TLS and QUIC ports of a stopped server (bound, not listening) until disposed, so no other server
+    /// can listen on them meanwhile: a reconnection attempt is refused instead of reaching a server of another test
+    /// process (the port allocator only keeps ports unique within a process), which the client would report as
+    /// Connected. The ports are taken right after the server stops and released right before it restarts. A port that
+    /// cannot be bound (still in TIME_WAIT, which keeps it from other listeners anyway) is skipped.
+    /// </summary>
+    private sealed class HeldPorts : IDisposable
+    {
+        private readonly List<Socket> _sockets = [];
+
+        public HeldPorts(InteropEndpoints endpoints)
+        {
+            Hold(endpoints.Tcp, SocketType.Stream, ProtocolType.Tcp);
+            Hold(endpoints.TcpTls, SocketType.Stream, ProtocolType.Tcp);
+            if (endpoints.Quic is { } quic)
+                Hold(quic, SocketType.Dgram, ProtocolType.Udp);
+        }
+
+        private void Hold(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType)
+        {
+            var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
+            try
+            {
+                // As the port allocators do: on Windows only an exclusive binding keeps other sockets off the port.
+                if (OperatingSystem.IsWindows())
+                    socket.ExclusiveAddressUse = true;
+                socket.Bind(endPoint);
+                _sockets.Add(socket);
+            }
+            catch (SocketException)
+            {
+                socket.Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var socket in _sockets)
+                socket.Dispose();
+            _sockets.Clear();
+        }
     }
 
     /// <summary>
