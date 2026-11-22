@@ -46,6 +46,11 @@ export type PipeHost = {
      * instrument (`session.recordMetric`).
      */
     metric: (name: string, value: number, tags?: Readonly<Record<string, string>>) => void;
+    /**
+     * Reports a reset: records `nexnet.pipe.resets`
+     * and logs the rate-limited warning.
+     */
+    reset: (pipeId: number, reason: PipeResetReason) => void;
 };
 export type PipePhase = 'created' | 'invoked' | 'open' | 'failed';
 export declare class PipeCore {
@@ -101,6 +106,8 @@ export declare class PipeCore {
     released: boolean;
     freed: boolean;
     closingSince: number;
+    /** Resolves once the pipe is freed (slot, window and ID released) or the session ended. @type {Promise<void>} */
+    whenFreed: Promise<void>;
     /**
      * @param {import('./PipeManager.js').PipeManager} manager
      * @param {PipeHost} host
@@ -108,6 +115,8 @@ export declare class PipeCore {
      * @param {number} fullId 0 for a pipe this side opens.
      */
     constructor(manager: import('./PipeManager.js').PipeManager, host: PipeHost, localId: number, fullId: number);
+    /** Marks the pipe freed and resolves {@link PipeCore#whenFreed}. */
+    markFreed(): void;
     /** True once this side sent its Complete, received the peer's, and the application released the pipe. */
     get isFullyClosed(): boolean;
     /**

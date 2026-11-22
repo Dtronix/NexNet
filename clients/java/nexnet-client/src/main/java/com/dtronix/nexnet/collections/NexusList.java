@@ -24,7 +24,9 @@ public interface NexusList<T> extends List<T> {
     /**
      * Disconnects from the server's list.
      *
-     * @return a future that completes when disabled
+     * @return a future that completes when disabled and the collection's pipe is freed (the server confirmed its
+     *     close), so an enable right after it finds the pipe slot available; it waits at most the progress timeout for
+     *     the server's confirmation
      */
     CompletableFuture<Void> disable();
 

@@ -65,6 +65,8 @@ abstract class PipeTestBase {
     int progressTimeoutMillis = 30_000;
     /** The session's ping interval, set before connecting; null derives it. */
     Integer pingIntervalMillis;
+    /** The pipe manager's logger, set before connecting; null for none. */
+    com.dtronix.nexnet.logging.NexusLogger pipeLogger;
     NexusSession session;
     InvocationRuntime runtime;
     PipeManager pipes;
@@ -90,7 +92,7 @@ abstract class PipeTestBase {
         runtime = InvocationRuntime.builder(session, HANDSHAKE, nexus).options(invocationOptions)
             .codec(TestCodec.INSTANCE).callbackExecutor(callbacks).invocationExecutor(invocations).build();
         session.setMessageHandler(runtime);
-        pipes = PipeManager.attach(runtime, callbacks, pipeTimers, options, null);
+        pipes = PipeManager.attach(runtime, callbacks, pipeTimers, options, pipeLogger);
         CompletableFuture<Void> ready = session.start();
         server.readHandshake();
         server.write(FakeServer.PREAMBLE);

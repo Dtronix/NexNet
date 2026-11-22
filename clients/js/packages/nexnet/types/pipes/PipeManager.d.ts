@@ -94,4 +94,13 @@ export declare class PipeManager {
      * @returns {Promise<void>}
      */
     release(core: PipeCore): Promise<void>;
+    /**
+     * Waits until a pipe is freed: both sides closed it and the application released it, so its slot, window and ID
+     * are available again (C# `NexusPipeManager.WaitFreedAsync`). Also resolves when the session ends, and after
+     * `progressTimeout` when the server never confirms the close (the session's stall detection reports that). Never
+     * rejects.
+     * @param {PipeCore} core
+     * @returns {Promise<void>}
+     */
+    whenFreed(core: PipeCore): Promise<void>;
 }

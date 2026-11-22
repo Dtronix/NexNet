@@ -70,6 +70,8 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     private long closingSince;
     private final CompletableFuture<Void> ready = new CompletableFuture<>();
     private final CompletableFuture<Void> completed = new CompletableFuture<>();
+    /** Completed by the manager once the pipe is freed (slot, window and id released), or the session ended. */
+    final CompletableFuture<Void> freedFuture = new CompletableFuture<>();
 
     // Input: buffered data and the receive window. credit is what the peer may still send; consumed bytes are
     // granted back once they reach half the window. Extra credit (for an item larger than the window) is paid off
