@@ -92,8 +92,9 @@ export declare class NexusClientPool<TNexus extends import('../contract/nexus.js
         signal?: AbortSignal;
     }): Promise<RentedClient<TProxy>>;
     /**
-     * Returns a connector that resolves a collection on a pooled client. Each `getCollection()` rents a client;
-     * `release()` (or disposing the connector) returns every client it rented.
+     * Returns a connector that resolves a collection on a pooled client. Each `getCollection()` returns the client
+     * the connector holds to the pool, then rents one, so the connector holds at most one rental; `release()` (or
+     * disposing the connector) returns it.
      * @template T
      * @param {(proxy: TProxy) => import('../contract/collections.js').NexusList<T>} selector
      * @returns {{ getCollection(): Promise<import('../contract/collections.js').NexusList<T>>, release(): void, [Symbol.dispose](): void }}

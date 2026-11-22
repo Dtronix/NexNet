@@ -332,8 +332,8 @@ await pool[Symbol.asyncDispose]();
 ```
 
 In Node, `NexusClientPool` from `@dtronix/nexnet` is the Node pool, with every Node transport.
-`pool.collectionConnector(proxy => proxy.rooms)` returns a connector whose `getCollection()` rents a client and
-returns its list; `release()` returns the clients it rented.
+`pool.collectionConnector(proxy => proxy.rooms)` returns a connector whose `getCollection()` returns the client it
+holds to the pool, rents one and returns its list; `release()` returns the rented client.
 
 ## 13. Logging, metrics and diagnostics
 

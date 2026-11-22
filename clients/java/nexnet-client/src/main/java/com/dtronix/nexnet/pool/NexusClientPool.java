@@ -291,7 +291,9 @@ public final class NexusClientPool<TProxy> implements AutoCloseable {
     }
 
     /**
-     * Gives access to a collection through a rented client (C# {@code GetCollectionConnector}).
+     * Gives access to a collection through a rented client (C# {@code GetCollectionConnector}). Each
+     * {@link NexusCollectionConnector#collection()} returns the client the connector holds to the pool, then rents one,
+     * so the connector holds at most one rental.
      *
      * @param collectionSelector selects the collection from the server proxy
      * @param <C> the collection type
@@ -306,10 +308,17 @@ public final class NexusClientPool<TProxy> implements AutoCloseable {
 
             @Override
             public CompletableFuture<C> collection() {
+                // Return the earlier rental before renting again: holding it while waiting for a permit would block
+                // for good on a pool of one connection.
+                RentedNexusClient<TProxy> previous = rental.getAndSet(null);
+                if (previous != null) {
+                    previous.close();
+                }
                 return rent().thenApply(rented -> {
-                    RentedNexusClient<TProxy> previous = rental.getAndSet(rented);
-                    if (previous != null) {
-                        previous.close();
+                    // A concurrent call may have stored its rental meanwhile: the connector holds the latest one only.
+                    RentedNexusClient<TProxy> raced = rental.getAndSet(rented);
+                    if (raced != null) {
+                        raced.close();
                     }
                     return collectionSelector.apply(rented.proxy());
                 });

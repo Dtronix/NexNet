@@ -61,6 +61,8 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
 
     /// <summary>
     /// Gets a collection connector that provides access to a Nexus collection through pooled client connections.
+    /// Each <see cref="INexusCollectionClientConnector.GetCollection"/> returns the client the connector holds to the pool,
+    /// then rents one, so the connector holds at most one rental; disposing the connector returns it.
     /// </summary>
     /// <param name="collectionSelector">Function that selects the collection from the server proxy.</param>
     /// <returns>A collection connector that manages access to the specified collection.</returns>
@@ -304,13 +306,19 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
 
         public async ValueTask<INexusCollection> GetCollection()
         {
-            _clientRental = await _pool.RentClientAsync().ConfigureAwait(false);
-            return _collectionSelector.Invoke(_clientRental.Proxy);
+            // Return the earlier rental before renting again: holding it while waiting for a permit would leak the
+            // permit, and block for good on a pool of one connection.
+            Interlocked.Exchange(ref _clientRental, null)?.Dispose();
+            var rental = await _pool.RentClientAsync().ConfigureAwait(false);
+
+            // A concurrent call may have stored its rental meanwhile: the connector holds the latest one only.
+            Interlocked.Exchange(ref _clientRental, rental)?.Dispose();
+            return _collectionSelector.Invoke(rental.Proxy);
         }
-        
+
         public void Dispose()
         {
-            _clientRental?.Dispose();
+            Interlocked.Exchange(ref _clientRental, null)?.Dispose();
         }
     }
 

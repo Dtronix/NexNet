@@ -85,6 +85,45 @@ internal class NexusCollectionPoolConnectorTests(LanguageHostPool hosts) : Matri
         await DisposeAndAssertNoLeaksAsync(pool);
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.ClientPool)]
+    public async Task PoolConnector_RepeatedGetCollectionHoldsOneRental(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        var serverList = ServerList(server);
+        await serverList.AddAsync(1).Timeout(T(1));
+
+        // With one connection, a connector that kept its earlier rental could not rent again.
+        await using var pool = await CreatePoolAsync(target, server, new ClientPoolSpec { MaxConnections = 1 });
+        var connector = pool.GetCollectionConnector<int>(IntListBi);
+        var first = await connector.GetCollectionAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(await first.List.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await WaitForItemsAsync(first.List, 1);
+
+        // Each call returns the earlier rental before it rents: the pool's only client is rented again.
+        PooledCollection<int>? last = null;
+        for (var i = 0; i < 3; i++)
+        {
+            last = await connector.GetCollectionAsync().Timeout(T(TestTimeouts.Connect));
+            await Assert.That(last.ClientId).IsEqualTo(first.ClientId);
+            var state = await pool.GetStateAsync();
+            await Assert.That(state.Idle).IsEqualTo(0).Because(state.ToString());
+        }
+
+        // The collection of the latest rental synchronizes.
+        await Assert.That(await last!.List.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await WaitForItemsAsync(last.List, 1);
+        await serverList.AddAsync(2).Timeout(T(1));
+        await WaitForItemsAsync(last.List, 1, 2);
+
+        // The release gives back the one client.
+        await connector.ReleaseAsync();
+        await WaitForIdleAsync(pool, 1);
+        await Assert.That((await pool.GetStateAsync()).Rented).IsEqualTo(0);
+
+        await DisposeAndAssertNoLeaksAsync(pool);
+    }
+
     /// <summary>The server's <c>IntListBi</c>.</summary>
     private static INexusList<int> ServerList(InteropServer<ServerNexus, ServerNexus.ClientProxy> server)
     {
@@ -93,11 +132,11 @@ internal class NexusCollectionPoolConnectorTests(LanguageHostPool hosts) : Matri
     }
 
     /// <summary>A pool of <paramref name="target"/> clients of <paramref name="server"/>, with the runtime defaults.</summary>
-    private Task<IPoolUnderTest> CreatePoolAsync(ClientTarget target, InteropServer<ServerNexus, ServerNexus.ClientProxy> server)
+    private Task<IPoolUnderTest> CreatePoolAsync(ClientTarget target, InteropServer<ServerNexus, ServerNexus.ClientProxy> server, ClientPoolSpec? poolSpec = null)
     {
         var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
         spec.Logger = Logger;
-        return Harness.CreatePoolAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+        return Harness.CreatePoolAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec, poolSpec);
     }
 
     /// <summary>Waits until the pool holds <paramref name="idle"/> idle clients (a return can complete after the release).</summary>
