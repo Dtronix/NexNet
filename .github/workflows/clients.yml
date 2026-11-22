@@ -391,6 +391,7 @@ jobs:
         run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
+        id: tests
         env:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
@@ -401,7 +402,7 @@ jobs:
       # H55: the coverage report of the matrix (MatrixCoverage) as the step summary and an artifact. The test session
       # already failed on an uncited skip; this step says so again in the summary, and fails when no report was written.
       - name: Matrix coverage report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         shell: bash
         run: |
           report="$NEXNET_MATRIX_REPORT"
@@ -417,7 +418,7 @@ jobs:
           fi
 
       - name: Upload the matrix coverage report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         uses: actions/upload-artifact@v7
         with:
           name: matrix-coverage-${{ matrix.lang }}
