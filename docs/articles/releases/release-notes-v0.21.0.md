@@ -131,6 +131,10 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   only once the loop ends (the policy gave up, or `disconnect()`/`close()` stopped it). Before, each failed attempt
   went back to `Disconnected` until the next one, and the JavaScript client read `Disconnected` during the first delay.
   Tested on every client language and transport.
+- **Behavior change: the Java client reports the lost session's `DISCONNECTING` and `DISCONNECTED`.** When the
+  server or the network ends a session, the Java client now reports `CONNECTED` → `DISCONNECTING` → `DISCONNECTED`
+  and then, with a reconnection policy, `RECONNECTING` → `CONNECTED`, as the C# and JavaScript clients do. Before, it
+  went straight from `CONNECTED` to `RECONNECTING` (or to `DISCONNECTED` without a policy).
 
 ## New features
 

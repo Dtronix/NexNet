@@ -523,6 +523,9 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             }
             session = null;
         }
+        // C# and JS report the session's own states before a reconnection: Disconnecting, then Disconnected, then
+        // Reconnecting (K54). A user disconnect() or close() has already set Disconnecting.
+        setState(ConnectionState.DISCONNECTING);
         log(NexusLogLevel.INFORMATION, "Disconnected: " + reason + ".", null);
         try {
             CompletableFuture.supplyAsync(() -> ClientNexusHooks.disconnected(nexus), invocationExecutor)
@@ -539,6 +542,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         synchronized (lock) {
             userClosed = closed || a.userDisconnect;
         }
+        setState(ConnectionState.DISCONNECTED);
         if (controller != null && !userClosed) {
             // C#: the state goes to Reconnecting and disconnected() stays pending until the loop gives up.
             setState(ConnectionState.RECONNECTING);
@@ -556,8 +560,9 @@ public final class NexusClient<TProxy> implements AutoCloseable {
                 });
                 return;
             }
+            // The policy declined (or a loop already runs): no loop owns the state.
+            setState(ConnectionState.DISCONNECTED);
         }
-        setState(ConnectionState.DISCONNECTED);
         NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
     }
 
