@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Collections;
@@ -36,7 +35,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly InProcMetricsRecorder? _metrics;
     private readonly Lock _lifecycleLock = new();
     private Task _lifecycle = Task.CompletedTask;
-    private ConnectionState _lastState = ConnectionState.Disconnected;
+    private int _sessionOpen;
     private int _disposed;
 
     /// <summary>Creates the driver; the client is not connected.</summary>
@@ -102,10 +101,13 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
             {
                 _client.StateChanged += (_, state) =>
                 {
-                    var previous = _lastState;
-                    _lastState = state;
+                    // Once per session that reported Connected: the Disconnected the client raises when its
+                    // reconnection loop gives up or is stopped ends no session of its own.
+                    if (state == ConnectionState.Connected)
+                        Volatile.Write(ref _sessionOpen, 1);
+
                     // Queued behind the session's OnConnected, so the two run in the order the client raised them.
-                    if (state == ConnectionState.Disconnected && previous != ConnectionState.Disconnected)
+                    if (state == ConnectionState.Disconnected && Interlocked.Exchange(ref _sessionOpen, 0) == 1)
                         EnqueueLifecycle(() =>
                         {
                             binder.RunDetached(_facade.OnDisconnected, new JsonArray());
@@ -117,17 +119,14 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     }
 
     /// <summary>
-    /// The task the C# client awaits before its connect returns (NexusSession's ready task, read by reflection: the
-    /// client has no public handshake-complete event). It completes once the session has processed the ServerGreeting,
-    /// right after the session starts nexus.Connected, or when the session ends first.
+    /// The task the C# client awaits before its connect returns (the session's internal ready task). It completes once
+    /// the session has processed the ServerGreeting, right after the session starts nexus.Connected, or when the session
+    /// ends first.
     /// </summary>
     private static Task SessionReadyTask(INexusSession session)
-    {
-        var field = session.GetType().GetField("_readyTaskCompletionSource", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?? throw new InvalidOperationException(
-                $"{session.GetType()} has no _readyTaskCompletionSource field; update {nameof(InProcClientDriver<TClientNexus, TServerProxy>)}.{nameof(SessionReadyTask)}.");
-        return (field.GetValue(session) as TaskCompletionSource)?.Task ?? Task.CompletedTask;
-    }
+        => session is NexusSession<TClientNexus, TServerProxy> clientSession
+            ? clientSession.ReadyTask
+            : throw new InvalidOperationException($"{session.GetType()} is not a client session of this driver.");
 
     /// <summary>Runs <paramref name="next"/> after the lifecycle deliveries queued before it.</summary>
     private void EnqueueLifecycle(Func<Task> next)
