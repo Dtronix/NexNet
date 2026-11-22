@@ -18,8 +18,8 @@ namespace NexNet.IntegrationTests;
 /// Remote exception detail: the opt-in type and message, the application error hook, and the optional third element
 /// of an Exception invocation result. End-to-end tests of a client calling the server run on the client matrix (P01b);
 /// so do the server-calling-client tests (client options of <see cref="ClientSpec"/>) and the parsing of every detail
-/// shape, through frames the server injects. The C# parser and exception constructor tests and the client pool test
-/// stay C#-only.
+/// shape, through frames the server injects, and the detail through a client pool. The C# parser and exception
+/// constructor tests stay C#-only.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
@@ -531,29 +531,27 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : MatrixTestBa
         await EndAsync(client);
     }
 
-    /// <summary>C#-only: the C# client pool (client pools are ported by P01g).</summary>
+    /// <summary>The detail reaches a client rented from a pool.</summary>
     [Test]
-    public async Task TypeAndMessage_ThroughClientPool_CarriesTypeAndMessage()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.ClientPool)]
+    public async Task TypeAndMessage_ThroughClientPool_CarriesTypeAndMessage(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(Type.Uds);
-        serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, _, _) = CreateServerClient(serverConfig, CreateClientConfig(Type.Uds));
-        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("pooled boom");
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServerAsync(
+            nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("pooled boom"),
+            config => config.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+        spec.Logger = Logger;
+        await using var pool = await Harness.CreatePoolAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec, new ClientPoolSpec { MaxConnections = 2 });
 
-        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
-            new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 2 });
-        try
+        await using (var rented = await pool.RentAsync().Timeout(T(TestTimeouts.Connect)))
         {
-            using var rented = await pool.RentClientAsync().Timeout(T(1));
-            var exception = await Throws(
-                async () => await rented.Proxy.ServerTaskValue().Timeout(T(1)));
+            var exception = await Throws(async () => await Proxy(rented).ServerTaskValue().Timeout(T(1)));
             await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
             await Assert.That(exception.RemoteMessage).IsEqualTo("pooled boom");
         }
-        finally
-        {
-            await pool.DisposeAsync();
-        }
+
+        await pool.DisposeAsync();
+        var report = await pool.EndTestAuditAsync().Timeout(T(5));
+        await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
     }
 }
