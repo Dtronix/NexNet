@@ -43,7 +43,7 @@ public sealed class RemoteClientDriverFactory : IClientDriverFactory, IPoolDrive
 
         var result = await connection.RequestAsync(test, "client.create", args, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
         var handle = result["h"]?.GetValue<string>() ?? throw new ControlProtocolException("client.create returned no handle.");
-        return new RemoteClientDriver(connection, test, handle, target, client, server);
+        return new RemoteClientDriver(connection, test, handle, target, client, server) { ClientLogger = spec.Logger };
     }
 
     /// <inheritdoc />

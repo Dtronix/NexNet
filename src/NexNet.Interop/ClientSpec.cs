@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using NexNet.InteropServer;
 using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Messages;
 using NexNet.Transports;
 
 namespace NexNet.Interop;
@@ -72,14 +73,33 @@ public sealed class ClientSpec
     /// </summary>
     public bool DefaultReconnection { get; set; }
 
+    /// <summary>
+    /// The disconnect reasons the client reconnects for (C# <c>DefaultReconnectionPolicy.ReconnectReasons</c>, Java
+    /// <c>DefaultReconnectionPolicy</c> reasons, JS <c>ReconnectionPolicy.shouldReconnect</c>); null keeps the default
+    /// (SocketError, Timeout, ServerRestarting). Needs <see cref="ReconnectDelaysMs"/>.
+    /// </summary>
+    public DisconnectReason[]? ReconnectReasons { get; set; }
+
     /// <summary>The NexNet greeting token (<c>Authenticate</c>), as UTF-8 text.</summary>
     public string? AuthToken { get; set; }
+
+    /// <summary>
+    /// A scripted asynchronous authenticate callback (C# <c>AuthenticateAsync</c>, Java <c>authenticateAsync</c>, JS
+    /// <c>authenticate</c>), called before every connect and reconnect. Exclusive with <see cref="AuthToken"/>.
+    /// </summary>
+    public AuthenticateScript? Authenticate { get; set; }
 
     /// <summary>
     /// HTTP <c>Authorization</c> header value, e.g. <c>Bearer abc</c> (HttpSocket/WebSocket only;
     /// <see cref="ClientCapabilities.AuthorizationHeader"/>).
     /// </summary>
     public string? AuthorizationHeader { get; set; }
+
+    /// <summary>
+    /// A token the client sends in the query string of the WebSocket or HttpSocket upgrade request (the client's
+    /// query-token option, not a hand-built URL). HTTP transports only.
+    /// </summary>
+    public QueryToken? QueryToken { get; set; }
 
     /// <summary>Largest message the client accepts, in bytes.</summary>
     public int? MaxMessageSize { get; set; }
@@ -92,6 +112,30 @@ public sealed class ClientSpec
     /// further ones queue.
     /// </summary>
     public int? MaxConcurrentConnectionInvocations { get; set; }
+
+    /// <summary>
+    /// How many invocations of the client nexus's <c>[NexusMethod(SeparatePool = true)]</c> methods the client runs at
+    /// once (<c>MaxSeparatePoolInvocations</c>, 1 – 1000).
+    /// </summary>
+    public int? MaxSeparatePoolInvocations { get; set; }
+
+    /// <summary>
+    /// An invocation from the server that waits longer than this for an execution slot logs a warning, in milliseconds
+    /// (<c>InvocationQueueWarningThreshold</c>, 0 – 600000; 0 disables the warning).
+    /// </summary>
+    public int? InvocationQueueWarningThresholdMs { get; set; }
+
+    /// <summary>The client's receive memory per session, in bytes (<c>SessionBudget</c>, 64 KiB – 1 GiB).</summary>
+    public int? SessionBudget { get; set; }
+
+    /// <summary>Most pipes open on the client's session at once (<c>MaxPipes</c>, 1 – 255).</summary>
+    public int? MaxPipes { get; set; }
+
+    /// <summary>The receive window of each pipe the client opens or accepts, in bytes (<c>PipeWindow</c>, 4 KiB – 1 GiB).</summary>
+    public int? PipeWindow { get; set; }
+
+    /// <summary>Longest time without progress before the session disconnects as stalled, in milliseconds (<c>ProgressTimeout</c>, 50 – 600000).</summary>
+    public int? ProgressTimeoutMs { get; set; }
 
     /// <summary>
     /// What the client sends the server when a client nexus method it runs fails (<c>RemoteExceptionDetail</c>); null is
@@ -108,10 +152,14 @@ public sealed class ClientSpec
     /// <summary>Runs the client's timers on a test clock moved by <see cref="IClientUnderTest.AdvanceTimeAsync"/> (<see cref="ClientCapabilities.FakeTime"/>).</summary>
     public bool FakeTime { get; set; }
 
-    /// <summary>Client log level; null disables client logging.</summary>
+    /// <summary>
+    /// Client log level. A language host sends the client's lines at or above it as <c>log</c> events, which the
+    /// remote driver gives to <see cref="Logger"/>; the C# client logs to <see cref="Logger"/> at or above it. Null
+    /// disables client logging in language hosts and leaves the in-process logger unfiltered.
+    /// </summary>
     public NexusLogLevel? LogLevel { get; set; }
 
-    /// <summary>In-process only: the logger of the C# client. Not sent to language hosts.</summary>
+    /// <summary>The logger of the C# client, and of the <c>log</c> events of a language host's client. Not sent to language hosts.</summary>
     [JsonIgnore]
     public INexusLogger? Logger { get; set; }
 
@@ -134,6 +182,8 @@ public sealed class ClientSpec
     {
         var copy = (ClientSpec)MemberwiseClone();
         copy.ReconnectDelaysMs = ReconnectDelaysMs?.ToArray();
+        copy.ReconnectReasons = ReconnectReasons?.ToArray();
+        copy.Authenticate = Authenticate?.Clone();
         return copy;
     }
 }

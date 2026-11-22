@@ -252,16 +252,25 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `transport` | string | `ClientTransport` name. Always set by the runner. |
 | `address` | string | `tcp://host:port`, `tls://host:port`, `uds:<path>`, `http(s)://…`, `ws(s)://…`. |
 | `tlsServerName`, `caPem`, `clientCertificatePem`, `clientKeyPem`, `pinSha256` | string | TLS options. |
-| `insecureSkipVerify` | bool | |
+| `insecureSkipVerify` | bool | Accepts any server certificate. A browser host refuses it with `NotSupported` (the browser's TLS stack decides trust). |
 | `connectionTimeoutMs`, `timeoutMs`, `handshakeTimeoutMs`, `pingIntervalMs`, `maxMessageSize`, `invocationCredits` | int | |
 | `maxConcurrentConnectionInvocations` | int | How many invocations from the server the client runs at once (1 – 1000); further ones queue. |
+| `maxSeparatePoolInvocations` | int | How many invocations of the client nexus's `SeparatePool` methods the client runs at once (1 – 1000). |
+| `invocationQueueWarningThresholdMs` | int | An invocation from the server that waits longer than this for an execution slot logs a warning (0 – 600000; 0 disables it). The Java client has no such warning and refuses the member with `NotSupported`. |
+| `sessionBudget` | int | The client's receive memory per session, in bytes (64 KiB – 1 GiB). |
+| `maxPipes` | int | Most pipes open on the client's session at once (1 – 255); one more is refused locally (kind `Busy`). |
+| `pipeWindow` | int | The receive window of each pipe the client opens or accepts, in bytes, reserved from `sessionBudget` while the pipe is open. |
+| `progressTimeoutMs` | int | Longest time without progress before the session disconnects as `Stalled` (50 – 600000). |
 | `remoteExceptionDetail` | string | `RemoteExceptionDetail` name (`None`, `TypeAndMessage`): what the client sends the server when a client nexus method fails. |
 | `onInvocationException` | object | `{code?, message?}`: the client nexus's `OnInvocationException` hook returns this application error (code int, message string; an absent member is null) for every failed client nexus method, whatever `remoteExceptionDetail` says. Absent: no hook. A pool (§6.11) refuses it with `NotSupported`. |
 | `reconnectDelaysMs` | int[] | Null: no reconnection (unless `defaultReconnection`). |
 | `reconnectContinuously` | bool | |
 | `defaultReconnection` | bool | With no `reconnectDelaysMs`: keep the runtime's default reconnection policy instead of turning reconnection off (none in C#, Java and Node; the default policy in a browser). |
+| `reconnectReasons` | string[] | `DisconnectReason` names the client reconnects for (C# `DefaultReconnectionPolicy.ReconnectReasons`, Java `DefaultReconnectionPolicy` reasons, JS `shouldReconnect`). Absent: the default reasons (`SocketError`, `Timeout`, `ServerRestarting`). Needs `reconnectDelaysMs` (`BadRequest` otherwise). |
 | `authToken` | string | Greeting token, UTF-8 text. |
+| `authenticate` | object | A scripted asynchronous authenticate callback, called before every connect and reconnect: `{token?, appendCallNumber?, delayMs?, hang?, throwMessage?}`. Each call counts (1, 2, …, per client), waits `delayMs` in real time, then: with `hang`, never answers (only the client's own cancellation, its handshake timeout or a canceled connect, ends it); with `throwMessage`, fails with an error of that message; else returns `token` as UTF-8 (with the call number appended when `appendCallNumber`; no token when absent). Exclusive with `authToken` (`BadRequest`). Unknown members are refused with `NotSupported`. |
 | `authorizationHeader` | string | |
+| `queryToken` | object | `{name, value}`: the client's query-token option (C# runner: appended to the URL, Java `queryToken`, JS `queryToken` of the WebSocket/HttpSocket config) adds `name=value` to the upgrade request's query. HTTP transports only (`NotSupported` otherwise); browsers support it. |
 | `fakeTime` | bool | |
 | `logLevel` | string | `NexusLogLevel` name; null disables client logging. Client logs travel as `log` events. |
 
@@ -483,7 +492,8 @@ replies, and the host ignores the reply).
 ### 7.4 log
 
 `{level, category?, message}` with `h` set when the line comes from a client, null for the host itself. Kept in the
-test's transcript.
+test's transcript. The C# runner also gives a client's lines to the `ClientSpec.Logger` of the client (so a test can
+assert on them, as on the in-process client's log).
 
 ### 7.5 host.error
 
