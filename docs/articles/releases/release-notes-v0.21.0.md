@@ -228,6 +228,9 @@ ES modules with JSDoc and `.d.ts` typings, no dependencies. Node 22+ (WebSocket,
 - Client snapshots carry `PingInterval` and `IsSecure`; server instruments and snapshots are per endpoint (above)
   ([#159](https://github.com/Dtronix/NexNet/pull/159), [#114](https://github.com/Dtronix/NexNet/pull/114), [#119](https://github.com/Dtronix/NexNet/pull/119)). The Java and JavaScript clients expose the same instruments and snapshots ([#169](https://github.com/Dtronix/NexNet/pull/169), [#197](https://github.com/Dtronix/NexNet/pull/197), [#162](https://github.com/Dtronix/NexNet/pull/162), [#183](https://github.com/Dtronix/NexNet/pull/183)).
   See [Metrics and Diagnostics](../metrics.md).
+- The snapshot's `Invocations.AwaitingResults` no longer counts a call that is still waiting for invocation credit
+  (`CreditWaits` counts it): the C# client now takes the invocation ID once the call has credit, as the Java and
+  JavaScript clients do, so the field means the same in all three.
 
 ## Client parity
 
