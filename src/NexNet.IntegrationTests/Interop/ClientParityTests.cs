@@ -1,6 +1,9 @@
 using System.Reflection;
 using System.Reflection.Emit;
+using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Interop;
+using NexNet.Interop.InProc;
+using NexNet.Interop.Remote;
 
 namespace NexNet.IntegrationTests.Interop;
 
@@ -20,14 +23,18 @@ namespace NexNet.IntegrationTests.Interop;
 /// </para>
 /// <para>
 /// A test that runs on a language can still check part of its behavior on the C# client only: a branch on
-/// <see cref="ClientLanguages.CSharp"/> or <c>MatrixTestBase.InProc</c> (<c>MatrixTestBase.AssertNotOutstanding</c> checks every language).
-/// The audit finds those in the IL of the test (its async state machine, lambdas and local functions included, and
-/// the methods of this assembly they call), and they need an exception of their own (<see cref="ParityGap.CSharpOnlyAssertion"/>).
+/// <see cref="ClientLanguages.CSharp"/>, a check or cast to an in-process driver type (<c>client as InProcClientDriver&lt;,&gt;</c>,
+/// <c>client is InProcClientDriver&lt;,&gt;</c>), or <c>MatrixTestBase.InProc</c>. The audit finds those in the IL of the test
+/// (its async state machine, lambdas and local functions included, and the methods of this assembly they call), and
+/// they need an exception of their own (<see cref="ParityGap.CSharpOnlyAssertion"/>). A helper whose driver-type check
+/// adds a C# check on top of one that runs on every language (<c>MatrixTestBase.AssertNotOutstanding</c>) is exempt
+/// instead, with its reason, in <see cref="ClientParityExceptions.DriverTypeChecks"/>.
 /// </para>
 /// <para>
 /// The same goes for a branch on any other language: a string comparison against a <see cref="ClientLanguages"/> name
 /// (<c>target.Language == ClientLanguages.Java</c>) or the start of a family of names
-/// (<c>target.Language.StartsWith("browser-")</c>), in the test or in a helper it calls (<c>IsBrowser(target)</c>). Such a
+/// (<c>target.Language.StartsWith("browser-")</c>), or a check of a remote driver type (<c>client is RemoteClientDriver</c>),
+/// in the test or in a helper it calls (<c>IsBrowser(target)</c>). Such a
 /// test checks something else, often less, on that language, and needs an exception with the platform reason
 /// (<see cref="ParityGap.PlatformVariantAssertion"/>).
 /// </para>
@@ -58,7 +65,10 @@ internal class ClientParityTests
     {
         var notNeeded = ClientParityExceptions.All
             .Where(entry => Audit(ClientParityExceptions.All.Where(e => !ReferenceEquals(e, entry)).ToArray()).Count == 0)
-            .Select(entry => entry.ToString());
+            .Select(entry => entry.ToString())
+            .Concat(ClientParityExceptions.DriverTypeChecks
+                .Where(entry => Audit(ClientParityExceptions.All, ClientParityExceptions.DriverTypeChecks.Where(e => !ReferenceEquals(e, entry)).ToArray()).Count == 0)
+                .Select(entry => entry.ToString()));
         var list = string.Join(Environment.NewLine, notNeeded);
         if (list.Length > 0)
             Assert.Fail("The audit still passes without these exceptions:" + Environment.NewLine + list);
@@ -71,6 +81,9 @@ internal class ClientParityTests
         var entries = ClientParityExceptions.All;
         await Assert.That(entries.Where(e => string.IsNullOrWhiteSpace(e.Reason) || e.Languages == ParityLanguages.None)).IsEmpty();
         await Assert.That(entries.GroupBy(e => (e.Test, e.Gap)).Where(g => g.Count() > 1).Select(g => g.Key.Test)).IsEmpty();
+        var helpers = ClientParityExceptions.DriverTypeChecks;
+        await Assert.That(helpers.Where(e => string.IsNullOrWhiteSpace(e.Reason))).IsEmpty();
+        await Assert.That(helpers.GroupBy(e => e.Helper).Where(g => g.Count() > 1).Select(g => g.Key)).IsEmpty();
     }
 
     [Test]
@@ -93,6 +106,32 @@ internal class ClientParityTests
     }
 
     [Test]
+    public async Task Audit_FindsADriverTypeCheck()
+    {
+        // A helper that branches on the driver type (client as InProcClientDriver<,>) checks the C# client only. Without
+        // its exemption, every matrix test that calls it is reported, as a C#-only assertion.
+        var issues = Audit(ClientParityExceptions.All, []);
+        await Assert.That(issues).IsNotEmpty();
+        await Assert.That(issues.All(i => i.Contains("an assertion runs on the C# client only", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(issues).Contains(i => i.StartsWith("NexusClientTests_Cancellation.CanceledInvocationReleasesItsIdOnTheCanceledReply:", StringComparison.Ordinal));
+        await Assert.That(issues).Contains(i => i.StartsWith("InvocationReservedIdTests.ReservedIds_LeaveOutACallWaitingForCredit_AndKeepACallCanceledAfterSend:", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Audit_KnowsTheDriverTypes()
+    {
+        await Assert.That(DriverLanguages(typeof(InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>), out var csharp)).IsEqualTo(ParityLanguages.None);
+        await Assert.That(csharp).IsTrue();
+        await Assert.That(DriverLanguages(typeof(InProcPoolDriver<,>), out csharp)).IsEqualTo(ParityLanguages.None);
+        await Assert.That(csharp).IsTrue();
+        await Assert.That(DriverLanguages(typeof(RemoteClientDriver), out csharp)).IsEqualTo(ParityLanguages.All);
+        await Assert.That(csharp).IsFalse();
+        await Assert.That(DriverLanguages(typeof(RemotePoolDriver), out _)).IsEqualTo(ParityLanguages.All);
+        await Assert.That(DriverLanguages(typeof(IClientUnderTest), out _)).IsNull();
+        await Assert.That(DriverLanguages(typeof(string), out _)).IsNull();
+    }
+
+    [Test]
     public async Task Audit_KnowsEveryLanguageName()
     {
         await Assert.That(UngroupedLanguages()).IsEmpty();
@@ -108,13 +147,26 @@ internal class ClientParityTests
     }
 
     /// <summary>The audit: what is missing from <paramref name="exceptions"/>, and what in it is stale.</summary>
-    internal static IReadOnlyList<string> Audit(IReadOnlyList<ParityException> exceptions)
+    /// <param name="exceptions">The documented gaps.</param>
+    /// <param name="driverTypeChecks">The helpers whose driver-type checks are exempt; <see cref="ClientParityExceptions.DriverTypeChecks"/> by default.</param>
+    internal static IReadOnlyList<string> Audit(IReadOnlyList<ParityException> exceptions, IReadOnlyList<DriverTypeCheckExemption>? driverTypeChecks = null)
     {
         var issues = new List<string>();
         foreach (var language in UngroupedLanguages())
             issues.Add($"ClientLanguages.{language}: a client language the audit has no group for; add it to ClientParityTests.Languages and ParityLanguages.");
 
-        var gaps = FindGaps(issues);
+        var exempt = new List<MethodBase>();
+        foreach (var entry in driverTypeChecks ?? ClientParityExceptions.DriverTypeChecks)
+        {
+            if (FindHelper(entry.Helper) is not { } helper)
+                issues.Add($"{entry.Helper}: the driver-type check exemption names no method of this assembly. Fix or remove it in ClientParityExceptions.DriverTypeChecks.");
+            else if (!ChecksDriverType(helper))
+                issues.Add($"{entry.Helper}: the driver-type check exemption is stale: the method checks no driver type. Remove it from ClientParityExceptions.DriverTypeChecks.");
+            else
+                exempt.Add(helper);
+        }
+
+        var gaps = FindGaps(issues, exempt);
 
         foreach (var ((test, gap), languages) in gaps.OrderBy(g => g.Key.Test, StringComparer.Ordinal).ThenBy(g => g.Key.Gap))
         {
@@ -138,7 +190,7 @@ internal class ClientParityTests
     private static string Describe(ParityGap gap) => gap switch
     {
         ParityGap.NoRunnableRow => "no runnable row",
-        ParityGap.CSharpOnlyAssertion => "an assertion runs on the C# client only",
+        ParityGap.CSharpOnlyAssertion => "an assertion runs on the C# client only (a branch on ClientLanguages.CSharp or on the driver type, or MatrixTestBase.InProc)",
         ParityGap.PlatformVariantAssertion => "the test branches on the language and checks something else (or less)",
         _ => gap.ToString(),
     };
@@ -149,10 +201,10 @@ internal class ClientParityTests
             .Select(l => l.ToString().ToLowerInvariant()));
 
     /// <summary>Every gap of every matrix test, by test (<c>Class.Method</c>) and kind.</summary>
-    private static Dictionary<(string Test, ParityGap Gap), ParityLanguages> FindGaps(List<string> issues)
+    private static Dictionary<(string Test, ParityGap Gap), ParityLanguages> FindGaps(List<string> issues, IReadOnlyList<MethodBase> exempt)
     {
         var gaps = new Dictionary<(string, ParityGap), ParityLanguages>();
-        var calls = MatrixHelpers();
+        var calls = MatrixHelpers() with { DriverCheckExempt = exempt };
 
         foreach (var type in typeof(ClientParityTests).Assembly.GetTypes().Where(t => t.IsClass && !t.IsAbstract))
         {
@@ -241,11 +293,17 @@ internal class ClientParityTests
 
     // ----- The IL of a test -----
 
-    private sealed record Helpers(int RequireInProc, int[] CSharpOnly);
+    /// <param name="RequireInProc">The token of <c>MatrixTestBase.RequireInProc</c>.</param>
+    /// <param name="CSharpOnly">The tokens of the helpers that check the C# client only (<c>MatrixTestBase.InProc</c>).</param>
+    /// <param name="DriverCheckExempt">The helpers whose driver-type checks are exempt (<see cref="ClientParityExceptions.DriverTypeChecks"/>).</param>
+    private sealed record Helpers(int RequireInProc, int[] CSharpOnly, IReadOnlyList<MethodBase> DriverCheckExempt);
 
     /// <summary>What the IL of a test (and of the helpers it calls) does.</summary>
     /// <param name="RequiresInProc">It calls <c>MatrixTestBase.RequireInProc</c>.</param>
-    /// <param name="HasCSharpOnlyAssertion">It branches on <see cref="ClientLanguages.CSharp"/> or calls <c>MatrixTestBase.InProc</c>.</param>
+    /// <param name="HasCSharpOnlyAssertion">
+    /// It branches on <see cref="ClientLanguages.CSharp"/>, checks or casts to an in-process driver type
+    /// (<c>client as InProcClientDriver&lt;,&gt;</c>), or calls <c>MatrixTestBase.InProc</c>.
+    /// </param>
     /// <param name="Variants">The languages it branches on, other than C#.</param>
     private readonly record struct BodyScan(bool RequiresInProc, bool HasCSharpOnlyAssertion, ParityLanguages Variants)
     {
@@ -260,7 +318,64 @@ internal class ClientParityTests
         int Token(string name) => (typeof(MatrixTestBase).GetMethod(name, flags)
                                    ?? throw new InvalidOperationException($"MatrixTestBase.{name} not found: update the parity audit.")).MetadataToken;
 
-        return new Helpers(Token("RequireInProc"), [Token("InProc")]);
+        return new Helpers(Token("RequireInProc"), [Token("InProc")], []);
+    }
+
+    /// <summary>The method a <see cref="DriverTypeCheckExemption.Helper"/> names (<c>Class.Method</c>), in this assembly.</summary>
+    private static MethodBase? FindHelper(string name)
+    {
+        const BindingFlags all = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+        var dot = name.LastIndexOf('.');
+        if (dot <= 0)
+            return null;
+
+        var methods = typeof(ClientParityTests).Assembly.GetTypes()
+            .Where(t => t.Name == name[..dot])
+            .SelectMany(t => t.GetMethods(all))
+            .Where(m => m.Name == name[(dot + 1)..])
+            .ToArray();
+        return methods.Length == 1 ? methods[0] : null;
+    }
+
+    /// <summary>
+    /// The languages a check or cast to a client driver type (<c>isinst</c>, <c>castclass</c>, <c>typeof</c>) singles
+    /// out: an implementation of <see cref="IClientUnderTest"/> or <see cref="IPoolUnderTest"/>. The in-process drivers
+    /// drive the C# client only (<paramref name="csharp"/>), the remote drivers every other language. Null when
+    /// <paramref name="type"/> is no driver type.
+    /// </summary>
+    internal static ParityLanguages? DriverLanguages(Type type, out bool csharp)
+    {
+        var definition = type.IsGenericType ? type.GetGenericTypeDefinition() : type;
+        csharp = definition == typeof(InProcClientDriver<,>) || definition == typeof(InProcPoolDriver<,>);
+        if (csharp)
+            return ParityLanguages.None;
+
+        if (!type.IsClass || type.IsAbstract || !(typeof(IClientUnderTest).IsAssignableFrom(type) || typeof(IPoolUnderTest).IsAssignableFrom(type)))
+            return null;
+
+        return ParityLanguages.All;
+    }
+
+    /// <summary>Whether the IL of <paramref name="method"/> (state machine and lambdas included) checks a driver type.</summary>
+    private static bool ChecksDriverType(MethodBase method)
+        => Bodies(method).Any(body => Operands(body).Any(o => o.Operand is OperandType.InlineType or OperandType.InlineTok
+                                                              && DriverType(body, o.Token) is { } type && DriverLanguages(type, out _) != null));
+
+    /// <summary>The type <paramref name="token"/> names in <paramref name="body"/>, if it resolves.</summary>
+    private static Type? DriverType(MethodBase body, int token)
+    {
+        try
+        {
+            return body.Module.ResolveType(
+                token,
+                body.DeclaringType is { IsGenericType: true } type ? type.GetGenericArguments() : null,
+                body.IsGenericMethod ? body.GetGenericArguments() : null);
+        }
+        catch (ArgumentException)
+        {
+            // A field or method token (ldtoken), or a reference the module cannot resolve without more context: no type.
+            return null;
+        }
     }
 
     /// <summary>
@@ -313,6 +428,7 @@ internal class ClientParityTests
         // Recursion (a helper calling itself or back into the test) ends here.
         scanned[method] = default;
         var result = default(BodyScan);
+        var exempt = helpers.DriverCheckExempt.Any(m => m.Module == method.Module && m.MetadataToken == method.MetadataToken);
         foreach (var body in Bodies(method))
         {
             // The operand index and languages of the last string literal that names a language: a string comparison right
@@ -329,6 +445,13 @@ internal class ClientParityTests
                 {
                     if (NamedLanguages(body.Module.ResolveString(token), out var csharp) is { } languages)
                         (namedAt, namedCSharp, named) = (i, csharp, languages);
+                }
+                else if (operand is OperandType.InlineType or OperandType.InlineTok)
+                {
+                    // A driver-type check (client as InProcClientDriver<,>, client is RemoteClientDriver) singles out the
+                    // languages that driver drives, unless the helper is exempt (ClientParityExceptions.DriverTypeChecks).
+                    if (!exempt && DriverType(body, token) is { } type && DriverLanguages(type, out var csharp) is { } languages)
+                        result = csharp ? result with { HasCSharpOnlyAssertion = true } : result with { Variants = result.Variants | languages };
                 }
                 else if (token == helpers.RequireInProc)
                 {
@@ -424,7 +547,7 @@ internal class ClientParityTests
         .DistinctBy(o => o.Value)
         .ToDictionary(o => o.Value);
 
-    /// <summary>The method and string operands of the IL of <paramref name="method"/>.</summary>
+    /// <summary>The method, string and type operands of the IL of <paramref name="method"/>.</summary>
     private static List<(OperandType Operand, int Token)> Operands(MethodBase method)
     {
         var result = new List<(OperandType, int)>();
@@ -450,7 +573,7 @@ internal class ClientParityTests
                 _ => 4,
             };
 
-            if (opCode.OperandType is OperandType.InlineMethod or OperandType.InlineString)
+            if (opCode.OperandType is OperandType.InlineMethod or OperandType.InlineString or OperandType.InlineType or OperandType.InlineTok)
                 result.Add((opCode.OperandType, BitConverter.ToInt32(il, i)));
 
             i += size;

@@ -30,8 +30,9 @@ internal enum ParityGap
     NoRunnableRow,
 
     /// <summary>
-    /// The rows run, but part of the test checks the C# client only (a branch on <c>ClientLanguages.CSharp</c>, or
-    /// <c>MatrixTestBase.InProc</c>). <c>MatrixTestBase.AssertNotOutstanding</c> checks every language and is not a gap.
+    /// The rows run, but part of the test checks the C# client only (a branch on <c>ClientLanguages.CSharp</c>, a check or
+    /// cast to an in-process driver type such as <c>client as InProcClientDriver&lt;,&gt;</c>, or <c>MatrixTestBase.InProc</c>).
+    /// <c>MatrixTestBase.AssertNotOutstanding</c> checks every language and is exempt (<see cref="ClientParityExceptions.DriverTypeChecks"/>).
     /// </summary>
     CSharpOnlyAssertion,
 
@@ -49,6 +50,14 @@ internal enum ParityGap
 /// <param name="Languages">The languages it is missing on.</param>
 /// <param name="Reason">Why. Platform limits and by-design gaps say so; a gap a card will close names the card.</param>
 internal sealed record ParityException(string Test, ParityGap Gap, ParityLanguages Languages, string Reason);
+
+/// <summary>
+/// A helper whose check or cast to a driver type (<c>client as InProcClientDriver&lt;,&gt;</c>) the audit ignores: it adds a
+/// check on the C# client on top of one that runs on every language, so it narrows no language's test.
+/// </summary>
+/// <param name="Helper">The helper, as <c>Class.Method</c>.</param>
+/// <param name="Reason">Why the driver-type check hides no C#-only assertion.</param>
+internal sealed record DriverTypeCheckExemption(string Helper, string Reason);
 
 /// <summary>
 /// Every matrix test that does not run, or not fully, on every client language, and why. <see cref="ClientParityTests"/>
@@ -110,6 +119,18 @@ internal static class ClientParityExceptions
 
     private const string ListTestCounter =
         "Runtime internal: only the count of changes a list received before its snapshot is checked on C# alone. It is a C# runtime test field (NexusListClient.TestChangesReceivedBeforeSnapshot) that no harness operation exposes. The list state is asserted on every language, and the other languages are checked by their final contents, which a change applied before the snapshot would corrupt.";
+
+    private const string OutstandingById =
+        "Not a gap: AssertNotOutstanding asserts on every language that the client holds no invocation ID (IClientUnderTest.GetOutstandingInvocationsAsync). For the C# client only it also checks the given ID in the session's ID table, which is visible in process; that extra check narrows nothing on the other languages.";
+
+    /// <summary>
+    /// The helpers whose driver-type checks (<c>client as InProcClientDriver&lt;,&gt;</c>) are not gaps. A test that calls one
+    /// is not reported for that check; the audit fails when an entry names no method or a method with no such check.
+    /// </summary>
+    internal static readonly DriverTypeCheckExemption[] DriverTypeChecks =
+    [
+        new("MatrixTestBase.AssertNotOutstanding", OutstandingById),
+    ];
 
     /// <summary>The exceptions.</summary>
     internal static readonly ParityException[] All =
