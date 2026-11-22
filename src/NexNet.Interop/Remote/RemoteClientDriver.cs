@@ -393,7 +393,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
             Interlocked.CompareExchange(ref _postFailure, e.InnerException ?? e, null);
     }
 
-    private static Type? FindType(string fullName)
+    internal static Type? FindType(string fullName)
     {
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {

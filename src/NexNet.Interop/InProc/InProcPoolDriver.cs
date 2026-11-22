@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Collections;
+using NexNet.Collections.Lists;
 using NexNet.Interop.Reflection;
 using NexNet.Invocation;
 using NexNet.Messages;
@@ -26,6 +27,7 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
     // Pooled clients by the identity of their server proxy: the pool hands out the same proxy for the same client.
     private readonly Dictionary<object, PooledRecord> _clients = new(ReferenceEqualityComparer.Instance);
     private readonly List<Rental> _rentals = new();
+    private readonly List<IConnectorRecord> _connectors = new();
     private int _nextId;
     private int _disposed;
 
@@ -69,13 +71,7 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
         PooledRecord record;
         lock (_gate)
         {
-            var proxy = rented.Proxy;
-            if (!_clients.TryGetValue(proxy, out record!))
-            {
-                record = new PooledRecord("pc" + (++_nextId).ToString(System.Globalization.CultureInfo.InvariantCulture));
-                _clients[proxy] = record;
-            }
-
+            record = RecordOf(rented.Proxy);
             record.Disconnected = rented.DisconnectedTask;
         }
 
@@ -122,6 +118,19 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
     }
 
     /// <inheritdoc />
+    public IPoolCollectionConnector<T> GetCollectionConnector<T>(string collectionName)
+    {
+        ArgumentNullException.ThrowIfNull(collectionName);
+        var serverInterface = typeof(TServerProxy).GetInterfaces()
+                                  .FirstOrDefault(i => i.GetProperty(collectionName) != null && i.FullName != null)
+                              ?? throw new ArgumentException($"The server nexus has no collection '{collectionName}'.", nameof(collectionName));
+        var connector = new Connector<T>(this, serverInterface, collectionName);
+        lock (_gate)
+            _connectors.Add(connector);
+        return connector;
+    }
+
+    /// <inheritdoc />
     public async Task<LeakReport> EndTestAuditAsync()
     {
         // Give invocations in flight and clients being disposed (the pool disposes without waiting) a moment to settle.
@@ -142,6 +151,26 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
                 : $"pooled client {record.Id} is connected, idle in a pool not disposed");
         }
 
+        IConnectorRecord[] connectors;
+        lock (_gate)
+            connectors = _connectors.ToArray();
+        var connectorClients = 0;
+        var subscriptions = 0;
+        foreach (var connector in connectors)
+        {
+            if (connector.HoldsClient)
+            {
+                connectorClients++;
+                details.Add($"the collection connector of {connector.CollectionName} is not released: it holds a rented client");
+            }
+
+            if (connector.Watches > 0)
+            {
+                subscriptions += connector.Watches;
+                details.Add($"{connector.Watches} collection watch(es) of the connector of {connector.CollectionName} not ended");
+            }
+        }
+
         var timers = Volatile.Read(ref _disposed) == 0 ? 1 : 0;
         if (timers > 0)
             details.Add($"the health check of the pool {Target} runs: the pool is not disposed");
@@ -150,7 +179,7 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
         if (pending > 0)
             details.Add($"{pending} invocation(s) of rented clients still running");
 
-        return new LeakReport(open.Length, 0, timers, pending, 0, details);
+        return new LeakReport(open.Length + connectorClients, 0, timers, pending, subscriptions, details);
     }
 
     /// <inheritdoc />
@@ -162,6 +191,18 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
         // Nothing waits for the disconnect message at the end of a test.
         _config.DisconnectDelay = 0;
         await Pool.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>The record of the pooled client whose server proxy is <paramref name="proxy"/>; call under the gate.</summary>
+    private PooledRecord RecordOf(object proxy)
+    {
+        if (!_clients.TryGetValue(proxy, out var record))
+        {
+            record = new PooledRecord("pc" + (++_nextId).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _clients[proxy] = record;
+        }
+
+        return record;
     }
 
     private int Pending()
@@ -185,6 +226,83 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
     }
 
     private sealed record Rental(PooledRecord Record, InProcPooledClient<TServerProxy> Client);
+
+    /// <summary>What the leak audit reads of a collection connector.</summary>
+    private interface IConnectorRecord
+    {
+        string CollectionName { get; }
+
+        /// <summary>True when the connector rented a client and is not released.</summary>
+        bool HoldsClient { get; }
+
+        /// <summary>Watches of its collections not disposed.</summary>
+        int Watches { get; }
+    }
+
+    /// <summary>The C# pool's collection connector (<see cref="NexusClientPool{TClientNexus, TServerProxy}.GetCollectionConnector"/>).</summary>
+    private sealed class Connector<T> : IPoolCollectionConnector<T>, IConnectorRecord
+    {
+        private readonly InProcPoolDriver<TClientNexus, TServerProxy> _pool;
+        private readonly RemoteCollection _collection;
+        private readonly INexusCollectionClientConnector _native;
+        private readonly InProcInvoker.WatchCounter _watches = new();
+        private readonly SemaphoreSlim _getting = new(1, 1);
+        private TServerProxy? _selected;
+        private int _released;
+        private volatile bool _rented;
+
+        public Connector(InProcPoolDriver<TClientNexus, TServerProxy> pool, Type serverInterface, string collectionName)
+        {
+            _pool = pool;
+            CollectionName = collectionName;
+            _collection = RemoteCollectionProbe.Find<T>(serverInterface, collectionName);
+            var property = serverInterface.GetProperty(collectionName)!;
+            _native = pool.Pool.GetCollectionConnector(proxy =>
+            {
+                // Runs inside GetCollection, which the gate serializes: the proxy of the client it rented.
+                _selected = proxy;
+                return (INexusCollection)property.GetValue(proxy)!;
+            });
+        }
+
+        public IPoolUnderTest Pool => _pool;
+
+        public string CollectionName { get; }
+
+        public bool HoldsClient => _rented && Volatile.Read(ref _released) == 0;
+
+        public int Watches => _watches.Count;
+
+        public async Task<PooledCollection<T>> GetCollectionAsync()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
+            await _getting.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                _selected = null;
+                var native = await _native.GetCollection().ConfigureAwait(false);
+                _rented = true;
+                var proxy = _selected ?? throw new InvalidOperationException("The connector returned a collection without renting a client.");
+                string id;
+                lock (_pool._gate)
+                    id = _pool.RecordOf(proxy).Id;
+                return new PooledCollection<T>(new InProcRemoteList<T>(_collection, (INexusList<T>)native, _watches), id);
+            }
+            finally
+            {
+                _getting.Release();
+            }
+        }
+
+        public Task ReleaseAsync()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+                _native.Dispose();
+            return Task.CompletedTask;
+        }
+
+        public async ValueTask DisposeAsync() => await ReleaseAsync().ConfigureAwait(false);
+    }
 }
 
 /// <summary>A C# client rented from a <see cref="NexusClientPool{TClientNexus, TServerProxy}"/>, behind a <see cref="RentedClient"/>.</summary>

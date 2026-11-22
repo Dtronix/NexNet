@@ -13,6 +13,7 @@ public sealed class RemotePoolDriver : IPoolUnderTest
     private readonly string _clientInterface;
     private readonly string _serverInterface;
     private long _nextToken;
+    private long _nextConnector;
     private int _disposed;
 
     /// <summary>Creates the driver of pool <paramref name="handle"/>; use <see cref="RemoteClientDriverFactory"/>.</summary>
@@ -120,6 +121,18 @@ public sealed class RemotePoolDriver : IPoolUnderTest
         => Request("pool.advanceTime", new JsonObject { ["ms"] = checked((long)by.TotalMilliseconds) }, RemoteClientDriver.DefaultOpMs);
 
     /// <inheritdoc />
+    public IPoolCollectionConnector<T> GetCollectionConnector<T>(string collectionName)
+    {
+        ArgumentNullException.ThrowIfNull(collectionName);
+        var serverType = RemoteClientDriver.FindType(_serverInterface)
+                         ?? throw new InvalidOperationException($"The server nexus interface {_serverInterface} is not loaded.");
+        var collection = RemoteCollectionProbe.Find<T>(serverType, collectionName);
+        // A runner-named connector (§6.11), so the host knows the connector of every pool.collection.
+        var name = Handle + ".k" + Interlocked.Increment(ref _nextConnector).ToString(CultureInfo.InvariantCulture);
+        return new Connector<T>(this, collection, name);
+    }
+
+    /// <inheritdoc />
     public async Task<LeakReport> EndTestAuditAsync()
         => LeakReports.Parse(await Connection.RequestAsync(Test, "test.audit", new JsonObject { ["pool"] = Handle }, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false));
 
@@ -170,4 +183,60 @@ public sealed class RemotePoolDriver : IPoolUnderTest
     }
 
     private static int Int(JsonObject result, string name) => result[name]?.GetValue<int>() ?? 0;
+
+    /// <summary>A collection connector of the host's pool: <c>pool.collection</c> and <c>pool.collectionRelease</c> (§6.11).</summary>
+    private sealed class Connector<T>(RemotePoolDriver pool, RemoteCollection collection, string name) : IPoolCollectionConnector<T>
+    {
+        private readonly List<RemoteClientDriver> _drivers = new();
+        private int _released;
+
+        public IPoolUnderTest Pool => pool;
+
+        public string CollectionName => collection.Name;
+
+        public async Task<PooledCollection<T>> GetCollectionAsync()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref pool._disposed) != 0, pool);
+
+            var args = new JsonObject { ["connector"] = name, ["collection"] = ControlJson.ToJson(collection) };
+            var result = await pool.Request("pool.collection", args, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+            if (result["failed"] is JsonObject failed)
+                throw ConnectionFailure(failed);
+
+            var handle = result["h"]?.GetValue<string>() ?? throw new ControlProtocolException("pool.collection returned no handle.");
+            var clientId = result["client"]?.GetValue<string>() ?? throw new ControlProtocolException("pool.collection returned no client id.");
+            var driver = new RemoteClientDriver(pool.Connection, pool.Test, handle, pool.Target, pool._clientInterface, pool._serverInterface);
+            lock (_drivers)
+                _drivers.Add(driver);
+            return new PooledCollection<T>(driver.List<T>(collection.Name), clientId);
+        }
+
+        public async Task ReleaseAsync()
+        {
+            if (Interlocked.Exchange(ref _released, 1) != 0)
+                return;
+
+            try
+            {
+                if (pool.IsOpen)
+                    await pool.Request("pool.collectionRelease", new JsonObject { ["connector"] = name }, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is HostCrashedException or ObjectDisposedException)
+            {
+                // The host is gone, and the pool with it.
+            }
+            finally
+            {
+                // The host released the collection handles with the connector.
+                RemoteClientDriver[] drivers;
+                lock (_drivers)
+                    drivers = _drivers.ToArray();
+                foreach (var driver in drivers)
+                    driver.Release();
+            }
+        }
+
+        public async ValueTask DisposeAsync() => await ReleaseAsync().ConfigureAwait(false);
+    }
 }
