@@ -230,7 +230,7 @@ ES modules with JSDoc and `.d.ts` typings, no dependencies. Node 22+ (WebSocket,
   See [Metrics and Diagnostics](../metrics.md).
 - The snapshot's `Invocations.AwaitingResults` no longer counts a call that is still waiting for invocation credit
   (`CreditWaits` counts it): the C# client now takes the invocation ID once the call has credit, as the Java and
-  JavaScript clients do, so the field means the same in all three.
+  JavaScript clients do, so the field means the same in all three ([#356](https://github.com/Dtronix/NexNet/pull/356)).
 
 ## Client parity
 
