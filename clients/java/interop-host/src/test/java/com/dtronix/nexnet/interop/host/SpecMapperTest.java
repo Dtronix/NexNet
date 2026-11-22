@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
+import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -117,5 +119,30 @@ class SpecMapperTest {
         assertEquals(EnumSet.of(DisconnectReason.SERVER_SHUTDOWN, DisconnectReason.SOCKET_ERROR),
             SpecMapper.reconnectReasons(Arrays.asList("ServerShutdown", "SocketError")));
         assertThrows(HostError.class, () -> SpecMapper.reconnectReasons(Arrays.asList("Nope")));
+    }
+
+    @Test
+    void upgradeHeadersAreAddedToTheUpgradeRequest() {
+        ClientConfig.Builder builder = ClientConfig.webSocket(URI.create("ws://localhost:1/ws"));
+        SpecMapper.upgradeHeaders(builder, script("X-One", "1", "X-Two", "2"), "WebSocket");
+        Map<String, String> headers = builder.build().upgradeHeaders();
+        assertEquals("1", headers.get("X-One"));
+        assertEquals("2", headers.get("X-Two"));
+        assertEquals(2, headers.size());
+    }
+
+    @Test
+    void upgradeHeadersNeedAnHttpTransport() {
+        HostError error = assertThrows(HostError.class, () -> SpecMapper.upgradeHeaders(
+            ClientConfig.tcp("localhost", 1), script("X-One", "1"), "Tcp"));
+        assertEquals("NotSupported", error.kind());
+    }
+
+    @Test
+    void reservedOrNonStringUpgradeHeadersAreBadRequests() {
+        assertEquals("BadRequest", assertThrows(HostError.class, () -> SpecMapper.upgradeHeaders(
+            ClientConfig.webSocket(URI.create("ws://localhost:1/ws")), script("Host", "x"), "WebSocket")).kind());
+        assertEquals("BadRequest", assertThrows(HostError.class, () -> SpecMapper.upgradeHeaders(
+            ClientConfig.webSocket(URI.create("ws://localhost:1/ws")), script("X-One", 1L), "WebSocket")).kind());
     }
 }

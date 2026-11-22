@@ -22,6 +22,7 @@ import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +37,7 @@ final class SpecMapper {
         "insecureSkipVerify", "connectionTimeoutMs", "timeoutMs", "handshakeTimeoutMs", "pingIntervalMs",
         "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
         "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
-        "authorizationHeader", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
+        "authorizationHeader", "upgradeHeaders", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
         "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "metrics"));
 
     private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
@@ -132,6 +133,10 @@ final class SpecMapper {
             } catch (IllegalStateException e) {
                 throw HostError.notSupported("An Authorization header needs an HTTP transport, not " + transport + ".");
             }
+        }
+        Args headers = spec.optObj("upgradeHeaders");
+        if (headers != null) {
+            upgradeHeaders(builder, headers, transport);
         }
         Args query = spec.optObj("queryToken");
         if (query != null) {
@@ -323,6 +328,30 @@ final class SpecMapper {
             throw HostError.badRequest("The onInvocationException code " + code + " is not an Int32.");
         }
         return new NexusRemoteError(code == null ? null : code.intValue(), hook.optStr("message"));
+    }
+
+    /**
+     * Adds {@code ClientSpec.upgradeHeaders} (name to value) to the upgrade request.
+     *
+     * @param builder the configuration builder
+     * @param headers the headers
+     * @param transport the transport name, for the error message
+     * @throws HostError NotSupported for a TCP transport, BadRequest for a value that is not a string or a header the
+     *     client refuses (a reserved name, control characters)
+     */
+    static void upgradeHeaders(ClientConfig.Builder builder, Args headers, String transport) {
+        for (Map.Entry<String, Object> header : headers.raw().entrySet()) {
+            if (!(header.getValue() instanceof String)) {
+                throw HostError.badRequest("upgradeHeaders." + header.getKey() + " is not a string.");
+            }
+            try {
+                builder.header(header.getKey(), (String) header.getValue());
+            } catch (IllegalStateException e) {
+                throw HostError.notSupported("Upgrade headers need an HTTP transport, not " + transport + ".");
+            } catch (IllegalArgumentException e) {
+                throw HostError.badRequest(e.getMessage());
+            }
+        }
     }
 
     private static URI uri(String address) {

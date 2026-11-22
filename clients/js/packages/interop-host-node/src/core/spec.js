@@ -11,7 +11,7 @@ const SPEC_MEMBERS = new Set([
   'transport', 'address', 'tlsServerName', 'caPem', 'clientCertificatePem', 'clientKeyPem', 'pinSha256',
   'insecureSkipVerify', 'connectionTimeoutMs', 'timeoutMs', 'handshakeTimeoutMs', 'pingIntervalMs', 'maxMessageSize',
   'invocationCredits', 'maxConcurrentConnectionInvocations', 'remoteExceptionDetail', 'onInvocationException',
-  'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'fakeTime', 'logLevel',
+  'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'upgradeHeaders', 'fakeTime', 'logLevel',
   'reconnectReasons', 'authenticate', 'queryToken', 'maxSeparatePoolInvocations', 'invocationQueueWarningThresholdMs',
   'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs', 'metrics',
 ]);
@@ -180,6 +180,23 @@ function wait(ms, signal) {
 }
 
 /**
+ * `ClientSpec.upgradeHeaders` (name to value); undefined when absent.
+ * @param {unknown} value
+ * @returns {Record<string, string> | undefined}
+ */
+function upgradeHeaders(value) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) throw badRequest('ClientSpec.upgradeHeaders is not an object.');
+  /** @type {Record<string, string>} */
+  const headers = {};
+  for (const [name, header] of Object.entries(value)) {
+    if (typeof header !== 'string') throw badRequest('ClientSpec.upgradeHeaders.' + name + ' is not a string.');
+    headers[name] = header;
+  }
+  return headers;
+}
+
+/**
  * Converts a `ClientSpec`. Unknown members and options the client cannot honor fail with `NotSupported`; malformed
  * values with `BadRequest`.
  * @param {unknown} spec
@@ -203,11 +220,13 @@ export function parseSpec(spec, limits) {
   const clientKey = str(s.clientKeyPem, 'clientKeyPem');
   const pin = str(s.pinSha256, 'pinSha256');
   const authorization = str(s.authorizationHeader, 'authorizationHeader');
+  const custom = upgradeHeaders(s.upgradeHeaders);
   if (limits.browser) {
     if (s.insecureSkipVerify === true) throw notSupported('A browser cannot skip certificate verification; its TLS stack decides trust.');
     if (clientCertificate !== undefined) throw notSupported('A browser cannot present a client certificate.');
     if (pin !== undefined) throw notSupported('A browser cannot pin certificates.');
     if (authorization !== undefined) throw notSupported('A browser cannot send an Authorization header on a WebSocket.');
+    if (custom !== undefined) throw notSupported('A browser cannot send upgrade headers on a WebSocket.');
   }
   if (clientCertificate !== undefined && clientKey === undefined) throw badRequest('ClientSpec.clientCertificatePem needs clientKeyPem.');
 
@@ -239,7 +258,9 @@ export function parseSpec(spec, limits) {
   /** @type {Record<string, any>} */
   const config = {};
   /** @type {Record<string, string> | undefined} */
-  const headers = authorization !== undefined ? { Authorization: authorization } : undefined;
+  const headers = authorization !== undefined || custom !== undefined
+    ? { ...custom, ...(authorization !== undefined ? { Authorization: authorization } : {}) }
+    : undefined;
   switch (transport) {
     case 'Tcp':
       config.tcp = endpoint(address, 'tcp://');
@@ -262,7 +283,7 @@ export function parseSpec(spec, limits) {
       throw notSupported('This client has no ' + transport + ' transport.');
   }
   if (headers && !config.httpSocket && !config.webSocket) {
-    throw notSupported('An Authorization header needs an HTTP transport, not ' + transport + '.');
+    throw notSupported((authorization !== undefined ? 'An Authorization header' : 'Upgrade headers') + ' needs an HTTP transport, not ' + transport + '.');
   }
   if (s.queryToken !== undefined && s.queryToken !== null) {
     const queryToken = s.queryToken;

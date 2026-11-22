@@ -26,6 +26,8 @@ describe('ClientSpec', () => {
     expect(pinned.tls).toEqual({ pins: ['pin'], rejectUnauthorized: false });
     const http = parseSpec({ transport: 'HttpSocket', address: 'http://localhost:5003/h', authorizationHeader: 'Bearer x' }, node).config.httpSocket;
     expect(http).toEqual({ url: 'http://localhost:5003/h', headers: { Authorization: 'Bearer x' } });
+    const custom = parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', authorizationHeader: 'Bearer x', upgradeHeaders: { 'X-A': 'a' } }, node).config.webSocket;
+    expect(custom).toEqual({ url: 'ws://h/ws', headers: { 'X-A': 'a', Authorization: 'Bearer x' } });
   });
 
   it('maps the common options', () => {
@@ -48,6 +50,10 @@ describe('ClientSpec', () => {
     expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authorizationHeader: 'x' }, node), 'NotSupported');
     expectKind(() => parseSpec({ transport: 'WebSocketTls', address: 'wss://h/ws', pinSha256: 'p' }, browser), 'NotSupported');
     expectKind(() => parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', authorizationHeader: 'x' }, browser), 'NotSupported');
+    expectKind(() => parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', upgradeHeaders: { 'X-A': 'a' } }, browser), 'NotSupported');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', upgradeHeaders: { 'X-A': 'a' } }, node), 'NotSupported');
+    expectKind(() => parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', upgradeHeaders: { 'X-A': 1 } }, node), 'BadRequest');
+    expectKind(() => parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', upgradeHeaders: ['X-A'] }, node), 'BadRequest');
     expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', timeoutMs: 'x' }, node), 'BadRequest');
     // The browser does the TLS: a CA is accepted (the launcher's browser context trusts the test server).
     expect(parseSpec({ transport: 'WebSocketTls', address: 'wss://h/ws', caPem: 'CA' }, browser).config.webSocket).toEqual({ url: 'wss://h/ws' });
