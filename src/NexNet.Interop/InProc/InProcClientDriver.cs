@@ -35,6 +35,9 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly InProcMetricsRecorder? _metrics;
     private readonly Lock _lifecycleLock = new();
     private Task _lifecycle = Task.CompletedTask;
+    private readonly Lock _historyLock = new();
+    private readonly List<ConnectionState> _stateHistory = new();
+    private int _reconnectAttempts;
     private int _sessionOpen;
     private int _disposed;
 
@@ -52,6 +55,19 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         if (spec.Metrics == MetricsRecording.Native)
             config.MeterFactory = _metrics = new InProcMetricsRecorder();
         _client = new NexusClient<TClientNexus, TServerProxy>(config, Nexus);
+
+        // Recorded from creation, for GetStateHistoryAsync: StateChanged is raised in order.
+        _client.StateChanged += (_, state) =>
+        {
+            lock (_historyLock)
+                _stateHistory.Add(state);
+        };
+        if (config.ReconnectionPolicy is { } policy)
+            policy.Reconnection += (_, _) =>
+            {
+                lock (_historyLock)
+                    _reconnectAttempts++;
+            };
         _invoker = new InProcInvoker(() => _client.Proxy);
 
         var interpreter = new ScriptInterpreter(_signals, _invoker, RunNamedAsync);
@@ -174,6 +190,22 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
 
     /// <inheritdoc />
     public Task<ConnectionState> GetStateAsync() => Task.FromResult(_client.State);
+
+    /// <inheritdoc />
+    public Task<ClientStateHistory> GetStateHistoryAsync(bool reset = false)
+    {
+        lock (_historyLock)
+        {
+            var history = new ClientStateHistory(_stateHistory.ToArray(), _reconnectAttempts);
+            if (reset)
+            {
+                _stateHistory.Clear();
+                _reconnectAttempts = 0;
+            }
+
+            return Task.FromResult(history);
+        }
+    }
 
     /// <inheritdoc />
     public Task<byte[]?> GetRemoteCertificateAsync()
