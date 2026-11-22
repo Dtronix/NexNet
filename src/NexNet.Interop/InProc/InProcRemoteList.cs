@@ -37,6 +37,16 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
 
     public async ValueTask<bool> RemoveAtAsync(int index) => await list.RemoveAtAsync(index).ConfigureAwait(false);
 
+    /// <summary>
+    /// Removes the item at <paramref name="index"/>, then reads the count in the remove's continuation
+    /// (<see cref="RemoteListExtensions.RemoveAtWithCountAsync{T}"/>).
+    /// </summary>
+    public async ValueTask<RemoteListOpResult> RemoveAtWithCountAsync(int index)
+    {
+        var ok = await list.RemoveAtAsync(index).ConfigureAwait(false);
+        return new RemoteListOpResult(ok, list.Count);
+    }
+
     public async ValueTask<bool> ReplaceAsync(int index, T item) => await list.ReplaceAsync(index, item).ConfigureAwait(false);
 
     public async ValueTask<bool> MoveAsync(int fromIndex, int toIndex) => await list.MoveAsync(fromIndex, toIndex).ConfigureAwait(false);
