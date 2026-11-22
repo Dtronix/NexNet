@@ -181,9 +181,6 @@ final class SpecMapper {
         if (progressTimeout != null) {
             builder.progressTimeoutMillis(progressTimeout.intValue());
         }
-        if (spec.has("invocationQueueWarningThresholdMs")) {
-            throw HostError.notSupported("The Java client has no invocation queue warning (invocationQueueWarningThreshold).");
-        }
         PipeOptions pipes = PipeOptions.defaults();
         Long maxPipes = spec.optInteger("maxPipes");
         if (maxPipes != null) {
@@ -203,6 +200,10 @@ final class SpecMapper {
         Long maxSeparate = spec.optInteger("maxSeparatePoolInvocations");
         if (maxSeparate != null) {
             invocations = invocations.withMaxSeparatePoolInvocations(maxSeparate.intValue());
+        }
+        Long queueWarning = spec.optInteger("invocationQueueWarningThresholdMs");
+        if (queueWarning != null) {
+            invocations = invocations.withInvocationQueueWarningThresholdMillis(queueWarning.intValue());
         }
         Long sessionBudget = spec.optInteger("sessionBudget");
         if (sessionBudget != null) {
