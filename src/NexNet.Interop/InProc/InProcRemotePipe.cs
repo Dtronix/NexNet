@@ -108,12 +108,21 @@ internal sealed class InProcRemotePipe : IRemotePipe
 
     public ValueTask CompleteInputAsync() => Pipe.Input.CompleteAsync();
 
-    /// <summary>The C# client's forward (<see cref="NexusPipeForwardingExtensions.ForwardToAsync(INexusDuplexPipe, INexusDuplexPipe, CancellationToken)"/>).</summary>
-    public ValueTask ForwardToAsync(InProcRemotePipe destination)
+    /// <summary>The C# client's forward (<see cref="NexusPipeForwardingExtensions.ForwardToAsync(INexusDuplexPipe, INexusDuplexPipe, CancellationToken)"/>); a canceled forward throws <see cref="TaskCanceledException"/>.</summary>
+    public async ValueTask ForwardToAsync(InProcRemotePipe destination, RemoteCancel cancel)
     {
         if (ReferenceEquals(destination.Pipe, Pipe))
             throw new InvalidOperationException("A pipe cannot be forwarded to itself.");
-        return Pipe.ForwardToAsync(destination.Pipe);
+        using var timer = InProcInvoker.CreateCancellation(cancel, out var token);
+        try
+        {
+            await Pipe.ForwardToAsync(destination.Pipe, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException e) when (e is not TaskCanceledException && token.IsCancellationRequested)
+        {
+            // The kind Canceled of the language hosts.
+            throw new TaskCanceledException("The forward was canceled.", e, token);
+        }
     }
 
     /// <summary>The C# client's bridge (<see cref="NexusPipeForwardingExtensions.BridgeAsync(INexusDuplexPipe, INexusDuplexPipe, CancellationToken)"/>).</summary>

@@ -143,6 +143,94 @@ internal class ClientPipeForwardingTests(LanguageHostPool hosts) : MatrixTestBas
         await EndAsync(client);
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ForwardTo_Canceled_StopsAndCompletesNeitherPipe(ClientTarget target)
+    {
+        await using var server = await StartRelayServerAsync();
+        await using var client = await ConnectAsync(target, server);
+        var (a, serverA) = await OpenAsync(client);
+        var (b, serverB) = await OpenAsync(client);
+
+        using var cts = new CancellationTokenSource();
+        var forward = a.ForwardToAsync(b, cts.Token).AsTask();
+        await serverA.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverB.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+
+        // Canceled while it waits for data: the forward fails canceled.
+        await cts.CancelAsync();
+        await AssertThrows<TaskCanceledException>(() => forward).Timeout(T(5));
+
+        // It stopped: what the server writes into A now stays in A for the client to read, and B gets none of it.
+        var later = PipePattern.Create(100, 11);
+        await serverA.Output.WriteAsync(later).AsTask().Timeout(T(1));
+        await Assert.That((await a.ReadAsync(later.Length, later.Length).AsTask().Timeout(T(1))).ToArray())
+            .IsEquivalentTo(later, CollectionOrdering.Matching);
+        await Assert.That(serverB.Input.TryRead(out _)).IsFalse().Because("the canceled forward wrote nothing more to B.");
+
+        // Neither pipe is completed: both directions of A and B still carry data.
+        await a.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverA.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        await b.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverB.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        await serverB.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That((await b.ReadAsync(Data.Length, Data.Length).AsTask().Timeout(T(1))).ToArray())
+            .IsEquivalentTo(Data, CollectionOrdering.Matching);
+
+        await a.DisposeAsync();
+        await b.DisposeAsync();
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ForwardTo_CanceledWhileWaitingForCredit_LeavesWhatItDidNotSendInTheSource(ClientTarget target)
+    {
+        const int total = 16 * Window;
+        await using var server = await StartRelayServerAsync();
+        await using var client = await ConnectAsync(target, server);
+        var (a, serverA) = await OpenAsync(client);
+        var (b, serverB) = await OpenAsync(client);
+        var data = PipePattern.Create(total, 13);
+
+        using var cts = new CancellationTokenSource();
+        var forward = a.ForwardToAsync(b, cts.Token).AsTask();
+        var writing = Task.Run(async () =>
+        {
+            await serverA.Output.WriteAsync(data);
+            await serverA.Output.CompleteAsync();
+        });
+
+        // The server reads nothing from B: once B's window is full the forward waits for credit.
+        // Nothing is consumed or examined, so B grants no credit and a later read returns these bytes at once.
+        var full = await serverB.Input.ReadAtLeastAsync(Window).AsTask().Timeout(T(5));
+        serverB.Input.AdvanceTo(full.Buffer.Start);
+        await Task.Delay(100);
+        await Assert.That(forward.IsCompleted).IsFalse();
+
+        await cts.CancelAsync();
+        await AssertThrows<TaskCanceledException>(() => forward).Timeout(T(5));
+
+        // Every byte went either to B (before the cancel) or stays in A: none is lost or sent twice.
+        var digest = await a.DrainAsync().AsTask().Timeout(T(10));
+        await writing.Timeout(T(5));
+        var forwarded = total - (int)digest.Length;
+        await Assert.That(forwarded).IsGreaterThan(0);
+        await Assert.That(digest.Sha256).IsEqualTo(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(data.AsSpan(forwarded))));
+        var atB = await ReadExactAsync(serverB.Input, forwarded, 5);
+        await Assert.That(atB.AsSpan().SequenceEqual(data.AsSpan(0, forwarded))).IsTrue();
+        await Task.Delay(100);
+        await Assert.That(serverB.Input.TryRead(out _)).IsFalse().Because("the canceled forward wrote nothing more to B.");
+
+        // B's writing side is not completed.
+        await b.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverB.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+
+        await a.DisposeAsync();
+        await b.DisposeAsync();
+        await EndAsync(client);
+    }
+
     /// <summary>
     /// A server whose <c>ServerTaskValueWithDuplexPipe</c> hands each pipe to <see cref="OpenAsync"/> and holds it until
     /// it completes.

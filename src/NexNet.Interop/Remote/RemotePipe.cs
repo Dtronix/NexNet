@@ -50,12 +50,22 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
 
     public async ValueTask CompleteInputAsync() => await Call("pipe.completeInput", null, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
 
-    /// <summary>The language client's forward (control protocol §6.7 <c>pipe.forward</c>).</summary>
-    public async ValueTask ForwardToAsync(RemotePipe destination)
+    /// <summary>The language client's forward (control protocol §6.7 <c>pipe.forward</c>, with <c>cancel</c> as in §6.5).</summary>
+    public async ValueTask ForwardToAsync(RemotePipe destination, RemoteCancel cancel)
     {
         if (destination.Driver.Connection != driver.Connection || destination.Driver.Test != driver.Test)
             throw new NotSupportedException("The destination pipe is a pipe of another language host or test.");
-        await Call("pipe.forward", new JsonObject { ["to"] = destination.Handle }, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+        var args = new JsonObject { ["to"] = destination.Handle };
+        if (RemoteInvoker.Cancel(driver, cancel, out var token) is { } json)
+            args["cancel"] = json;
+        try
+        {
+            await Call("pipe.forward", args, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+        }
+        finally
+        {
+            token?.Dispose();
+        }
     }
 
     /// <summary>The language client's bridge (control protocol §6.7 <c>pipe.bridge</c>).</summary>

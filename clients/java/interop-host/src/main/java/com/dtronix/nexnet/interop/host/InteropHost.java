@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 /**
  * The JVM language host (control protocol, docs/internals/interop-control-protocol.md): reads requests, runs them
@@ -420,8 +421,12 @@ final class InteropHost {
                 return pipe(scope, args).tryWrite(args);
             case "pipe.completeInput":
                 return pipe(scope, args).completeInput();
-            case "pipe.forward":
-                return pipe(scope, args).forwardTo(scope.get(args.str("to"), PipeEntry.class));
+            case "pipe.forward": {
+                // A canceled forward fails with kind Canceled and completes neither pipe.
+                PipeEntry pipe = pipe(scope, args);
+                PipeEntry to = scope.get(args.str("to"), PipeEntry.class);
+                return withCancel(args, scope, token -> pipe.forwardTo(to, token));
+            }
             case "pipe.bridge":
                 return pipe(scope, args).bridge(scope.get(args.str("other"), PipeEntry.class));
             case "pipe.dispose": {
@@ -444,15 +449,7 @@ final class InteropHost {
                 // A canceled read fails with kind Canceled and consumes nothing (capability ChannelReadCancellation).
                 PipeEntry pipe = pipe(scope, args);
                 int max = args.int32("max");
-                Args cancel = args.optObj("cancel");
-                if (cancel == null || !cancel.has("afterMs")) {
-                    return pipe.channelRead(max, cancelToken(scope, args));
-                }
-                CancellationTokenSource after = new CancellationTokenSource();
-                ScheduledFuture<?> timeout = timer.schedule(after::cancel, cancel.integer("afterMs"), TimeUnit.MILLISECONDS);
-                CompletableFuture<Map<String, Object>> read = pipe.channelRead(max, after.token());
-                read.whenComplete((v, e) -> timeout.cancel(false));
-                return read;
+                return withCancel(args, scope, token -> pipe.channelRead(max, token));
             }
             case "channel.readAll":
                 return pipe(scope, args).channelReadAll();
@@ -575,6 +572,23 @@ final class InteropHost {
 
     private static PoolEntry pool(Scope scope, Args args) {
         return scope.get(args.str("pool"), PoolEntry.class);
+    }
+
+    /**
+     * Runs {@code op} with the token of the request's {@code cancel} (§6.5): a runner token, a host timer started now
+     * for {@code {afterMs}} (stopped when the op ends), or {@link CancellationToken#NONE}.
+     */
+    private CompletableFuture<Map<String, Object>> withCancel(
+            Args args, Scope scope, Function<CancellationToken, CompletableFuture<Map<String, Object>>> op) {
+        Args cancel = args.optObj("cancel");
+        if (cancel == null || !cancel.has("afterMs")) {
+            return op.apply(cancelToken(scope, args));
+        }
+        CancellationTokenSource after = new CancellationTokenSource();
+        ScheduledFuture<?> timeout = timer.schedule(after::cancel, cancel.integer("afterMs"), TimeUnit.MILLISECONDS);
+        CompletableFuture<Map<String, Object>> result = op.apply(after.token());
+        result.whenComplete((v, e) -> timeout.cancel(false));
+        return result;
     }
 
     private static CancellationToken cancelToken(Scope scope, Args args) {

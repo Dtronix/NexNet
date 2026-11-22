@@ -1796,7 +1796,14 @@ export class Host {
       if (to === pe) throw invalidOperation('A pipe cannot be forwarded to itself.');
       // Bytes an earlier pipe.read left unread go first: in C# they are still in the pipe's reader.
       if (pe.bufferedLength > 0) await to.writer().write(pe.take(pe.bufferedLength));
-      await pe.pipe.forwardTo(to.pipe);
+      // A canceled forward rejects with an AbortError (kind Canceled) and completes neither pipe.
+      const cancel = this.#cancel(ctx, pe.owner, args.cancel);
+      cancel.start();
+      try {
+        await pe.pipe.forwardTo(to.pipe, cancel.signal ? { signal: cancel.signal } : undefined);
+      } finally {
+        cancel.stop();
+      }
       return {};
     });
     op('pipe.bridge', async (args, ctx) => {
