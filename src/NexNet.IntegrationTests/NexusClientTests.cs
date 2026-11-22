@@ -109,24 +109,21 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
     /// <summary>
     /// Waits until the client's OnConnected script runs again after <see cref="WaitForFirstConnected"/>: the client
-    /// reconnected.
+    /// reconnected, and OnConnected reports it as a reconnection.
     /// </summary>
-    /// <remarks>
-    /// The call's &lt;c&gt;IsReconnected&lt;/c&gt; is not asserted yet: the in-process driver derives it from a
-    /// &lt;c&gt;Reconnecting&lt;/c&gt; state change the C# client does not raise, so it reports false on the csharp row (follow-up
-    /// of P01a). The reconnection itself is what these tests check.
-    /// </remarks>
     private static async Task WaitForReconnected(IClientUnderTest client, double seconds)
     {
+        bool isReconnected;
         try
         {
-            await Script(client).OnConnected.NextCallAsync().AsTask().Timeout(seconds);
+            isReconnected = (await Script(client).OnConnected.NextCallAsync().AsTask().Timeout(seconds)).IsReconnected;
         }
         catch (TimeoutException)
         {
             throw new TimeoutException($"{client.Target}: not reconnected within {seconds} s; the state is {await client.GetStateAsync()}.");
         }
 
+        await Assert.That(isReconnected).IsTrue().Because("OnConnected after an automatic reconnection reports isReconnected.");
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
     }
 
@@ -330,6 +327,37 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await WaitForFirstConnected(client);
 
         await WaitForReconnected(client, T(1));
+    }
+
+    /// <summary>
+    /// OnConnected reports isReconnected only for a connection the client's reconnection policy opened: false on the
+    /// first connect, true after an automatic reconnection, and false again on a connect the application asks for
+    /// after a disconnect.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnConnected_ReportsIsReconnectedOnlyForAReconnection(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [20];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
+
+        // A graceful disconnect is not reconnected for; the connect after it is a new connection, not a reconnection.
+        await client.DisconnectAsync().Timeout(T(1));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        var call = await Script(client).OnConnected.NextCallAsync().AsTask().Timeout(T(1));
+        await Assert.That(call.IsReconnected).IsFalse().Because("A connect the application asks for is not a reconnection.");
     }
 
     [Test]
