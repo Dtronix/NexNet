@@ -10,7 +10,8 @@ namespace NexNet.Transports;
 /// Custom headers of the WebSocket or HttpSocket upgrade request (<see cref="HttpClientConfig.UpgradeHeaders"/>), name
 /// to value, in insertion order. Names compare ignoring case: setting a name again replaces its value (and its
 /// spelling). Every name and value is checked when it is set, the same rules as the Java (<c>ClientConfig.Builder.header</c>)
-/// and JavaScript clients.
+/// and JavaScript (<c>webSocket.headers</c>/<c>httpSocket.headers</c>, checked at <c>createClient</c>) clients, except
+/// that only C# also refuses the content headers.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
