@@ -13,9 +13,8 @@ namespace NexNet.IntegrationTests;
 /// The reconnection policy decides which disconnect reasons the client reconnects for.
 /// </summary>
 /// <remarks>
-/// The policy unit tests and <see cref="ReconnectsAfterServerShutdown_WhenPolicyAllowsIt"/> use the C# policy API
-/// (<see cref="DefaultReconnectionPolicy.ReconnectReasons"/>, which <see cref="ClientSpec"/> has no field for), so they
-/// stay on the C# client. The other transport test runs on every row of the client matrix.
+/// The policy unit tests use the C# policy API, so they stay on the C# client. The transport tests run on every row of
+/// the client matrix; <see cref="ClientSpec.ReconnectReasons"/> sets the reasons of the client under test.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
@@ -101,47 +100,39 @@ internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task ReconnectsAfterServerShutdown_WhenPolicyAllowsIt(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ReconnectsAfterServerShutdown_WhenPolicyAllowsIt(ClientTarget target)
     {
-        var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
-
-        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) })
-        {
-            ReconnectReasons = new HashSet<DisconnectReason>
-            {
-                DisconnectReason.SocketError,
-                DisconnectReason.Timeout,
-                DisconnectReason.ServerRestarting,
-                DisconnectReason.ServerShutdown
-            }
-        };
-
-        clientNexus.OnConnectedEvent = (_, isReconnected) =>
-        {
-            if (isReconnected)
-                reconnected.TrySetResult();
-            return ValueTask.CompletedTask;
-        };
-
         // The server sends its ServerShutdown signal on stop (the signal is not disabled here).
-        serverConfig.InternalNoLingerOnShutdown = true;
+        await using var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(
+            () => new InteropServerNexus(),
+            new InteropServerOptions { ConfigureEndpoint = (_, config) => config.InternalNoLingerOnShutdown = true });
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        // The default reasons plus ServerShutdown, with a 20 ms delay retried continuously.
+        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+        spec.ReconnectDelaysMs = [20];
+        spec.ReconnectContinuously = true;
+        spec.ReconnectReasons =
+        [
+            DisconnectReason.SocketError,
+            DisconnectReason.Timeout,
+            DisconnectReason.ServerRestarting,
+            DisconnectReason.ServerShutdown,
+        ];
+        await using var client = await Harness.CreateClientAsync(target, spec);
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
+        var connected = client.Callbacks<InteropClientNexusScript>().OnConnected;
+        await Assert.That((await connected.NextCallAsync().AsTask().Timeout(T(1))).IsReconnected).IsFalse();
 
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
         await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(await disconnected.Timeout(T(1))).IsEqualTo(DisconnectReason.ServerShutdown);
+        await Assert.That(await disconnected).IsEqualTo(DisconnectReason.ServerShutdown);
 
-        // Restart on the same endpoint; the policy keeps retrying every 20 ms until it gets through.
+        // Restart on the same endpoint; the policy keeps retrying every 20 ms until it gets through. A connect
+        // attempt to the stopped endpoint can wait for a TCP retransmit (about 500 ms on Windows).
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-
-        await reconnected.Task.Timeout(T(2));
-        await WaitForState(client, ConnectionState.Connected);
+        await connected.NextCallAsync().AsTask().Timeout(T(TestTimeouts.Connect));
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
     }
 
     [Test]
