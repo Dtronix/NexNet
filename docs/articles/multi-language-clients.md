@@ -254,8 +254,15 @@ harness (`src/NexNet.Interop/ClientLanguages.cs`).
 The cross-language test matrix runs every client-facing test on every language and transport, and a skipped row
 always names its reason. The list below is every intentional exception: a test row, or a test assertion, that does
 not run on some language, with the reason. Anything else that does not run on a language is a gap to fix, not an
-exception. Keep this list in sync with the exception list of the interop matrix self-test, which fails when a matrix
-test has no runnable row for a language that is not covered here.
+exception.
+
+The matrix tests in this list are also listed, with the same reasons, in
+`src/NexNet.IntegrationTests/Interop/ClientParityExceptions.cs`. The parity audit (`ClientParityTests`) fails when a
+matrix test has no runnable row on a language, or checks part of its behavior on the C# client only, without an entry
+there, and when an entry is no longer needed. That file also lists, with the card that closes it, any gap that is
+still being fixed; those are not exceptions and are not listed here. The transport rows below (UDS, QUIC, the browser
+transports) are not audit entries: a test that also runs on another transport has a runnable row. The C#-only and
+language-idiomatic APIs are not matrix tests.
 
 **Platform limits** (the language or platform cannot do it):
 
@@ -267,8 +274,6 @@ test has no runnable row for a language that is not covered here.
 | Tests that need an `Authorization` (or other) upgrade header | Browser | The browser `WebSocket` API cannot set request headers. The query-string token tests (`webSocket.queryToken`) and the greeting token cover browser authentication |
 | Tests that need a client certificate, a custom CA, certificate pinning or the server certificate | Browser | The browser does the TLS and exposes none of it to page JavaScript. The WSS rows prove the default-trust path |
 | `NonAspTransport_SessionUserIsNull` | Browser | It tests the TCP, TLS and UDS transports, which browsers do not have |
-| The remote exception type name is asserted on C# only | Java, JavaScript | Exception type names are language-specific by design; the error code and message are asserted on every language |
-| The server-side pipe branch of the "pipe from the wrong nexus" client test | Java, JavaScript | Only an in-process C# test can hold the server's pipe object and pass it to a client proxy |
 
 **By design** (the C# API has no counterpart, or the counterpart is idiomatic and unit-tested in its own language):
 
@@ -276,6 +281,8 @@ test has no runnable row for a language that is not covered here.
 |---|---|---|
 | `INexusList.CopyTo` tests (three) | Java, JavaScript | `CopyTo` is `ICollection<T>` API. JavaScript has `toArray()` and Java a read-only `java.util.List` snapshot |
 | `Server_ThrowsWhenPassingPipeFromWrongNexus` | Java, JavaScript | It tests the C# server proxy; the client plays no part |
+| The server-side pipe branch of `Client_ThrowsWhenPassingPipeFromWrongNexus` | Java, JavaScript | Only an in-process C# test can hold the server's pipe object and pass it to a client proxy |
+| The remote exception type name is asserted on C# only (`TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage`) | Java, JavaScript | Exception type names are language-specific; the error code and message are asserted on every language |
 | C# API semantics: `ValueTask` consumption, `AsyncLocal` and execution-context flow, the C# pool's nexus factory, a custom transport's `IsSecureTransport` override, setting both `Authenticate` and `AuthenticateAsync` | Java, JavaScript | C#-only API. These are C# tests, not matrix tests |
 | Java executors (`callbackExecutor`, `invocationExecutor`), pipe `InputStream`/`OutputStream` adapters, Kotlin coroutine and flow wrappers | Java only | Java-idiomatic API; unit-tested in the Java suite |
 | JavaScript `EventTarget` events, `AbortSignal` cancellation, Web Streams pipes | JavaScript only | JavaScript-idiomatic API; the matrix tests the behavior behind them through the harness |
