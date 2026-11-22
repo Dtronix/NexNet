@@ -83,6 +83,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private readonly TaskCompletionSource _disconnectCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Action<ConnectionState>? OnStateChanged;
+
+    /// <summary>
+    /// A client session's ready task: completes once the session has processed the ServerGreeting (the handshake is
+    /// complete and nexus.Connected has started), or when the session ends first. Completed for a server session.
+    /// </summary>
+    internal Task ReadyTask => _readyTaskCompletionSource?.Task ?? Task.CompletedTask;
     private readonly INexusClient? _client;
     
     private int _versionHash = 0;
@@ -337,7 +343,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // Counted from here; DisconnectCore or the end of the read loop stops counting it.
         _metricsTags.Metrics.Register(this);
 
-        _state = ConnectionState.Connected;
+        // A disconnect that started while the preamble was sent owns the state: the session must not report Connected
+        // after it (a client's DisconnectAsync can reach a session its reconnection loop has just created).
+        var previous = _state;
+        if (previous is ConnectionState.Disconnecting or ConnectionState.Disconnected
+            || Interlocked.CompareExchange(ref _state, ConnectionState.Connected, previous) != previous)
+            return;
+
         OnStateChanged?.Invoke(State);
     }
 
@@ -367,7 +379,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         greetingMessage.InvocationCredits = _config.InvocationCredits;
         
         await InitializeConnection().ConfigureAwait(false);
-        
+
+        // Disconnected before it connected: the disconnect has completed the ready task; nothing is left to start.
+        if (IsDisconnectStarted)
+            return;
+
         // Start the reading loop on a task.
         _ = Task.Factory.StartNew(static state => Unsafe.As<NexusSession<TNexus, TProxy>>(state!).StartReadAsync(), 
             this, 
