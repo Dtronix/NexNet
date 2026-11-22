@@ -37,7 +37,7 @@ final class SpecMapper {
         "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
         "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
         "authorizationHeader", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
-        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs"));
+        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "metrics"));
 
     private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
         "token", "appendCallNumber", "delayMs", "hang", "throwMessage"));
@@ -83,6 +83,8 @@ final class SpecMapper {
             }
         }
         NexusRemoteError invocationError = invocationError(spec.optObj("onInvocationException"));
+        // Recorded by the client entry (MetricsRecorder); only checked here.
+        MetricsRecorder.validate(spec.optStr("metrics"));
 
         String transport = spec.str("transport");
         String address = spec.str("address");

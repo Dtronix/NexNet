@@ -61,6 +61,8 @@ final class ClientEntry extends Driven implements ScriptHost {
     private volatile boolean disposed;
     /** The error the onInvocationException hook returns ({@code ClientSpec.onInvocationException}), or null. */
     private final NexusRemoteError invocationError;
+    /** The client's metrics ({@code ClientSpec.metrics}), or null when it records none. */
+    private volatile MetricsRecorder metrics;
 
     /** The held pipes published under one name (§6.9 {@code pipe.hold}). */
     private static final class HeldBox {
@@ -95,6 +97,8 @@ final class ClientEntry extends Driven implements ScriptHost {
         ClientEntry entry = new ClientEntry(host, scope, handle, export, setup.fakeTime, setup.invocationError);
         NexusClient<?> client = newClient(export, setup, entry);
         entry.client = client;
+        // Tracked from creation, so every session of the client is counted.
+        entry.metrics = MetricsRecorder.create(spec.optStr("metrics"), client);
         client.addStateListener(entry::onState);
         return entry;
     }
@@ -209,6 +213,10 @@ final class ClientEntry extends Driven implements ScriptHost {
         } catch (RuntimeException ignored) {
             // Closing anyway.
         }
+        MetricsRecorder recorded = metrics;
+        if (recorded != null) {
+            recorded.close();
+        }
     }
 
     /**
@@ -273,6 +281,29 @@ final class ClientEntry extends Driven implements ScriptHost {
      *
      * @return {@code {invocations}}: {@link Diagnostics#reservedInvocationIds}, 0 when the client has no session
      */
+    /**
+     * The snapshot of the current session (§6.4 {@code client.snapshot}).
+     *
+     * @return {@code {snapshot}}: null when the client has no session that completed the handshake
+     */
+    Map<String, Object> snapshot() {
+        return Protocol.map("snapshot", SnapshotJson.of(Diagnostics.snapshot(client)));
+    }
+
+    /**
+     * The client's metrics (§6.4 {@code client.metrics}).
+     *
+     * @return {@code {events, observed}}
+     * @throws HostError InvalidOperation when the client was created without {@code spec.metrics}
+     */
+    Map<String, Object> metrics() {
+        MetricsRecorder recorded = metrics;
+        if (recorded == null) {
+            throw new HostError(HostError.INVALID_OPERATION, "Create the client with ClientSpec.metrics to read its metrics.");
+        }
+        return recorded.read();
+    }
+
     Map<String, Object> outstanding() {
         return Protocol.map("invocations", (long) Diagnostics.reservedInvocationIds(client));
     }

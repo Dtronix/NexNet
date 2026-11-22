@@ -105,6 +105,14 @@ class SpecMapperTest {
     }
 
     @Test
+    void metricsModesAreNativeOrMicrometer() {
+        MetricsRecorder.validate(null);
+        MetricsRecorder.validate("Native");
+        MetricsRecorder.validate("Micrometer");
+        assertThrows(HostError.class, () -> MetricsRecorder.validate("Other"));
+    }
+
+    @Test
     void reconnectReasonsByName() {
         assertEquals(EnumSet.of(DisconnectReason.SERVER_SHUTDOWN, DisconnectReason.SOCKET_ERROR),
             SpecMapper.reconnectReasons(Arrays.asList("ServerShutdown", "SocketError")));

@@ -311,6 +311,10 @@ final class InteropHost {
                 return done(clientOnly(scope, args).budget());
             case "client.outstanding":
                 return done(clientOnly(scope, args).outstanding());
+            case "client.snapshot":
+                return done(clientOnly(scope, args).snapshot());
+            case "client.metrics":
+                return done(clientOnly(scope, args).metrics());
             case "client.awaitState":
                 return driven(scope, args).awaitState(args.str("state"));
             case "client.awaitReady":

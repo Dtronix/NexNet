@@ -37,6 +37,8 @@ sourceSets {
 dependencies {
     implementation(project(":nexnet-client"))
     implementation(project(":nexnet-client-okhttp"))
+    // ClientSpec.metrics = Micrometer (Q05): the client's metrics through NexusMicrometerBinder.
+    implementation(project(":nexnet-client-micrometer"))
 }
 
 application {
