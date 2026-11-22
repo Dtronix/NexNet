@@ -29,10 +29,10 @@ namespace NexNet.InteropServer;
 /// <para>
 /// A stopped TCP listener frees its port at once, so a TCP port that cannot be held within <see cref="BindTimeout"/>
 /// fails the hold with <see cref="InvalidOperationException"/>: another process holds it, and a test relying on the
-/// server being unreachable would be silently wrong. A stopped QUIC listener does not free its UDP port at once:
-/// msquic keeps its binding (exclusive) for seconds after the listener stops, often until the process reuses it for
-/// the restart. A QUIC port is therefore taken in the background, as soon as msquic lets go of it, until the hold is
-/// disposed.
+/// server being unreachable would be silently wrong. A QUIC port is taken in the background, retried until the
+/// hold is disposed, because its UDP port may still be bound when the hold is taken: before S51, the QUIC transport
+/// left its connections undisposed and msquic kept the port for seconds after a stop. Once a stopped QUIC server frees
+/// its port at once, the first attempt takes it.
 /// </para>
 /// </remarks>
 public sealed class StoppedPortHold : IDisposable
@@ -144,7 +144,7 @@ public sealed class StoppedPortHold : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Released before msquic let go of the port.
+            // Released before the port was free (a QUIC server that kept it after its stop, before S51).
         }
     }
 

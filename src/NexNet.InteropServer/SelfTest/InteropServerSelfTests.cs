@@ -335,7 +335,7 @@ public class InteropServerSelfTests
             await client.DisposeAsync();
 
         // The port allocators skip every port, so no server of another test process picks one, and a connection is
-        // refused. The QUIC port is held by msquic at first, then by the hold.
+        // refused. The QUIC port is held by the hold (or, before S51, by msquic until it let go).
         foreach (var (endPoint, protocol) in held)
             await Assert.That(ProbeAsAllocators(endPoint, protocol)).IsNotEqualTo(SocketError.Success)
                 .Because($"{protocol} {endPoint} must be held while the server is stopped");
@@ -356,7 +356,7 @@ public class InteropServerSelfTests
             await client.DisposeAsync();
         }
 
-        // Disposing a stopped server releases its TCP ports (msquic may keep the UDP one for a while).
+        // Disposing a stopped server releases its TCP ports (before S51, msquic could keep the UDP one for a while).
         await server.StopAsync();
         await server.DisposeAsync();
         foreach (var (endPoint, protocol) in held.Where(h => h.Protocol == ProtocolType.Tcp))
