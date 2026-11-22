@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using NexNet.Collections;
+using NexNet.InteropServer;
 using NexNet.Invocation;
 using NexNet.Transports;
 
@@ -30,15 +31,42 @@ internal class NexusServerFactory<TServerNexus, TClientProxy> : INexusServerFact
         });
     }
 
-    public Task StartAsync(CancellationToken cancellationToken = default) =>
-        ServerBase.StartAsync(cancellationToken);
+    private StoppedPortHold? _stoppedPortHold;
 
-    public async ValueTask DisposeAsync() => await Server.StartAsync();
-    public Task StopAsync() => Server.StopAsync();
+    /// <summary>Starts the server, on the ports <see cref="StopAsync"/> held until now.</summary>
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        ReleaseStoppedPorts();
+        await ServerBase.StartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Stops the server and holds its TCP or QUIC port until it starts again or the test ends
+    /// (<see cref="BaseTests.HoldStoppedServerPortsAsync"/>).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The port could not be held: another process has it.</exception>
+    public async Task StopAsync()
+    {
+        await Server.StopAsync().ConfigureAwait(false);
+        ReleaseStoppedPorts();
+        _stoppedPortHold = await BaseTests.HoldStoppedServerPortsAsync(Server).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public void ReleaseStoppedPorts() => Interlocked.Exchange(ref _stoppedPortHold, null)?.Dispose();
+
+    public async ValueTask DisposeAsync()
+    {
+        ReleaseStoppedPorts();
+        await Server.DisposeAsync().ConfigureAwait(false);
+    }
 }
 
 internal interface INexusServerFactory : IAsyncDisposable
 {
     
     public INexusServer ServerBase { get; }
+
+    /// <summary>Releases the ports the factory holds for its stopped server, if any.</summary>
+    void ReleaseStoppedPorts();
 }
