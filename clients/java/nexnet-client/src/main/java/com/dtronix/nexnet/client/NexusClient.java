@@ -544,9 +544,10 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         }
         setState(ConnectionState.DISCONNECTED);
         if (controller != null && !userClosed) {
-            // C#: the state goes to Reconnecting and disconnected() stays pending until the loop gives up.
-            setState(ConnectionState.RECONNECTING);
-            if (controller.onSessionLost(reason)) {
+            // C#: the state goes to Reconnecting and disconnected() stays pending until the loop gives up. Reconnecting
+            // is set only once the controller has decided to start a loop (a declined reason stays Disconnected, K55),
+            // and before the loop's first step is scheduled, so a fast attempt cannot connect before it.
+            if (controller.onSessionLost(reason, () -> setState(ConnectionState.RECONNECTING))) {
                 controller.idle().whenComplete((v, e) -> {
                     if (state() != ConnectionState.CONNECTED) {
                         setState(ConnectionState.DISCONNECTED);
@@ -560,8 +561,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
                 });
                 return;
             }
-            // The policy declined (or a loop already runs): no loop owns the state.
-            setState(ConnectionState.DISCONNECTED);
+            // The policy declined (or a loop already runs): no loop owns the state, which stays Disconnected.
         }
         NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
     }

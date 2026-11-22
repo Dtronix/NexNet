@@ -106,6 +106,32 @@ class NexusClientReconnectTest {
     }
 
     @Test
+    void doesNotReportReconnectingWhenThePolicyDeclinesTheReason() throws Exception {
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(config(), server);
+        try {
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
+            client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> states.contains(ConnectionState.CONNECTED));
+
+            // C#: the policy is asked before the state changes; a declined reason (graceful, 21) never reports
+            // Reconnecting (K55).
+            server.disconnect(0, 21);
+            client.disconnected().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> states.contains(ConnectionState.DISCONNECTED));
+            Thread.sleep(100);
+            assertEquals(List.of(ConnectionState.CONNECTING, ConnectionState.CONNECTED,
+                ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED), states);
+            assertEquals(ConnectionState.DISCONNECTED, client.state());
+            assertEquals(1, server.transports.size());
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
     void reportsDisconnectingAndDisconnectedForALostSessionWithoutAPolicy() throws Exception {
         TestClients.Server server = new TestClients.Server();
         NexusClient<TestProxy> client = TestClients.client(server);

@@ -299,8 +299,11 @@ server `INexusList<T>` (protocol specification section 12):
   `close()` stopped it (`DISCONNECTED`, raised once). A failed attempt does not report `DISCONNECTED` (C# parity,
   Q17). Before the loop starts, the lost session reports its own states: `CONNECTED` → `DISCONNECTING` →
   `DISCONNECTED` → `RECONNECTING` (C# and JS parity, K54); `DISCONNECTING` is set when the client learns the session
-  closed, before `onDisconnected` runs, and `DISCONNECTED` after it. Without a policy the sequence ends at
-  `DISCONNECTED`.
+  closed, before `onDisconnected` runs, and `DISCONNECTED` after it. Without a policy, or when the policy declines
+  the reason (for example a graceful server disconnect), the sequence ends at `DISCONNECTED` and `RECONNECTING` is
+  never reported (C# parity, K55): the client sets `RECONNECTING` through
+  `ReconnectController.onSessionLost(reason, beforeStart)`, whose callback runs only once a loop is decided and
+  before its first step.
 - **Clock and session options ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
   timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
   by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and
