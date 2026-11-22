@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Interop;
 using NexNet.Interop.InProc;
@@ -38,6 +39,16 @@ namespace NexNet.IntegrationTests.Interop;
 /// in the test or in a helper it calls (<c>IsBrowser(target)</c>). Such a
 /// test checks something else, often less, on that language, and needs an exception with the platform reason
 /// (<see cref="ParityGap.PlatformVariantAssertion"/>).
+/// </para>
+/// <para>
+/// A read of a harness member only the C# client fills (<see cref="RemoteListState.IsReadOnly"/>, null on the other
+/// languages) is a C#-only assertion too, whether the test branches on the language around it or falls back on null
+/// (<c>state.IsReadOnly ?? ...</c>), which would otherwise check something else on the other languages unseen.
+/// </para>
+/// <para>
+/// Every exception entry, and every exempt helper, must be named in the "Parity exceptions" section of
+/// <c>docs/articles/multi-language-clients.md</c> (as <c>`Method`</c> or <c>`Class.Method`</c>), so the docs and the list
+/// cannot drift apart (<see cref="EveryException_IsNamedInTheDocs"/>).
 /// </para>
 /// </remarks>
 internal class ClientParityTests
@@ -86,6 +97,50 @@ internal class ClientParityTests
         await Assert.That(helpers.Where(e => string.IsNullOrWhiteSpace(e.Reason))).IsEmpty();
         await Assert.That(helpers.GroupBy(e => e.Helper).Where(g => g.Count() > 1).Select(g => g.Key)).IsEmpty();
     }
+
+    [Test]
+    public async Task EveryException_IsNamedInTheDocs()
+    {
+        var missing = UndocumentedEntries(ParityExceptionsSection(await File.ReadAllTextAsync(DocsPath)));
+        if (missing.Count > 0)
+            Assert.Fail(missing.Count + " exception(s) missing from the docs:" + Environment.NewLine + string.Join(Environment.NewLine, missing));
+    }
+
+    [Test]
+    public async Task DocsCheck_FindsAnUndocumentedException()
+    {
+        // An entry whose test the docs section does not name is reported, with its name.
+        const string test = "NexusListTests.CopyTo_CopiesAllElements";
+        var section = ParityExceptionsSection(await File.ReadAllTextAsync(DocsPath));
+        var without = section.Replace("`CopyTo_CopiesAllElements`", "`CopyTo`", StringComparison.Ordinal);
+        await Assert.That(without).IsNotEqualTo(section);
+        var missing = UndocumentedEntries(without);
+        await Assert.That(missing).Count().IsEqualTo(1);
+        await Assert.That(missing[0]).StartsWith(test + ":");
+
+        // A longer name that starts with it does not count, and neither does the name outside a code span.
+        await Assert.That(UndocumentedEntries(without + " `CopyTo_CopiesAllElementsTwice` CopyTo_CopiesAllElements")).Count().IsEqualTo(1);
+        await Assert.That(UndocumentedEntries(without + " `NexusListTests.CopyTo_CopiesAllElements`")).IsEmpty();
+
+        // An exempt helper is checked too, and a document without the section is an error, not an empty section.
+        var helper = ClientParityExceptions.DriverTypeChecks[0].Helper;
+        await Assert.That(UndocumentedEntries(section.Replace(helper, "MatrixTestBase.Removed", StringComparison.Ordinal))).Contains(i => i.StartsWith(helper + ":", StringComparison.Ordinal));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ParityExceptionsSection("# Title\n\n### Other\n"));
+    }
+
+    [Test]
+    public async Task Audit_FindsAFallbackOnACSharpOnlyHarnessMember()
+    {
+        // A null fallback on a member only the C# client fills (state.IsReadOnly ?? ...) checks the C# client only,
+        // with no branch on the language for the audit to see: reading the member is the C#-only assertion.
+        var probe = typeof(ClientParityTests).GetMethod(nameof(ReadOnlyFallbackProbe), BindingFlags.Static | BindingFlags.NonPublic)!;
+        await Assert.That(ScanBodies(probe, MatrixHelpers()).HasCSharpOnlyAssertion).IsTrue();
+        await Assert.That(ReadOnlyFallbackProbe(new RemoteListState(RemoteCollectionMode.ServerToClient, default, true, null))).IsTrue();
+    }
+
+    /// <summary>The fallback <see cref="Audit_FindsAFallbackOnACSharpOnlyHarnessMember"/> scans.</summary>
+    private static bool ReadOnlyFallbackProbe(RemoteListState state)
+        => state.IsReadOnly ?? state.Mode != RemoteCollectionMode.BiDirectional;
 
     [Test]
     public async Task Audit_FindsAMissingRow()
@@ -188,10 +243,51 @@ internal class ClientParityTests
         return issues;
     }
 
+    // ----- The docs -----
+
+    /// <summary>The page whose "Parity exceptions" section names every exception.</summary>
+    private static string DocsPath => Path.Combine(RepositoryRoot(), "docs", "articles", "multi-language-clients.md");
+
+    private static string RepositoryRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "src", "NexNet.slnx")))
+                return dir.FullName;
+        }
+
+        throw new InvalidOperationException("Repository root (src/NexNet.slnx) not found above " + AppContext.BaseDirectory);
+    }
+
+    /// <summary>The "Parity exceptions" section of <paramref name="markdown"/>: from its heading to the next heading of its level or above.</summary>
+    /// <exception cref="InvalidOperationException">The document has no such section.</exception>
+    internal static string ParityExceptionsSection(string markdown)
+    {
+        var lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var start = Array.FindIndex(lines, l => l.TrimEnd() == "### Parity exceptions");
+        if (start < 0)
+            throw new InvalidOperationException("The docs have no \"### Parity exceptions\" section: update ClientParityTests.");
+
+        var end = Array.FindIndex(lines, start + 1, l => l.StartsWith("# ", StringComparison.Ordinal) || l.StartsWith("## ", StringComparison.Ordinal) || l.StartsWith("### ", StringComparison.Ordinal));
+        return string.Join('\n', lines[start..(end < 0 ? lines.Length : end)]);
+    }
+
+    /// <summary>
+    /// The exception entries and exempt helpers <paramref name="section"/> does not name in a code span, as
+    /// <c>`Method`</c> or <c>`Class.Method`</c>.
+    /// </summary>
+    internal static IReadOnlyList<string> UndocumentedEntries(string section)
+        => ClientParityExceptions.All.Select(e => e.Test)
+            .Concat(ClientParityExceptions.DriverTypeChecks.Select(h => h.Helper))
+            .Distinct(StringComparer.Ordinal)
+            .Where(name => !Regex.IsMatch(section, "`(?:[A-Za-z0-9_]+\\.)?" + Regex.Escape(name[(name.LastIndexOf('.') + 1)..]) + "`"))
+            .Select(name => $"{name}: not named in the \"Parity exceptions\" section of docs/articles/multi-language-clients.md. Name it (`{name[(name.LastIndexOf('.') + 1)..]}`) in the row that gives its reason.")
+            .ToList();
+
     private static string Describe(ParityGap gap) => gap switch
     {
         ParityGap.NoRunnableRow => "no runnable row",
-        ParityGap.CSharpOnlyAssertion => "an assertion runs on the C# client only (a branch on ClientLanguages.CSharp or on the driver type, or MatrixTestBase.InProc)",
+        ParityGap.CSharpOnlyAssertion => "an assertion runs on the C# client only (a branch on ClientLanguages.CSharp or on the driver type, MatrixTestBase.InProc, or a harness member only C# fills)",
         ParityGap.PlatformVariantAssertion => "the test branches on the language and checks something else (or less)",
         _ => gap.ToString(),
     };
@@ -455,7 +551,7 @@ internal class ClientParityTests
                     if (!exempt && DriverType(body, token) is { } type && DriverLanguages(type, out var csharp) is { } languages)
                         result = csharp ? result with { HasCSharpOnlyAssertion = true } : result with { Variants = result.Variants | languages };
                 }
-                else if (helpers.CSharpOnly.Contains(token))
+                else if (helpers.CSharpOnly.Contains(token) || ReadsCSharpOnlyMember(body, token))
                 {
                     result = result with { HasCSharpOnlyAssertion = true };
                 }
@@ -474,23 +570,41 @@ internal class ClientParityTests
         return result;
     }
 
-    /// <summary>The method of this assembly that <paramref name="token"/> calls from <paramref name="body"/>, if it is not a test.</summary>
-    private static MethodBase? Helper(MethodBase body, int token)
+    /// <summary>
+    /// The harness members only the C# client fills, null on the other languages: <see cref="RemoteListState.IsReadOnly"/>
+    /// (Java and JavaScript have no read-only flag and report the mode). Reading one checks the C# client only.
+    /// </summary>
+    private static readonly MethodInfo[] CSharpOnlyHarnessMembers =
+    [
+        typeof(RemoteListState).GetProperty(nameof(RemoteListState.IsReadOnly))!.GetMethod!,
+    ];
+
+    /// <summary>Whether <paramref name="token"/> in <paramref name="body"/> calls a getter of <see cref="CSharpOnlyHarnessMembers"/>.</summary>
+    private static bool ReadsCSharpOnlyMember(MethodBase body, int token)
+        => ResolveMethod(body, token) is { } method
+           && CSharpOnlyHarnessMembers.Any(m => m.Module == method.Module && m.MetadataToken == method.MetadataToken);
+
+    /// <summary>The method <paramref name="token"/> names in <paramref name="body"/>, if it resolves.</summary>
+    private static MethodBase? ResolveMethod(MethodBase body, int token)
     {
-        MethodBase? method;
         try
         {
-            method = body.Module.ResolveMethod(
+            return body.Module.ResolveMethod(
                 token,
                 body.DeclaringType is { IsGenericType: true } type ? type.GetGenericArguments() : null,
                 body.IsGenericMethod ? body.GetGenericArguments() : null);
         }
         catch (ArgumentException)
         {
-            // A member reference the module cannot resolve without more context: not a helper of this assembly.
+            // A member reference the module cannot resolve without more context: no method.
             return null;
         }
+    }
 
+    /// <summary>The method of this assembly that <paramref name="token"/> calls from <paramref name="body"/>, if it is not a test.</summary>
+    private static MethodBase? Helper(MethodBase body, int token)
+    {
+        var method = ResolveMethod(body, token);
         if (method == null || method.Module != body.Module || method.GetCustomAttribute<TestAttribute>() != null)
             return null;
 
