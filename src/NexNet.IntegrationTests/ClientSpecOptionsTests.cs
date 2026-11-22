@@ -174,6 +174,39 @@ internal class ClientSpecOptionsTests(LanguageHostPool hosts) : MatrixTestBase(h
         await EndAsync(client);
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task MaxSeparatePoolInvocations_QueuesSeparatePoolCallsOverTheLimit(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            script => script.ClientSeparatePool.AwaitSignal("release"),
+            spec => spec.MaxSeparatePoolInvocations = 1);
+
+        using (var context = server.Server.ContextProvider.Rent())
+        {
+            await context.Proxy.All.ClientSeparatePool(1).Timeout(T(1));
+            await context.Proxy.All.ClientSeparatePool(2).Timeout(T(1));
+        }
+
+        // The only separate-pool slot runs the first call, which waits for the signal.
+        await Assert.That((await Script(client).ClientSeparatePool.NextCallAsync().AsTask().Timeout(T(1))).data).IsEqualTo(1);
+
+        // The normal pool is not affected: a plain call runs while the second separate-pool call waits.
+        using (var context = server.Server.ContextProvider.Rent())
+            await context.Proxy.All.ClientTaskWithParam(3).Timeout(T(1));
+        await Assert.That((await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(1))).data).IsEqualTo(3);
+
+        // The second call stays queued until the first one finishes.
+        var second = Script(client).ClientSeparatePool.NextCallAsync().AsTask();
+        await Task.WhenAny(second, Task.Delay(300));
+        await Assert.That(second.IsCompleted).IsFalse();
+
+        await client.SignalAsync("release").Timeout(T(1));
+        await Assert.That((await second.Timeout(T(1))).data).IsEqualTo(2);
+        await EndAsync(client);
+    }
+
     /// <summary>Waits, for at most <c>T(1)</c>, until the client's budget reserves <paramref name="expected"/>; returns the last value.</summary>
     private static async Task<long> WaitForReservedAsync(IClientUnderTest client, long expected)
     {
