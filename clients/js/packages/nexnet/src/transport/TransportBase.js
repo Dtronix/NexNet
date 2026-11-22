@@ -42,7 +42,8 @@ export function transportError(message, { kind = 'InternalError', cause, status 
 /**
  * Maps the status of a refused HTTP upgrade (HttpSocket and WebSocket, protocol spec §13.6/§13.7).
  * 401 and 403 are `AuthenticationError`. For WebSocket, 5xx is `InternalError` and anything else `ProtocolError`; for
- * HttpSocket, anything else, 2xx included, is `InternalError`. A 3xx never reaches here: the upgrade maps it to
+ * HttpSocket, a 2xx (not an upgrade: its body is not a NexNet stream) is `ProtocolError` and anything else
+ * `InternalError`, as in the C# and Java clients. A 3xx never reaches here: the upgrade maps it to
  * `ProtocolError` first, for both transports, and never follows it (`node/upgrade.js`).
  *
  * @param {string} transport `'HttpSocket'` or `'WebSocket'`.
@@ -55,6 +56,7 @@ export function upgradeRefused(transport, status, url) {
   let kind;
   if (status === 401 || status === 403) kind = 'AuthenticationError';
   else if (transport === 'WebSocket' && (status < 500 || status > 599)) kind = 'ProtocolError';
+  else if (status >= 200 && status <= 299) kind = 'ProtocolError';
   else kind = 'InternalError';
   return transportError(`${transport} upgrade to ${url} was refused with HTTP ${status}.`, { kind, status });
 }
