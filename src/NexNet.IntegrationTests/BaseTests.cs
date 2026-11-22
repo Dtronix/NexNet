@@ -317,10 +317,10 @@ internal abstract class BaseTests
     };
 
     /// <summary>
-    /// Endpoints with no server: free TCP, TLS, HTTP and HTTPS ports and a QUIC port, held (bound, not listening;
-    /// <see cref="StoppedPortHold"/>) until the test ends, and a UDS path with no socket file. A TCP-based connection
-    /// attempt is refused and a QUIC one goes unanswered, as no server of another test process can take a port
-    /// meanwhile.
+    /// Endpoints with no server: free TCP, TLS, HTTP, HTTPS and QUIC ports, held (<see cref="StoppedPortHold"/>) until
+    /// the test ends so no server of another test process can take one meanwhile, and a UDS path with no socket file.
+    /// A connection attempt is refused: the TCP ports are bound without listening, and the QUIC port's UDP port is left
+    /// unbound (port unreachable) while its TCP port of the same number keeps the allocators off it.
     /// </summary>
     protected async Task<InteropEndpoints> NoServerEndpointsAsync()
     {
@@ -331,7 +331,7 @@ internal abstract class BaseTests
         var https = FreeEndPoint();
         var quic = FreeEndPoint();
 
-        var hold = await StoppedPortHold.TakeAsync([tcp, tls, http, https], [quic]);
+        var hold = await StoppedPortHold.TakeAsync([tcp, tls, http, https], [], refusedQuicEndPoints: [quic]);
         lock (_portHolds)
             _portHolds.Add(hold);
 

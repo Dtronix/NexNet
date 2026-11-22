@@ -64,10 +64,23 @@ public sealed class StoppedPortHold : IDisposable
 
     /// <summary>
     /// Binds the TCP ports of <paramref name="tcpEndPoints"/> (TCP, TLS, HTTP), starts taking the QUIC ports of
-    /// <paramref name="quicEndPoints"/> (UDP), and returns the hold.
+    /// <paramref name="quicEndPoints"/> (UDP), keeps the allocators off the ports of
+    /// <paramref name="refusedQuicEndPoints"/>, and returns the hold.
     /// </summary>
+    /// <param name="tcpEndPoints">TCP ports to hold: an attempt is refused.</param>
+    /// <param name="quicEndPoints">
+    /// UDP ports of a stopped QUIC server to hold: an attempt goes unanswered and lasts the client's connection timeout.
+    /// </param>
+    /// <param name="refusedQuicEndPoints">
+    /// UDP ports left unbound, so an attempt fails at once (port unreachable); the TCP port of the same number listens
+    /// without accepting, which keeps the allocators, and other listeners, off the number on every platform. For an
+    /// address with no server at all.
+    /// </param>
     /// <exception cref="InvalidOperationException">A TCP port could not be held within <see cref="BindTimeout"/>.</exception>
-    public static async Task<StoppedPortHold> TakeAsync(IEnumerable<IPEndPoint> tcpEndPoints, IEnumerable<IPEndPoint> quicEndPoints)
+    public static async Task<StoppedPortHold> TakeAsync(
+        IEnumerable<IPEndPoint> tcpEndPoints,
+        IEnumerable<IPEndPoint> quicEndPoints,
+        IEnumerable<IPEndPoint>? refusedQuicEndPoints = null)
     {
         ArgumentNullException.ThrowIfNull(tcpEndPoints);
         ArgumentNullException.ThrowIfNull(quicEndPoints);
@@ -76,6 +89,8 @@ public sealed class StoppedPortHold : IDisposable
         {
             foreach (var endPoint in tcpEndPoints)
                 await hold.BindTcpAsync(endPoint).ConfigureAwait(false);
+            foreach (var endPoint in refusedQuicEndPoints ?? [])
+                await hold.BindUntilAsync(endPoint, SocketType.Stream, ProtocolType.Tcp, DateTime.UtcNow + BindTimeout, listen: true).ConfigureAwait(false);
         }
         catch
         {
@@ -101,10 +116,10 @@ public sealed class StoppedPortHold : IDisposable
             await BindUntilAsync(endPoint, SocketType.Dgram, ProtocolType.Udp, deadline).ConfigureAwait(false);
     }
 
-    private async Task BindUntilAsync(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType, DateTime deadline)
+    private async Task BindUntilAsync(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType, DateTime deadline, bool listen = false)
     {
         SocketException? last;
-        while (!TryBind(endPoint, socketType, protocolType, out last))
+        while (!TryBind(endPoint, socketType, protocolType, out last, listen))
         {
             if (DateTime.UtcNow >= deadline)
             {
@@ -134,7 +149,7 @@ public sealed class StoppedPortHold : IDisposable
     }
 
     /// <summary>Binds a socket to <paramref name="endPoint"/> and keeps it; false while the port is taken.</summary>
-    private bool TryBind(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType, out SocketException? error)
+    private bool TryBind(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType, out SocketException? error, bool listen = false)
     {
         error = null;
         if (_disposed.IsCancellationRequested)
@@ -148,6 +163,8 @@ public sealed class StoppedPortHold : IDisposable
                 if (exclusive && OperatingSystem.IsWindows())
                     socket.ExclusiveAddressUse = true;
                 socket.Bind(endPoint);
+                if (listen)
+                    socket.Listen(1);
             }
             catch (SocketException e)
             {
