@@ -83,7 +83,8 @@ internal partial class CrossLanguageSmokeTests
     /// A relayed list is read-only for its leaf clients: every change a leaf client asks for is refused on the client
     /// with the same error kind on every language (InvalidOperation), nothing reaches the relay, and the leaf keeps
     /// mirroring the parent. Mirrors &lt;c&gt;NexusCollectionRelayTests.RelayPreventsModifications&lt;/c&gt;, which checks the
-    /// relay's own list.
+    /// relay's own list. The refusal comes from the list's mode alone: it is the same for a missing item and for a
+    /// list that is not enabled.
     /// </summary>
     [Test]
     [CrossLanguageSmoke(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
@@ -109,11 +110,25 @@ internal partial class CrossLanguageSmokeTests
         await AssertRefusedAsync(() => list.MoveAsync(0, 2));
         await AssertRefusedAsync(() => list.ClearAsync());
 
+        // A missing item is refused too, rather than answered with false.
+        await AssertRefusedAsync(() => list.RemoveAsync(99));
+
+        // A list that is not enabled refuses every change the same way.
+        await using var idle = await relay.ConnectLeafAsync(target);
+        var idleList = idle.List<int>(RelayList);
+        await AssertRefusedAsync(() => idleList.AddAsync(99));
+        await AssertRefusedAsync(() => idleList.InsertAsync(0, 99));
+        await AssertRefusedAsync(() => idleList.RemoveAsync(1));
+        await AssertRefusedAsync(() => idleList.RemoveAtAsync(0));
+        await AssertRefusedAsync(() => idleList.ReplaceAsync(0, 99));
+        await AssertRefusedAsync(() => idleList.MoveAsync(0, 1));
+        await AssertRefusedAsync(() => idleList.ClearAsync());
+
         // Nothing changed, and the leaf's subscription is intact: it still receives the parent's changes.
         await source.AddAsync(4).Timeout(T(1));
         await WaitForListAsync(list, 1, 2, 3, 4);
         await Assert.That(source.ToArray()).IsEquivalentTo(new[] { 1, 2, 3, 4 }, CollectionOrdering.Matching);
-        await EndAsync(leaf);
+        await EndAsync(leaf, idle);
 
         static async Task AssertRefusedAsync(Func<ValueTask<bool>> write)
             => await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await write().Timeout(T(1)));
