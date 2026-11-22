@@ -125,9 +125,6 @@ internal class ClientDiagnosticLogTests(LanguageHostPool hosts) : MatrixTestBase
     [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task QueueWarning_ZeroThreshold_NeverWarns_ButTheWaitIsRecorded(ClientTarget target)
     {
-        if (target.Language == ClientLanguages.Java)
-            Skip.Test("The Java client has no invocation queue warning (invocationQueueWarningThreshold); follow-up card K48.");
-
         var logger = new CapturingLogger();
         await using var server = await StartServerAsync();
         await using var client = await ConnectAsync(target, server,
