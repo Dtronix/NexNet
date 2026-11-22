@@ -46,6 +46,7 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     private readonly IList<string> _allowedOrigins;
     private readonly ConcurrentQueue<string> _requestOrigins = new();
     private bool _portsAssigned;
+    private StoppedPortHold? _stoppedPortHold;
     private int _disposed;
 
     /// <summary>
@@ -215,11 +216,13 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     }
 
     /// <summary>
-    /// Starts the server: the first time on newly picked TCP, TLS and QUIC ports, afterwards on the same ones.
+    /// Starts the server: the first time on newly picked TCP, TLS and QUIC ports, afterwards on the same ones, which
+    /// <see cref="StopAsync"/> held until now.
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ReleaseStoppedPorts();
         var tcp = (TcpServerConfig)_configs[InteropEndpointKind.Tcp];
         var tls = (TcpServerConfig)_configs[InteropEndpointKind.TcpTls];
         var quic = _configs.TryGetValue(InteropEndpointKind.Quic, out var quicConfig) ? (QuicServerConfig)quicConfig : null;
@@ -274,7 +277,25 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     /// <summary>
     /// Stops the server. It can be started again with <see cref="StartAsync"/> on the same endpoints.
     /// </summary>
-    public Task StopAsync() => Server.StopAsync();
+    /// <remarks>
+    /// Until it starts again (or is disposed), the server keeps its TCP, TLS and QUIC ports bound without listening, so
+    /// a client's connection attempt is refused instead of reaching a server of another test process that picked a
+    /// freed port (the port allocator keeps ports unique within a process only). The UDS path is the server's own and
+    /// the HTTP endpoints stay on their running host, which answers for the stopped server with no NexNet session.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// A port of the stopped server could not be held: another process has it.
+    /// </exception>
+    public async Task StopAsync()
+    {
+        await Server.StopAsync().ConfigureAwait(false);
+        if (Endpoints == null || Volatile.Read(ref _disposed) != 0)
+            return;
+
+        ReleaseStoppedPorts();
+        _stoppedPortHold = await StoppedPortHold.TakeAsync(Endpoints).ConfigureAwait(false);
+    }
+    private void ReleaseStoppedPorts() => Interlocked.Exchange(ref _stoppedPortHold, null)?.Dispose();
 
     private Uri AspUri(Uri baseUri, InteropEndpointKind kind, string scheme)
         => new UriBuilder(baseUri) { Scheme = scheme, Path = ((AspServerConfig)_configs[kind]).Path }.Uri;
@@ -346,6 +367,7 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
+        ReleaseStoppedPorts();
         try
         {
             if (Server.State != NexusServerState.Stopped)
