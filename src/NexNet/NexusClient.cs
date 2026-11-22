@@ -31,7 +31,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private NexusSession<TClientNexus, TServerProxy>? _session;
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
-    private bool _isReconnecting = false;
     private volatile bool _reconnectLoopActive;
 
     // Guards _session's assignment, the reconnection loop's ownership and the state changes the client raises itself,
@@ -45,6 +44,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     // Cancels the running reconnection loop's delay and connect; taken and canceled by DisconnectAsync.
     private CancellationTokenSource? _reconnectLoop;
+
+    // A connected session lost while a reconnection loop still ran (for example the loop's own reconnected session,
+    // lost before the loop ended): the loop starts a new one for it when it ends with no session.
+    private (DisconnectReason Reason, int DisconnectRequests)? _lostWhileLoopRan;
 
     // The last state change raised, so the client ends Disconnected exactly once when a loop stops.
     private ConnectionState _lastRaisedState = ConnectionState.Disconnected;
@@ -60,6 +63,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// session ended), before the attempt reads the outcome.
     /// </summary>
     internal Func<Task>? InternalOnSessionReady { get; set; }
+
+    /// <summary>
+    /// Test hook: awaited by the reconnection loop after one of its attempts connected, before the loop ends and
+    /// releases its ownership of the reconnection.
+    /// </summary>
+    internal Func<Task>? InternalOnReconnected { get; set; }
     
     /// <summary>
     /// Provides access to the client's nexus.
@@ -179,8 +188,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         if (isReconnecting && Volatile.Read(ref _disconnectRequests) != disconnectRequests)
             return new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None);
-
-        _isReconnecting = isReconnecting;
 
         LogPlaintextWarningOnce();
 
@@ -307,7 +314,19 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
                 : new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
         }
 
-        _ = disconnectedTaskCompletionSource.Task.ContinueWith(task => ConnectionClosed(task, disconnectRequests), cancellationToken);
+        // A reconnection attempt's session that never connected starts no loop: the loop that made the attempt retries.
+        // The connect token is not passed: it cancels this connect, not the reconnection of the session it opened.
+        _ = disconnectedTaskCompletionSource.Task.ContinueWith(
+            task => ConnectionClosed(task, disconnectRequests, !isReconnecting || SessionConnected()),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+
+        bool SessionConnected()
+        {
+            lock (_connectionLock)
+                return sessionConnected;
+        }
 
         _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
@@ -345,11 +364,14 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     /// <param name="task">The disconnected task of the session that ended.</param>
     /// <param name="disconnectRequests">The <see cref="_disconnectRequests"/> count the session was created under.</param>
-    private async Task ConnectionClosed(Task<DisconnectReason> task, int disconnectRequests)
+    /// <param name="startsLoop">
+    /// False for the session of a reconnection attempt that never connected: its loop retries, so it starts none.
+    /// </param>
+    private async Task ConnectionClosed(Task<DisconnectReason> task, int disconnectRequests, bool startsLoop)
     {
-        if (_isReconnecting)
+        if (!startsLoop)
             return;
-        
+
         if (!task.IsCompletedSuccessfully)
             return;
         if (_config.ReconnectionPolicy == null)
@@ -373,8 +395,16 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var loop = new CancellationTokenSource();
         lock (_connectionLock)
         {
-            if (_disconnectRequests != disconnectRequests || _reconnectLoop != null)
+            if (_disconnectRequests != disconnectRequests)
                 return;
+
+            if (_reconnectLoop != null)
+            {
+                // A loop still runs (it is ending after its attempt connected, or it is retrying while a ConnectAsync
+                // opened this session). It starts a new loop for this session when it ends without a session.
+                _lostWhileLoopRan = (reason, disconnectRequests);
+                return;
+            }
 
             _reconnectLoop = loop;
             _reconnectLoopActive = true;
@@ -425,8 +455,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
                 if (result.Success)
                 {
                     reconnected = true;
-                    _isReconnecting = false;
                     _config.Logger?.LogInfo("Reconnected");
+
+                    if (InternalOnReconnected is { } onReconnected)
+                        await onReconnected().ConfigureAwait(false);
+
                     return;
                 }
 
@@ -441,11 +474,19 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             // The loop gave up (or failed): the client is Disconnected again. A loop that DisconnectAsync stopped no
             // longer owns the state; DisconnectAsync ends it.
             var raiseDisconnected = false;
+            (DisconnectReason Reason, int DisconnectRequests)? lostWhileLoopRan = null;
             lock (_connectionLock)
             {
                 if (_reconnectLoop == loop)
                 {
                     _reconnectLoop = null;
+
+                    // The session this loop connected was lost before the loop ended: its loss is reconnected now.
+                    // A session lost earlier was retried by this loop, and one that is still open needs nothing.
+                    if (reconnected && _session == null)
+                        lostWhileLoopRan = _lostWhileLoopRan;
+                    _lostWhileLoopRan = null;
+
                     if (!reconnected && _reconnectLoopActive)
                     {
                         _reconnectLoopActive = false;
@@ -457,6 +498,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
             if (raiseDisconnected)
                 StateChanged?.Invoke(this, ConnectionState.Disconnected);
+
+            if (lostWhileLoopRan is { } lost)
+                _ = ConnectionClosed(Task.FromResult(lost.Reason), lost.DisconnectRequests, true);
         }
 
         bool IsStopped() => Volatile.Read(ref _disconnectRequests) != disconnectRequests;
@@ -480,6 +524,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             disconnected = _disconnectedTaskCompletionSource;
             loop = _reconnectLoop;
             _reconnectLoop = null;
+            _lostWhileLoopRan = null;
             wasReconnecting = _reconnectLoopActive;
             _reconnectLoopActive = false;
         }
