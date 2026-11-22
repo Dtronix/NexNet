@@ -302,6 +302,8 @@ final class InteropHost {
             }
             case "client.state":
                 return done(Protocol.map("state", driven(scope, args).state()));
+            case "client.stateHistory":
+                return done(clientOnly(scope, args).stateHistory(args.bool("reset")));
             case "client.remoteCertificate":
                 return done(Protocol.map("der", clientOnly(scope, args).remoteCertificate()));
             case "client.isSecure":
