@@ -119,7 +119,11 @@ public sealed record NexusInvocationSnapshot
     /// <summary>Calls waiting for the peer to return credit.</summary>
     public int CreditWaits { get; init; }
 
-    /// <summary>Calls this side made that are waiting for their result.</summary>
+    /// <summary>
+    /// Calls this side made that are waiting for their result: sent (or being sent) and not yet completed. A call still
+    /// waiting for invocation credit (<see cref="CreditWaits"/>) is not counted yet, and a call canceled after it was
+    /// sent is completed, so it is not counted either, though its invocation ID stays reserved until the late reply.
+    /// </summary>
     public int AwaitingResults { get; init; }
 
     /// <summary>Invocations skipped because the peer returned no credit in time.</summary>

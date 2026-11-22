@@ -126,6 +126,33 @@ internal interface INexusSession : ISessionMessenger
         where TMessage : IMessageBase;
 
     /// <summary>
+    /// The first half of <see cref="SendInvocation{TMessage}"/>: takes one invocation credit, waiting for the peer to
+    /// return one if none is left. A caller that gets the credit must then send with
+    /// <see cref="SendInvocationWithCredit{TMessage}"/>. Lets a call take its invocation ID only once it has credit,
+    /// so a call still waiting for credit holds no ID (the same order as the Java and JavaScript clients).
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the wait for credit.</param>
+    /// <param name="creditTimeout">Gives up when no credit comes within this time; null waits until the session
+    /// ends.</param>
+    /// <returns>False if no credit was taken: the session ended, or no credit came in time.</returns>
+    /// <remarks>Sessions without invocation flow control (test doubles) take no credit and return true.</remarks>
+    ValueTask<bool> TakeInvocationCredit(CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        => new(true);
+
+    /// <summary>
+    /// The second half of <see cref="SendInvocation{TMessage}"/>: sends an invocation whose credit
+    /// <see cref="TakeInvocationCredit"/> took.
+    /// </summary>
+    /// <param name="message">The invocation.</param>
+    /// <param name="cancellationToken">Stops a streamed argument; a one-frame invocation is always written.</param>
+    ValueTask SendInvocationWithCredit<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase
+    {
+        var send = SendInvocation(message, cancellationToken);
+        return send.IsCompletedSuccessfully ? default : new ValueTask(send.AsTask());
+    }
+
+    /// <summary>
     /// Writes an invocation to the session's output if that needs no waiting: the peer has credit, no other send
     /// is in progress (including a flush to a backed-up transport) and the arguments fit in one frame. Like
     /// <c>ChannelWriter.TryWrite</c>, <see cref="InvocationWriteResult.Written"/> means the invocation is committed

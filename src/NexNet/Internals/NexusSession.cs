@@ -712,37 +712,51 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
         where TMessage : IMessageBase
     {
-        if (!_outboundCredits.TryTake())
+        if (!await TakeInvocationCredit(cancellationToken, creditTimeout).ConfigureAwait(false))
+            return false;
+
+        await SendInvocationWithCredit(message, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public ValueTask<bool> TakeInvocationCredit(CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        => _outboundCredits.TryTake() ? new ValueTask<bool>(true) : WaitForInvocationCredit(cancellationToken, creditTimeout);
+
+    // Pooled: every caller awaits it exactly once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<bool> WaitForInvocationCredit(CancellationToken cancellationToken, TimeSpan? creditTimeout)
+    {
+        Interlocked.Increment(ref _creditWaiters);
+        CreditWaitResult wait;
+        try
         {
-            Interlocked.Increment(ref _creditWaiters);
-            CreditWaitResult wait;
-            try
-            {
-                // The gate is closed when the session ends, which ends this wait with Closed.
-                wait = await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _creditWaiters);
-            }
-
-            if (wait == CreditWaitResult.TimedOut)
-            {
-                RecordCreditDrop();
-                return false;
-            }
-
-            if (wait == CreditWaitResult.Closed)
-                return false; // The session ended while waiting.
+            // The gate is closed when the session ends, which ends this wait with Closed.
+            wait = await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _creditWaiters);
         }
 
+        if (wait == CreditWaitResult.TimedOut)
+        {
+            RecordCreditDrop();
+            return false;
+        }
+
+        // Closed: the session ended while waiting.
+        return wait != CreditWaitResult.Closed;
+    }
+
+    /// <inheritdoc />
+    public ValueTask SendInvocationWithCredit<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase
         // The credit is spent: only the peer returns it, when it takes the invocation, so the invocation is always
         // written. A cancellation from here on stops only a streamed argument; otherwise the caller sends an
         // InvocationCancellation once the invocation is out.
-        await SendMessage(message, CancellationToken.None, cancellationToken).ConfigureAwait(false);
-        return true;
-    }
+        => SendMessage(message, CancellationToken.None, cancellationToken);
 
     /// <summary>
     /// Logs, at most once per 10 s, invocations dropped because the peer granted no credit in time.

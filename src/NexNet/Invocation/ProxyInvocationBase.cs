@@ -131,19 +131,27 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 }
 
                 // An argument larger than one frame is streamed under its invocation ID, so it needs a tracked one
-                // even though no result comes back.
+                // even though no result comes back. Taken once the call has credit, so a call waiting for credit holds
+                // no ID (the same order as result calls).
                 var streamed = serializedArguments.Length > IInvocationMessage.MaxArgumentSize;
-                if (streamed)
-                    message.InvocationId = session.SessionInvocationStateManager.GetNextId(true);
-
-                try
+                if (!streamed)
                 {
                     await session.SendInvocation(message).ConfigureAwait(false);
+                    break;
+                }
+
+                // The session ended while waiting for credit: nothing is sent.
+                if (!await session.TakeInvocationCredit().ConfigureAwait(false))
+                    break;
+
+                message.InvocationId = session.SessionInvocationStateManager.GetNextId(true);
+                try
+                {
+                    await session.SendInvocationWithCredit(message).ConfigureAwait(false);
                 }
                 finally
                 {
-                    if (streamed)
-                        session.SessionInvocationStateManager.ReleaseId(message.InvocationId);
+                    session.SessionInvocationStateManager.ReleaseId(message.InvocationId);
                 }
 
                 break;
