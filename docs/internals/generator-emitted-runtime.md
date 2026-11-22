@@ -118,7 +118,7 @@ Each module keeps its package, beside the core runtime in the same source root:
 
 ```
 <OutputDir>/com/dtronix/nexnet/kotlin/*.kt       NexusCoroutines.kt, NexusFlows.kt
-<OutputDir>/com/dtronix/nexnet/okhttp/*.java     OkHttpWebSocketConnector, OkHttpWebSocketTransport
+<OutputDir>/com/dtronix/nexnet/okhttp/*.java     OkHttpWebSocketConnector, OkHttpWebSocketTransport, SocketRecorder
 <OutputDir>/com/dtronix/nexnet/micrometer/*.java NexusMicrometerBinder
 <OutputDir>/com/dtronix/nexnet/android/*.java    NexusAndroid, NexusConnectionKeeper, AndroidNexusLogger, NexusJavaTime
 ```
