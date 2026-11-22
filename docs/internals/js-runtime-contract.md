@@ -311,7 +311,10 @@ with a reason the policy accepts, the controller calls `nexus.onReconnecting()`,
 clock and retries with `ClientGreetingReconnection` (101); a successful attempt calls `nexus.onConnected(true)`. It
 dispatches `CustomEvent`s: `reconnecting {reason}`, `reconnectattempt {attempt}` (1-based), `reconnected {attempts}`
 and `reconnectfailed {reason, attempts}`. In a browser it also cuts a pending delay short on `visibilitychange` (to
-visible), `online` and `resume`. `disconnect()` stops it for good. While a loop runs, `client.state` is
+visible), `online` and `resume`. `disconnect()` (or `reconnection.stop()`) stops it for good: it cancels a pending
+delay and aborts an attempt in progress (the attempt passes an `AbortSignal` to `_tryConnectCore`), which opens no
+session, calls no `onConnected` and does not dispatch `disconnected`, even when its greeting has already arrived (C#
+parity, S46/J42). While a loop runs, `client.state` is
 `Reconnecting` (after the lost session's `Disconnecting` and `Disconnected`) until an attempt connects (`Connected`)
 or the loop ends: the policy gave up (`Disconnected`, set before `disconnected` resolves) or the controller was stopped
 (`Disconnected`). A failed attempt does not report its own states (C# parity, Q17).
