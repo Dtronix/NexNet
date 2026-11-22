@@ -1496,22 +1496,33 @@ export class Host {
     });
     op('client.connect', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.connect');
+      // A canceled connect rejects with an AbortError (kind Canceled). A runner token stays in effect after the connect.
+      const cancel = this.#cancel(ctx, entry, args.cancel);
+      cancel.start();
       try {
-        await entry.client.connect();
+        await entry.client.connect(cancel.signal ? { signal: cancel.signal } : undefined);
       } catch (error) {
         // A connect that fails before the handshake raises no disconnected event; its reason is the error's (as the
         // C# DisconnectedTask reports it).
         const reason = /** @type {any} */ (error)?.reason;
         if (typeof reason === 'number') entry.lastReason = reason;
         throw error;
+      } finally {
+        cancel.stop();
       }
       return {};
     });
     op('client.tryConnect', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.tryConnect');
-      const result = await entry.client.tryConnect();
-      if (!result.success) entry.lastReason = result.disconnectReason;
-      return { ok: result.success === true };
+      const cancel = this.#cancel(ctx, entry, args.cancel);
+      cancel.start();
+      try {
+        const result = await entry.client.tryConnect(cancel.signal ? { signal: cancel.signal } : undefined);
+        if (!result.success) entry.lastReason = result.disconnectReason;
+        return { ok: result.success === true };
+      } finally {
+        cancel.stop();
+      }
     });
     op('client.disconnect', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.disconnect');
