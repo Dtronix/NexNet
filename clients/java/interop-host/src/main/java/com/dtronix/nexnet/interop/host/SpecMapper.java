@@ -1,0 +1,430 @@
+package com.dtronix.nexnet.interop.host;
+
+import com.dtronix.nexnet.client.ClientConfig;
+import com.dtronix.nexnet.client.TlsOptions;
+import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
+import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
+import com.dtronix.nexnet.DisconnectReason;
+import com.dtronix.nexnet.pipes.PipeOptions;
+import com.dtronix.nexnet.logging.NexusLogger;
+import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
+import com.dtronix.nexnet.session.SessionOptions;
+import com.dtronix.nexnet.session.SessionTimers;
+import com.dtronix.nexnet.transport.Transport;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import javax.net.ssl.X509TrustManager;
+
+/** Maps a {@code ClientSpec} (control protocol §6.4.1) to the Java client's configuration. */
+final class SpecMapper {
+    private static final Set<String> MEMBERS = new HashSet<>(Arrays.asList(
+        "transport", "address", "tlsServerName", "caPem", "clientCertificatePem", "clientKeyPem", "pinSha256",
+        "insecureSkipVerify", "connectionTimeoutMs", "timeoutMs", "handshakeTimeoutMs", "pingIntervalMs",
+        "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
+        "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
+        "authorizationHeader", "upgradeHeaders", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
+        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "disconnectDelayMs",
+        "metrics", "webSocketConnector"));
+
+    private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
+        "token", "appendCallNumber", "delayMs", "hang", "throwMessage"));
+
+    private SpecMapper() {
+    }
+
+    /** What a spec configures. */
+    static final class Setup {
+        final ClientConfig config;
+        final SessionOptions sessionOptions;
+        final SessionTimers timers;
+        final FakeTimers fakeTime;
+        /** The error the client nexus's onInvocationException hook returns, or null for no hook. */
+        final NexusRemoteError invocationError;
+        /** The connector of the spec's transport ({@link Connectors}). */
+        final Transport.Connector connector;
+
+        Setup(ClientConfig config, SessionOptions sessionOptions, SessionTimers timers, FakeTimers fakeTime,
+              NexusRemoteError invocationError, Transport.Connector connector) {
+            this.config = config;
+            this.connector = connector;
+            this.sessionOptions = sessionOptions;
+            this.timers = timers;
+            this.fakeTime = fakeTime;
+            this.invocationError = invocationError;
+        }
+    }
+
+    /**
+     * Maps a spec.
+     *
+     * @param spec the spec
+     * @param logger the client logger, or null for no logging
+     * @param fakeTime the clock to use when the spec asks for fake time (a pool shares one), or null for a new one
+     * @return the configuration
+     * @throws HostError NotSupported for an option the Java client cannot honor, BadRequest for a malformed spec
+     */
+    static Setup map(Args spec, NexusLogger logger, FakeTimers fakeTime) {
+        for (String member : spec.raw().keySet()) {
+            if (!MEMBERS.contains(member)) {
+                throw HostError.notSupported("The JVM host does not know the ClientSpec member '" + member + "'.");
+            }
+        }
+        NexusRemoteError invocationError = invocationError(spec.optObj("onInvocationException"));
+        // Recorded by the client entry (MetricsRecorder); only checked here.
+        MetricsRecorder.validate(spec.optStr("metrics"));
+
+        String transport = spec.str("transport");
+        String address = spec.str("address");
+        boolean secure;
+        ClientConfig.Builder builder;
+        switch (transport) {
+            case "Tcp": {
+                URI uri = hostPort(address, "tcp://");
+                builder = ClientConfig.tcp(uri.getHost(), uri.getPort());
+                secure = false;
+                break;
+            }
+            case "TcpTls": {
+                URI uri = hostPort(address, "tls://");
+                builder = ClientConfig.tcpTls(uri.getHost(), uri.getPort());
+                secure = true;
+                break;
+            }
+            case "HttpSocket":
+            case "HttpSocketTls":
+                builder = ClientConfig.httpSocket(uri(address));
+                secure = transport.endsWith("Tls");
+                break;
+            case "WebSocket":
+            case "WebSocketTls":
+                builder = ClientConfig.webSocket(uri(address));
+                secure = transport.endsWith("Tls");
+                break;
+            default:
+                throw HostError.notSupported("The Java client has no " + transport + " transport.");
+        }
+
+        TlsOptions tlsOptions = null;
+        if (secure) {
+            tlsOptions = tls(spec, transport.equals("TcpTls"));
+            builder.tls(tlsOptions);
+        } else if (spec.has("caPem") || spec.has("pinSha256") || spec.has("clientCertificatePem")) {
+            throw HostError.badRequest("TLS options need a TLS transport, not " + transport + ".");
+        }
+
+        // The custom headers first: the typed Authorization header then replaces an Authorization entry among them,
+        // as C# AuthenticationHeader does (S54) and the Node host does.
+        Args headers = spec.optObj("upgradeHeaders");
+        if (headers != null) {
+            upgradeHeaders(builder, headers, transport);
+        }
+        String authorization = spec.optStr("authorizationHeader");
+        if (authorization != null) {
+            try {
+                builder.authorization(authorization);
+            } catch (IllegalStateException e) {
+                throw HostError.notSupported("An Authorization header needs an HTTP transport, not " + transport + ".");
+            }
+        }
+        Args query = spec.optObj("queryToken");
+        if (query != null) {
+            for (String member : query.raw().keySet()) {
+                if (!member.equals("name") && !member.equals("value")) {
+                    throw HostError.notSupported("The JVM host does not know the queryToken member '" + member + "'.");
+                }
+            }
+            String name = query.optStr("name");
+            if (name == null || name.isEmpty()) {
+                throw HostError.badRequest("queryToken.name is required.");
+            }
+            String value = query.optStr("value");
+            try {
+                builder.queryToken(name, value == null ? "" : value);
+            } catch (IllegalStateException e) {
+                throw HostError.notSupported("A query-string token needs an HTTP transport, not " + transport + ".");
+            }
+        }
+        String token = spec.optStr("authToken");
+        if (token != null) {
+            byte[] bytes = token.getBytes(StandardCharsets.UTF_8);
+            builder.authenticate(() -> bytes.clone());
+        }
+        Args authenticate = spec.optObj("authenticate");
+        if (authenticate != null) {
+            if (token != null) {
+                throw HostError.badRequest("authToken and authenticate are exclusive.");
+            }
+            builder.authenticateAsync(authenticateScript(authenticate));
+        }
+        Long connectionTimeout = spec.optInteger("connectionTimeoutMs");
+        if (connectionTimeout != null) {
+            builder.connectionTimeoutMillis(connectionTimeout.intValue());
+        }
+        Long timeout = spec.optInteger("timeoutMs");
+        if (timeout != null) {
+            builder.timeoutMillis(timeout.intValue());
+        }
+        Long handshakeTimeout = spec.optInteger("handshakeTimeoutMs");
+        if (handshakeTimeout != null) {
+            builder.handshakeTimeoutMillis(handshakeTimeout.intValue());
+        }
+        Long pingInterval = spec.optInteger("pingIntervalMs");
+        if (pingInterval != null) {
+            builder.pingIntervalMillis(pingInterval.intValue());
+        }
+        Long progressTimeout = spec.optInteger("progressTimeoutMs");
+        if (progressTimeout != null) {
+            builder.progressTimeoutMillis(progressTimeout.intValue());
+        }
+        PipeOptions pipes = PipeOptions.defaults();
+        Long maxPipes = spec.optInteger("maxPipes");
+        if (maxPipes != null) {
+            pipes = pipes.withMaxPipes(maxPipes.intValue());
+        }
+        Long pipeWindow = spec.optInteger("pipeWindow");
+        if (pipeWindow != null) {
+            pipes = pipes.withPipeWindow(pipeWindow.intValue());
+        }
+        builder.pipeOptions(pipes);
+
+        InvocationOptions invocations = InvocationOptions.defaults();
+        Long maxConcurrent = spec.optInteger("maxConcurrentConnectionInvocations");
+        if (maxConcurrent != null) {
+            invocations = invocations.withMaxConcurrentInvocations(maxConcurrent.intValue());
+        }
+        Long maxSeparate = spec.optInteger("maxSeparatePoolInvocations");
+        if (maxSeparate != null) {
+            invocations = invocations.withMaxSeparatePoolInvocations(maxSeparate.intValue());
+        }
+        Long queueWarning = spec.optInteger("invocationQueueWarningThresholdMs");
+        if (queueWarning != null) {
+            invocations = invocations.withInvocationQueueWarningThresholdMillis(queueWarning.intValue());
+        }
+        Long sessionBudget = spec.optInteger("sessionBudget");
+        if (sessionBudget != null) {
+            invocations = invocations.withSessionBudget(sessionBudget);
+        }
+        String detail = spec.optStr("remoteExceptionDetail");
+        if (detail != null) {
+            invocations = invocations.withRemoteExceptionDetail(Names.parse(RemoteExceptionDetail.class, detail));
+        }
+        builder.invocationOptions(invocations);
+
+        if (spec.has("reconnectDelaysMs")) {
+            List<Object> delays = spec.list("reconnectDelaysMs");
+            long[] millis = new long[delays.size()];
+            for (int i = 0; i < millis.length; i++) {
+                millis[i] = Args.toLong("reconnectDelaysMs", delays.get(i));
+            }
+            boolean continuously = spec.bool("reconnectContinuously");
+            builder.reconnectionPolicy(spec.has("reconnectReasons")
+                ? new DefaultReconnectionPolicy(millis, continuously, reconnectReasons(spec.list("reconnectReasons")))
+                : new DefaultReconnectionPolicy(millis, continuously));
+        } else if (spec.has("reconnectReasons")) {
+            throw HostError.badRequest("reconnectReasons needs reconnectDelaysMs.");
+        }
+        // Without delays the client has no reconnection policy, which is also the Java client's default: so
+        // defaultReconnection (keep the runtime's default) changes nothing here. It is only checked.
+        spec.bool("defaultReconnection");
+        if (logger != null) {
+            builder.logger(logger);
+        }
+
+        SessionOptions options = SessionOptions.defaults();
+        Long maxMessageSize = spec.optInteger("maxMessageSize");
+        if (maxMessageSize != null) {
+            options = options.withMaxMessageSize(maxMessageSize.intValue());
+        }
+        Long credits = spec.optInteger("invocationCredits");
+        if (credits != null) {
+            options = options.withInvocationCredits(credits.intValue());
+        }
+        Long disconnectDelay = spec.optInteger("disconnectDelayMs");
+        if (disconnectDelay != null) {
+            if (disconnectDelay < 0 || disconnectDelay > 10_000) {
+                throw HostError.badRequest("disconnectDelayMs must be 0 to 10000, not " + disconnectDelay + ".");
+            }
+            options = options.withDisconnectDelayMillis(disconnectDelay.intValue());
+        }
+
+        FakeTimers fake = null;
+        SessionTimers timers = SessionTimers.system();
+        if (spec.bool("fakeTime")) {
+            fake = fakeTime != null ? fakeTime : new FakeTimers();
+            timers = fake;
+        }
+        return new Setup(builder.build(), options, timers, fake, invocationError,
+            Connectors.select(transport, tlsOptions, spec.optStr("webSocketConnector")));
+    }
+
+    /** The {@code DisconnectReason} names of {@code reconnectReasons}. */
+    static Set<DisconnectReason> reconnectReasons(List<Object> names) {
+        Set<DisconnectReason> reasons = EnumSet.noneOf(DisconnectReason.class);
+        for (Object name : names) {
+            if (!(name instanceof String)) {
+                throw HostError.badRequest("reconnectReasons holds a non-string.");
+            }
+            reasons.add(Names.parse(DisconnectReason.class, (String) name));
+        }
+        return reasons;
+    }
+
+    /**
+     * The scripted authenticate callback of {@code authenticate} ({@code {token?, appendCallNumber?, delayMs?, hang?,
+     * throwMessage?}}): each call counts, waits {@code delayMs} (real time), then hangs (the client cancels the future
+     * at its handshake timeout), fails with {@code throwMessage}, or returns the token (with the call number appended
+     * when {@code appendCallNumber}; null for no token).
+     */
+    static Supplier<CompletableFuture<byte[]>> authenticateScript(Args script) {
+        for (String member : script.raw().keySet()) {
+            if (!AUTHENTICATE_MEMBERS.contains(member)) {
+                throw HostError.notSupported("The JVM host does not know the authenticate member '" + member + "'.");
+            }
+        }
+        String token = script.optStr("token");
+        boolean appendCallNumber = script.bool("appendCallNumber");
+        Long delay = script.optInteger("delayMs");
+        long delayMs = delay == null ? 0 : delay;
+        boolean hang = script.bool("hang");
+        String throwMessage = script.optStr("throwMessage");
+        AtomicInteger calls = new AtomicInteger();
+        return () -> {
+            int call = calls.incrementAndGet();
+            CompletableFuture<Void> waited = delayMs > 0
+                ? CompletableFuture.runAsync(() -> { }, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+                : CompletableFuture.completedFuture(null);
+            if (hang) {
+                return waited.thenCompose(ignored -> new CompletableFuture<byte[]>());
+            }
+            return waited.thenApply(ignored -> {
+                if (throwMessage != null) {
+                    throw new IllegalStateException(throwMessage);
+                }
+                if (token == null) {
+                    return null;
+                }
+                return (appendCallNumber ? token + call : token).getBytes(StandardCharsets.UTF_8);
+            });
+        };
+    }
+
+    /** The error of {@code onInvocationException} ({@code {code?, message?}}), or null when the spec has no hook. */
+    static NexusRemoteError invocationError(Args hook) {
+        if (hook == null) {
+            return null;
+        }
+        for (String member : hook.raw().keySet()) {
+            if (!member.equals("code") && !member.equals("message")) {
+                throw HostError.notSupported("The JVM host does not know the onInvocationException member '" + member + "'.");
+            }
+        }
+        Long code = hook.optInteger("code");
+        if (code != null && (code < Integer.MIN_VALUE || code > Integer.MAX_VALUE)) {
+            throw HostError.badRequest("The onInvocationException code " + code + " is not an Int32.");
+        }
+        return new NexusRemoteError(code == null ? null : code.intValue(), hook.optStr("message"));
+    }
+
+    /**
+     * Adds {@code ClientSpec.upgradeHeaders} (name to value) to the upgrade request.
+     *
+     * @param builder the configuration builder
+     * @param headers the headers
+     * @param transport the transport name, for the error message
+     * @throws HostError NotSupported for a TCP transport, BadRequest for a value that is not a string or a header the
+     *     client refuses (a reserved name, control characters)
+     */
+    static void upgradeHeaders(ClientConfig.Builder builder, Args headers, String transport) {
+        for (Map.Entry<String, Object> header : headers.raw().entrySet()) {
+            if (!(header.getValue() instanceof String)) {
+                throw HostError.badRequest("upgradeHeaders." + header.getKey() + " is not a string.");
+            }
+            try {
+                builder.header(header.getKey(), (String) header.getValue());
+            } catch (IllegalStateException e) {
+                throw HostError.notSupported("Upgrade headers need an HTTP transport, not " + transport + ".");
+            } catch (IllegalArgumentException e) {
+                throw HostError.badRequest(e.getMessage());
+            }
+        }
+    }
+
+    private static URI uri(String address) {
+        try {
+            return new URI(address);
+        } catch (URISyntaxException e) {
+            throw HostError.badRequest("Malformed address '" + address + "'.");
+        }
+    }
+
+    private static URI hostPort(String address, String scheme) {
+        String rest = address.startsWith(scheme) ? address.substring(scheme.length()) : address;
+        URI uri = uri("tcp://" + rest);
+        if (uri.getHost() == null || uri.getPort() < 0) {
+            throw HostError.badRequest("Malformed address '" + address + "'.");
+        }
+        return uri;
+    }
+
+    private static TlsOptions tls(Args spec, boolean tcp) {
+        TlsOptions.Builder tls = TlsOptions.builder();
+        String serverName = spec.optStr("tlsServerName");
+        if (tcp) {
+            // As the C# client: TLS over TCP verifies "localhost" unless the spec names the server.
+            tls.serverName(serverName != null ? serverName : "localhost");
+        }
+        try {
+            if (spec.bool("insecureSkipVerify")) {
+                tls.trustManager(TRUST_ALL).hostnameVerification(false);
+            } else if (spec.has("pinSha256")) {
+                // The pin alone decides trust (ClientSpec.PinSha256).
+                byte[] pin = Base64.getDecoder().decode(spec.str("pinSha256"));
+                tls.trustManager(TRUST_ALL).hostnameVerification(false).pinCertificateSha256(pin);
+            } else if (spec.has("caPem")) {
+                tls.trustCaCertificatesPem(spec.str("caPem"), false);
+            }
+            if (spec.has("clientCertificatePem")) {
+                String key = spec.optStr("clientKeyPem");
+                if (key == null) {
+                    throw HostError.badRequest("clientCertificatePem needs clientKeyPem.");
+                }
+                tls.keyManager(Pem.keyManager(spec.str("clientCertificatePem"), key));
+            }
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw HostError.badRequest("Bad TLS options: " + e.getMessage());
+        }
+        return tls.build();
+    }
+
+    private static final X509TrustManager TRUST_ALL = new X509TrustManager() {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+            // Test-only: trusts everything.
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+            // Test-only: trusts everything.
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
+    };
+}

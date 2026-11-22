@@ -27,7 +27,11 @@ internal class SymbolUtilities
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers
-                              | SymbolDisplayMiscellaneousOptions.UseErrorTypeSymbolName);
+                              | SymbolDisplayMiscellaneousOptions.UseErrorTypeSymbolName
+                              // Keeps '?' on nested reference types (tuple elements, generic arguments) so generated
+                              // members match the interface's nullability (CS8613/CS8614/CS8620). The top-level '?' is
+                              // dropped by the NotNull flow state below and re-added from the annotation.
+                              | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     public static string GetFullSymbolType(ITypeSymbol? typeSymbol, bool extractValueTask)
     {

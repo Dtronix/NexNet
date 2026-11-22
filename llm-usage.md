@@ -51,6 +51,11 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 
 `[NexusMethod(SeparatePool = true)]` on a slow plain method: runs in a separate per-session pool (`MaxSeparatePoolInvocations`) instead of taking a `MaxConcurrentConnectionInvocations` slot. Not `LongRunning` (thread pool, no dedicated thread): must be truly async. Not in the method hash. No effect on pipe/channel methods (NEXNET039 warning).
 
+Method names must be unique across the nexus interface and its inherited interfaces: no overloads, and no name that an
+inherited interface also declares. A duplicate is the error NEXNET042 (`Nexus interface '{0}' declares more than one method
+named '{1}'; method names must be unique across the interface and its inherited interfaces`), reported at the duplicate
+method; that nexus is not generated.
+
 CancellationToken must be last. Args and results up to `MaxMessageSize` (4 MiB default; larger than one 64 KiB frame are streamed automatically); over the limit throws `NexusMessageTooLargeException`, session stays up. Use pipes or channels for larger data.
 
 ## Serialization
@@ -258,6 +263,10 @@ new QuicServerConfig {
 new WebSocketClientConfig { Url = new Uri("ws://localhost:5000/nexus") };
 new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 // Both support: AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
+// and UpgradeHeaders = { ["X-Tenant"] = "acme" } (custom upgrade-request headers; names ignore case, a name set again
+// replaces it; ArgumentException on set for non-token names, CR/LF/control/non-Latin-1 values, Host, Connection,
+// Upgrade, Sec-WebSocket-*, Content-Length, Transfer-Encoding and other content headers). AuthenticationHeader, when
+// set, replaces an "Authorization" entry. Java: ClientConfig.Builder.header; Node: webSocket/httpSocket.headers.
 // https:// / wss://: SslClientAuthenticationOptions (client certificate, server certificate validation/pinning);
 // copied per connection, never modified. Null = no client certificate, system chain validation.
 new HttpSocketClientConfig {
@@ -321,7 +330,7 @@ Fire-and-forget (`void`) methods send nothing.
 | Property | Default | Description |
 |----------|---------|-------------|
 | `ConnectionTimeout` | 50000ms | Connect timeout |
-| `PingInterval` | 10000ms | Keepalive interval |
+| `PingInterval` | null | `int?` keepalive interval (ms). Null: a third of the server's advertised idle timeout (`ServerGreeting.idleTimeoutMs` = endpoint `Timeout`), min 1000ms; 10000ms if the server advertises none. Explicit value is used as is; one not below the server's timeout logs a Warning. Effective value: `client.GetSnapshot().PingInterval` |
 | `ReconnectionPolicy` | null | `IReconnectionPolicy`; null = disabled |
 | `Authenticate` | null | `Func<Memory<byte>>` auth token provider; called on every connect/reconnect |
 | `AuthenticateAsync` | null | `Func<CancellationToken, ValueTask<Memory<byte>>>` async token provider; called before the transport connects, bounded by `HandshakeTimeout`. Mutually exclusive with `Authenticate` (`InvalidOperationException`) |
@@ -393,9 +402,27 @@ await rental.EnsureConnectedAsync();   // reconnect if needed
 ```csharp
 var server = ServerNexus.CreateServer(config, () => new ServerNexus());
 await server.StartAsync();
-// server.State: Stopped, Running, Disposed
+// server.State: Stopped, Starting, Running, Stopping, Disposed
 await server.StopAsync();
 ```
+
+### Multiple endpoints
+
+```csharp
+// The constructor's config is the primary endpoint (named after its transport: "tcp", "tls", "uds", "websocket", ...).
+var server = ServerNexus.CreateServer(tlsConfig, () => new ServerNexus());
+server.AddListener(udsConfig, "uds");                       // listener configs only (TCP/TLS/UDS/QUIC)
+IAcceptsExternalTransport ext = server.AddExternalEndpoint(cfg, "custom"); // fed by the app / NexNet.Asp
+// Both only after configuration and while Stopped. Duplicate names, TCP ports, UDS paths, ASP paths are rejected.
+IReadOnlyList<NexusEndpointInfo> eps = server.Endpoints;   // record (Name, Transport, IsSecure, Path); primary first
+EndPoint? bound = eps[0].BoundEndPoint;  // TCP/TLS/UDS/QUIC: end point actually bound (port 0 -> picked port) while running
+await server.StartAsync();  // binds all; one bind failure closes the others and leaves Stopped
+```
+
+- Per endpoint (that endpoint's config): Timeout, HandshakeTimeout, MaxMessageSize, flow control, Authenticate, AuthorizationCacheDuration, TLS/socket options, ASP path/auth/proxy headers.
+- Server-wide (primary config only): Logger, Time, MeterFactory, RateLimiting (spans all endpoints), MaxPendingHandshakes, collections. Added configs must keep the primary's `Time` and leave `RateLimiting` null.
+- Primary `Authenticate = true` ⇒ `StartAsync` throws unless every endpoint sets it.
+- Metric tag `nexnet.endpoint` = endpoint name; added endpoints log under `SV{id}/{name}`; `GetSnapshot().Endpoints` gives state, address, session count.
 
 ### Server Context (inside nexus methods)
 
@@ -422,6 +449,8 @@ var names = await Context.Groups.GetNamesAsync();
 long id = Context.Id;
 X509Certificate2? peerCert = Context.RemoteCertificate;  // TLS peer certificate, if any
 ClaimsPrincipal? aspUser = Context.User;                // ASP.NET HttpContext.User (WebSocket/HttpSocket server only)
+NexusEndpointInfo? ep = Context.Endpoint;               // endpoint that accepted the session (from OnAuthenticate on); null on clients
+bool secure = ep!.IsSecure;                             // TLS/QUIC; ASP: HttpRequest.IsHttps
 string? user = Context.Identity?.DisplayName;
 
 // Per-session key-value store (lifetime = connection)
@@ -646,6 +675,15 @@ foreach (var item in list) { }  // read local copy
 await list.DisableAsync();
 ```
 
+- `ReadyTask` is fresh per `EnableAsync()`. It **faults** (`InvalidOperationException`) when the enable fails or the
+  collection disconnects before its first sync, so `ConnectAsync()` throws then instead of returning.
+- `list.State` (`NexusCollectionState`): `Connected` after the initial sync, `Disconnected` before it and after the pipe closes.
+- Server-side processor failure: the processor restarts (backoff from 100 ms, doubling; at most 5 restarts per minute,
+  then the collection stops and refuses connects until the server restarts) and that collection's clients are
+  disconnected from it (their collection pipes close; the sessions stay up).
+- Client-side processor failure: the collection is disabled (`State` = `Disconnected`, `ReadyTask` faults, a pending
+  `EnableAsync` throws). Plain client lists must call `EnableAsync`/`ConnectAsync` again; relays re-enable themselves.
+
 ### Relay mode
 
 ```csharp
@@ -683,6 +721,189 @@ public partial class ServerV2 { ... }
 
 Attribute options: `[NexusMethod(Ignore = true)]`, `[NexusCollection(Id = 1)]`, `[NexusCollection(Ignore = true)]`.
 
+## Multi-language Clients (opt-in)
+
+Java and JavaScript clients are generated from the same nexus interfaces (same method ids, hashes, handshake). The
+generator also emits each client **runtime**, so consumers install nothing: the runtimes are **not published** to
+npm or Maven; `@dtronix/nexnet` and `com.dtronix.nexnet` name the emitted runtime. Without any of the below,
+the generator's output and the build are unchanged. Docs: docs/articles/multi-language-clients.md,
+javascript-client.md, java-client.md.
+
+| Attribute | Target | Meaning |
+|---|---|---|
+| `[Nexus<TServer, TClient>(NexusType = NexusType.Server, Targets = NexusTargets.Java \| NexusTargets.JavaScript)]` | server nexus class | Export a client of this nexus for those languages. Export name = class name |
+| `[assembly: NexusClientExport<TServer, TClient>(Targets = ..., Name = "...")]` | assembly (multiple) | Export a client from two interfaces with no class, e.g. an older version `IServerNexusV1`. `Targets` is required; `Name` defaults to the server interface name without its leading `I`. Same ids, hashes and handshake as a C# client nexus of those interfaces |
+| `[assembly: NexusTargetFormatter<T>(NexusTargets target, "fq.native.Formatter")]` (`NexNet.Serialization`) | assembly (multiple) | Native formatter for a `[NexusFormatter]` type `T` in one language (combined flags apply to each). One per (T, language). Java: FQCN of a `Formatter<T>` with a public no-arg constructor; JS: `"./module.js#Export"` relative to the output dir |
+| `[NexusJsNumber]` (`NexNet.Serialization`) | property, field, parameter, `[return:]`, assembly | JS maps `long`/`ulong` there (incl. inside nullables, sequences, sets, dictionaries, tuples, generic args, channel and collection items) to a checked `number` instead of `bigint`; beyond ±(2^53 − 1) throws. Primitive arrays (`long[]`, `List<long>`) stay `BigInt64Array`; 64-bit enums stay `bigint`. No effect on wire, C#, Java or hashes. Silently ignored on non-64-bit members (no diagnostic) |
+
+`NexusTargets` (`NexNet`, flags): `None = 0`, `Java = 1`, `JavaScript = 2`. Generated names drop a trailing
+`ServerNexus`/`Nexus` from the export name: `ChatServerNexus` → `ChatServerProxy`, `ChatClientNexusBase`,
+`ChatHandshake`, JS `createChatClient(config, nexus)` + `ChatClientBinding`, Java `ChatClient.create(config, nexus)`.
+
+Output (MSBuild, in the project that holds the exported nexus):
+
+```xml
+<PropertyGroup>
+  <NexNetJavaOutputDir>../chat-java/src/generated/java</NexNetJavaOutputDir>  <!-- enables Java -->
+  <NexNetJavaPackage>com.example.chat</NexNetJavaPackage>                    <!-- required for Java (NEXNET045) -->
+  <NexNetJavaEmitRuntime>true</NexNetJavaEmitRuntime>                        <!-- default true: write com/dtronix/nexnet/** -->
+  <NexNetJavaNullness>none</NexNetJavaNullness>                              <!-- none (default with runtime) | jspecify -->
+  <NexNetJavaEmitRuntimeModules>kotlin;okhttp</NexNetJavaEmitRuntimeModules> <!-- optional modules; default none -->
+  <NexNetJavaScriptOutputDir>../chat-web/src/generated</NexNetJavaScriptOutputDir> <!-- enables JavaScript -->
+  <NexNetJavaScriptEmitRuntime>true</NexNetJavaScriptEmitRuntime>            <!-- default true: write nexnet-runtime/ -->
+  <NexNetJavaScriptRuntimeImport>package</NexNetJavaScriptRuntimeImport>     <!-- package (default) | relative -->
+  <NexNetJavaScriptModuleName>chat-client</NexNetJavaScriptModuleName>       <!-- optional; set => EmitRuntime defaults false -->
+  <NexNetIrOutputPath>obj/nexnet-ir.json</NexNetIrOutputPath>                <!-- default -->
+</PropertyGroup>
+<!-- Same as the properties; metadata other than OutputDir becomes a generator option of that target: -->
+<ItemGroup><NexNetTarget Include="java" OutputDir="../chat-java/src/generated/java" Package="com.example.chat" Nullness="jspecify" /></ItemGroup>
+```
+
+Emitted runtime (each file has a version + MIT header line; regenerated with the generator, so never skewed):
+- JS: `<OutputDir>/nexnet-runtime/` (`package.json` named `@dtronix/nexnet` with `browser`/`node`/`default`
+  exports, `LICENSE`, `*.js`). `RuntimeImport=package`: generated code imports `@dtronix/nexnet`; consumer adds
+  `"@dtronix/nexnet": "file:<OutputDir>/nexnet-runtime"` + `npm install` (or a bundler alias); in Node the factory
+  gets every Node transport. `relative`: imports `./nexnet-runtime/index.js`, no install, factory knows WebSocket
+  only (Node: `NodeNexusClient.create(config, nexus, XClientBinding)` from `./nexnet-runtime/node.js`). TypeScript:
+  generated code and runtime both ship `.d.ts` (each beside its `.js`); no `allowJs` needed.
+- Java: `<OutputDir>/com/dtronix/nexnet/**` + `LICENSE.txt`; add `<OutputDir>` as a source root (Gradle
+  `sourceSets.main { java.srcDir(...) }`, Android `sourceSets["main"].java.srcDir(...)`, Maven build-helper).
+  `Nullness=none` strips JSpecify `@Nullable` from runtime and generated code; `jspecify` keeps them (consumer adds
+  `compileOnly("org.jspecify:jspecify:1.0.0")`). Invalid option values: NEXNET045.
+- Java optional modules (`EmitRuntimeModules` / `NexNetJavaEmitRuntimeModules`, list of `android`, `kotlin`,
+  `micrometer`, `okhttp`, separated by `;`, `,` or spaces; default none): each is emitted beside the core runtime as
+  `<OutputDir>/com/dtronix/nexnet/<module>/**`. Needs the emitted core runtime (else NEXNET045). The consumer adds
+  the third-party deps: `android` → `androidx.lifecycle:lifecycle-process:2.11.0`,
+  `androidx.annotation:annotation:1.11.0` (Android build only, minSdk 24); `kotlin` →
+  `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0` + Kotlin Gradle plugin (compiles the `.kt` in the source
+  root); `okhttp` → `com.squareup.okhttp3:okhttp:5.5.1`; `micrometer` → `io.micrometer:micrometer-core:1.17.2`.
+
+Build mechanics:
+- The generator does no file IO: it adds `NexNet.Targets.g.cs`, comments only, carrying every file (base64 + sha256) and
+  `nexnet-ir.json`. After `CoreCompile`, the `NexNetUnpackTargets` target (package `build/` + `buildTransitive/`)
+  verifies and writes them, rewriting only changed files (atomically). Output is deterministic.
+- Files no longer generated are deleted (list in `obj/nexnet-targets.manifest`; `dotnet clean` deletes them all).
+  Treat output directories as generated; do not edit them.
+- The build turns on `EmitCompilerGeneratedFiles`. Multi-targeting writes from the first TFM only. Design-time builds
+  report diagnostics but write nothing. Without any `NexNetTarget`, none of this runs.
+- Build messages: NEXNETB001 (warning) target configured but no bundle (generator not referenced as an analyzer);
+  B002 (error) corrupt or mismatched bundle, or an invalid path; B003 (error) bundle has files for a target with no
+  `OutputDir`; B004 (error) a file cannot be read or written (warning when a stale file cannot be deleted);
+  B005 (warning) `NexNetTarget` declared twice, first wins.
+
+| ID | Severity | Meaning |
+|---|---|---|
+| NEXNET040 | Error | A type used by an export cannot be represented in an opted-in language (incl. a `[NexusFormatter]` type with no `NexusTargetFormatter`) |
+| NEXNET041 | Error | Name collision in an opted-in language, or two exports with the same namespace and name (give each `NexusClientExport` a distinct `Name`) |
+| NEXNET042 | Error | Duplicate method names (see Method Signatures); also reported for a `NexusClientExport` interface (the export is skipped) |
+| NEXNET043 | Error | `Targets` set on a client nexus; set it on the server nexus or use `NexusClientExport` |
+| NEXNET044 | Warning | A nexus opts in to a language but no output directory is configured for it (`NexNet<Lang>OutputDir` or a `NexNetTarget` item with `OutputDir`); nothing is generated for it |
+| NEXNET045 | Error | Invalid target configuration: unknown target in `NexNetTargets`, a missing or invalid option (`Package`, `EmitRuntime`, `RuntimeImport`, `Nullness`, `EmitRuntimeModules`), an optional Java module without the emitted runtime, or an unknown `NexusTargets` value |
+| NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language |
+| NEXNET047 | Error | Two exports or types (or a generated and a runtime file) would write the same output file (paths compared ignoring case) |
+| NEXNET048 | Error | Invalid `NexusTargetFormatter`: `None` or undefined target, empty formatter name, or a second one for the same (T, language) |
+
+### JavaScript client (Node 22+, browsers)
+
+```js
+import { createChatClient, ChatClientNexusBase, ChatClientBinding } from './generated/ChatServerNexus.js';
+import { ChatMessageFormatter } from './generated/formatters.js';
+import { DefaultReconnectionPolicy, NexusClientPool, NexusMetrics, ConsoleLogger, isCancellationError } from '@dtronix/nexnet';
+
+class ChatNexus extends ChatClientNexusBase {          // client nexus: camelCase methods, may return a Promise
+  message(m) {}                                        // C# void Message(ChatMessage)
+  getStatus() { return 'online'; }                     // C# ValueTask<string> GetStatus()
+  onConnected(isReconnected) {} onDisconnected(reason) {} onReconnecting() {}   // optional hooks
+}
+const client = createChatClient({
+  webSocket: { url: 'wss://host/nexus' },              // exactly one: webSocket | httpSocket | tcp | tcpTls | uds
+  authenticate: async ({ signal }) => new TextEncoder().encode(token),   // greeting token; every (re)connect
+  reconnectionPolicy: new DefaultReconnectionPolicy(),  // Node default: none; browser default: this; null = off
+  logger: new ConsoleLogger({ minLevel: 'information' }),
+}, new ChatNexus());
+await client.connect();                                // tryConnect() -> { success, state, disconnectReason, error }
+client.proxy.send('hi');                               // void
+const h = await client.proxy.history(20, { signal: AbortSignal.timeout(5000) });   // CancellationToken -> { signal }
+client.addEventListener('statechange', e => e.detail.state);   // also 'disconnected' (detail.reason)
+await client.disconnect();                             // client.disconnected: promise; client.isSecure; client.getSnapshot()
+```
+
+- Config: C# `ClientConfig` names in camelCase, durations in ms. Transports: `webSocket: { url, headers?, queryToken?, tls? }`
+  (browser + Node), `httpSocket: { url, headers?, queryToken?, tls? }`, `tcp: { host, port }`, `tcpTls: { host, port, tls? }`,
+  `uds: { path }` (Node only). `tls` (Node): `ca`, `cert`/`key`, `pfx`/`passphrase`, `servername`,
+  `rejectUnauthorized`, `pins` (base64 SHA-256 of cert DER or SPKI). Browser: WebSocket only; no headers, client
+  certs, CA or pins; keepalive in a `blob:` Web Worker (CSP `worker-src blob:`); reconnects on
+  `visibilitychange`/`online`.
+- `queryToken: { name, value }` appends `name=value` (URL-encoded) to the upgrade URL for ASP `AccessTokenQueryParameter`;
+  the browser's way to send an ASP.NET token (Java: `ClientConfig.Builder.queryToken(n, v)`).
+- Errors: `NexusTransportError` (`reason`), `NexusRemoteInvocationError` (`code`, `remoteType`,
+  `remoteMessage`), `NexusUnauthorizedError`, `NexusBusyError`, `NexusMessageTooLargeError` (all `NexusError`).
+  Canceled, or pending when the session ends: `AbortError` (`cause` = `NexusTransportError`).
+- Pipes: `const p = client.createPipe(); await proxy.upload(p, name); await p.ready;` `p.readable`
+  (`ReadableStream<Uint8Array>`; credit granted as read), `p.writable` (closing it half-closes), `p.completed`,
+  `await p[Symbol.asyncDispose]()` frees the slot. `forwardTo`, `NexusDuplexPipe.bridge`.
+- Channels: `client.createChannel(ChatMessageFormatter)`; `await getReader()` (async iterable, `read`, `readBatch`,
+  `readUntilComplete`), `await getWriter()` (`write`, `writeMany`, `complete`, `writeAndComplete`).
+- Collections: `proxy.rooms` (same `NexusList` each time): `enable()` → bool, `disable()`, `changed` event
+  (`detail.action` add/remove/replace/move/reset/ready), `toArray()`, `count`, `get`, `at`; BiDirectional:
+  `add`/`insert`/`remove`/`removeAt`/`replace`/`move`/`clear` → `Promise<boolean>` (applied when the server's change arrives).
+- Pool: `new NexusClientPool({ clientConfig, maxConnections, maxIdleTime, minIdleConnections }, () => new ChatNexus(), ChatClientBinding)`;
+  `const r = await pool.rent(); r.proxy…; r.release();` `collectionConnector(p => p.rooms)`.
+- Metrics/diagnostics: `NexusMetrics.shared.track(client)`, `addListener({ add, record })`, `collect(observe)`
+  (C# instrument names); `client.getSnapshot()`; `@dtronix/nexnet/diagnostics` leak counters.
+- Types: `long`/`ulong`/`BigInteger` → `bigint`; `decimal`/`DateTime`/… → runtime `NexusDecimal`/`NexusDateTime`/…;
+  `Guid` → string; `Dictionary`/`HashSet` → `Map`/`Set`; objects: `new ChatMessage({ user, text })`, `equals`, `hashKey`.
+
+### Java client (Java 11+, Android API 24+)
+
+```java
+final class ChatNexus extends ChatClientNexusBase {        // runs on the invocation executor
+    @Override protected void message(ChatMessage m) { }
+    @Override protected CompletableFuture<String> getStatus() { return CompletableFuture.completedFuture("online"); }
+}
+ClientConfig config = ClientConfig.webSocket(URI.create("wss://host/nexus"))   // httpSocket(URI) | tcp(h, p) | tcpTls(h, p); no UDS/QUIC
+    .authenticate(() -> token)                             // or authenticateAsync(Supplier<CompletableFuture<byte[]>>)
+    .tls(TlsOptions.builder().trustCaCertificates(pem, false).pinCertificateSha256(sha).build())
+    .authorization("Bearer " + jwt)                       // WS/HttpSocket header; also header(n, v), queryToken(n, v)
+    .reconnectionPolicy(new DefaultReconnectionPolicy())  // default: none
+    .callbackExecutor(mainExecutor)                       // completes user futures (default shared pool)
+    .logger((level, category, ex, msg) -> { })            // default: no logging
+    .build();
+NexusClient<ChatServerProxy> client = ChatClient.create(config, new ChatNexus());
+client.connect().join();                                   // tryConnect() -> ConnectionResult; both take a CancellationToken
+client.proxy().send("hi");
+List<ChatMessage> h = client.proxy().history(20, cts.token()).join();   // CancellationTokenSource; future.cancel(true) cancels remotely
+client.disconnect().join(); client.close();                // close() waits for the reader/writer threads
+```
+
+- Futures complete on `callbackExecutor`, never on the `nexnet-<id>-reader`/`-writer` threads; `connect()` does no
+  IO on the caller thread. Exceptions: `NexusTransportException` (`TransportError`), `NexusRemoteInvocationException`,
+  `NexusUnauthorizedException`, `NexusBusyException`, `NexusMessageTooLargeException`; cancel: `CancellationException`.
+- Pipes: `NexusDuplexPipe p = client.createPipe();` `read()` (`ByteBuffer`, null at end), `write(ByteBuffer)`,
+  `completeOutput()`, blocking `inputStream()`/`outputStream()` (close completes output; never on Android main),
+  `close()`. Channels: `client.createChannel(Formatters.ChatMessage)` (`<package>.formatters.Formatters`),
+  `reader()`/`writer()` futures; reader `read()` (`Optional`), `readItem()`, `readBatch`, `readUntilComplete`;
+  writer `write`, `writeAll`, `complete`, `writeAndComplete`; `NexusDuplexChannel.over(pipe, formatter)`.
+- Collections: `proxy().rooms()` → `NexusList<T>` (read-only `java.util.List`): `enable()`, `disable()`,
+  `ready()`, `addChangeListener`, `addAsync`/`insertAsync`/`removeAsync`/`removeAtAsync`/`replaceAsync`/`moveAsync`/`clearAsync`.
+- Pool: `new NexusClientPool<>(new NexusClientPoolConfig(config).maxConnections(8), () -> ChatClient.create(config, new ChatNexus()))`;
+  `try (RentedNexusClient<ChatServerProxy> r = pool.rent().join()) { ... }`.
+- Metrics/diagnostics: `NexusMetrics.shared().track(client)`, `addListener`, `collect`; `Diagnostics.snapshot(client)`.
+- Types: `byte`/`ushort` → `int`, `uint` → `long` (checked), `ulong` → `long` raw bits (`UnsignedLongs`), `decimal` →
+  `BigDecimal`, `DateTime`/… → runtime `NexusDateTime`/… (no `java.time`), `Guid` → `UUID`, collections →
+  `List`/`Set`/`Map`, `Stack`/`Queue` → `ArrayDeque`, tuples → `Tuple1..7`; objects: POJO with value `equals`.
+- Android: `callbackExecutor(ContextCompat.getMainExecutor(ctx))`; never `join()` on the main thread; API 24 safe.
+- Optional modules (opt-in with `EmitRuntimeModules`, deps above): `android` (`NexusAndroid.mainThreadExecutor()`,
+  `NexusConnectionKeeper`, `AndroidNexusLogger`, `NexusJavaTime`), `kotlin` (`connectAwait()`,
+  `nexusCall { token -> }`, `asFlow()`, `changes()`), `okhttp` (`OkHttpWebSocketConnector`), `micrometer`
+  (`NexusMicrometerBinder`).
+
+Parity exceptions (everything else matches C#): browser = WebSocket only, no headers/client cert/custom CA/pinning/
+`RemoteCertificate` (use the greeting token; ASP `AccessTokenQueryParameter`, `AllowedOrigins`); Java has no UDS;
+QUIC is .NET-only; `AsyncLocal` flow is C#-only; JS awaits `void` client methods (holds the slot); Java `decimal`
+loses `-0`; JS `Half` NaN payload lost; Java/JS apply only constant member initializers for members an older peer
+did not send. One server can serve every language: see Multiple endpoints.
+
 ## ASP.NET Integration
 
 Requires `NexNet.Asp`.
@@ -701,7 +922,32 @@ var server = app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientPr
 });
 await server.StartAsync(app.Lifetime.ApplicationStopped);
 // WebSocket: UseWebSocketNexusServerAsync instead
+// Use*NexusServerAsync on an already configured server attaches another endpoint instead of throwing.
+
+// Multi-endpoint + hosted lifecycle (starts on ApplicationStarted, stops on ApplicationStopping):
+builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>(o => {
+    o.Configure(tcpConfig);              // primary; Logger/MeterFactory default to the app's
+    o.AddListener(udsConfig, "uds");
+});
+var srv = app.Services.GetRequiredService<NexusServer<ServerNexus, ServerNexus.ClientProxy>>();
+app.UseWebSockets();
+app.MapNexusWebSocket(srv, new WebSocketServerConfig { Path = "/ws" });          // AddExternalEndpoint, name "websocket"
+app.UseHttpSockets();
+app.MapNexusHttpSocket(srv, new HttpSocketServerConfig { Path = "/hs" }, "http"); // own session settings
+// MapWebSocketNexus/MapHttpSocketNexus(cfg, server): primary cfg = old behavior; another cfg = its own endpoint.
+
+// Browser clients (cookies, no Authorization header on a WebSocket):
+c.NexusConfig.AllowedOrigins.Add("https://app.example.com"); // WebSocketServerConfig; empty (default) or "*" = any origin
+// HttpSocket: c.SocketOptions.AllowedOrigins (HttpSocketOptions). Other Origin -> 403; a request with no Origin is allowed.
+// Failed AspEnableAuthentication: HttpSocket -> 401; WebSocket -> 101, then DisconnectReason.Authentication in-protocol,
+// so every client (browsers included) reports TransportError.AuthenticationError.
+c.NexusConfig.AccessTokenQueryParameter = "access_token";    // WebSocket + HttpSocket configs; null (default) = off
+// With AspEnableAuthentication: ?access_token=<t> becomes "Authorization: Bearer <t>" when no Authorization header is
+// sent, before AspAuthenticationScheme runs; removed from the query string, never logged. The greeting token
+// (ClientConfig.Authenticate) stays the canonical mechanism.
 ```
+
+Browser clients: docs/articles/asp-net-integration.md#browser-clients.
 
 ## Logging
 
@@ -715,12 +961,12 @@ config.Logger = new RollingLogger(maxLines: 200);   // circular buffer, Flush(Te
 ## Metrics and Snapshots
 
 ```csharp
-// System.Diagnostics.Metrics meter "NexNet" (NexusMeter.Name); tags nexnet.role, nexnet.transport.
+// System.Diagnostics.Metrics meter "NexNet" (NexusMeter.Name); tags nexnet.role, nexnet.transport, nexnet.endpoint (server).
 builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter("NexNet"));
 
 // Live state of one session or a server; not atomic, exposes internal state: never serve unauthenticated.
 NexusSessionSnapshot s = Context.GetSnapshot();      // inside a nexus method
-NexusSessionSnapshot? c = client.GetSnapshot();      // null when not connected
+NexusSessionSnapshot? c = client.GetSnapshot();      // null when not connected; c.PingInterval = interval in use
 NexusServerSnapshot all = server.GetSnapshot();      // authenticated sessions, pending handshakes, rate limiter
 ```
 

@@ -23,10 +23,23 @@ public sealed record NexusSessionSnapshot
     public string Transport { get; init; } = "";
 
     /// <summary>
+    /// Server only: name of the endpoint the session was accepted on (<see cref="NexusEndpointInfo.Name"/>); null for a
+    /// client session.
+    /// </summary>
+    public string? Endpoint { get; init; }
+
+    /// <summary>
     /// On a client, true when the transport is encrypted or local (see <c>INexusClient.IsSecure</c>); null on a server
     /// session.
     /// </summary>
     public bool? IsSecure { get; init; }
+
+    /// <summary>
+    /// On a client, the interval at which it pings the server: <c>ClientConfig.PingInterval</c> when set, otherwise
+    /// derived from the idle timeout the server advertised. Null on a server session, and on a client that has not yet
+    /// completed its first connection.
+    /// </summary>
+    public TimeSpan? PingInterval { get; init; }
 
     /// <summary>Connection state.</summary>
     public ConnectionState State { get; init; }
@@ -106,7 +119,11 @@ public sealed record NexusInvocationSnapshot
     /// <summary>Calls waiting for the peer to return credit.</summary>
     public int CreditWaits { get; init; }
 
-    /// <summary>Calls this side made that are waiting for their result.</summary>
+    /// <summary>
+    /// Calls this side made that are waiting for their result: sent (or being sent) and not yet completed. A call still
+    /// waiting for invocation credit (<see cref="CreditWaits"/>) is not counted yet, and a call canceled after it was
+    /// sent is completed, so it is not counted either, though its invocation ID stays reserved until the late reply.
+    /// </summary>
     public int AwaitingResults { get; init; }
 
     /// <summary>Invocations skipped because the peer returned no credit in time.</summary>
@@ -275,4 +292,51 @@ public sealed record NexusServerSnapshot
 
     /// <summary>Authenticated sessions.</summary>
     public IReadOnlyList<NexusSessionSnapshot> Sessions { get; init; } = [];
+
+    /// <summary>Endpoints the server accepts sessions on, the primary one first.</summary>
+    public IReadOnlyList<NexusEndpointSnapshot> Endpoints { get; init; } = [];
+}
+
+/// <summary>
+/// One endpoint of a server.
+/// </summary>
+public sealed record NexusEndpointSnapshot
+{
+    /// <summary>Endpoint name (<see cref="NexusEndpointInfo.Name"/>).</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>Transport name, as in the <c>nexnet.transport</c> metric tag.</summary>
+    public string Transport { get; init; } = "";
+
+    /// <summary>State of the endpoint.</summary>
+    public NexusEndpointState State { get; init; }
+
+    /// <summary>
+    /// What the endpoint binds or serves: the socket end point of a TCP, TLS, QUIC or UDS listener, the request path of
+    /// an ASP.NET endpoint; null when unknown. While a TCP, TLS or UDS listener is bound, this is the end point it
+    /// actually bound (&lt;see cref="NexusEndpointInfo.BoundEndPoint"/&gt;), so a configured port 0 shows the picked port.
+    /// </summary>
+    public string? Address { get; init; }
+
+    /// <summary>True when the endpoint owns a listener; false for an external endpoint fed by ASP.NET or the application.</summary>
+    public bool IsListener { get; init; }
+
+    /// <summary>Authenticated sessions accepted on this endpoint.</summary>
+    public int Sessions { get; init; }
+}
+
+/// <summary>
+/// State of one server endpoint.
+/// </summary>
+public enum NexusEndpointState
+{
+    /// <summary>The server is not running.</summary>
+    Stopped,
+
+    /// <summary>The endpoint accepts sessions.</summary>
+    Running,
+
+    /// <summary>The endpoint's listener failed; it no longer accepts sessions, while the server may keep running on the
+    /// other endpoints.</summary>
+    Faulted,
 }

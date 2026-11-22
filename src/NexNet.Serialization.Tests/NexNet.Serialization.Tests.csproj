@@ -7,16 +7,11 @@
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
     <NoWarn>$(NoWarn);MsgPack003;MsgPack004;MsgPack005;MsgPack009</NoWarn>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-    <PackageReference Include="NUnit" Version="5.0.0" />
-    <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
     <!-- Test-only oracle: the official MessagePack-CSharp implementation. NexNet itself does not reference it. -->
     <PackageReference Include="MessagePack" Version="3.1.10" />
     <PackageReference Include="CsCheck" Version="4.4.1" />
@@ -25,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
     <ProjectReference Include="..\NexNet.Fuzz\NexNet.Fuzz.csproj" />
+    <!-- Golden vectors (H03): GoldenReplayTests replays tests/golden and checks the files are current. -->
+    <ProjectReference Include="..\NexNet.GoldenVectors\NexNet.GoldenVectors.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 

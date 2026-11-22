@@ -1,6 +1,5 @@
 using System.Net;
 using NexNet.Transports;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
@@ -14,129 +13,128 @@ internal class SecurityTests
     };
 
     [Test]
-    public void ConfigBase_Timeout_ValidValues_Succeeds()
+    public async Task ConfigBase_Timeout_ValidValues_Succeeds()
     {
         var config = CreateTestConfig();
 
         // Minimum value (50ms for testing)
         config.Timeout = 50;
-        Assert.That(config.Timeout, Is.EqualTo(50));
+        await Assert.That(config.Timeout).IsEqualTo(50);
 
         // Maximum value
         config.Timeout = 300_000;
-        Assert.That(config.Timeout, Is.EqualTo(300_000));
+        await Assert.That(config.Timeout).IsEqualTo(300_000);
 
         // Default value
         config.Timeout = 30_000;
-        Assert.That(config.Timeout, Is.EqualTo(30_000));
+        await Assert.That(config.Timeout).IsEqualTo(30_000);
     }
 
     [Test]
-    public void ConfigBase_Timeout_BelowMinimum_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_Timeout_BelowMinimum_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.Timeout = 49);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.Timeout = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.Timeout = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = -1);
     }
 
     [Test]
-    public void ConfigBase_Timeout_AboveMaximum_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_Timeout_AboveMaximum_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.Timeout = 300_001);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.Timeout = int.MaxValue);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 300_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = int.MaxValue);
     }
 
     [Test]
-    public void ConfigBase_HandshakeTimeout_ValidValues_Succeeds()
+    public async Task ConfigBase_HandshakeTimeout_ValidValues_Succeeds()
     {
         var config = CreateTestConfig();
 
         // Minimum value (50ms for testing)
         config.HandshakeTimeout = 50;
-        Assert.That(config.HandshakeTimeout, Is.EqualTo(50));
+        await Assert.That(config.HandshakeTimeout).IsEqualTo(50);
 
         // Maximum value
         config.HandshakeTimeout = 60_000;
-        Assert.That(config.HandshakeTimeout, Is.EqualTo(60_000));
+        await Assert.That(config.HandshakeTimeout).IsEqualTo(60_000);
     }
 
     [Test]
-    public void ConfigBase_HandshakeTimeout_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_HandshakeTimeout_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 49);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 60_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 60_001);
     }
 
     [Test]
-    public void ConfigBase_MaxConcurrentConnectionInvocations_ValidValues_Succeeds()
+    public async Task ConfigBase_MaxConcurrentConnectionInvocations_ValidValues_Succeeds()
     {
         var config = CreateTestConfig();
 
         // Minimum value
         config.MaxConcurrentConnectionInvocations = 1;
-        Assert.That(config.MaxConcurrentConnectionInvocations, Is.EqualTo(1));
+        await Assert.That(config.MaxConcurrentConnectionInvocations).IsEqualTo(1);
 
         // Maximum value
         config.MaxConcurrentConnectionInvocations = 1000;
-        Assert.That(config.MaxConcurrentConnectionInvocations, Is.EqualTo(1000));
+        await Assert.That(config.MaxConcurrentConnectionInvocations).IsEqualTo(1000);
     }
 
     [Test]
-    public void ConfigBase_MaxConcurrentConnectionInvocations_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_MaxConcurrentConnectionInvocations_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 1001);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 1001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = -1);
     }
 
     [Test]
-    public void ConfigBase_DisconnectDelay_ValidValues_Succeeds()
+    public async Task ConfigBase_DisconnectDelay_ValidValues_Succeeds()
     {
         var config = CreateTestConfig();
 
         // Disable
         config.DisconnectDelay = 0;
-        Assert.That(config.DisconnectDelay, Is.EqualTo(0));
+        await Assert.That(config.DisconnectDelay).IsEqualTo(0);
 
         // Maximum value
         config.DisconnectDelay = 10_000;
-        Assert.That(config.DisconnectDelay, Is.EqualTo(10_000));
+        await Assert.That(config.DisconnectDelay).IsEqualTo(10_000);
     }
 
     [Test]
-    public void ConfigBase_DisconnectDelay_AboveMaximum_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_DisconnectDelay_AboveMaximum_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.DisconnectDelay = 10_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.DisconnectDelay = 10_001);
     }
 
     [Test]
-    public void ConfigBase_ReceiveSessionPipeOptions_DefaultHoldsTwoFrames()
+    public async Task ConfigBase_ReceiveSessionPipeOptions_DefaultHoldsTwoFrames()
     {
         var config = CreateTestConfig();
 
         // A transport receive pipe that pauses below one maximum frame can never resume: frames are consumed whole.
-        Assert.That(config.ReceiveSessionPipeOptions.PauseWriterThreshold, Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
-        Assert.That(new NexNet.Transports.WebSocket.WebSocketPipeOptions().InputPipeOptions.PauseWriterThreshold,
-            Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
+        await Assert.That(config.ReceiveSessionPipeOptions.PauseWriterThreshold).IsGreaterThanOrEqualTo(2 * (ushort.MaxValue + 5));
+        await Assert.That(new NexNet.Transports.WebSocket.WebSocketPipeOptions().InputPipeOptions.PauseWriterThreshold).IsGreaterThanOrEqualTo(2 * (ushort.MaxValue + 5));
     }
 
     [Test]
-    public void ConfigBase_ReceiveSessionPipeOptions_PauseBelowTwoFrames_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_ReceiveSessionPipeOptions_PauseBelowTwoFrames_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
 
         // 0 never pauses.
         config.ReceiveSessionPipeOptions = new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0);
@@ -149,99 +147,99 @@ internal class SecurityTests
 
 
     [Test]
-    public void ConfigBase_FlowControlDefaults_FollowSerializerSecurity()
+    public async Task ConfigBase_FlowControlDefaults_FollowSerializerSecurity()
     {
         var untrusted = CreateTestConfig();
-        Assert.That(untrusted.SessionBudget, Is.EqualTo(16 * 1024 * 1024));
-        Assert.That(untrusted.MaxPipes, Is.EqualTo(32));
-        Assert.That(untrusted.PipeWindow, Is.EqualTo(256 * 1024));
-        Assert.That(untrusted.MaxMessageSize, Is.EqualTo(4 * 1024 * 1024));
-        Assert.That(untrusted.InvocationCredits, Is.EqualTo(32));
+        await Assert.That(untrusted.SessionBudget).IsEqualTo(16 * 1024 * 1024);
+        await Assert.That(untrusted.MaxPipes).IsEqualTo(32);
+        await Assert.That(untrusted.PipeWindow).IsEqualTo(256 * 1024);
+        await Assert.That(untrusted.MaxMessageSize).IsEqualTo(4 * 1024 * 1024);
+        await Assert.That(untrusted.InvocationCredits).IsEqualTo(32);
 
         var trusted = CreateTestConfig();
         trusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
-        Assert.That(trusted.SessionBudget, Is.EqualTo(64 * 1024 * 1024));
-        Assert.That(trusted.MaxPipes, Is.EqualTo(32));
-        Assert.That(trusted.PipeWindow, Is.EqualTo(1024 * 1024));
-        Assert.That(trusted.MaxMessageSize, Is.EqualTo(16 * 1024 * 1024));
-        Assert.That(trusted.InvocationCredits, Is.EqualTo(128));
+        await Assert.That(trusted.SessionBudget).IsEqualTo(64 * 1024 * 1024);
+        await Assert.That(trusted.MaxPipes).IsEqualTo(32);
+        await Assert.That(trusted.PipeWindow).IsEqualTo(1024 * 1024);
+        await Assert.That(trusted.MaxMessageSize).IsEqualTo(16 * 1024 * 1024);
+        await Assert.That(trusted.InvocationCredits).IsEqualTo(128);
 
         // Both default sets fit their budget.
-        Assert.DoesNotThrow(untrusted.ValidateFlowControl);
-        Assert.DoesNotThrow(trusted.ValidateFlowControl);
+        await Assert.That(untrusted.ValidateFlowControl).ThrowsNothing();
+        await Assert.That(trusted.ValidateFlowControl).ThrowsNothing();
     }
 
     [Test]
-    public void ConfigBase_MaxConcurrentConnectionInvocations_FollowsSerializerSecurity()
+    public async Task ConfigBase_MaxConcurrentConnectionInvocations_FollowsSerializerSecurity()
     {
         var untrusted = CreateTestConfig();
-        Assert.That(untrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(2));
+        await Assert.That(untrusted.MaxConcurrentConnectionInvocations).IsEqualTo(2);
 
         var trusted = CreateTestConfig();
         trusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
-        Assert.That(trusted.MaxConcurrentConnectionInvocations, Is.EqualTo(32));
+        await Assert.That(trusted.MaxConcurrentConnectionInvocations).IsEqualTo(32);
 
         // An explicit value wins on both, whichever is set first.
         var explicitUntrusted = CreateTestConfig();
         explicitUntrusted.MaxConcurrentConnectionInvocations = 7;
-        Assert.That(explicitUntrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(7));
+        await Assert.That(explicitUntrusted.MaxConcurrentConnectionInvocations).IsEqualTo(7);
 
         var explicitTrusted = CreateTestConfig();
         explicitTrusted.MaxConcurrentConnectionInvocations = 3;
         explicitTrusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
-        Assert.That(explicitTrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(3));
+        await Assert.That(explicitTrusted.MaxConcurrentConnectionInvocations).IsEqualTo(3);
 
         // Validation unchanged: 1 to 1000.
-        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 1001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 1001);
         trusted.MaxConcurrentConnectionInvocations = 1000;
-        Assert.That(trusted.MaxConcurrentConnectionInvocations, Is.EqualTo(1000));
+        await Assert.That(trusted.MaxConcurrentConnectionInvocations).IsEqualTo(1000);
     }
 
     [Test]
-    public void ConfigBase_InvocationQueueWarningThreshold_DefaultsAndRange()
+    public async Task ConfigBase_InvocationQueueWarningThreshold_DefaultsAndRange()
     {
         var config = CreateTestConfig();
-        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(5000));
+        await Assert.That(config.InvocationQueueWarningThreshold).IsEqualTo(5000);
 
         config.InvocationQueueWarningThreshold = 0;
-        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(0));
+        await Assert.That(config.InvocationQueueWarningThreshold).IsEqualTo(0);
         config.InvocationQueueWarningThreshold = 600_000;
-        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(600_000));
+        await Assert.That(config.InvocationQueueWarningThreshold).IsEqualTo(600_000);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = -1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = 600_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = 600_001);
     }
 
     [Test]
-    public void ConfigBase_FlowControlSettings_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public async Task ConfigBase_FlowControlSettings_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.SessionBudget = 64 * 1024 - 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxPipes = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxPipes = 256);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.PipeWindow = 4 * 1024 - 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxMessageSize = 64 * 1024 - 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationCredits = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.ProgressTimeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.SessionBudget = 64 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxPipes = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxPipes = 256);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.PipeWindow = 4 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxMessageSize = 64 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationCredits = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.ProgressTimeout = 49);
     }
 
     [Test]
-    public void ConfigBase_BudgetSmallerThanFixedReservations_ThrowsWhenTheServerIsBuilt()
+    public async Task ConfigBase_BudgetSmallerThanFixedReservations_ThrowsWhenTheServerIsBuilt()
     {
         var config = CreateTestConfig();
 
         // 32 x 256KB + 4MB + 32 x 64KB = 14MB does not fit in 8MB.
         config.SessionBudget = 8 * 1024 * 1024;
 
-        Assert.Throws<InvalidOperationException>(config.ValidateFlowControl);
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(config.ValidateFlowControl);
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             NexNet.IntegrationTests.TestInterfaces.ServerNexus.CreateServer(config, static () => new NexNet.IntegrationTests.TestInterfaces.ServerNexus()));
     }
 
     [Test]
-    public void SessionId_MultipleGeneration_ProducesUniqueIds()
+    public async Task SessionId_MultipleGeneration_ProducesUniqueIds()
     {
         // This tests that the session ID generation produces unique IDs
         // by verifying no collisions in a large set of generated IDs
@@ -254,12 +252,12 @@ internal class SecurityTests
             System.Security.Cryptography.RandomNumberGenerator.Fill(randomBytes);
             uint randomPart = BitConverter.ToUInt32(randomBytes);
             long id = (long)i << 32 | randomPart;
-            Assert.That(ids.Add(id), Is.True, $"Collision detected at iteration {i}");
+            await Assert.That(ids.Add(id)).IsTrue().Because($"Collision detected at iteration {i}");
         }
     }
 
     [Test]
-    public void SessionId_RandomPart_IsCryptographicallyRandom()
+    public async Task SessionId_RandomPart_IsCryptographicallyRandom()
     {
         // Verify that the random portion uses cryptographic randomness
         // by checking that sequential IDs have different random parts
@@ -274,6 +272,6 @@ internal class SecurityTests
 
         // Check that there are no sequential patterns
         var uniqueRandomParts = randomParts.Distinct().Count();
-        Assert.That(uniqueRandomParts, Is.GreaterThan(990), "Random parts should be mostly unique");
+        await Assert.That(uniqueRandomParts).IsGreaterThan(990).Because("Random parts should be mostly unique");
     }
 }

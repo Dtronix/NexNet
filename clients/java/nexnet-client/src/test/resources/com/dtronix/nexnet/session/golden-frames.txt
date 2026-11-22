@@ -1,0 +1,15 @@
+# Frames produced by the C# runtime (src/NexNet/Messages/*.Serialize, framed as type + body length LE + body).
+# Generated with a throwaway program referencing src/NexNet; regenerate if the C# message encoding changes.
+# client-greeting-v2: version "v2", serverNexusHash 123456789, clientNexusHash -987654321, token {1,2,3}, 4 MiB, 32
+client-greeting-v2 64190096a27632ce075bcd15d2c521974fc403010203ce0040000020
+# client-greeting-unversioned: version nil, 7, 300, empty token, 65526, 1
+client-greeting-unversioned 640c0096c007cd012cc400cdfff601
+# client-greeting-reconnection (101): version nil, -5, 70000, empty token, 16 MiB, 128
+client-greeting-reconnection 65110096c0fbce00011170c400ce01000000cc80
+# server-greeting: version -987654321, clientId 42, 4 MiB, 32
+server-greeting 690d0094d2c521974f2ace0040000020
+# server-greeting-large-id: version 300, clientId 5000000000, 65526, 1
+server-greeting-large-id 69110094cd012ccf000000012a05f200cdfff601
+invocation-credit 7402009110
+invocation-cancellation 6f040091cd0201
+message-abort 73040093070102

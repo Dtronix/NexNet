@@ -369,21 +369,25 @@ internal class NexusPipeReader : PipeReader, IDisposable
                 // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
                 do
                 {
-                    // Hot path for if the semaphore has already been disposed.
-                    if (_readSemaphore == null)
+                    // Read the field once: completion and disposal swap it to null at any time.
+                    var semaphore = Volatile.Read(ref _readSemaphore);
+
+                    // The reader has been completed or disposed.
+                    if (semaphore == null)
                     {
                         lock (_bufferLock)
                             return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
                     }
-                    
+
                     try
                     {
-                        await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        // Completion releases this same instance after swapping the field out, so the wait still wakes.
+                        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                     }
-                    catch (NullReferenceException e)
+                    catch (ObjectDisposedException e)
                     {
-                        // Slow path for if the semaphore has already been swapped out with null between the check above and now.
-                        _logger?.LogInfo(e, "Semaphore is null and can not be acquired.");
+                        // Dispose swapped out and disposed the semaphore between the read above and the wait.
+                        _logger?.LogDebug(e, "Read semaphore was disposed while waiting for data.");
                         lock (_bufferLock)
                             return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
                     }

@@ -47,6 +47,34 @@ await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c 
 }).StartAsync(app.Lifetime.ApplicationStopped);
 ```
 
+## Multiple Endpoints
+
+A server can serve WebSocket and HttpSocket next to TCP, TLS or UDS listeners (see [Transports: Multiple Endpoints](transports.md#multiple-endpoints)). `AddNexusServer` with options configures the server and registers a hosted service that starts it once the application has started (after Kestrel binds) and stops it when the application stops:
+
+```csharp
+builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>(o =>
+{
+    o.Configure(new TcpTlsServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 9002), ... }); // primary
+    o.AddListener(new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/run/app.sock") }, "uds");
+});
+
+var app = builder.Build();
+var server = app.Services.GetRequiredService<NexusServer<ServerNexus, ServerNexus.ClientProxy>>();
+
+app.UseWebSockets();
+app.MapNexusWebSocket(server, new WebSocketServerConfig { Path = "/nexus/ws", MaxMessageSize = 1024 * 1024 });
+app.UseHttpSockets();
+app.MapNexusHttpSocket(server, new HttpSocketServerConfig { Path = "/nexus/http", AspEnableAuthentication = true });
+
+await app.RunAsync(); // the hosted service starts and stops the server
+```
+
+- `MapNexusWebSocket(server, config, name)` and `MapNexusHttpSocket(server, config, name)` add the configuration with `AddExternalEndpoint` (named `websocket` / `httpsocket` by default) unless it is the server's primary configuration. Its session settings, ASP.NET authentication and proxy-header settings apply to the sessions of that path only. The server must be configured and stopped.
+- `MapWebSocketNexus(config, server)` and `MapHttpSocketNexus(config, server)` route the same way: the primary configuration keeps today's behavior, another configuration of an already configured server becomes its own endpoint.
+- `UseWebSocketNexusServerAsync` and `UseHttpSocketNexusServerAsync` configure the server when it is not configured yet, and otherwise attach their configuration as another endpoint instead of throwing.
+- When the options leave the primary configuration's `Logger` or `MeterFactory` unset, the application's `ILogger` and `IMeterFactory` are used. If the server fails to start (for example a listener can not bind), the hosted service logs it and stops the application.
+- `Context.Endpoint.IsSecure` is `HttpRequest.IsHttps` for WebSocket and HttpSocket sessions; behind a reverse proxy that terminates TLS it is false.
+
 ## Client Connection
 
 ```csharp
@@ -56,12 +84,20 @@ var config = new HttpSocketClientConfig
     // Change to ws:// or wss:// for WebSocket connections
     Url = new Uri("http://127.0.0.1:9001/nexus"),
     // Optional authentication header
-    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
+    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue"),
+    // Optional custom headers of the upgrade request
+    UpgradeHeaders = { ["X-Tenant"] = "acme" },
 };
 
 var client = ClientNexus.CreateClient(config, new ClientNexus());
 await client.ConnectAsync();
 ```
+
+`UpgradeHeaders` adds headers to the WebSocket or HttpSocket upgrade request, for middleware or a reverse proxy that reads them. The Java (`ClientConfig.Builder.header`) and Node (`webSocket.headers`, `httpSocket.headers`) clients have the same option; browsers cannot send headers.
+
+- Names compare ignoring case; setting a name again replaces it. Headers are sent in the order they were added.
+- Each name and value is checked when it is set, and a refused one throws `ArgumentException`: a name that is not an HTTP token, a value with CR, LF or another control character (tab is allowed) or a character above U+00FF, the headers the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`, `Transfer-Encoding`) and the other content headers (`Content-Type`, `Expires`, ...), since the upgrade request has no body.
+- `Authorization` may be set here. `AuthenticationHeader`, when not null, replaces it.
 
 For `https://`/`wss://` URLs, `SslClientAuthenticationOptions` on the client config sets the client certificate and server certificate validation. See [TLS and Certificates](transports.md#tls-and-certificates).
 
@@ -137,7 +173,7 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> aut
 }
 ```
 
-- With `AspEnableAuthentication = true` it is the principal of `AspAuthenticationScheme` (or the default scheme when none is set); a request that fails it is answered 401 and never reaches the nexus.
+- With `AspEnableAuthentication = true` it is the principal of `AspAuthenticationScheme` (or the default scheme when none is set); a request that fails it never reaches the nexus. HttpSocket answers it `401`; WebSocket accepts the upgrade and refuses the session inside the NexNet protocol with `DisconnectReason.Authentication`, so browsers, which cannot read the status of a refused upgrade, report `AuthenticationError` like other clients.
 - With `AspEnableAuthentication = false` it is whatever the pipeline set, for example `UseAuthentication` with a default scheme; otherwise ASP.NET's empty, unauthenticated principal.
 - It is captured once when the connection is accepted and is not re-validated during the session. Only the principal is kept, not the `HttpContext`.
 - It is extra input, not the session's identity: with `Authenticate = true`, `OnAuthenticate` still decides, and returning null refuses the connection. `Context.Identity` is what `OnAuthenticate` returns.

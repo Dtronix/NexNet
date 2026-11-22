@@ -57,7 +57,8 @@ Beyond RPC, NexNet provides synchronized collections that keep data in sync acro
 - **[Authentication](https://dtronix.github.io/NexNet/articles/authentication.html)** — token-based connection authentication with IIdentity
 - **[Authorization](https://dtronix.github.io/NexNet/articles/authorization.html)** — declarative `[NexusAuthorize<TPermission>]` with caching and compile-time diagnostics
 - **[Interface versioning](https://dtronix.github.io/NexNet/articles/versioning.html)** — version hierarchy with HashLock validation and runtime enforcement
-- **[Six transports](https://dtronix.github.io/NexNet/articles/transports.html)** — UDS, TCP, TLS, QUIC, WebSocket, HttpSocket
+- **[Six transports](https://dtronix.github.io/NexNet/articles/transports.html)** — UDS, TCP, TLS, QUIC, WebSocket, HttpSocket; one server can listen on several at once
+- **[Java and JavaScript clients](https://dtronix.github.io/NexNet/articles/multi-language-clients.html)** — opt a server nexus in and the generator writes a [JavaScript](https://dtronix.github.io/NexNet/articles/javascript-client.html) (Node, browsers) or [Java](https://dtronix.github.io/NexNet/articles/java-client.html) (Java 11+, Android) client, runtime included, with the same invocations, pipes, channels, collections and reconnection as the C# client
 - **[ASP.NET Core integration](https://dtronix.github.io/NexNet/articles/asp-net-integration.html)** — middleware with DI, authentication, and reverse proxy support
 - **[Rate limiting](https://dtronix.github.io/NexNet/articles/rate-limiting.html)** — per-IP limits, sliding windows, and automatic banning
 - **[Benchmarks](https://dtronix.github.io/NexNet/articles/benchmarks.html)** — ~27,000 invocations/sec with minimal allocations

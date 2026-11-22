@@ -1,10 +1,14 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NexNet.Generator.Bundle;
 using NexNet.Generator.Emission;
 using NexNet.Generator.Extraction;
+using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
 using NexNet.Generator.Serialization;
+using NexNet.Generator.Targets;
+using NexNet.Generator.Targets.CSharpTest;
 using NexNet.Generator.Validation;
 
 namespace NexNet.Generator;
@@ -25,16 +29,43 @@ internal partial class NexusGenerator : IIncrementalGenerator
     /// </summary>
     public const string FormattersTrackingName = "NexusFormatters";
 
+    /// <summary>
+    /// Incremental step name of the compilation's IR (<see cref="NexusIr"/>, null without targets). Used by tests.
+    /// </summary>
+    public const string IrTrackingName = "NexusIr";
+
+    /// <summary>
+    /// Incremental step name of the target bundle source (<see cref="TargetBundle"/>, null without one). Used by tests.
+    /// </summary>
+    public const string BundleTrackingName = "NexusTargetBundle";
+
+    /// <summary>
+    /// Incremental step name of the C# test scaffolding (<see cref="TestScaffoldingOutput"/>). Used by tests.
+    /// </summary>
+    public const string TestScaffoldingTrackingName = "NexusTestScaffolding";
+
+    /// <summary>MSBuild property telling the generator it runs in a design-time (IDE) build.</summary>
+    public const string DesignTimeBuildProperty = "build_property.DesignTimeBuild";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // TRANSFORM PHASE: Extract all data here - this is cached by the incremental pipeline
         // The transform runs during semantic analysis and extracts all data into equatable records.
         // When the extracted data hasn't changed, the output phase is skipped entirely.
-        var nexusData = context.SyntaxProvider.ForAttributeWithMetadataName(
+        // The transform also reads the multi-language opt-in (Targets) and, for an opted-in server nexus, builds its
+        // IR export; without targets that is one attribute lookup.
+        var nexusProducts = context.SyntaxProvider.ForAttributeWithMetadataName(
             NexusAttributeFullName,
             predicate: static (node, _) => node is ClassDeclarationSyntax,
-            transform: static (ctx, ct) => NexusDataExtractor.Extract(ctx, ct))
-            .Where(static data => data is not null)!;
+            transform: static (ctx, ct) =>
+            {
+                var data = NexusDataExtractor.Extract(ctx, ct);
+                return data == null ? null : new NexusProduct(data, TargetExtractor.ForNexusClass(ctx, data, ct));
+            })
+            .Where(static product => product is not null)
+            .Select(static (product, _) => product!);
+
+        IncrementalValuesProvider<NexusGenerationData?> nexusData = nexusProducts.Select(static (product, _) => (NexusGenerationData?)product.Data);
 
         var parseOptions = context.ParseOptionsProvider.Select(static (opts, _) =>
             ((CSharpParseOptions)opts).LanguageVersion);
@@ -103,6 +134,114 @@ internal partial class NexusGenerator : IIncrementalGenerator
             if (code.Length > 0)
                 ctx.AddSource(FormattersFileName, code);
         });
+
+        var ir = CreateIrPipeline(context, nexusProducts);
+
+        // The target configuration (build_property.NexNetTargets and NexNetTarget_<id>_<Option>), as an equatable value.
+        var targetConfiguration = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) => TargetRegistry.ParseConfiguration(provider.GlobalOptions));
+
+        // Validate the IR against every target it opts in to (NEXNET040-047).
+        var targetCheck = ir.Combine(targetConfiguration)
+            .Select(static (source, _) =>
+            {
+                var (compilationIr, configuration) = source;
+                return new TargetCheck(
+                    compilationIr,
+                    configuration,
+                    new EquatableArray<TargetDiagnostic>(TargetValidator.Validate(compilationIr, configuration).ToArray()));
+            });
+
+        context.RegisterSourceOutput(targetCheck, static (ctx, check) => ReportTargetDiagnostics(check.Diagnostics, ctx));
+
+        // The target emitters' files, as a comment-only bundle the MSBuild unpack target writes to disk (D11). Design-time
+        // builds only validate. The bundle text is the cached value, so an unchanged IR re-emits nothing.
+        var designTimeBuild = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) =>
+                provider.GlobalOptions.TryGetValue(DesignTimeBuildProperty, out var value)
+                && string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+
+        var bundle = targetCheck.Combine(designTimeBuild)
+            .Select(static (source, _) => TargetBundleBuilder.Build(source.Left, source.Right))
+            .WithTrackingName(BundleTrackingName);
+
+        context.RegisterSourceOutput(bundle, static (ctx, text) =>
+        {
+            if (text != null)
+                ctx.AddSource(TargetBundle.HintName, text);
+        });
+
+        // C# test scaffolding (remote proxies, script facades) for [assembly: NexusTestScaffolding<TServer, TClient>].
+        // Without the attribute this is one scan of the assembly attributes.
+        var testScaffolding = context.CompilationProvider
+            .Select(static (compilation, ct) => TestScaffoldingExtractor.Extract(compilation, ct))
+            .WithTrackingName(TestScaffoldingTrackingName);
+
+        context.RegisterSourceOutput(testScaffolding, static (ctx, output) =>
+        {
+            ReportTargetDiagnostics(output.Diagnostics, ctx);
+            foreach (var file in output.Files)
+                ctx.AddSource(file.Path, file.Content);
+        });
+    }
+
+    /// <summary>
+    /// The multi-language opt-in pipeline: reports NEXNET043/NEXNET048 and produces the compilation's
+    /// <see cref="NexusIr"/>, or null when no nexus opts in (then nothing beyond reading attributes runs).
+    /// </summary>
+    private static IncrementalValueProvider<NexusIr?> CreateIrPipeline(
+        IncrementalGeneratorInitializationContext context,
+        IncrementalValuesProvider<NexusProduct> nexusProducts)
+    {
+        var classTargets = nexusProducts
+            .Where(static product => product.Targets is not null)
+            .Select(static (product, _) => product.Targets!);
+
+        context.RegisterSourceOutput(classTargets.Where(static t => t.IsClient), static (ctx, targets) =>
+            ctx.ReportDiagnostic(Diagnostic.Create(
+                DiagnosticDescriptors.TargetsOnClientNexus,
+                NexusValidator.ToDiagnosticLocation(targets.Location),
+                targets.TypeName)));
+
+        var assemblyTargets = context.CompilationProvider
+            .Select(static (compilation, ct) => TargetExtractor.ExtractAssembly(compilation, ct));
+
+        context.RegisterSourceOutput(assemblyTargets, static (ctx, data) => ReportTargetDiagnostics(data.Diagnostics, ctx));
+
+        // NEXNET041: exports sharing a namespace and name are merged into one by the IR, so find them before the merge.
+        var duplicateExports = classTargets.Collect()
+            .Combine(assemblyTargets)
+            .Select(static (source, _) =>
+            {
+                var (fromClasses, assembly) = source;
+                return TargetValidator.DuplicateExports(fromClasses
+                    .Where(t => t.Fragment != null)
+                    .SelectMany(t => t.Fragment!.Exports)
+                    .Concat(assembly.Exports.Exports));
+            });
+        context.RegisterSourceOutput(duplicateExports, static (ctx, diagnostics) => ReportTargetDiagnostics(diagnostics, ctx));
+
+        // [NexusObject] types are part of the IR (types used only at runtime need formatters in every language).
+        // Only their ids flow here; they are resolved when an IR is built.
+        var nexusObjectIds = context.SyntaxProvider.ForAttributeWithMetadataName(
+                NexusObjectAttributeFullName,
+                predicate: static (node, _) => node is TypeDeclarationSyntax,
+                transform: static (ctx, _) => ctx.TargetSymbol is INamedTypeSymbol symbol
+                    ? SerializationBuilder.MetadataFullName(symbol.OriginalDefinition)
+                    : null)
+            .Where(static id => id is not null)
+            .Select(static (id, _) => id!);
+
+        return classTargets.Collect()
+            .Combine(assemblyTargets)
+            .Combine(nexusObjectIds.Collect())
+            .Combine(context.CompilationProvider)
+            .Select(static (source, ct) =>
+            {
+                var (((fromClasses, assembly), objectIds), compilation) = source;
+                return TargetExtractor.BuildIr(fromClasses, assembly, objectIds, compilation, ct);
+            })
+            .WithTrackingName(IrTrackingName);
     }
 
     private sealed record SerializationOutput(EquatableArray<FormatterSpec> Formatters, EquatableArray<SerializationDiagnostic> Diagnostics);
@@ -116,6 +255,16 @@ internal partial class NexusGenerator : IIncrementalGenerator
         var builder = new SerializationBuilder(compilation, new ShapeBuilder(compilation));
         builder.Require(symbol, symbol.Name, LocationData.FromSymbol(symbol));
         return new SerializationOutput(builder.Build(), new EquatableArray<SerializationDiagnostic>(builder.Diagnostics.ToArray()));
+    }
+
+    private static void ReportTargetDiagnostics(IEnumerable<TargetDiagnostic> diagnostics, SourceProductionContext context)
+    {
+        foreach (var diag in diagnostics)
+        {
+            var descriptor = DiagnosticDescriptors.FindTargetDescriptor(diag.Id);
+            if (descriptor != null)
+                context.ReportDiagnostic(Diagnostic.Create(descriptor, NexusValidator.ToDiagnosticLocation(diag.Location), diag.Arg0, diag.Arg1));
+        }
     }
 
     private static void ReportSerializationDiagnostics(IEnumerable<SerializationDiagnostic> diagnostics, SourceProductionContext context)

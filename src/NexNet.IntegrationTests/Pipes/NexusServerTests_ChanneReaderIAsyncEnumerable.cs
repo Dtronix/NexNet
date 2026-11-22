@@ -1,155 +1,137 @@
-﻿using NexNet.Pipes;
-using NUnit.Framework;
+﻿using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Pipes;
 
 namespace NexNet.IntegrationTests.Pipes;
 
-internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
+/// <summary>
+/// Channels on pipes the server opens to the client under test: the server's channel reader. The client echoes every
+/// byte back (<c>pipe.echo</c>), so the server reads what it wrote, through the client.
+/// </summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task IAsyncEnumerable(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task IAsyncEnumerable(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        var tcs = new TaskCompletionSource();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            var writer = await pipe.GetChannelWriter<int>();
-            int counter = 0;
-            await foreach (var _ in await pipe.GetChannelReader<ComplexMessage>())
+            var counter = 0;
+            var reading = Task.Run(async () =>
             {
-                await writer.WriteAsync(counter++);
-            }
-        };
+                await foreach (var _ in await ChannelReader<ComplexMessage>(pipe))
+                    Interlocked.Increment(ref counter);
+            });
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        int counter = 0;
-
-        _ = Task.Run(async () =>
-        {
-            await foreach (var _ in await pipe.GetChannelReader<int>())
+            var writer = await ChannelWriter<ComplexMessage>(pipe);
+            for (var i = 0; i < 10; i++)
             {
-                Interlocked.Increment(ref counter);
-                if(counter == 10)
-                    tcs.SetResult();
-                
+                await writer.WriteAsync(ComplexMessage.Random()).AsTask().Timeout(T(1));
+                await Task.Delay(1);
             }
-        });
-        
-        var writer = await pipe.GetChannelWriter<ComplexMessage>();
-        for (int i = 0; i < 10; i++)
-        {
-            await writer.WriteAsync(ComplexMessage.Random());
-            await Task.Delay(1);
-        }
-        await writer.CompleteAsync().ConfigureAwait(false);
-        await tcs.Task.Timeout(1);
-    }
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task StopsOnCompletion(Type type)
-    {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            var writer = await pipe.GetChannelWriter<int>();
-            await writer.WriteAsync(1);
-        };
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(1000);
-        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
-        {
-            messageReceivedCount++;
-        }
-        await pipe.CompleteTask.Timeout(1);
-        
-        Assert.That(messageReceivedCount, Is.EqualTo(1));
-    }
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task CancelsRead(Type type)
-    {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            var writer = await pipe.GetChannelWriter<int>();
-            await Task.Delay(200);
-            await writer.WriteAsync(1);
-        };
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
-        {
-            messageReceivedCount++;
+            // The client completes the pipe after echoing everything, which ends the server's enumeration.
+            await reading.Timeout(T(1));
+            await Assert.That(Volatile.Read(ref counter)).IsEqualTo(10);
         }
-        Assert.That(messageReceivedCount, Is.EqualTo(0));
-        await pipe.CompleteTask.Timeout(1);
-    }
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task CancelsAndResumesRead(Type type)
-    {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            var writer = await pipe.GetChannelWriter<int>();
-            await Task.Delay(200);
-            await writer.WriteAsync(1);
-        };
 
-        var pipe = sNexus.Context.CreatePipe();
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task StopsOnCompletion(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, s => s.ClientTaskValueWithDuplexPipe.Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            messageReceivedCount++;
+            var writer = await ChannelWriter<int>(pipe);
+            await writer.WriteAsync(1).AsTask().Timeout(T(1));
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
+
+            var messageReceivedCount = 0;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(T(1)));
+            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+                messageReceivedCount++;
+
+            await pipe.CompleteTask.Timeout(T(1));
+            await Assert.That(messageReceivedCount).IsEqualTo(1);
         }
-        
-        Assert.That(messageReceivedCount, Is.EqualTo(0));
-        
-        await foreach (var _ in await pipe.GetChannelReader<int>())
+
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task CancelsRead(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+
+        // The echo starts 200 ms after the call: the server's 50 ms read gets nothing.
+        await using var client = await ConnectAsync(target, server,
+            s => s.ClientTaskValueWithDuplexPipe.Delay(200).Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
         {
-            messageReceivedCount++;
+            var writer = await ChannelWriter<int>(pipe);
+            await writer.WriteAsync(1).AsTask().Timeout(T(1));
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
+
+            var messageReceivedCount = 0;
+            using var cts = new CancellationTokenSource(50);
+            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(0);
+            await pipe.CompleteTask.Timeout(T(1));
         }
-        
-        Assert.That(messageReceivedCount, Is.EqualTo(1));
-        await pipe.CompleteTask.Timeout(1);
+
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task CancelsAndResumesRead(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+
+        // The echo starts 200 ms after the call: the server's 50 ms read gets nothing.
+        await using var client = await ConnectAsync(target, server,
+            s => s.ClientTaskValueWithDuplexPipe.Delay(200).Named("pipe.echo"));
+        var sNexus = await ServerNexusAsync();
+
+        await using (var pipe = await OpenToClientAsync(sNexus))
+        {
+            var writer = await ChannelWriter<int>(pipe);
+            await writer.WriteAsync(1).AsTask().Timeout(T(1));
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
+
+            var messageReceivedCount = 0;
+            using var cts = new CancellationTokenSource(50);
+            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(0);
+
+            await foreach (var _ in await ChannelReader<int>(pipe))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(1);
+            await pipe.CompleteTask.Timeout(T(1));
+        }
+
+        await EndAsync(client);
     }
 }

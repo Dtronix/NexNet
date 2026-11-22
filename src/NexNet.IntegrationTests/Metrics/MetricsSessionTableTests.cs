@@ -1,12 +1,12 @@
 using NexNet.Diagnostics;
 using NexNet.Messages;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Metrics;
 
 /// <summary>
 /// The session table behind the observable instruments: slot reuse, shrinking, and retiring sessions a disconnect missed.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsSessionTableTests
 {
     private sealed class FakeSession(MetricsTagSet tags) : IMeteredSession
@@ -27,7 +27,7 @@ internal class MetricsSessionTableTests
     }
 
     [Test]
-    public void Table_ReusesFreedSlots()
+    public async Task Table_ReusesFreedSlots()
     {
         var table = new MetricsSessionTable();
         var tags = new MetricsTagSet(null!, true, "tcp");
@@ -35,46 +35,46 @@ internal class MetricsSessionTableTests
         foreach (var session in sessions)
             table.Add(session);
 
-        Assert.That(table.Remove(sessions[3]), Is.True);
-        Assert.That(table.Remove(sessions[3]), Is.False);
-        Assert.That(sessions[3].MetricsSlot, Is.EqualTo(-1));
+        await Assert.That(table.Remove(sessions[3])).IsTrue();
+        await Assert.That(table.Remove(sessions[3])).IsFalse();
+        await Assert.That(sessions[3].MetricsSlot).IsEqualTo(-1);
 
         var added = new FakeSession(tags);
         table.Add(added);
-        Assert.That(added.MetricsSlot, Is.EqualTo(3));
-        Assert.That(table.Count, Is.EqualTo(10));
-        Assert.That(table.Capacity, Is.EqualTo(16));
+        await Assert.That(added.MetricsSlot).IsEqualTo(3);
+        await Assert.That(table.Count).IsEqualTo(10);
+        await Assert.That(table.Capacity).IsEqualTo(16);
     }
 
     [Test]
-    public void Table_GrowsAndShrinksBack()
+    public async Task Table_GrowsAndShrinksBack()
     {
         var table = new MetricsSessionTable();
         var tags = new MetricsTagSet(null!, true, "tcp");
         var sessions = Enumerable.Range(0, 10_000).Select(_ => new FakeSession(tags)).ToArray();
         foreach (var session in sessions)
             table.Add(session);
-        Assert.That(table.Capacity, Is.GreaterThanOrEqualTo(10_000));
+        await Assert.That(table.Capacity).IsGreaterThanOrEqualTo(10_000);
 
         // Remove in a scattered order; every remaining session keeps a valid slot through compaction.
         var random = new Random(1);
         foreach (var session in sessions.OrderBy(_ => random.Next()).Take(9_990))
-            Assert.That(table.Remove(session), Is.True);
+            await Assert.That(table.Remove(session)).IsTrue();
 
         var remaining = sessions.Where(s => s.MetricsSlot >= 0).ToArray();
-        Assert.That(remaining, Has.Length.EqualTo(10));
-        Assert.That(table.Capacity, Is.LessThanOrEqualTo(64));
+        await Assert.That(remaining).Count().IsEqualTo(10);
+        await Assert.That(table.Capacity).IsLessThanOrEqualTo(64);
         foreach (var session in remaining)
-            Assert.That(table.Slots[session.MetricsSlot], Is.SameAs(session));
+            await Assert.That(table.Slots[session.MetricsSlot]).IsSameReferenceAs(session);
 
         foreach (var session in remaining)
-            Assert.That(table.Remove(session), Is.True);
-        Assert.That(table.Count, Is.EqualTo(0));
-        Assert.That(table.Capacity, Is.EqualTo(16));
+            await Assert.That(table.Remove(session)).IsTrue();
+        await Assert.That(table.Count).IsEqualTo(0);
+        await Assert.That(table.Capacity).IsEqualTo(16);
     }
 
     [Test]
-    public void RetireBetweenCollections_CountsTheSessionOnce()
+    public async Task RetireBetweenCollections_CountsTheSessionOnce()
     {
         using var recorder = new MetricsRecorder();
         var metrics = recorder.Metrics;
@@ -84,13 +84,13 @@ internal class MetricsSessionTableTests
 
         // Collections share one pass for a while; a retire in between must not count the session twice.
         metrics.RefreshInterval = long.MaxValue / 2;
-        Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent")), Is.EqualTo(100));
+        await Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent"))).IsEqualTo(100);
         metrics.Retire(session, DisconnectReason.Graceful, true);
-        Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent")), Is.EqualTo(100));
+        await Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent"))).IsEqualTo(100);
     }
 
     [Test]
-    public void Collection_RetiresDisconnectedSessionsAndKeepsTheirTotals()
+    public async Task Collection_RetiresDisconnectedSessionsAndKeepsTheirTotals()
     {
         using var recorder = new MetricsRecorder();
         var metrics = recorder.Metrics;
@@ -101,21 +101,21 @@ internal class MetricsSessionTableTests
         metrics.Register(leaked);
         metrics.Register(live);
 
-        Assert.That(recorder.ObserveSum("nexnet.session.active"), Is.EqualTo(2));
+        await Assert.That(recorder.ObserveSum("nexnet.session.active")).IsEqualTo(2);
 
         // Disconnected without being retired: the next collection retires it.
         leaked.IsDisconnected = true;
         leaked.DisconnectReason = DisconnectReason.SocketError;
-        Assert.That(recorder.ObserveSum("nexnet.session.active"), Is.EqualTo(1));
-        Assert.That(metrics.TableSize.Count, Is.EqualTo(1));
-        Assert.That(tags.Retired.BytesSent, Is.EqualTo(100));
+        await Assert.That(recorder.ObserveSum("nexnet.session.active")).IsEqualTo(1);
+        await Assert.That(metrics.TableSize.Count).IsEqualTo(1);
+        await Assert.That(tags.Retired.BytesSent).IsEqualTo(100);
 
         var disconnect = recorder.Events("nexnet.session.disconnects").Single();
-        Assert.That(disconnect.Has("nexnet.disconnect.reason", "socket_error"), Is.True);
+        await Assert.That(disconnect.Has("nexnet.disconnect.reason", "socket_error")).IsTrue();
 
         // Retiring again does nothing.
         metrics.Retire(leaked, DisconnectReason.SocketError, true);
-        Assert.That(recorder.Events("nexnet.session.disconnects"), Has.Count.EqualTo(1));
-        Assert.That(tags.Retired.BytesSent, Is.EqualTo(100));
+        await Assert.That(recorder.Events("nexnet.session.disconnects")).Count().IsEqualTo(1);
+        await Assert.That(tags.Retired.BytesSent).IsEqualTo(100);
     }
 }

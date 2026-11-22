@@ -1,246 +1,278 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Net;
+using System.Net.WebSockets;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class AspClientServerTests : BaseAspTests
+/// <summary>
+/// ASP.NET authentication of the HttpSocket and WebSocket endpoints (<c>AspEnableAuthentication</c>): the HTTP
+/// <c>Authorization</c> header and the opt-in query-string access token (F06), on the client matrix (P01d).
+/// </summary>
+/// <remarks>
+/// The header tests need <see cref="ClientCapabilities.AuthorizationHeader"/>, which browsers lack; the query-string
+/// token tests run on every row, browsers included. The WebSocket endpoint refuses a failed authentication inside the
+/// NexNet protocol (S40), so browsers, which cannot see the HTTP status of a refused upgrade, report
+/// <see cref="TransportError.AuthenticationError"/> like every other client.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTests
 {
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ClientAuthenticationSucceeds(Type type)
+    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
+    protected LanguageHostPool Hosts { get; } = hosts;
+
+    /// <summary>
+    /// Starts a server with the bearer-token authentication of <see cref="BaseAspTests"/> for <paramref name="target"/>'s
+    /// transport and creates (not connects) the client under test. <paramref name="configureServer"/> sets up the server
+    /// configuration; <paramref name="configureClient"/> the client spec.
+    /// </summary>
+    private async Task<(AspServerConfig ServerConfig, IClientUnderTest Client)> CreateAsync(
+        ClientTarget target,
+        Action<AspServerConfig> configureServer,
+        Action<ClientSpec>? configureClient = null)
+    {
+        var type = MatrixTestBase.ToType(target.Transport);
+        var serverConfig = (AspServerConfig)CreateServerConfig(type);
+        configureServer(serverConfig);
+        var server = CreateServer(serverConfig, null, AspCreateAuthServices, AspAppAuthConfigure);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var spec = MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger);
+        configureClient?.Invoke(spec);
+        var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+        return (serverConfig, client);
+    }
+
+    private static void EnableBearerAuthentication(AspServerConfig config, string scheme = "BearerToken")
+    {
+        config.AspEnableAuthentication = true;
+        config.AspAuthenticationScheme = scheme;
+    }
+
+    private static async Task AssertConnectFails(IClientUnderTest client, TransportError error)
+    {
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(TestTimeouts.Connect)));
+        await Assert.That(actual!.Error).IsEqualTo(error);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task ClientAuthenticationSucceeds(ClientTarget target)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-
-        if (clientConfig is HttpClientConfig httpClientConfig)
-        {
-            httpClientConfig.AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "Token123");
-        }
-        
-        if (serverConfig is AspServerConfig aspServerConfig)
-        {
-            aspServerConfig.AspEnableAuthentication = true;
-            aspServerConfig.AspAuthenticationScheme = "BearerToken";
-        }
-        
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
+        var (serverConfig, created) = await CreateAsync(
+            target,
+            config => EnableBearerAuthentication(config),
+            spec => spec.AuthorizationHeader = "Bearer Token123");
+        await using var client = created;
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await server.StartAsync().Timeout(1);
-        await Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
-        await tcs.Task.Timeout(1);
-    }
-    
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ClientAuthenticationFailsWithBadAuth(Type type)
-    {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-
-        if (clientConfig is HttpClientConfig httpClientConfig)
-        {
-            httpClientConfig.AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "Bad Token");
-        }
-        
-        if (serverConfig is AspServerConfig aspServerConfig)
-        {
-            aspServerConfig.AspEnableAuthentication = true;
-            aspServerConfig.AspAuthenticationScheme = "BearerToken";
-        }
-        
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-        
-        await server.StartAsync().Timeout(1);
-        
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
-    }
-    
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ClientAuthenticationFailsWithNoAuth(Type type)
-    {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        
-        if (serverConfig is AspServerConfig aspServerConfig)
-        {
-            aspServerConfig.AspEnableAuthentication = true;
-            aspServerConfig.AspAuthenticationScheme = "BearerToken";
-        }
-        
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-        
-        await server.StartAsync().Timeout(1);
-        
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
-    }
-    
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ServerIgnoresAuthenticationWhenNotEnabled(Type type)
-    {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-
-        if (clientConfig is HttpClientConfig httpClientConfig)
-        {
-            httpClientConfig.AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "Bad Token");
-        }
-        
-        if (serverConfig is AspServerConfig aspServerConfig)
-        {
-            aspServerConfig.AspEnableAuthentication = false;
-        }
-        
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-        
-        await server.StartAsync().Timeout(1);
-  
-        await client.ConnectAsync().Timeout(1);
-    }
-    
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ClientDoesNotConnectWhenServerSelectsBadAuthScheme(Type type)
-    {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-
-        if (clientConfig is HttpClientConfig httpClientConfig)
-        {
-            httpClientConfig.AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "Token123");
-        }
-        
-        if (serverConfig is AspServerConfig aspServerConfig)
-        {
-            aspServerConfig.AspEnableAuthentication = true;
-            aspServerConfig.AspAuthenticationScheme = "BadScheme";
-        }
-        
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-        
-        await server.StartAsync().Timeout(1);
-        
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.InternalError));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await tcs.Task.Timeout(T(1));
+        await MatrixTestBase.EndAsync(client);
     }
 
-    [TestCase(Type.WebSocket, "Token123", true)]
-    [TestCase(Type.HttpSocket, "Token123", true)]
-    [TestCase(Type.WebSocket, "BadToken", false)]
-    [TestCase(Type.HttpSocket, "BadToken", false)]
-    public async Task QueryStringTokenAuthenticatesWhenEnabled(Type type, string token, bool succeeds)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task ClientAuthenticationFailsWithBadAuth(ClientTarget target)
     {
-        var clientConfig = (HttpClientConfig)CreateClientConfig(type);
-        var serverConfig = (AspServerConfig)CreateServerConfig(type);
+        var (_, created) = await CreateAsync(
+            target,
+            config => EnableBearerAuthentication(config),
+            spec => spec.AuthorizationHeader = "Bearer Bad Token");
+        await using var client = created;
 
-        clientConfig.Url = new Uri(clientConfig.Url + "?access_token=" + token);
-        serverConfig.AspEnableAuthentication = true;
-        serverConfig.AspAuthenticationScheme = "BearerToken";
-        SetAccessTokenQueryParameter(serverConfig, "access_token");
+        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await MatrixTestBase.EndAsync(client);
+    }
 
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public async Task ClientAuthenticationFailsWithNoAuth(ClientTarget target)
+    {
+        var (_, created) = await CreateAsync(target, config => EnableBearerAuthentication(config));
+        await using var client = created;
 
-        await server.StartAsync().Timeout(1);
+        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task ServerIgnoresAuthenticationWhenNotEnabled(ClientTarget target)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config => config.AspEnableAuthentication = false,
+            spec => spec.AuthorizationHeader = "Bearer Bad Token");
+        await using var client = created;
+
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task ClientDoesNotConnectWhenServerSelectsBadAuthScheme(ClientTarget target)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config => EnableBearerAuthentication(config, "BadScheme"),
+            spec => spec.AuthorizationHeader = "Bearer Token123");
+        await using var client = created;
+
+        await AssertConnectFails(client, TransportError.InternalError);
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    // One test per token: a ClientMatrix row cannot be combined with [Arguments].
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryStringTokenAuthenticatesWhenEnabled(ClientTarget target)
+        => QueryStringTokenWhenEnabled(target, "Token123", succeeds: true);
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryStringTokenRejectedWhenInvalid(ClientTarget target)
+        => QueryStringTokenWhenEnabled(target, "BadToken", succeeds: false);
+
+    private async Task QueryStringTokenWhenEnabled(ClientTarget target, string token, bool succeeds)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config =>
+            {
+                EnableBearerAuthentication(config);
+                SetAccessTokenQueryParameter(config, "access_token");
+            },
+            spec => spec.Address += "?access_token=" + token);
+        await using var client = created;
 
         if (succeeds)
-        {
-            await Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
-        }
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         else
+            await AssertConnectFails(client, TransportError.AuthenticationError);
+
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    // The client's query-token option (ClientSpec.QueryToken), not a hand-built URL.
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryTokenOptionAuthenticatesWhenEnabled(ClientTarget target)
+        => QueryTokenOptionWhenEnabled(target, "Token123", succeeds: true);
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryTokenOptionRejectedWhenInvalid(ClientTarget target)
+        => QueryTokenOptionWhenEnabled(target, "BadToken", succeeds: false);
+
+    private async Task QueryTokenOptionWhenEnabled(ClientTarget target, string token, bool succeeds)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config =>
+            {
+                EnableBearerAuthentication(config);
+                SetAccessTokenQueryParameter(config, "access_token");
+            },
+            spec => spec.QueryToken = new QueryToken("access_token", token));
+        await using var client = created;
+
+        if (succeeds)
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        else
+            await AssertConnectFails(client, TransportError.AuthenticationError);
+
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public async Task QueryStringTokenIsDisabledByDefault(ClientTarget target)
+    {
+        AspServerConfig? server = null;
+        var (_, created) = await CreateAsync(
+            target,
+            config =>
+            {
+                EnableBearerAuthentication(config);
+                server = config;
+            },
+            spec => spec.Address += "?access_token=Token123");
+        await using var client = created;
+
+        await Assert.That(GetAccessTokenQueryParameter(server!)).IsNull();
+        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task AuthorizationHeaderWinsOverQueryStringToken(ClientTarget target)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config =>
+            {
+                EnableBearerAuthentication(config);
+                SetAccessTokenQueryParameter(config, "access_token");
+            },
+            spec =>
+            {
+                spec.Address += "?access_token=Token123";
+                spec.AuthorizationHeader = "Bearer Bad Token";
+            });
+        await using var client = created;
+
+        await AssertConnectFails(client, TransportError.AuthenticationError);
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    /// <summary>
+    /// The WebSocket endpoint accepts the upgrade of a request that fails ASP.NET authentication and refuses it inside
+    /// the NexNet protocol: the server preamble, then the disconnect byte <c>Authentication</c> (29) in answer to the
+    /// greeting, then a normal close (S40).
+    /// </summary>
+    [Test]
+    public async Task WebSocketRefusesFailedAuthenticationInProtocol()
+    {
+        var serverConfig = (AspServerConfig)CreateServerConfig(Type.WebSocket);
+        EnableBearerAuthentication(serverConfig);
+        var server = CreateServer(serverConfig, null, AspCreateAuthServices, AspAppAuthConfigure);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var url = ((HttpClientConfig)CreateClientConfig(Type.WebSocket)).Url;
+
+        using var socket = new ClientWebSocket();
+        socket.Options.CollectHttpResponseDetails = true;
+        await socket.ConnectAsync(url, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
+        await Assert.That(socket.HttpStatusCode).IsEqualTo(HttpStatusCode.SwitchingProtocols);
+
+        // Preamble, then a ClientGreeting header with an empty body: the refusal does not decode the greeting.
+        byte[] preamble = [(byte)'N', (byte)'n', (byte)'P', 0x14, 0, 0, 0, 1];
+        byte[] greeting = [.. preamble, 100, 0, 0];
+        await socket.SendAsync(greeting, WebSocketMessageType.Binary, true, CancellationToken.None)
+            .Timeout(T(TestTimeouts.Connect));
+
+        var received = new List<byte>();
+        var buffer = new byte[64];
+        while (true)
         {
-            var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-            Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+            var result = await socket.ReceiveAsync(buffer, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
+            if (result.MessageType == WebSocketMessageType.Close)
+                break;
+            received.AddRange(buffer.AsSpan(0, result.Count));
         }
-    }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task QueryStringTokenIsDisabledByDefault(Type type)
-    {
-        var clientConfig = (HttpClientConfig)CreateClientConfig(type);
-        var serverConfig = (AspServerConfig)CreateServerConfig(type);
-
-        clientConfig.Url = new Uri(clientConfig.Url + "?access_token=Token123");
-        serverConfig.AspEnableAuthentication = true;
-        serverConfig.AspAuthenticationScheme = "BearerToken";
-
-        Assert.That(GetAccessTokenQueryParameter(serverConfig), Is.Null);
-
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-
-        await server.StartAsync().Timeout(1);
-
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
-    }
-
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizationHeaderWinsOverQueryStringToken(Type type)
-    {
-        var clientConfig = (HttpClientConfig)CreateClientConfig(type);
-        var serverConfig = (AspServerConfig)CreateServerConfig(type);
-
-        clientConfig.Url = new Uri(clientConfig.Url + "?access_token=Token123");
-        clientConfig.AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "Bad Token");
-        serverConfig.AspEnableAuthentication = true;
-        serverConfig.AspAuthenticationScheme = "BearerToken";
-        SetAccessTokenQueryParameter(serverConfig, "access_token");
-
-        var (client, _) = CreateClient(clientConfig);
-        var server = CreateServer(
-            serverConfig,
-            null,
-            AspCreateAuthServices,
-            AspAppAuthConfigure);
-
-        await server.StartAsync().Timeout(1);
-
-        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
+        byte[] expected = [.. preamble, (byte)DisconnectReason.Authentication];
+        await Assert.That(received.ToArray()).IsEquivalentTo(expected);
+        await Assert.That(socket.CloseStatus).IsEqualTo(WebSocketCloseStatus.NormalClosure);
+        await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).Timeout(T(TestTimeouts.Connect));
     }
 
     private static void SetAccessTokenQueryParameter(AspServerConfig config, string? name)

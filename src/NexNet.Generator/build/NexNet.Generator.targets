@@ -1,0 +1,131 @@
+<Project>
+  <!--
+    NexNet multi-language targets: configuration flattening and the bundle unpack (D10, D11, D27).
+
+    With no NexNetTarget item, every target below is skipped and nothing about the build changes.
+
+    1. _NexNetFlattenTargets: before the generated .editorconfig is written, the NexNetTarget items become the compiler
+       visible values build_property.NexNetTargets (ids that have an OutputDir, ',' separated) and
+       build_property.NexNetTarget_<id>_<Option> (every other metadata). OutputDir stays in MSBuild.
+    2. _NexNetEnableGeneratedFiles: sets EmitCompilerGeneratedFiles so the compiler writes the generator's
+       NexNet.Targets.g.cs bundle to obj/. Set inside a target so evaluation (and the IDE) is unaffected.
+    3. NexNetUnpackTargets: after CoreCompile, writes the bundle's files to each target's OutputDir (only changed files,
+       atomically) and nexnet-ir.json to NexNetIrOutputPath, and deletes files of the previous manifest that are gone.
+       Skipped while its stamp is current, unless a file of the manifest is missing (H22).
+    4. NexNetCleanTargets: on Clean, deletes every file of the manifest.
+
+    Multi-targeting projects unpack in their first TargetFramework only. Design-time builds never unpack.
+  -->
+  <PropertyGroup>
+    <_NexNetGeneratorTargetsImported>true</_NexNetGeneratorTargetsImported>
+    <_NexNetObjDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)'))</_NexNetObjDir>
+    <!-- Files written by the last unpack. Shared by every configuration and TargetFramework of the project. -->
+    <NexNetTargetsManifest Condition="'$(NexNetTargetsManifest)' == ''">$(_NexNetObjDir)nexnet-targets.manifest</NexNetTargetsManifest>
+    <!-- Where nexnet-ir.json (the language-neutral contract) is written. -->
+    <NexNetIrOutputPath Condition="'$(NexNetIrOutputPath)' == ''">$(_NexNetObjDir)nexnet-ir.json</NexNetIrOutputPath>
+    <_NexNetFirstTargetFramework Condition="'$(TargetFrameworks)' != ''">$(TargetFrameworks.Split(';')[0].Trim())</_NexNetFirstTargetFramework>
+    <_NexNetIsUnpackFramework Condition="'$(TargetFrameworks)' == '' or '$(TargetFramework)' == '$(_NexNetFirstTargetFramework)'">true</_NexNetIsUnpackFramework>
+    <_NexNetTasksAssembly>$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll</_NexNetTasksAssembly>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'@(NexNetTarget)' != ''">
+    <CompilerVisibleProperty Include="NexNetTargets" />
+    <CompilerVisibleProperty Include="DesignTimeBuild" />
+  </ItemGroup>
+
+  <UsingTask TaskName="NexNetFlattenTargets" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(_NexNetTasksAssembly)">
+    <Task>
+      <Code Type="Class" Language="cs" Source="$(MSBuildThisFileDirectory)NexNet.Generator.Tasks.cs" />
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="NexNetUnpackBundle" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(_NexNetTasksAssembly)">
+    <Task>
+      <Code Type="Class" Language="cs" Source="$(MSBuildThisFileDirectory)NexNet.Generator.Tasks.cs" />
+    </Task>
+  </UsingTask>
+
+  <Target Name="_NexNetFlattenTargets"
+          BeforeTargets="GenerateMSBuildEditorConfigFileCore"
+          Condition="'@(NexNetTarget)' != ''">
+    <NexNetFlattenTargets Targets="@(NexNetTarget)">
+      <Output TaskParameter="TargetIds" PropertyName="NexNetTargets" />
+      <!-- Values whose names are not known statically go straight to the .editorconfig writer's input. -->
+      <Output TaskParameter="Options" ItemName="_GeneratedEditorConfigProperty" />
+    </NexNetFlattenTargets>
+  </Target>
+
+  <Target Name="_NexNetEnableGeneratedFiles"
+          BeforeTargets="CreateCompilerGeneratedFilesOutputPath;CoreCompile"
+          Condition="'@(NexNetTarget)' != '' and '$(DesignTimeBuild)' != 'true' and '$(_NexNetIsUnpackFramework)' == 'true'">
+    <PropertyGroup>
+      <CompilerGeneratedFilesOutputPath Condition="'$(EmitCompilerGeneratedFiles)' != 'true' or '$(CompilerGeneratedFilesOutputPath)' == ''">$(IntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+      <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+      <NexNetTargetBundleFile Condition="'$(NexNetTargetBundleFile)' == ''">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(CompilerGeneratedFilesOutputPath)', 'NexNet.Generator', 'NexNet.Generator.NexusGenerator', 'NexNet.Targets.g.cs'))</NexNetTargetBundleFile>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="_NexNetWarnMissingBundle"
+          AfterTargets="CoreCompile"
+          Condition="'@(NexNetTarget)' != '' and '$(NexNetTargetBundleFile)' != '' and !Exists('$(NexNetTargetBundleFile)')">
+    <Warning Code="NEXNETB001"
+             Text="NexNetTarget is configured but the NexNet generator produced no target bundle ('$(NexNetTargetBundleFile)'); no Java/JavaScript files were written. Check that NexNet.Generator is referenced as an analyzer." />
+  </Target>
+
+  <!--
+    IntermediateOutputPath is set by Microsoft.Common.targets, after a project file body that imports these targets
+    directly (G07), so the stamp path is computed when the targets run rather than at evaluation.
+  -->
+  <Target Name="_NexNetComputeUnpackStamp">
+    <PropertyGroup>
+      <_NexNetUnpackStamp>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'nexnet-targets.stamp'))</_NexNetUnpackStamp>
+    </PropertyGroup>
+  </Target>
+
+  <!--
+    The stamp only proves this configuration unpacked once. The written files can be gone since then: a Clean of another
+    configuration (the manifest is shared), or an output folder deleted by hand. The unpack then runs again, even when
+    the compile is up to date. A manifest written by another configuration after this stamp is caught by the unpack's
+    Inputs; the task itself rewrites only files whose bytes differ.
+  -->
+  <Target Name="_NexNetCheckUnpackOutputs" DependsOnTargets="_NexNetComputeUnpackStamp" Condition="Exists('$(_NexNetUnpackStamp)')">
+    <ReadLinesFromFile File="$(NexNetTargetsManifest)" Condition="Exists('$(NexNetTargetsManifest)')">
+      <Output TaskParameter="Lines" ItemName="_NexNetManifestLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_NexNetManifestFile Include="$([System.String]::Copy('%(_NexNetManifestLine.Identity)').Substring(2))"
+                           Condition="$([System.String]::Copy('%(_NexNetManifestLine.Identity)').StartsWith('F '))" />
+      <_NexNetMissingFile Include="@(_NexNetManifestFile)" Condition="!Exists('%(_NexNetManifestFile.Identity)')" />
+    </ItemGroup>
+    <Delete Files="$(_NexNetUnpackStamp)" Condition="!Exists('$(NexNetTargetsManifest)') or '@(_NexNetMissingFile)' != ''" />
+    <ItemGroup>
+      <_NexNetManifestLine Remove="@(_NexNetManifestLine)" />
+      <_NexNetManifestFile Remove="@(_NexNetManifestFile)" />
+      <_NexNetMissingFile Remove="@(_NexNetMissingFile)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="NexNetUnpackTargets"
+          AfterTargets="CoreCompile"
+          DependsOnTargets="_NexNetComputeUnpackStamp;_NexNetCheckUnpackOutputs"
+          Condition="'@(NexNetTarget)' != '' and '$(DesignTimeBuild)' != 'true' and '$(_NexNetIsUnpackFramework)' == 'true' and '$(NexNetTargetBundleFile)' != '' and Exists('$(NexNetTargetBundleFile)')"
+          Inputs="$(NexNetTargetBundleFile);$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(NexNetTargetsManifest)"
+          Outputs="$(_NexNetUnpackStamp)">
+    <NexNetUnpackBundle BundleFile="$(NexNetTargetBundleFile)"
+                        Targets="@(NexNetTarget)"
+                        ProjectDirectory="$(MSBuildProjectDirectory)"
+                        IrOutputPath="$(NexNetIrOutputPath)"
+                        ManifestFile="$(NexNetTargetsManifest)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_NexNetUnpackStamp)'))" />
+    <Touch Files="$(_NexNetUnpackStamp)" AlwaysCreate="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_NexNetUnpackStamp)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="NexNetCleanTargets"
+          AfterTargets="Clean"
+          Condition="Exists('$(NexNetTargetsManifest)')">
+    <NexNetUnpackBundle ProjectDirectory="$(MSBuildProjectDirectory)" ManifestFile="$(NexNetTargetsManifest)" />
+  </Target>
+</Project>

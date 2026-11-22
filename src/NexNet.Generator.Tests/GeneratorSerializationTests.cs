@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using NexNet.Generator.Serialization;
-using NUnit.Framework;
+using TUnit.Assertions.Enums;
 
 namespace NexNet.Generator.Tests;
 
@@ -33,17 +33,17 @@ partial class ServerNexus : IServerNexus { {{implementation}} }
     }
 
     [Test]
-    public void SimpleObjectGenerates()
+    public async Task SimpleObjectGenerates()
     {
         var diagnostics = Run("""
 [NexusObject]
 public class Person { [NexusKey(0)] public int Id { get; set; } [NexusKey(1)] public string? Name { get; set; } }
 """, "ValueTask<Person> Get(Person p);", "public ValueTask<Person> Get(Person p) => new(p);");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void NestedObjectsCollectionsAndTuplesGenerate()
+    public async Task NestedObjectsCollectionsAndTuplesGenerate()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -60,11 +60,11 @@ public class Outer
 }
 """, "void Update(Outer data, List<ValueTuple<Tuple<Outer, int>>> data2, IReadOnlyList<Inner> list);",
             "public void Update(Outer data, List<ValueTuple<Tuple<Outer, int>>> data2, IReadOnlyList<Inner> list) { }");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void StructRecordAndConstructorTypesGenerate()
+    public async Task StructRecordAndConstructorTypesGenerate()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -81,11 +81,11 @@ public class Immutable
 [NexusObject]
 public class WithInit { [NexusKey(0)] public required int Id { get; init; } [NexusKey(1)] public string? Name { get; init; } }
 """, "void Update(Point p, Pair pair, Immutable i, WithInit w);", "public void Update(Point p, Pair pair, Immutable i, WithInit w) { }");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void PrivateMembersUseUnsafeAccessor()
+    public async Task PrivateMembersUseUnsafeAccessor()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -97,11 +97,11 @@ public class Secret
     public int Hidden => _hidden;
 }
 """, "void Update(Secret s);", "public void Update(Secret s) { }");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void UnionGenerates()
+    public async Task UnionGenerates()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -113,11 +113,11 @@ public class Circle : IShape { [NexusKey(0)] public double Radius { get; set; } 
 [NexusObject]
 public class Square : IShape { [NexusKey(0)] public double Side { get; set; } }
 """, "ValueTask<IShape> Echo(IShape shape);", "public ValueTask<IShape> Echo(IShape shape) => new(shape);");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void GenericObjectGenerates()
+    public async Task GenericObjectGenerates()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -125,22 +125,22 @@ public class Envelope<T> { [NexusKey(0)] public T? Value { get; set; } [NexusKey
 [NexusObject]
 public class Person { [NexusKey(0)] public int Id { get; set; } }
 """, "void Update(Envelope<Person> e, Envelope<int> i);", "public void Update(Envelope<Person> e, Envelope<int> i) { }");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void ChannelAndCollectionTypesGenerate()
+    public async Task ChannelAndCollectionTypesGenerate()
     {
         var diagnostics = Run("""
 [NexusObject]
 public class Item { [NexusKey(0)] public int Id { get; set; } }
 """, "ValueTask Stream(INexusDuplexChannel<Item> channel); [NexusCollection(NexusCollectionMode.ServerToClient)] NexNet.Collections.Lists.INexusList<Item> Items { get; }",
             "public ValueTask Stream(INexusDuplexChannel<Item> channel) => default;");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void AssemblyDeclarationsGenerate()
+    public async Task AssemblyDeclarationsGenerate()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using System.Collections.Generic;
@@ -157,11 +157,11 @@ public sealed class ThirdPartyFormatter : NexusFormatter<ThirdParty>
     public override void Deserialize(ref MsgPackReader reader, ref ThirdParty? value) => value = new ThirdParty { Value = reader.ReadInt32() };
 }
 """);
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void UserFormatterTypeIsAcceptedAsParameter()
+    public async Task UserFormatterTypeIsAcceptedAsParameter()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using System.Threading.Tasks;
@@ -182,64 +182,64 @@ partial class ClientNexus : IClientNexus { }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { public void Update(ThirdParty value) { } }
 """);
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     // ------------------------------------------------------------------ Diagnostics
 
     [Test]
-    public void UnannotatedTypeReportsNEXNET028()
+    public async Task UnannotatedTypeReportsNEXNET028()
     {
         var diagnostics = Run("public class Plain { public int Id { get; set; } }", "void Update(Plain p);", "public void Update(Plain p) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET028"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET028")).IsTrue();
     }
 
     [Test]
-    public void DuplicateKeyReportsNEXNET029()
+    public async Task DuplicateKeyReportsNEXNET029()
     {
         var diagnostics = Run("[NexusObject] public class D { [NexusKey(0)] public int A { get; set; } [NexusKey(0)] public int B { get; set; } }",
             "void Update(D d);", "public void Update(D d) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET029"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET029")).IsTrue();
     }
 
     [Test]
-    public void MissingKeyReportsNEXNET030()
+    public async Task MissingKeyReportsNEXNET030()
     {
         var diagnostics = Run("[NexusObject] public class D { [NexusKey(0)] public int A { get; set; } public int B { get; set; } }",
             "void Update(D d);", "public void Update(D d) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET030"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET030")).IsTrue();
     }
 
     [Test]
-    public void IgnoredAndComputedMembersDoNotNeedKeys()
+    public async Task IgnoredAndComputedMembersDoNotNeedKeys()
     {
         var diagnostics = Run("[NexusObject] public class D { [NexusKey(0)] public int A { get; set; } [NexusIgnore] public int B { get; set; } public int C => A * 2; }",
             "void Update(D d);", "public void Update(D d) { }");
-        Assert.That(diagnostics, Is.Empty);
+        await Assert.That(diagnostics).IsEmpty();
     }
 
     [Test]
-    public void UnassignableMemberReportsNEXNET031()
+    public async Task UnassignableMemberReportsNEXNET031()
     {
         var diagnostics = Run("""
 [NexusObject]
 public class D { public D() { } [NexusKey(0)] public int Computed => 5; }
 """, "void Update(D d);", "public void Update(D d) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET031"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET031")).IsTrue();
     }
 
     [Test]
-    public void AmbiguousConstructorReportsNEXNET032()
+    public async Task AmbiguousConstructorReportsNEXNET032()
     {
         var diagnostics = Run("""
 [NexusObject]
 public class D { public D(int a) { A = a; } public D(int a, int b) { A = a; } [NexusKey(0)] public int A { get; } }
 """, "void Update(D d);", "public void Update(D d) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET032"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET032")).IsTrue();
     }
 
     [Test]
-    public void DuplicateUnionTagReportsNEXNET033()
+    public async Task DuplicateUnionTagReportsNEXNET033()
     {
         var diagnostics = Run("""
 [NexusObject]
@@ -249,24 +249,24 @@ public interface IU { }
 [NexusObject] public class A : IU { [NexusKey(0)] public int X { get; set; } }
 [NexusObject] public class B : IU { [NexusKey(0)] public int X { get; set; } }
 """, "void Update(IU u);", "public void Update(IU u) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET033"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET033")).IsTrue();
     }
 
     [Test]
-    public void AbstractWithoutUnionReportsNEXNET034()
+    public async Task AbstractWithoutUnionReportsNEXNET034()
     {
         var diagnostics = Run("[NexusObject] public abstract class Base { [NexusKey(0)] public int X { get; set; } }",
             "void Update(Base b);", "public void Update(Base b) { }");
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET034"), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET034")).IsTrue();
     }
 
     [Test]
-    public void LargeKeyGapReportsNEXNET037Warning()
+    public async Task LargeKeyGapReportsNEXNET037Warning()
     {
         var diagnostics = Run("[NexusObject] public class D { [NexusKey(0)] public int A { get; set; } [NexusKey(40)] public int B { get; set; } }",
             "void Update(D d);", "public void Update(D d) { }", DiagnosticSeverity.Warning);
-        Assert.That(diagnostics.Any(d => d.Id == "NEXNET037" && d.Severity == DiagnosticSeverity.Warning), Is.True);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Any(d => d.Id == "NEXNET037" && d.Severity == DiagnosticSeverity.Warning)).IsTrue();
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     // ------------------------------------------------------------------ Channel analyzer (NEXNET038)
@@ -305,19 +305,19 @@ public static class Usage
 """;
 
     [Test]
-    public void ChannelAnalyzerReportsUnregisteredTypes()
+    public async Task ChannelAnalyzerReportsUnregisteredTypes()
     {
         var diagnostics = RunChannelAnalyzer(ChannelSource);
         var reported = diagnostics.Where(d => d.Id == "NEXNET038").Select(d => d.GetMessage()).ToArray();
-        Assert.That(reported.Length, Is.EqualTo(2), string.Join("; ", reported));
-        Assert.That(reported.Any(m => m.Contains("Plain")), Is.True);
-        Assert.That(reported.Any(m => m.Contains("Item[]")), Is.True);
+        await Assert.That(reported.Length).IsEqualTo(2).Because(string.Join("; ", reported));
+        await Assert.That(reported.Any(m => m.Contains("Plain"))).IsTrue();
+        await Assert.That(reported.Any(m => m.Contains("Item[]"))).IsTrue();
     }
 
     // ------------------------------------------------------------------ Hashing
 
     [Test]
-    public void NexusKeyOrderAffectsHash()
+    public async Task NexusKeyOrderAffectsHash()
     {
         var compilation1 = CSharpGeneratorRunner.CreateCompilation("""
 using NexNet.Serialization;
@@ -330,9 +330,9 @@ using NexNet.Serialization;
 
         var h1 = ShapeHasher.HashWithListing(new ShapeBuilder(compilation1).Get(compilation1.GetTypeByMetadataName("A")!));
         var h2 = ShapeHasher.HashWithListing(new ShapeBuilder(compilation2).Get(compilation2.GetTypeByMetadataName("A")!));
-        Assert.That(h1.Hash, Is.Not.EqualTo(h2.Hash));
-        Assert.That(h1.Listing, Does.Contain("#0 object A"));
-        Assert.That(h1.Listing, Does.Contain("0: "));
+        await Assert.That(h1.Hash).IsNotEqualTo(h2.Hash);
+        await Assert.That(h1.Listing).Contains("#0 object A");
+        await Assert.That(h1.Listing).Contains("0: ");
     }
 
     // ------------------------------------------------------------------ Formatter output (one file per assembly)
@@ -360,41 +360,41 @@ public partial class OtherServerNexus : IOtherServerNexus { public void Store(Pe
 """;
 
     [Test]
-    public void TypeReachedFromSeveralProducersHasOneFormatter()
+    public async Task TypeReachedFromSeveralProducersHasOneFormatter()
     {
         // Person is reached from two nexus pairs and is also declared locally: one formatter class, one registration.
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(CSharpGeneratorRunner.CreateCompilation(SharedTypeSource));
-        Assert.That(errors, Is.Empty, string.Join("\n", errors.Select(e => e.ToString())));
+        await Assert.That(errors).IsEmpty().Because(string.Join("\n", errors.Select(e => e.ToString())));
 
         var sources = result.Results.Single().GeneratedSources;
         var formatterFiles = sources.Where(s => s.HintName == NexusGenerator.FormattersFileName).ToArray();
-        Assert.That(formatterFiles.Length, Is.EqualTo(1));
+        await Assert.That(formatterFiles.Length).IsEqualTo(1);
 
         var code = formatterFiles[0].SourceText.ToString();
-        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Person_").Count, Is.EqualTo(1));
-        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Address_").Count, Is.EqualTo(1));
-        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"Register<global::NexNetDemo\.Person>\(").Count, Is.EqualTo(1));
-        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"ModuleInitializer").Count, Is.EqualTo(1));
+        await Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Person_").Count).IsEqualTo(1);
+        await Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Address_").Count).IsEqualTo(1);
+        await Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"Register<global::NexNetDemo\.Person>\(").Count).IsEqualTo(1);
+        await Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"ModuleInitializer").Count).IsEqualTo(1);
 
         // Nexus files hold only nexus code and argument readers.
         foreach (var nexusFile in sources.Where(s => s.HintName != NexusGenerator.FormattersFileName))
-            Assert.That(nexusFile.SourceText.ToString(), Does.Not.Contain("__NexusFormatter_"), nexusFile.HintName);
+            await Assert.That(nexusFile.SourceText.ToString()).DoesNotContain("__NexusFormatter_").Because(nexusFile.HintName);
     }
 
     [Test]
-    public void GeneratedSourcesAreByteIdenticalAcrossRuns()
+    public async Task GeneratedSourcesAreByteIdenticalAcrossRuns()
     {
         var compilation = CSharpGeneratorRunner.CreateCompilation(SharedTypeSource);
         var first = CSharpGeneratorRunner.RunGeneratorWithResult(compilation).Result.Results.Single().GeneratedSources;
         var second = CSharpGeneratorRunner.RunGeneratorWithResult(compilation).Result.Results.Single().GeneratedSources;
 
-        Assert.That(second.Select(s => s.HintName), Is.EqualTo(first.Select(s => s.HintName)));
+        await Assert.That(second.Select(s => s.HintName).ToArray()).IsEquivalentTo(first.Select(s => s.HintName).ToArray(), CollectionOrdering.Matching);
         for (var i = 0; i < first.Length; i++)
-            Assert.That(second[i].SourceText.ToString(), Is.EqualTo(first[i].SourceText.ToString()), first[i].HintName);
+            await Assert.That(second[i].SourceText.ToString()).IsEqualTo(first[i].SourceText.ToString()).Because(first[i].HintName);
     }
 
     [Test]
-    public void UnrelatedEditDoesNotRegenerateFormatters()
+    public async Task UnrelatedEditDoesNotRegenerateFormatters()
     {
         var compilation = CSharpGeneratorRunner.CreateCompilation(SharedTypeSource);
         var (driver, _, _) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
@@ -406,8 +406,7 @@ public partial class OtherServerNexus : IOtherServerNexus { public void Store(Pe
 
         var steps = result.Results.Single().TrackedSteps[NexusGenerator.FormattersTrackingName];
         var reasons = steps.SelectMany(s => s.Outputs).Select(o => o.Reason).ToArray();
-        Assert.That(reasons, Is.Not.Empty);
-        Assert.That(reasons.All(r => r is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached), Is.True,
-            string.Join(", ", reasons));
+        await Assert.That(reasons).IsNotEmpty();
+        await Assert.That(reasons.All(r => r is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached)).IsTrue().Because(string.Join(", ", reasons));
     }
 }

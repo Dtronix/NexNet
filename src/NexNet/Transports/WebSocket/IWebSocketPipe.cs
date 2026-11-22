@@ -45,17 +45,24 @@ public interface IWebSocketPipe : IDuplexPipe, IDisposable
     public string? SubProtocol { get; }
 
     /// <summary>
-    /// Completes both the <see cref="IDuplexPipe.Input"/> and <see cref="IDuplexPipe.Output"/> 
-    /// of the duplex pipe, and optionally closes the underlying <see cref="WebSocket"/> with the 
-    /// specified status and reason.
+    /// Stops the duplex pipe: sends what was flushed to a completed <see cref="IDuplexPipe.Output"/> (or stops
+    /// sending at once if the output was not completed), optionally closes the underlying <see cref="WebSocket"/>
+    /// with the specified status and reason, then stops reading from the socket.
     /// </summary>
+    /// <remarks>
+    /// The <see cref="IDuplexPipe.Input"/> is not completed by this call. Its writer is completed by the read loop
+    /// once no receive is pending (this call waits briefly for that), and its reader is completed by whoever reads
+    /// the input. Completing the input while a receive is still writing into its memory would return that memory to
+    /// the shared pool, and the late bytes would land in another connection's data.
+    /// </remarks>
     /// <param name="closeStatus">Optional close status to use for closing the underlying <see cref="WebSocket"/>. 
     ///     If no status is provided, the socket will be closed only if <see cref="WebSocketPipeOptions.CloseWhenCompleted"/> 
     ///     was specified when the duplex pipe was created.
     /// </param>
     /// <param name="closeStatusDescription">Optional close status description to use if the underlying 
     ///     <see cref="WebSocket"/> is closed.</param>
-    /// <returns></returns>
+    /// <returns>A task that completes once the send loop has ended, the socket was closed if requested, and the read
+    ///     loop has exited or a short wait for it has elapsed.</returns>
     public ValueTask CompleteAsync(WebSocketCloseStatus? closeStatus = null, string? closeStatusDescription = null);
 
     /// <summary>

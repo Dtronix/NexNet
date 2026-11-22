@@ -3,7 +3,7 @@
 This document specifies the bytes NexNet sends over a transport (TCP, TLS, UDS, QUIC, WebSocket, HttpSocket).
 It covers the connection preamble, message framing, every protocol message body, flow control, the payload encoding
 rules for user types, and limits. The design behind the flow control, large values and hostile-peer limits is described in
-[flow-control.md](flow-control.md).
+[flow-control.md](flow-control.md). How each transport carries the byte stream is in §13.
 
 Two encodings are used:
 
@@ -62,7 +62,7 @@ Both forms are independent of host byte order.
 | Value | Name | Body | Sent by |
 |---|---|---|---|
 | 1 | Ping | none | both |
-| 20–37 | Disconnect* | none | both |
+| 20–38 | Disconnect* | none | both |
 | 50 | DuplexPipeWrite | raw pipe bytes | both |
 | 51 | PipeWindowUpdate | `uint32` LE credit (§7.2) | both |
 | 100 | ClientGreeting | §4.1 | client |
@@ -80,8 +80,8 @@ Both forms are independent of host byte order.
 Every byte in 20–38 is read as a disconnect reason before anything else; no other message type uses that range.
 Defined disconnect reasons: 20 SocketError, 21 Graceful, 22 ProtocolError, 23 Timeout, 24 ClientMismatch,
 25 ServerMismatch, 28 ServerShutdown, 29 Authentication, 30 ServerRestarting, 32 SocketClosedWhenWriting,
-33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (36 is not assigned)
-(no progress within the progress timeout, §9).
+33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (no progress within the
+progress timeout, §9). 26, 27, 31, 36 and 38 are not assigned, but are still disconnects (§5.6).
 
 A server rejects `ServerGreeting`, and a client rejects `ClientGreeting*`, with `DisconnectProtocolError`.
 Any type not listed here is a protocol error.
@@ -89,7 +89,7 @@ Any type not listed here is a protocol error.
 ## 4. Message bodies
 
 Every MessagePack body is a **fixed-length MessagePack array**. Readers require the exact element count and reject
-trailing bytes.
+trailing bytes. The one exception is `ServerGreeting` (§4.2), whose last field is a trailing field.
 
 **"Embedded value"** means a payload value (§10) encoded inline as exactly one MessagePack value. It is never
 wrapped in `bin` or length-prefixed.
@@ -97,16 +97,27 @@ wrapped in `bin` or length-prefixed.
 ### 4.1 ClientGreeting / ClientGreetingReconnection
 `[version: str|nil, serverNexusHash: int, clientNexusHash: int, authenticationToken: bin, maxMessageSize: int, invocationCredits: int]`
 
-- `authenticationToken` is at most 8 KiB; a longer one is rejected from its `bin` header, before it is read.
+- `authenticationToken` is `bin` or `nil`, at most 8 KiB; a longer one is rejected from its `bin` header, before it
+  is read (§5.4).
 - `maxMessageSize`: the largest argument, result or channel item the client accepts (§9).
 - `invocationCredits`: how many invocations the server may have queued at the client (§4.7).
 
 ### 4.2 ServerGreeting
-`[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int]`
+`[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int, idleTimeoutMs: uint32]`
+
+`version` is the hash of the **client** nexus the server expects (§5.2), not a version string. `clientId` is the
+session ID the server assigned.
 
 `maxMessageSize` and `invocationCredits` have the same meaning for the server. A side whose advertised
 `maxMessageSize` is below one frame (65,526 bytes) or whose `invocationCredits` is below 1 is disconnected with
 `ProtocolError`.
+
+`idleTimeoutMs` is the server's idle timeout for this session (§5.5): the `Timeout` of the endpoint that accepted
+it, in milliseconds. A server always writes all five elements.
+
+`idleTimeoutMs` is a **trailing field**. A reader requires at least the first four elements. A body with only four
+means the server advertised no idle timeout (read as 0). A reader skips any elements after the fifth, so later
+fields can be appended the same way without breaking it. Fewer than four elements is malformed.
 
 ### 4.3 Invocation
 `[invocationId: uint16, methodId: uint16, flags: uint8, arguments: array]`
@@ -121,6 +132,16 @@ streamed (§6). The `invocationId` of an IgnoreReturn invocation has no meaning 
 0. The exception is a streamed one: its ID keys the stream (§6), so it is unique among the sender's outstanding
 invocations until the stream has been sent. A receiver must not use the ID of an IgnoreReturn invocation to identify
 it; nothing can cancel such an invocation except the session ending.
+
+**Method ID validation.** A receiver accepts an `Invocation` only if `methodId` is a method or collection of its own
+nexus in the negotiated version: on the server, the version selected by the greeting (§5.2); on the client, its
+client nexus. Any other `methodId` disconnects with `ProtocolError`. The check runs before the invocation credit is
+counted (§8); a streamed invocation is checked once it has been reassembled. The C# implementation looks up the
+int64 key `(versionHash << 16) | methodId` in a generated set, where `versionHash` is the negotiated version's
+nexus hash. Another implementation may keep any equivalent set of the method IDs it implements.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `Invocation` case), `VMHash` and
+`VersionMethodHashSet` in `src/NexNet.Generator/Emission/NexusEmitter.cs`.
 
 ### 4.4 InvocationResult
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`
@@ -146,6 +167,29 @@ with its cancellation token already canceled. The receiver still sends its resul
 stopped. A cancellation for an invocation that has already completed is ignored. The canceling side keeps the invocation ID outstanding until that result arrives, so the result is not a
 protocol error and the ID is not reused before it.
 
+#### Caller-side cancellation
+
+A caller may cancel an invocation that expects a result (no IgnoreReturn). What happens depends on whether the
+invocation has been sent:
+
+- **Canceled before it is sent.** This covers a token that is already canceled and a cancel while the call waits for
+  invocation credit (§8). Nothing is sent, no invocation ID stays reserved, and the call completes as canceled: it
+  throws or rejects with the language's cancellation error, never returns a default value (C#:
+  `TaskCanceledException`, for `ValueTask` and `ValueTask<T>` alike; Java: `CancellationException`; JavaScript:
+  `AbortError`).
+- **Canceled after it is sent** (or while it is being written). The caller completes the call as canceled at once,
+  without waiting for the peer, and sends `InvocationCancellation`. It keeps the invocation ID outstanding until the
+  peer's `InvocationResult` arrives. That late result, whatever its state, is consumed and discarded, which then
+  releases the ID. It is not a protocol error.
+- **Canceled while a large argument is streaming** (§6). The caller stops, sends `MessageAbort(Cancelled)`, and
+  completes the call like a call canceled before it was sent. The method never runs, so no result follows.
+- **Session ends.** Every call still waiting completes as canceled.
+
+IgnoreReturn invocations can't be canceled.
+
+Source: `src/NexNet/Invocation/SessionInvocationStateManager.cs` (`InvokeMethodWithResultCore`,
+`CancelInvocation`, `UpdateInvocationResult`), `src/NexNet/Internals/RegisteredInvocationState.cs`.
+
 ### 4.6 DuplexPipeUpdateState
 `[pipeId: uint16, state: uint8, window: uint32]`
 
@@ -163,7 +207,8 @@ protocol error and the ID is not reused before it.
 ### 4.7 InvocationCredit
 `[credits: uint16]`
 
-Returns `credits` invocation credits to the peer (§8).
+Returns `credits` invocation credits to the peer (§8). `credits` is at least 1; `InvocationCredit[0]` disconnects
+with `FlowControl`.
 
 ### 4.8 MessageStart
 `[invocationId: uint16, kind: uint8, innerType: uint8, totalLength: uint32]`
@@ -182,7 +227,7 @@ Post-header `[invocationId: uint16 LE][kind: uint8]`, body: the next bytes of th
 ### 4.11 Collection synchronization (channel items on the collection pipe)
 
 Each item is a union value: `[tag: uint16, body: array]`, framed as a channel item (§7.4). The first element of
-every body is `flags: uint8`.
+every body is `flags: uint8`. What each item means, and the client state machine, are in §12.
 
 | Tag | Message | Body |
 |---|---|---|
@@ -207,6 +252,192 @@ Each side applies the peer's advertised `maxMessageSize` and `invocationCredits`
 server only after authentication). A side's send limit is the smaller of its own `maxMessageSize` and the peer's;
 it always enforces its own limit on what it receives.
 
+### 5.1 Before the connection completes
+
+The rules are the same on both sides. A side's connection completes:
+- on the server, after the greeting is validated and authentication succeeds, just before `ServerGreeting` is sent;
+- on the client, when it receives a valid `ServerGreeting`.
+
+Until then the side accepts only:
+- a disconnect byte (20–38, §5.6), which is read before anything else;
+- one greeting of the right direction: `ClientGreeting`/`ClientGreetingReconnection` on the server,
+  `ServerGreeting` on the client.
+
+Anything else is a `ProtocolError`, and so is a greeting of the wrong direction. That includes `Ping`: a client must
+not ping before `ServerGreeting` arrives (§5.5). A frame body longer than 16 KiB is a `ProtocolError` as soon as
+its length is read (§2).
+
+The client sends the preamble and its greeting, then nothing else until `ServerGreeting`. The server sends
+nothing but its preamble, then `ServerGreeting` or a disconnect.
+
+Each side also runs a **handshake timeout** (`HandshakeTimeout`, 15 s by default, real time), started when its
+read loop starts. If the connection has not completed by then, the side closes the transport with reason
+`Timeout` and sends **no** disconnect byte. On the server the timeout includes the time spent in
+`OnAuthenticate`.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the pre-completion check), and
+`src/NexNet/Internals/NexusSession.cs` (`MaxPreAuthBodyLength`, `CheckHandshakeComplete`).
+
+### 5.2 Greeting validation
+
+The nexus hashes are **opaque int32 constants** produced by the NexNet source generator from the nexus
+interfaces. A client in another language takes them from the generator output and never recomputes them. Three
+hashes are involved:
+
+| Hash | Meaning |
+|---|---|
+| client nexus hash | hash of the client nexus interface (the methods the server may invoke on the client) |
+| server nexus hash | hash of the server nexus interface, or of one of its `[NexusVersion]` versions |
+| versions table | a versioned server's map from version string to that version's hash |
+
+The client fills its greeting as follows:
+- `version`: the newest version string of the server nexus it was generated against, or nil if that nexus is
+  not versioned. A non-nil version is at most 16 characters.
+- `serverNexusHash`: the hash of that version, or the server nexus hash if unversioned.
+- `clientNexusHash`: its client nexus hash.
+
+The server checks the greeting in this order. The first failure ends the session; the server sends the disconnect
+byte (§5.6).
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | More than 3 greetings on this connection (see the note below) | `ProtocolError` |
+| 2 | A greeting was already received on this connection | `ProtocolError` |
+| 3 | The body does not decode, or `authenticationToken` is longer than 8 KiB | `ProtocolError` |
+| 4 | `version` is longer than 16 UTF-16 code units | `ProtocolError` |
+| 5 | `clientNexusHash` differs from the server's client nexus hash | `ClientMismatch` |
+| 6 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+| 7 | Unversioned server and `version` is not nil | `ServerMismatch` |
+| 8 | Versioned server and `version` is nil or not in its versions table | `ServerMismatch` |
+| 9 | `serverNexusHash` differs from the hash of the requested version (unversioned: the server nexus hash) | `ServerMismatch` |
+| 10 | Authentication is configured and `OnAuthenticate` throws or returns no identity | `Authentication` |
+
+If all checks pass, the server completes the connection and sends `ServerGreeting` with `version` set to its client
+nexus hash. The version negotiated by checks 7–9 selects the method set for §4.3.
+
+**Greeting attempts.** The server counts greetings and refuses a fourth (check 1). Check 2 refuses any second
+greeting anyway, so in practice exactly one greeting is accepted per connection, and a client that wants to retry
+opens a new connection.
+
+The client checks `ServerGreeting` in this order:
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | A `ServerGreeting` was already received | `ProtocolError` |
+| 2 | `version` differs from its own client nexus hash | `ClientMismatch` |
+| 3 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`MessageHandler`, the `ClientGreeting` and
+`ServerGreeting` cases; `CompleteServerHandshake`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`,
+`MaxVersionStringLength`, `MaxGreetingAttempts`, `ApplyPeerLimits`).
+
+### 5.3 ClientGreeting and ClientGreetingReconnection
+
+`ClientGreetingReconnection` (101) has the same body as `ClientGreeting` (100). The C# client sends 101 when it
+reconnects under its reconnection policy, and 100 otherwise. The server treats 101 exactly like 100: the same checks
+apply, and it creates a new session. Nothing from the earlier session is resumed: pipes, collections, invocations
+and the session ID are all new. Session resumption is not implemented. A new client may always send 100.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `ClientGreetingReconnection` case falls through to
+`ClientGreeting`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`).
+
+### 5.4 Authentication token
+
+`authenticationToken` is `bin` or `nil`. Senders send an empty `bin` (`c4 00`) when they have no token; readers
+treat `nil` like an empty token. The length is checked against 8,192 bytes from the `bin` header, before the
+bytes are read; a longer token is a `ProtocolError`.
+
+The server passes the token bytes to its authentication handler only when authentication is configured;
+otherwise it ignores them. The token never appears anywhere else in the protocol.
+
+Source: `src/NexNet/Messages/IClientGreetingMessageBase.cs` (`ReadAuthenticationToken`),
+`src/NexNet/Messages/ClientGreeting.cs`.
+
+### 5.5 Ping and idle timeout
+
+`Ping` (type 1) is a single byte with no length and no body.
+
+- **Only the client pings.** Every ping interval, starting once the connection completes, the client first checks
+  its idle timeout and then sends `Ping`.
+- **The ping interval comes from the server.** By default it is a third of the `idleTimeoutMs` the server advertised
+  in `ServerGreeting` (§4.2), and at least 1 s. If the server advertised none (0 or absent), it is 10 s. A client may
+  configure an explicit interval (`ClientConfig.PingInterval` in C#). An explicit interval that is not below the
+  advertised idle timeout is used anyway, and the client logs a warning: the server will time the session out
+  between pings.
+- **The server only replies.** For every `Ping` it receives, it sends a `Ping` back. Pings that arrive before the
+  reply is sent may be answered with a single `Ping`. The server never pings on its own.
+- **The idle timeout is enforced by each side on its own.** The server advertises its idle timeout; the client does
+  not advertise one. Each side disconnects with `Timeout` (sending the disconnect byte) when it has received no
+  complete frame for `Timeout` (30 s by default). Any complete frame
+  counts, not only `Ping`; a partial frame does not. The server checks every `Timeout` / 4. The client checks on
+  each ping tick.
+
+So a client must ping well within the server's idle timeout. It learns that timeout from `ServerGreeting`. At the
+default third, the server times the session out only after about three ping intervals without a complete frame.
+
+Source: `src/NexNet/NexusClient.cs` (`PingTimer`), `src/NexNet/Transports/ClientConfig.cs`
+(`GetEffectivePingInterval`), `src/NexNet/NexusServer.cs` (`ConnectionWatchdog`),
+`src/NexNet/Internals/NexusSession.Receiving.cs` (the `Ping` case), `src/NexNet/Internals/SessionControlSender.cs`
+(`RequestPong`), `src/NexNet/Internals/NexusSession.cs` (`DisconnectIfTimeout`).
+
+### 5.6 Disconnect
+
+A disconnect is a single byte, the reason (20–38), with no length and no body.
+
+**Receiving.** A byte in 20–38 read where a message type is expected ends the session at once with that reason.
+This holds in every state, including before the connection completes. The receiver:
+- does not process any bytes after it;
+- does not reply;
+- closes the transport.
+
+Unassigned codes in the range (26, 27, 31, 36, 38) are still disconnects, reported with their numeric value.
+
+**Sending.** A side that ends the session for a reason the peer should know writes the disconnect byte, waits
+`DisconnectDelay` (200 ms by default; 0 disables the wait; at most 10 s) so the byte can reach the wire, and then
+closes the transport. Nothing is sent after the disconnect byte.
+
+| Cause | Reason | Byte sent |
+|---|---|---|
+| Application disconnect (`DisconnectAsync`) | `Graceful` | yes |
+| Server stopping | `ServerShutdown` | yes |
+| Protocol violation detected while reading, including a bad preamble | `ProtocolError` or the specific reason | yes |
+| Greeting rejected (§5.2) | as listed there | yes |
+| NexNet.Asp WebSocket request failed ASP.NET authentication (§13.7) | `Authentication` | yes |
+| Idle timeout (§5.5) | `Timeout` | yes |
+| Progress timeout (§9) | `Stalled` | yes |
+| Authorization returns Disconnect (§7.6) | `Unauthorized` | yes |
+| Handshake timeout (§5.1) | `Timeout` | no |
+| Transport ended or failed | `SocketError` | no |
+| Disconnect byte received | the received reason | no |
+
+**Frames queued at disconnect.** What reaches the peer before the disconnect byte:
+- **C#.** Each send writes its frame on the sending task, under the session's write lock, and flushes. A disconnect
+  first marks the session as disconnecting, then writes the byte under the same lock. The send holding the lock
+  finishes its frame first. A send that has not taken the lock yet (it waits behind a flush that has not completed,
+  that is, transport backpressure) or that starts later writes nothing; the send itself returns without an error.
+  A send that finds the lock free writes at once, so the frames of all sends that returned before the disconnect
+  are on the wire before the byte.
+- **Java and JavaScript clients** queue frames for a writer. They write every frame queued before the disconnect
+  started, behind the write in progress, and then the byte. Frames sent after that are refused (Java: the send fails
+  with `SessionClosedException`; JavaScript: the send resolves `false`). For sends that do not wait this is the C#
+  outcome. Under backpressure they also write the frames C# discards, still before the byte; the wait for the byte
+  is bounded as above (the progress timeout, §9).
+- A receiver therefore sees a prefix of the frames the peer sent, then the byte. It handles them as usual until the
+  byte ends the session: a C# server discards invocations still waiting for an execution slot and cancels the
+  running ones.
+
+**What callers observe.** A call waiting for a result fails as canceled when the session ends, whether or not its
+invocation was written: the peer stops at the byte, so no result can follow. C# throws an `OperationCanceledException`;
+Java fails with `CancellationException` whose cause is a `SessionClosedException`; JavaScript rejects with an
+`AbortError` whose cause is the transport error. A fire-and-forget (`void`) call reports nothing to its caller.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the 20–38 check),
+`src/NexNet/Internals/NexusSession.cs` (`DisconnectCore`, `DisconnectStartedCore`),
+`src/NexNet/Internals/NexusSession.Sending.cs` (`SendMessage`, `SendHeaderCore`),
+`src/NexNet/Transports/ConfigBase.cs` (`DisconnectDelay`),
+`clients/java/nexnet-client/src/main/java/com/dtronix/nexnet/session/NexusSession.java` (`writeDisconnect`),
+`clients/js/packages/nexnet/src/session/WriteQueue.js` (`finish`).
+
 ## 6. Large arguments and results
 
 ### 6.1 Sending
@@ -218,12 +449,25 @@ MessageStart[invocationId, kind, innerType, totalLength]
 MessageChunk[invocationId, kind] + payload   (repeated; payload lengths add up to totalLength)
 ```
 
+Thresholds:
+- The decision is made on the whole serialized body: a body of at most 65,535 bytes goes in one frame, and a larger
+  one is streamed. Only `Invocation` and `InvocationResult` bodies can be larger than a frame.
+- An `Invocation` body adds at most 9 bytes to its arguments (array header 1, `invocationId` 3, `methodId` 3,
+  `flags` 2). So arguments of at most 65,526 bytes are never streamed, and larger arguments may be. A sender gives
+  every invocation whose arguments exceed 65,526 bytes a unique invocation ID, including an IgnoreReturn one, and
+  keeps it reserved until the stream has been sent.
+- Each `MessageChunk` payload is at most 65,535 bytes, the frame body limit. The C# sender sends full 65,535-byte
+  chunks and a shorter last one; receivers accept any chunk sizes that add up to `totalLength`.
+
 The sender serializes the message fully first. If `totalLength` exceeds its send limit the value is not sent and
 the call fails locally. Other messages are never larger than a frame. A stream is keyed by (invocation ID, kind):
 an Argument flows from caller to callee, a Result from callee to caller. A large argument's `MessageStart` uses the
 invocation's credit (§8).
 
 ### 6.2 Receiving
+
+Any `totalLength` from 1 to the receiver's advertised `maxMessageSize` is valid, including one that would have fit
+in a single frame.
 
 On `MessageStart` the receiver reserves `totalLength` from its session budget (§9). If it can't, it replies
 `MessageAbort(Busy)` and discards the stream's chunks up to `totalLength`. Otherwise it buffers the chunks (memory is
@@ -250,6 +494,10 @@ The receiver disconnects with `ProtocolError` on:
 - a chunk that would exceed the remaining `totalLength`;
 - a chunk for a stream that was never started and is not being discarded.
 
+Source: `src/NexNet/Internals/NexusSession.Sending.cs` (`WriteFrame`, `SendLargeMessage`),
+`src/NexNet/Messages/IInvocationMessage.cs` (`MaxArgumentSize`), `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Internals/LargeMessageReceiver.cs` (`OnStart`, `OnChunk`).
+
 ## 7. Pipes
 
 ### 7.1 Opening
@@ -259,6 +507,14 @@ pipe argument of an invocation. The side that registers the pipe:
 - reserves its own receive window and replies `DuplexPipeUpdateState[Ready, window]`, or
 - if it has reached its pipe limit or its budget is exhausted, replies `DuplexPipeUpdateState[Refused]` with the
   opener's partial pipe ID. The opener's pipe fails.
+
+Before it refuses, an implementation may wait briefly for pipes that are already closing (§7.3) to be released. The
+opener frees its side of a pipe as soon as it has both sent and received Complete, so it can open the next pipe
+before the registering side's application has released the old one. With a pipe limit of 1, an immediate refusal
+would fail that open although a slot is about to free up. The C# implementation waits only when such a pipe exists,
+at most 1 s and never longer than `ProgressTimeout` (§9), then refuses if it still has no slot
+(`src/NexNet/Pipes/NexusPipeManager.cs`, `TryReserveAfterPendingFreesAsync`). The opener sees only a later `Ready` or
+`Refused`.
 
 On `Ready` the opener grants its own window with `PipeWindowUpdate[window]`. Neither side writes before it holds
 credit.
@@ -302,6 +558,56 @@ A typed channel (`INexusDuplexChannel<T>`) sends each item as its length followe
 
 Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe must fit in the window.
 
+### 7.5 Pipe ID allocation
+
+- Each side allocates its own local IDs, 1 to 255. 0 means "not assigned yet" and is never allocated. Each side can
+  therefore have at most 255 pipes in use at once, and `MaxPipes` (§9) usually limits it further. When no ID is
+  free, opening a pipe fails locally.
+- The opener sends only its local ID, as the pipe argument of the invocation (one byte, a `uint8`).
+- The registering side allocates its own local ID and composes the full ID (`clientId | (serverId << 8)`, §2). It
+  sends `Ready` with the full ID.
+- Until `Ready` arrives, the opener knows the pipe by its **partial ID**: its own byte set and the peer's byte 0. On
+  `Ready` it finds the pipe from its own byte of the full ID and from then on uses the full ID. A `Ready` that
+  matches no pending partial ID is a `ProtocolError`.
+- A refusal (`Refused`) carries the opener's partial ID, because the registering side allocated nothing.
+- A `DuplexPipeUpdateState` other than `Ready` for an ID that is neither open, closing nor pending is ignored.
+- A local ID is free for reuse once both sides have sent and received Complete (§7.3) and the application has
+  released the pipe. The C# implementation allocates round-robin, starting after the last ID it allocated. Any
+  free ID is valid.
+
+Source: `src/NexNet/Pipes/NexusPipeManager.cs` (`GetNewLocalId`, `RegisterPipe`, `UpdateState`, `ComposeId`).
+
+### 7.6 Pipe, channel and collection methods
+
+- A method with an `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter is invoked with `flags` IgnoreReturn |
+  DuplexPipe (`0x03`) and `invocationId` 0. The pipe parameter is sent as the opener's local ID (§7.5).
+- A collection connection is the same: `methodId` is the collection's ID, and `arguments` is `[pipeId: uint8]`.
+- No `InvocationResult` is ever sent for these invocations. `Ready` or `Refused` tells the opener whether the pipe
+  opened. When the method returns or throws, the registering side closes the pipe (§7.3).
+- Other IgnoreReturn methods (those returning `void`) are sent with `flags` IgnoreReturn (`0x01`).
+
+**Authorization.** A server method or collection marked `[NexusAuthorize]` is checked on the server before its
+arguments are read and before its pipe is registered. The outcomes are:
+
+| Authorization result | Method expecting a result | IgnoreReturn method | Pipe, channel or collection method |
+|---|---|---|---|
+| Allowed | runs | runs | the pipe is registered and the method runs |
+| Unauthorized | `InvocationResult` with state 3 Unauthorized | nothing is sent | `DuplexPipeUpdateState[Refused]` (see below) |
+| Disconnect | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) |
+
+**Unauthorized pipe, channel or collection method.** The server does not register the pipe and does not run the
+method. It sends `DuplexPipeUpdateState[Refused]` with the opener's partial ID, the same message as a limit refusal
+(§7.1). To find that ID it reads only the pipe argument from `arguments` and skips the others. The session stays up.
+The opener fails the pipe at once and frees its local ID (§7.5): the C# client's pipe `ReadyTask` (and so the
+channel or the collection enable) fails with `NexusBusyException`. `Refused` does not say whether a limit or
+authorization caused it, so clients treat both the same. If the session is ending when the refusal would be sent,
+nothing is sent, and the pipe fails when the session ends.
+
+Source: `src/NexNet.Generator/Emission/MethodEmitter.cs` (`EmitNexusInvocation`, `EmitProxyMethodInvocation`),
+`src/NexNet.Generator/Emission/CollectionEmitter.cs`, `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Invocation/NexusBase.cs` (`InvokeMethodCoreTask`, `RefuseUnauthorizedPipe`),
+`src/NexNet/Invocation/ServerNexusBase.cs` (`HandleAuthResult`), `src/NexNet/Pipes/NexusPipeManager.cs` (`RefusePipe`).
+
 ## 8. Invocation credits
 
 - Each side advertises `invocationCredits` in its greeting: how many invocations the peer may have queued at it.
@@ -309,8 +615,8 @@ Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe
   `MessageStart`) and waits locally when it has none.
 - The receiver returns credit when it dequeues an invocation for execution (or drops a refused streamed argument),
   in `InvocationCredit` messages sent once half its advertised credits are pending.
-- An invocation received without credit, or credit returned beyond what was advertised, disconnects with
-  `FlowControl`.
+- An invocation received without credit, an `InvocationCredit` whose `credits` is 0, or credit returned beyond
+  what was advertised, disconnects with `FlowControl`.
 - How many invocations run at once (`MaxConcurrentConnectionInvocations`) is local and not advertised; pipe and
   collection methods stop counting against it once their pipe is open.
 
@@ -364,12 +670,12 @@ Readers accept every valid form and check ranges.
 | `Dictionary<K,V>` and dictionary interfaces | map |
 | `Nullable<T>` | nil or `T` |
 | enums | underlying integer |
-| `DateTime` | `int64` `ToBinary()` (keeps `Kind`) |
-| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]` |
-| `TimeSpan` | `int64` ticks |
-| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks |
-| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order |
-| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags) |
+| `DateTime` | `int64` `ToBinary()` (keeps `Kind`), §10.6 |
+| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]`, §10.6 |
+| `TimeSpan` | `int64` ticks, §10.6 |
+| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks, §10.6 |
+| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order, §10.6 |
+| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags), §10.6 |
 | `BigInteger` | `bin`, little-endian two's complement |
 | `Uri`, `Version` | `str` |
 | `ValueTuple<…>`, `Tuple<…>`, `KeyValuePair<K,V>` | array |
@@ -380,6 +686,85 @@ Ext type code `78`.
 - Kinds: 1 sbyte, 2 int16, 3 uint16, 4 int32, 5 uint32, 6 int64, 7 uint64, 8 float32, 9 float64, 10 char, 11 Half.
 - The data length minus one must be a multiple of the element size.
 - An empty array is `d4 4e <kind>`.
+
+### 10.6 Exact layouts
+
+A **tick** is 100 ns. Dates use the proleptic Gregorian calendar without leap seconds, starting at
+0001-01-01T00:00:00 (tick 0). The largest tick value of a date and time is 3,155,378,975,999,999,999
+(9999-12-31T23:59:59.9999999), called *MaxTicks* below. A value outside the stated range fails to decode.
+
+#### DateTime
+
+One `int64`, the value of .NET `DateTime.ToBinary()`:
+
+| Bits | Content |
+|---|---|
+| 0–61 | ticks |
+| 62–63 | kind: `00` Unspecified, `01` Utc, `1x` Local |
+
+- **Unspecified and Utc.** Bits 0–61 are the ticks of the value, 0 to MaxTicks. For example, 2020-01-01T00:00:00
+  is `0x08D78E4D8B7C0000` as Unspecified and `0x48D78E4D8B7C0000` as Utc.
+- **Local.** Bits 0–61 are the **UTC** ticks of the value: its local ticks minus the writer's UTC offset at that
+  time. UTC ticks below 0 (a local time just after 0001-01-01 in a zone east of UTC) are stored as 2⁶² + ticks.
+  Writers set bits 62–63 to `10`. .NET keeps an in-memory flag for a local time that falls in the repeated hour at
+  the end of DST (kind `11`); `ToBinary` never writes it, because the UTC ticks already identify the instant.
+- **Reading Local.** Bit 63 set means Local, whatever bit 62 holds. Take bits 0–61 as ticks. If they exceed
+  2⁶² − 864,000,000,000 (one day), subtract 2⁶². Then convert the UTC instant to the reader's local time zone. The
+  C# reader follows `DateTime.FromBinary`: a result below 0 gains one day, and a result above MaxTicks fails.
+
+A Local value therefore names the same instant on both sides, shown in each side's own time zone. Unspecified and
+Utc values are copied unchanged.
+
+#### DateTimeOffset
+
+`[UtcTicks: int64, offsetMinutes: int16]`.
+- `UtcTicks` is the UTC instant, 0 to MaxTicks.
+- `offsetMinutes` is the offset from UTC, −840 to 840. Seconds of an offset are not sent; .NET offsets are whole
+  minutes.
+- The local clock value, `UtcTicks + offsetMinutes × 600,000,000`, must also be within 0 to MaxTicks.
+
+#### TimeSpan, DateOnly, TimeOnly
+
+| Type | Encoding | Range |
+|---|---|---|
+| `TimeSpan` | `int64` ticks, signed | the full `int64` range |
+| `DateOnly` | `int32` DayNumber: days since 0001-01-01 | 0 to 3,652,058 (9999-12-31) |
+| `TimeOnly` | `int64` ticks since midnight | 0 to 863,999,999,999 |
+
+#### decimal
+
+`bin` of 16 bytes: four `int32` values, each little-endian, in the order lo, mid, hi, flags (.NET
+`decimal.GetBits`).
+- lo, mid and hi form a 96-bit unsigned magnitude: `hi × 2⁶⁴ + mid × 2³² + lo`, each read as unsigned.
+- flags: bits 16–23 hold the scale (0–28); bit 31 is the sign (1 = negative); bits 0–15 and 24–30 are 0.
+- The value is `(−1)^sign × magnitude / 10^scale`.
+- The scale is kept as written, so 1.5 and 1.50 have different encodings. A negative zero (sign 1, magnitude 0)
+  is valid.
+- A `bin` of another length, a scale above 28, or a non-zero reserved bit fails to decode.
+
+Example: −1.5 is magnitude 15, scale 1, sign 1, so flags is `0x80010000`, and the 16 bytes are
+`0f 00 00 00 00 00 00 00 00 00 00 00 00 00 01 80`.
+
+#### Guid
+
+`bin` of 16 bytes, in the order of the canonical text form. For example,
+`00112233-4455-6677-8899-aabbccddeeff` is `00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff`. This is
+.NET `Guid.ToByteArray(bigEndian: true)`, not the mixed-endian default of `Guid.ToByteArray()`. A `bin` of another
+length fails to decode.
+
+#### Half and char
+
+- **`Half`** is written as `float32` (`ca`). Widening is exact. Readers accept any float or integer form (§10.1)
+  and convert to the nearest `Half`, ties to even; values beyond the `Half` range become ±infinity. Inside ext 78
+  (§10.5, kind 11) a `Half` is its raw IEEE 754 binary16 bits, little-endian.
+- **`char`** is one UTF-16 code unit, written as a canonical unsigned integer 0–65535. Any code unit is valid,
+  including a lone surrogate. Readers accept any integer form and reject values outside 0–65535. Inside ext 78
+  (kind 10) a `char` is a little-endian `uint16`.
+
+Source: `src/NexNet/Serialization/Formatters/PrimitiveFormatters.cs` (`DateTimeFormatter`,
+`DateTimeOffsetFormatter`, `TimeSpanFormatter`, `DateOnlyFormatter`, `TimeOnlyFormatter`, `GuidFormatter`,
+`DecimalFormatter`, `HalfFormatter`, `CharFormatter`), `src/NexNet/Serialization/MsgPackReader.cs` (`ReadChar`,
+`ReadSingle`), `src/NexNet/Serialization/Ext/PrimitiveArrayCodec.cs`.
 
 ## 11. Decoding limits and hardening
 
@@ -397,3 +782,756 @@ With the default untrusted options:
 - Dictionaries and sets with non-string keys use randomized hashing.
 
 Configure these with `ConfigBase.SerializerOptions`.
+
+## 12. Collection protocol
+
+A `[NexusCollection]` property on the server nexus (today only `INexusList<T>`) is synchronized over one duplex
+pipe per client. The server is authoritative. It holds the list, orders and applies every change, and streams the
+result to each connected client. A client holds a replica. It sends change *requests* (BiDirectional mode only) and
+changes its replica only when the server streams a change back. There is no optimistic local apply and no client-side
+operational transform.
+
+This section is normative for a client implementation of `INexusList<T>`. The item layouts are in §4.11. Each rule
+cites the C# code it comes from; paths are under `src/NexNet/`.
+
+### 12.1 Connecting (enable)
+
+1. The client opens a pipe and invokes the collection: `methodId` is the collection ID, `flags` IgnoreReturn |
+   DuplexPipe (`0x03`), `invocationId` 0, `arguments` `[pipeId: uint8]` (§7.6).
+   Source: `Pipes/Broadcast/NexusBroadcastClient.cs:137-186`.
+2. The server authorizes the collection (§7.6) and registers the pipe. The client waits for `Ready`
+   (`NexusBroadcastClient.cs:177`). On `Refused` the enable fails (`Pipes/NexusDuplexPipe.cs:314-320`).
+3. From then on the pipe carries typed channel items (§7.4), each one union value of §4.11. The server writes
+   items in every mode. The client writes items only in BiDirectional mode (§12.2).
+4. The server first writes the reset sequence (§12.5) and then live changes, never a change before the reset has
+   ended (§12.5, server ordering guarantees) (`Pipes/Broadcast/NexusBroadcastServer.cs:95-149`). A relay server can
+   later send another reset on the same pipe (§12.2).
+5. Enable succeeds once the client has processed `ResetComplete`. It fails if the pipe completes first
+   (`NexusBroadcastClient.cs:259-275`).
+
+The mode is not sent on the wire. Both sides take it from the `[NexusCollection(mode)]` attribute of the server
+nexus interface, through generated code (C#) or the generator IR (other languages).
+
+### 12.2 Modes
+
+| Mode | Server reads the client's items | A client mutation |
+|---|---|---|
+| ServerToClient | never; no channel reader is created (`NexusBroadcastServer.cs:155-157`) | fails locally and sends nothing. C# has no channel writer and throws `InvalidOperationException` (`NexusBroadcastClient.cs:188`, `Pipes/Broadcast/NexusBroadcastSession.cs:138-143`) |
+| BiDirectional | yes, one item at a time. The next item is read only after the previous one has been processed (`NexusBroadcastServer.cs:155-179`) | is sent as a request (§12.3) and completes when the server answers (§12.6) |
+| Relay | never. A relay server closes the pipe of a client that writes (`Collections/Lists/NexusListRelay.cs:622-627`) | fails locally, the same as ServerToClient |
+
+Relay is a server-side mode: the server mirrors a collection from another server. Its clients see the same wire
+traffic as in ServerToClient, except that all versions are 0 (§12.3), and that a relay sends a **new reset**
+(§12.5) to every client already connected whenever it resynchronizes its whole list from the parent: when it
+(re)connects to the parent, when the parent's list is reset (cleared or resynchronized), and when an item moves in
+the parent. The reset goes through the broadcast queue in order with the changes, so it is never interleaved with a
+change, and every change after it applies to the reset list (`NexusListRelay.cs:236-270`, `:296-318`). A client
+handles it as any reset: from Ready, ResetStart starts a new reset (§12.4). Only the ResetStart goes through each
+client's outgoing buffer (§12.8). The ResetValues and ResetComplete after it are written to each client with flow
+control, as a new client's snapshot is, before the changes queued after the reset, so a large list reaches a slow
+client whole (`NexusBroadcastServer.cs:438-463`, `:499-522`).
+
+A client must not write in ServerToClient or Relay mode. The server never reads those bytes, so they only use up
+pipe credit.
+
+### 12.3 Items
+
+| Tag | Item | Direction | Client handling |
+|---|---|---|---|
+| 0 | ResetStart | server → client | starts a reset (§12.4) |
+| 1 | ResetValues | server → client | appends values during a reset |
+| 2 | ResetComplete | server → client | ends a reset |
+| 3 | Clear | both | empties the list |
+| 4 | Insert | both | inserts `value` at `index`; later items shift right |
+| 5 | Replace | both | sets the item at `index` |
+| 6 | Move | both | removes the item at `fromIndex`, then inserts it at `toIndex` of the shortened list. The item ends up at `toIndex` |
+| 7 | Remove | both | removes the item at `index` |
+| 8 | Noop | server → client (originator only) | answers the client's pending request with "not applied" (§12.6) |
+
+Apply semantics: `Internals/Collections/Versioned/{Clear,Insert,Modify,Move,Remove}Operation.cs` (`Apply`). The
+server never sends a nil item, and the client never sends one.
+
+**Flags.** Bit 0 is **Ack**; the other bits are reserved and are 0.
+- A client sends every request with `flags` 0. Messages are rented with their flags reset
+  (`Collections/NexusCollectionMessage.cs:18-31`).
+- The server broadcasts each change it applies to every connected client. When the change came from a client's
+  request, that client's copy has Ack set and every other copy has it clear
+  (`Pipes/Broadcast/NexusBroadcastConnectionManager.cs:410-429` and `:121-123`).
+- A change made by server code (source session null) is sent without Ack to everyone.
+- A Noop goes to the originator only, always with Ack set (§12.6).
+
+**Version.** The version is an `int32` counter of applied changes.
+- The server's list starts at version 0. Every applied change, Clear included, adds 1
+  (`Operation.Apply` with no explicit version: `state.Version + 1`).
+- **Server → client change:** `version` is the list version *after* the change. The client sets its version to this
+  value when it applies the change (`VersionedList.ApplyOperation`, `Internals/Collections/Versioned/VersionedList.cs:164-172`).
+- **Client → server request:** `version` is the *base* version, the client's version when it built the request.
+- **ResetStart:** `version` is the version of the snapshot that follows.
+- **Version 0** in a server change means "unversioned", and the stale rule (§12.5) never discards it. A relay server
+  resets its own list to version 0 and broadcasts every change with its unchanged version, so all of its changes carry
+  0 (`NexusListRelay.cs:323`, `:355-359` and similar).
+- The client does not check that versions are contiguous.
+
+**Requests.** The client builds one request per mutation (`Collections/Lists/NexusListClient.cs:263-354`):
+
+| API | Request |
+|---|---|
+| `AddAsync(item)` | Insert, `index` = current count, `version` = current version (both from the same snapshot) |
+| `InsertAsync(index, item)` | Insert |
+| `ReplaceAsync(index, item)` | Replace |
+| `MoveAsync(from, to)` | Move |
+| `RemoveAtAsync(index)` | Remove |
+| `RemoveAsync(item)` | Remove, with the index of the first equal item (§12.9) and the version of that same snapshot. If no item is equal, the result is `false` and nothing is sent |
+| `ClearAsync()` | Clear |
+
+Negative indexes are rejected locally (`ArgumentOutOfRangeException` in C#). The server accepts only tags 3–7 from a
+client. It closes the pipe on ResetStart, ResetValues, ResetComplete or Noop
+(`Collections/Lists/NexusListServer.cs:54-59`).
+
+### 12.4 Client state machine
+
+States: **Disabled**, **Opening** (invocation sent, waiting for the pipe), **AwaitingReset** (pipe open, no
+ResetStart yet), **Resetting**, **Ready**.
+
+| State | Event | Action | Next | Source |
+|---|---|---|---|---|
+| Disabled | enable | open the pipe, invoke the collection (§12.1) | Opening | `NexusBroadcastClient.cs:137-186` |
+| Opening | `Ready` | start reading items | AwaitingReset | `NexusBroadcastClient.cs:188-257` |
+| Opening | `Refused`, or the session ends | enable fails | Disabled | `NexusBroadcastClient.cs:179-186` |
+| AwaitingReset | ResetStart(`version`, `totalValues`) | A negative `totalValues` is a protocol error (§12.8). Otherwise start an empty value buffer, keep the changes buffered so far, and remember `version` and `totalValues` | Resetting | `NexusListClient.cs:68-87` |
+| AwaitingReset | change (tags 3–8) | buffer it, as in Resetting (see the note below) | AwaitingReset | `NexusListClient.cs:138-145` |
+| Resetting | ResetValues(`values`) | append `values` to the value buffer. More values in total than `totalValues` is a protocol error (§12.8) | Resetting | `NexusListClient.cs:115-135` |
+| Resetting | change (tags 3–8) | append it to the change buffer (see the note below) | Resetting | `NexusListClient.cs:138-145` |
+| Resetting | ResetStart | protocol error (§12.8) | Disabled | `NexusListClient.cs:69-73` |
+| Resetting | ResetComplete, value count ≠ `totalValues` | protocol error (§12.8) | Disabled | `NexusListClient.cs:96-101` |
+| Resetting | ResetComplete | 1. Replace the list with the value buffer; version = the ResetStart version. 2. Process the change buffer in order with the Ready rules (stale changes are dropped). 3. Raise `Reset`, then `Ready`. 4. Complete enable with success, and complete the ready signal (below) | Ready | `NexusListClient.cs:89-113`, `:197-243`; `NexusBroadcastClient.cs:509-521` |
+| Ready | change with `version` > 0 and ≤ current | drop it (stale rule, §12.5). Nothing is raised | Ready | `NexusListClient.cs:164-169` |
+| Ready | Clear, Insert, Replace, Move, Remove | validate (below), apply, set version, raise the change event; if Ack, complete the pending request with `true` | Ready | `NexusListClient.cs:155-195` |
+| Ready | change that fails validation | if Ack, complete the pending request with `false`; protocol error (§12.8) | Disabled | `NexusListClient.cs:171-181` |
+| Ready | Noop | complete the pending request with `false` (§12.6) | Ready | `NexusListClient.cs:147-153` |
+| Ready | ResetStart(`version`, `totalValues`) | as in AwaitingReset: start a new reset. Only a relay server sends it (§12.2) | Resetting | `NexusListClient.cs:68-87` |
+| Ready | ResetValues or ResetComplete | protocol error (§12.8) | Disabled | `NexusListClient.cs:90-94`, `:116-120` |
+| any open state | an item fails to decode | close the pipe | Disabled | `NexusBroadcastClient.cs:243-250` |
+| any open state | disable | close the pipe (send Complete, §7.3) and wait until it is closed | Disabled | `NexusBroadcastClient.cs:78-113` |
+| any open state | pipe completes (either side, or the session ends) | drop every item of this pipe not yet processed (below); empty the list, version 0; complete the pending request with `false`; raise `Reset`; fail the ready signal if the first reset has not completed (below); complete the disabled task | Disabled | `NexusListClient.cs:46-59`; `NexusBroadcastClient.cs:197-204`, `:408-459` |
+
+**Validation** (`VersionedList.cs:263-292`), against the current count `n`:
+- Insert: 0 ≤ index ≤ n.
+- Remove and Replace: 0 ≤ index < n.
+- Move: both indexes in [0, n), and `fromIndex` ≠ `toIndex`.
+- Clear: always valid.
+
+**Change events.** Insert raises `Add`, Remove raises `Remove`, Replace raises `Replace`, Move raises `Move` and Clear
+raises `Reset` (`NexusListTransformers.cs:113-125`). A reset raises `Reset` and then `Ready`. Changes replayed from
+the buffer raise their own events *before* the reset's `Reset`/`Ready`. Closing raises `Reset`.
+
+**A second ResetStart in Ready.** A client must accept it and start a new reset: it is how a relay server
+resynchronizes its connected clients (§12.2). The C# client only checks for a reset already in progress
+(`NexusListClient.cs:69`). A `NexusListServer` sends exactly one reset per pipe; a relay server sends one when the
+pipe opens and another each time it resynchronizes from its parent.
+
+**Note: changes before ResetComplete.** A NexNet server never sends a change before ResetStart or between ResetStart
+and ResetComplete (§12.5, server ordering guarantees). The AwaitingReset and Resetting rows for changes are
+defensive.
+- A client must still accept such a change and buffer it, not treat it as a protocol error. The C# client buffers it
+  (`NexusListClient.cs:138-145`), keeps it when ResetStart arrives (`NexusListClient.cs:84-85`) and replays it after
+  ResetComplete with the stale rule. That is correct whether or not the snapshot already holds the change.
+- Applied at once to the empty list, such a change usually fails validation, which would be a protocol error that
+  closes the pipe (§12.8).
+- The C# client counts these changes in a test-only counter (`NexusListClient.cs:27-31`). Against a NexNet server it
+  stays 0.
+
+**Items of a closed pipe.** Items of a closed pipe must never reach the state of a later pipe. A client may still hold
+items it read from a pipe when that pipe closes, and the application may enable again at once. Those items must be
+dropped, never applied to the next pipe's state. Otherwise an old change could land before the new pipe's reset, or
+change the reset list.
+- The C# client gives each enable its own processor run. The pipe's reader feeds only that run
+  (`NexusBroadcastClient.cs:209-257`; `Pipes/Broadcast/NexusBroadcastMessageProcessor.cs:62-97`).
+- When the pipe closes, the client stops the run and resets the list in one step, under the same lock that guards
+  item processing. An item that the stopped run still holds is then dropped (`NexusBroadcastClient.cs:414-429`,
+  `:472-477`).
+- A reset completed by a stopped run does not mark the collection ready (`NexusBroadcastClient.cs:509-512`).
+
+**Ready signal.** Besides the enable result, the C# client exposes `ReadyTask`: a task for the first synchronization
+of the current enable (`NexusBroadcastClient.cs:54-60`). Other clients must offer the same signal with the same
+semantics, for example as a promise or future.
+- Each enable starts a fresh signal, visible as soon as the enable starts (`NexusBroadcastClient.cs:145-148`). Before
+  the first enable it is already complete.
+- It completes when the pipe's first ResetComplete has been processed (`NexusBroadcastClient.cs:509-521`).
+- It fails (`InvalidOperationException`) when the enable fails (`NexusBroadcastClient.cs:179-186`), or when the pipe
+  closes before that first reset completes, for any reason: the session ends mid-reset, a protocol error, a server
+  reset (§12.8), or a failure of the client's own processor (`NexusBroadcastClient.cs:278-325`, `:448-458`). It must
+  never stay pending after the pipe has closed.
+- After it has completed, a later disconnect does not change it. It keeps that outcome until the next enable replaces
+  it.
+- An enable whose pipe closes before the first reset completes returns `false`, or throws when the client's processor
+  failed. It returns only after that pipe's disconnect cleanup has finished, so an immediate retry starts a new
+  enable (`NexusBroadcastClient.cs:259-275`).
+
+### 12.5 Reset sequence and the stale rule
+
+A reset is `ResetStart(version, totalValues)`, then zero or more `ResetValues`, then `ResetComplete`
+(`NexusListServer.cs:236-262`).
+- The snapshot is one immutable list state, so `version` and the values are consistent with each other.
+- C# servers put up to 40 values in each ResetValues item. The `values` together hold `totalValues` items in list
+  order.
+- The client checks the count (`NexusListClient.cs:75-79`, `:96-101`, `:125-130`). A negative `totalValues`, more
+  values than `totalValues`, or a different count at ResetComplete is a protocol error (§12.8). The value count
+  comes from the wire, so do not size a buffer from `totalValues` alone; C# caps the initial capacity at 1024.
+- Live changes follow the reset; they are never interleaved with it (server ordering guarantees, below).
+
+**The snapshot is written with backpressure.** The server captures the snapshot on its processing loop and writes
+its items off that loop, through the pipe's flow control (§7.2), waiting for credit as needed
+(`NexusBroadcastServer.cs`, `CaptureSnapshot` and `WriteSnapshotAsync`, `:330-389`). A snapshot of any size therefore arrives
+whole, however slowly the client reads, and a slow client does not hold up the other clients. The reset items do not
+go through the client's outgoing buffer (§12.8); live changes broadcast meanwhile wait there and are sent after
+ResetComplete. If the pipe closes before the whole snapshot is written, the server closes it without sending the rest.
+
+**Server ordering guarantees.** A NexNet server gives each client the following ordering on its collection pipe:
+- **The snapshot comes first.** The server takes the snapshot and registers the new client for broadcasts in one
+  step on its processing loop, so no change is applied between the two (`NexusBroadcastServer.cs:103-116`). The
+  client's writer starts only after the snapshot is written, so broadcasts queued for it in the meantime follow
+  ResetComplete.
+  - The registration is queued behind every broadcast already queued (`NexusBroadcastConnectionManager.cs:61-72`,
+    `:301-313`).
+  - A change applied before that step is in the snapshot and is never sent to this client.
+  - A change applied after it is sent to this client after ResetComplete.
+  - So ResetStart, every ResetValues and ResetComplete arrive before any change, and a NexNet server never sends a
+    stale change to a new client.
+- **Changes arrive in the order the server applied them**, to every client, through one broadcast queue
+  (`NexusBroadcastConnectionManager.cs:190-262`).
+- **A Noop comes after the winning change.** The Noop for a request goes through the same queue, so the originator
+  receives it after every change applied before its request was processed. That includes the change that made the
+  request obsolete (§12.6).
+
+A client must still implement the buffering of §12.4 and the stale rule below. They cost nothing when the server keeps
+these guarantees, and they keep the client correct if it does not.
+
+**Stale rule.** A server change with `version` > 0 and `version` ≤ the client's current version is discarded without
+an event (`NexusListClient.cs:164-169`). A change can only be stale if the server applied it before it took the
+snapshot and sent it after the snapshot. A NexNet server does not do that (server ordering guarantees, above), but a
+client must still apply the rule. This rule also applies to the buffered changes replayed after
+ResetComplete.
+
+A stale change that carries Ack is discarded too, and the pending request is not completed. This cannot happen in
+C#, where requests are sent only after Ready.
+
+### 12.6 Pending requests, Ack and Noop
+
+- A client list has **at most one request in flight**. Each mutation takes an exclusive lock and waits for the
+  answer before releasing it (`NexusListClient.cs:245-256`; `Pipes/Broadcast/NexusBroadcastBase.cs:74-81`). An answer
+  therefore always belongs to the single pending request.
+- The client does not apply its own request. The request takes effect when the server's change for it arrives,
+  with Ack set, through the normal Ready rules. The request then completes with `true`.
+- The request completes with `false` if:
+  - the Ack change fails validation;
+  - the server answers with Noop;
+  - the pipe closes first (`NexusListClient.cs:57-58`).
+- A server can be told not to send Ack (`INexusBroadcastServerTestModifier.DoNotSendAck`; test only). The
+  request then waits until the pipe closes.
+
+**Noop.** The server sends Noop only to the session whose request it discards (`VersionedList.cs:124-148`,
+`NexusListServer.cs:67-85`):
+- the transform made the request obsolete. For example, the request targets an item that a concurrent change removed
+  or cleared;
+- or the request's base version has fallen out of the server's history (§12.7).
+
+Nothing changes on the server, the version is not incremented, and nothing is broadcast.
+- Noop carries Ack (`NexusListServer.cs:77-82`). If the originator's outgoing queue is full, the server closes its
+  pipe instead (§12.8).
+- The server queues the Noop in order with its broadcasts (`NexusBroadcastServer.cs:401-410`;
+  `NexusBroadcastConnectionManager.cs:74-93`). The originator therefore receives the change that made its request
+  obsolete before the Noop, and its replica already holds that change when the request completes with `false`.
+- The client completes the pending request with `false` (`NexusListClient.cs:147-153`).
+- A client must treat **any** Noop, with or without Ack, as the answer to its pending request (`false`). A Noop
+  with no request pending is ignored.
+
+### 12.7 Versions and conflicts (server side)
+
+The client has no conflict logic. It sends its base version, and the server rebases the request
+(`VersionedList.ProcessOperation`, `VersionedList.cs:93-161`). The server keeps a history of the last 1024 applied
+changes (`NexusListServer.cs:40`). The history is indexed by version: entry `v` is the change that moved the list
+from version `v` to `v+1`. A Clear empties the history and becomes its first entry. For each request, in order:
+
+1. Base version above the server's version: the server closes the client's pipe (`InvalidVersion`).
+2. Clear: the server clears the history, applies the Clear and broadcasts it, whatever the base version.
+3. The request is transformed against every history entry from its base version up to the current version
+   (`VersionedList.cs:122-148`). A base equal to the current version has nothing to transform, even when the
+   history is empty.
+   - If the base is older than the oldest stored entry and that entry is a Clear, the request is transformed from
+     that Clear on. Changes before a Clear are irrelevant.
+   - If the base is older than the oldest stored entry and that entry is not a Clear (more than 1024 changes since
+     the base, with no Clear in between that is still in the history), the request cannot be rebased. The server
+     answers with **Noop** (§12.6), nothing changes, and the pipe stays open (`OutOfOperationalRange`).
+4. Transform rules are in each operation's `TransformAgainst`:
+   - An insert at or before the index shifts the index up, and a remove before it shifts it down.
+   - A remove of the same item, or any Clear, invalidates Remove, Replace and Move. Each transform invalidates the
+     request and the server answers with Noop (§12.6).
+   - Insert is never invalidated. After a Clear its index becomes 0.
+5. The transformed request is validated against the current list. If it is invalid, the server closes the pipe
+   (`BadOperation`, `NexusListServer.cs:89-93`).
+6. The server applies the change, increments the version and broadcasts the change with the new version
+   (`NexusListServer.cs:95-104`; `NexusBroadcastServer.cs:415`). The originator's copy has Ack.
+
+### 12.8 Errors and shutdown
+
+**The server closes a client's collection pipe when:**
+- the client writes in ServerToClient or Relay mode (`NexusListServer.cs:47-52`, `NexusListRelay.cs:622-627`);
+- the client sends a forbidden tag (§12.3) or an unknown one;
+- §12.7 step 1 or 5 fails;
+- an item fails to decode (`NexusBroadcastServer.cs:173-177`);
+- the client cannot keep up with live changes: each session has a buffer of `BufferCapacity` (1000) outgoing
+  items, and when a change or a Noop answer does not fit, the server closes the pipe and logs the reason ("Collection
+  client buffer is full: the client is not keeping up with the changes") (`NexusBroadcastSession.cs:81-84`,
+  `NexusBroadcastConnectionManager.cs:235-244` and `:318-326`). The snapshot does not count against this buffer
+  (§12.5), but the changes broadcast while it is being written do. The client sees the collection go to Disabled
+  (§12.4); enabling it again resynchronizes it with a full reset;
+- the server stops (`NexusBroadcastConnectionManager.cs:276-291`);
+- the collection's message processor restarts or gives up after an unexpected error ([#150](https://github.com/Dtronix/NexNet/pull/150)). An item may have been
+  lost with the stopped processor, so no client's replica can be trusted.
+  - The server restarts the processor after a backoff: 100 ms, doubled for each earlier restart within the last
+    minute, at most 5 s. It then closes **every** client's collection pipe (`NexusBroadcastServer.cs:216-328`).
+  - After 5 restarts within one minute, the next stop makes the server give up. It stops the collection and closes
+    every client's pipe (`NexusBroadcastServer.cs:259-272`).
+  - Until the server restarts, the server closes the pipe of every new enable at once, so that enable fails
+    (`NexusBroadcastServer.cs:75-80`).
+  - Each client sees the collection go to Disabled (§12.4). Enabling it again resynchronizes it with a full reset.
+
+The session itself stays up in all of these cases.
+
+**Client protocol errors.** These are an unexpected Reset* item, a reset whose value count does not match
+`totalValues` (§12.5), a change that fails validation, and an unknown item. The client closes the pipe (send
+Complete, §7.3), so the collection goes to Disabled (§12.4); the session stays up. Enabling the collection again
+resynchronizes it with a full reset. The C# client closes the pipe itself, because its processor does not act on
+the "disconnect" result of items read from the pipe (`NexusBroadcastClient.cs:487-493`;
+`Pipes/Broadcast/NexusBroadcastMessageProcessor.cs:188-191`). An exception while processing an item is handled
+the same way. When the C# client's own message processor stops on an unexpected error, the client also closes the
+pipe, and the pending enable and the ready signal (§12.4) fail (`NexusBroadcastClient.cs:278-325`). Other clients
+must do the same, for identical behavior.
+
+**Session loss and re-enable.** A session that ends completes every pipe, so each collection goes to Disabled
+(§12.4). Collections are **not** resumed automatically after a reconnect.
+- The application calls enable again. That opens a new pipe on the new session, and the client receives a full
+  reset.
+- The proxy collections are rebound to each new session (`Invocation/NexusCollectionManager.cs:90-94`), and enable
+  is a no-op only while a pipe is open (`NexusBroadcastClient.cs:139-140`).
+- No version or state carries over from the old pipe.
+
+**Unauthorized.** Collection authorization follows §7.6.
+- With a `Disconnect` result, the whole session ends with `Unauthorized` (34).
+- With `Unauthorized`, the server sends `Refused` (§7.6), and enable fails at once. The session stays up.
+- A failed enable leaves the collection Disabled and can be retried.
+
+### 12.9 Equality for `RemoveAsync(item)`
+
+`RemoveAsync(item)`, `Contains` and `IndexOf` find the first item equal to the argument with
+`EqualityComparer<T>.Default` (`VersionedList.cs:246-254`; `ImmutableList<T>.IndexOf`). Only the index travels on
+the wire, so equality is a local matter. To find the same item, another language needs **value equality** wherever
+C# has it:
+
+| C# type | C# equality | Other languages need |
+|---|---|---|
+| primitives, `string`, `Guid`, `decimal`, enums | by value | by value. In JS, `===` works for `number`, `string` and `bigint` |
+| `DateTime`, `DateTimeOffset`, `TimeSpan`, `DateOnly`, `TimeOnly` | by value. `DateTimeOffset` compares the instant; `DateTime` compares ticks and ignores the kind | an `equals` on the runtime value types with the same rules |
+| `struct` and `record` types | by value (field-wise) | generated structural `equals` |
+| `class` without an `Equals` override | by reference. Items received from the server are new instances, so only an item read from the list matches | identity equality is enough |
+| arrays, lists, dictionaries | by reference | identity |
+| `null` | equal only to `null` | the same |
+
+Because only the index is sent, a client may also offer an overload that takes a predicate.
+
+### 12.10 Sequence diagrams
+
+**Add (BiDirectional).** Clients A and B are Ready at version 4 with a list of 2 items.
+
+```mermaid
+sequenceDiagram
+    participant A as Client A
+    participant S as Server
+    participant B as Client B
+    A->>S: Insert [flags 0, version 4, index 2, value x]
+    Note over S: base 4 = current: nothing to transform<br/>apply, version 5
+    S->>A: Insert [flags Ack, version 5, index 2, value x]
+    S->>B: Insert [flags 0, version 5, index 2, value x]
+    Note over A: apply, version 5, raise Add<br/>AddAsync completes true
+    Note over B: apply, version 5, raise Add
+```
+
+**Conflicting concurrent requests.** Both clients are at version 1 with `[a]`. Both insert at index 0, and
+both remove index 0.
+
+```mermaid
+sequenceDiagram
+    participant A as Client A
+    participant S as Server
+    participant B as Client B
+    A->>S: Insert [0, version 1, index 0, x]
+    B->>S: Insert [0, version 1, index 0, y]
+    Note over S: A's request: apply, version 2 → [x, a]
+    S->>A: Insert [Ack, version 2, index 0, x]
+    S->>B: Insert [0, version 2, index 0, x]
+    Note over S: B's request (base 1) transformed against version 2:<br/>index 0 → 1; apply, version 3 → [x, y, a]
+    S->>A: Insert [0, version 3, index 1, y]
+    S->>B: Insert [Ack, version 3, index 1, y]
+    Note over A,B: both at version 3 with [x, y, a]
+    A->>S: Remove [0, version 3, index 0]
+    B->>S: Remove [0, version 3, index 0]
+    Note over S: A's request: apply, version 4 → [y, a]
+    S->>A: Remove [Ack, version 4, index 0]
+    S->>B: Remove [0, version 4, index 0]
+    Note over S: B's request (base 3) removes the same item:<br/>made obsolete, no version change
+    S->>B: Noop [Ack]
+    Note over B: RemoveAsync completes false (§12.6)
+```
+
+**Reset, then live changes.** The server's list is at version 7 when client C enables. The change that made it
+version 7 was applied before the snapshot, so C receives it only as part of the snapshot. Another session's change
+(version 8) is applied while the reset is being sent, so C receives it after ResetComplete (§12.5, server ordering
+guarantees).
+
+```mermaid
+sequenceDiagram
+    participant C as Client C
+    participant S as Server
+    C->>S: Invocation [flags 0x03, methodId = collection, args [pipeId]]
+    S->>C: DuplexPipeUpdateState Ready
+    Note over S: on the processing loop: snapshot at version 7,<br/>then register C for broadcasts
+    S->>C: ResetStart [0, version 7, totalValues 50]
+    S->>C: ResetValues [0, 40 values]
+    Note over S: another session's change applied, version 8
+    S->>C: ResetValues [0, 10 values]
+    S->>C: ResetComplete [0]
+    Note over C: list = 50 values, version 7<br/>raise Reset, then Ready; enable completes true
+    S->>C: Insert [0, version 8, ...]
+    Note over C: apply, version 8, raise Add
+```
+
+## 13. Transport bindings
+
+Every transport carries the same thing: one reliable, ordered, full-duplex **byte stream** per connection. The
+preamble (§1) is the first byte each side writes once the binding below has finished its own setup, and from then on
+the stream is exactly what §2–§12 describe. This section defines that setup and how each transport ends.
+
+| Transport | Binding | Encrypted | Client languages |
+|---|---|---|---|
+| TCP | §13.2 | no | C#, Java, Node |
+| TLS over TCP | §13.3 | yes | C#, Java, Node |
+| UDS | §13.4 | no (local only) | C#, Node |
+| QUIC | §13.5 | yes | C# |
+| HttpSocket | §13.6 | over `https` | C#, Java, Node |
+| WebSocket | §13.7 | over `wss` | C#, Java, Node, browsers |
+
+### 13.1 Rules for every binding
+
+- **No message boundaries.** NexNet frames are delimited only by §2. A binding never aligns frames with its own
+  units (TCP segments, TLS records, WebSocket messages, HTTP/2 DATA frames), and a receiver must accept a frame split
+  across any number of reads and several frames in one read.
+- **Binding keepalives are not NexNet pings.** TCP keepalive and WebSocket Ping/Pong control frames produce no bytes
+  on the NexNet stream, so they do not count as received frames for the idle timeout (§5.5). A client must send NexNet
+  `Ping` on every transport.
+- **Ending.** A side ends a session by writing the disconnect byte if §5.6 says so, then closing the binding as
+  described below. A binding that ends without a disconnect byte having been read is reported as `SocketError`
+  (§5.6), whatever the binding's own close code or error.
+- **Connect errors.** A failure before the preamble is a connect failure, not a disconnect. The C# client throws
+  `TransportException` with a `TransportError`; the mapping is given per binding. Every TLS handshake failure (the
+  server certificate is rejected, or the server refuses the client certificate) is `AuthenticationError`, and a
+  connect that exceeds `ConnectionTimeout` is `ConnectionTimeout`.
+
+### 13.2 TCP
+
+The NexNet stream is the TCP byte stream. There is no further setup: each side writes the preamble as soon as the
+connection is established.
+
+- The C# client and server set `TCP_NODELAY` (`TcpNoDelay`, default true). Other clients should do the same,
+  because pings and small invocations otherwise wait for Nagle's algorithm.
+- Closing is a normal TCP close. A side that closes without lingering (`linger: false`) may reset the connection.
+- Connect errors map from the socket error (refused, unreachable, timeout).
+
+Source: `src/NexNet/Transports/SocketTransport.cs`, `src/NexNet/Transports/SocketTransportListener.cs`.
+
+### 13.3 TLS over TCP
+
+The NexNet stream is the TLS application data of a TLS connection over TCP. The client starts the TLS handshake
+right after the TCP connect, and both sides write the preamble once the handshake completes.
+
+- **Versions and ciphers** are the platform defaults (TLS 1.2 and 1.3 in practice) unless the application sets
+  `EnabledSslProtocols`.
+- **ALPN: none.** NexNet configures no application protocol on either side, and a client should offer none. An
+  application may configure ALPN on its server options; a client of such a server must then offer a protocol from
+  that list.
+- **SNI.** The C# client sends `SslClientAuthenticationOptions.TargetHost` as the SNI name and validates the server
+  certificate against it. Other clients should send the DNS name they connect to as SNI (never an IP literal, per
+  RFC 6066) and **must verify the host name** unless the application supplies its own certificate validation. Java's
+  `SSLSocket` does not verify it by default: set `setEndpointIdentificationAlgorithm("HTTPS")`.
+- **Client certificates** are optional, and requested only when the server's options ask for one.
+- **Timeout.** Each side gives the TLS handshake `SslConnectionTimeout` (5 s by default), separate from the
+  NexNet handshake timeout (§5.1), which starts after it.
+- Closing: the C# side disposes the TLS stream and then closes the socket. A peer must accept a TCP close or reset
+  with or without a TLS `close_notify`.
+
+Source: `src/NexNet/Transports/Tcp/Tls/TcpTlsTransport.cs`, `TcpTlsClientConfig.cs`, `TcpTlsServerConfig.cs`.
+
+### 13.4 Unix domain sockets
+
+The NexNet stream is a `SOCK_STREAM` Unix domain socket connection, with no further setup, as in §13.2.
+
+- **Filesystem paths only.** The binding is defined for a socket file at a filesystem path. Abstract-namespace
+  addresses (Linux, leading NUL byte) are not part of it: cross-language clients must not use them. The C# server can
+  bind one on Linux, but no other binding guarantee (permissions, cleanup) applies to it.
+- The path must fit the platform's `sun_path` (108 bytes on Linux, 104 on macOS). Windows 10 1803 and later
+  support `AF_UNIX`.
+- Access is controlled by the socket file's permissions (`UdsServerConfig.SocketFileMode`) or, on Windows, by the
+  folder's ACLs. There is no encryption and no peer certificate.
+- The server removes the socket file on a graceful stop.
+
+Source: `src/NexNet/Transports/Uds/UdsServerConfig.cs`, `src/NexNet/Transports/Uds/UdsSocketFile.cs`.
+
+### 13.5 QUIC
+
+QUIC is a C# transport only; no other client language implements it. It is described for completeness.
+
+- **ALPN `nn1`.** Both sides set it, and a connection that does not negotiate it fails.
+- The client sets `TargetHost` to a DNS name. libmsquic 2.5.11 / 2.6.1 and later fail the handshake when it is
+  unset or an IP address.
+- The client opens **one bidirectional stream**, and the server accepts the first inbound stream. That stream is
+  the NexNet stream; no other stream is used.
+- **Connect errors** follow §13.1, including a failure to open the stream: the C# client closes the connection and
+  throws `TransportException` (`ConnectionTimeout` when the open exceeds `ConnectionTimeout`, otherwise the
+  error mapped from the `QuicError`).
+- Closing: the connection is closed with application error code 0. Aborted streams and connections use error codes
+  `0x0A` (stream) and `0x0B` (connection).
+
+Source: `src/NexNet.Quic/QuicTransport.cs`, `src/NexNet.Quic/QuicTransportListener.cs`.
+
+### 13.6 HttpSocket
+
+An HttpSocket is an HTTP/1.1 connection upgraded to a raw byte stream with the upgrade token
+`nexnet-httpsockets`. After the upgrade there is no framing at all: the NexNet stream is the connection's bytes in
+each direction, as in §13.2 (or §13.3 for `https`). The server is an ASP.NET Core application using `NexNet.Asp`.
+
+#### Request
+
+The client opens a TCP connection (TLS for `https`, as in §13.3 but with ALPN as below) and sends exactly one
+request:
+
+```http
+GET /nexus HTTP/1.1
+Host: example.com:9001
+Connection: Upgrade
+Upgrade: nexnet-httpsockets
+Authorization: Bearer eyJhbGciOi...
+```
+
+| Element | Rule |
+|---|---|
+| Method and target | `GET` and the configured path (`AspServerConfig.Path`), plus an optional query string. Any other method is not an HttpSocket request |
+| Version | `HTTP/1.1`. The C# client requests this version exactly |
+| `Host` | Required. It includes `:port` when the port is not the scheme's default (80 for `http`, 443 for `https`) |
+| `Connection` | Must contain the token `Upgrade` (case-insensitive; other tokens may be present) |
+| `Upgrade` | Must contain the token `nexnet-httpsockets` (case-insensitive; other tokens may be present) |
+| `Authorization` | Optional. Sent when the application uses ASP.NET authentication (`AspEnableAuthentication`). The C# client sends `HttpClientConfig.AuthenticationHeader` |
+| `Origin` | Optional. Checked against `HttpSocketOptions.AllowedOrigins` when present (below) |
+| Body | None. The request has no `Content-Length` or `Transfer-Encoding` |
+| Query token | Optional, `?<parameter>=<token>` (below) |
+
+**ALPN over `https`.** Offer `http/1.1` only, or no ALPN. A client that offers `h2` is likely to get HTTP/2, where
+an `Upgrade` header is not allowed.
+
+The client writes nothing else until it has read the response. In particular it must not send the preamble early.
+
+#### Success response
+
+```http
+HTTP/1.1 101 Switching Protocols
+Connection: Upgrade
+Upgrade: nexnet-httpsockets
+```
+
+The server may add other headers (for example `Date` and `Server`); a client must ignore them. A client must
+check that the status is `101`, and may check that `Upgrade` is `nexnet-httpsockets`.
+
+**Bytes after the response headers belong to the NexNet session.** The response headers end with the first
+`\r\n\r\n`. The server writes its preamble right after the `101`, so the same read that delivers the headers often
+delivers NexNet bytes too. A client must feed every byte after the `\r\n\r\n` to the session, never discard it.
+There is no response body and no chunked encoding.
+
+#### Failure responses
+
+Any status other than `101` means the upgrade failed. The server checks, in order:
+
+| Status | Cause | C# `TransportError` |
+|---|---|---|
+| `403` | `Origin` present and not in `AllowedOrigins` | `AuthenticationError` |
+| `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
+| `500` | Server error | `InternalError` |
+| other, typically `404` | Path not mapped, the request is not an HttpSocket request, or the NexNet server is not running; the request falls through to the rest of the ASP.NET pipeline | a connect failure (`InternalError` in the C# client) |
+| a `2xx` | Not an upgrade (for example a proxy or another application answering `200`); the body is not a NexNet stream | `ProtocolError` |
+| a `3xx` | A redirect (for example a proxy or a path moved). The client does not follow it | `ProtocolError` |
+
+Clients in other languages must map `401` and `403` to their authentication error, and `500` to their internal
+error. Every client must reject a non-error status other than `101` (a `2xx` included) and never read its body as
+the session stream.
+
+**Redirects are never followed.** A `3xx` answer fails the connect with `ProtocolError` (or the language's
+equivalent), and the client sends no second request, neither to the `Location` nor anywhere else. Following a
+redirect would carry the `Authorization` header and any query-string token to another URL. The C# client turns off
+`AllowAutoRedirect` on its HTTP handler; the Java and JavaScript clients write the upgrade request themselves and
+never follow one.
+
+#### Origin check
+
+`HttpSocketOptions.AllowedOrigins` (`UseHttpSocketNexusServerAsync(c => c.SocketOptions.AllowedOrigins…)`) lists
+the allowed `Origin` values, for example `https://app.example.com`.
+
+- Empty (the default) or a `*` entry allows every origin.
+- A request without `Origin` is always allowed.
+- The comparison is case-insensitive against the whole value, as in §13.7.
+- A rejected request is answered `403` before authentication runs.
+
+#### Query-string token
+
+For clients that cannot send `Authorization`, the server can read a bearer token from the query string. It is
+off by default and is enabled with `HttpSocketServerConfig.AccessTokenQueryParameter` (for example `access_token`).
+The client then connects to `/nexus?access_token=<token>`, with the token percent-encoded. The server applies it
+only when `AspEnableAuthentication` is on:
+
+1. It removes the parameter from the request's query string, so later middleware never sees it.
+2. If the request has an `Authorization` header, the header wins and the query value is ignored.
+3. Otherwise, if the parameter has exactly one non-empty value, the server sets `Authorization: Bearer <token>`
+   before the authentication scheme runs. Any other form is ignored.
+
+NexNet never logs the value, but proxies and request logs may record URLs. The NexNet greeting token (§5.4) is the
+preferred credential for every client; HTTP-level authentication is an addition to it.
+
+#### HTTP/2
+
+The server also accepts an HttpSocket over HTTP/2 extended CONNECT (RFC 8441 style): `:method` `CONNECT` and
+`:protocol` `nexnet-httpsockets`, answered with `:status 200`. The NexNet stream is then the HTTP/2 stream's DATA.
+Clients need not use it; the C# client always uses HTTP/1.1.
+
+#### Closing
+
+Either side closes the underlying connection (or, over HTTP/2, the stream). There is no closing handshake.
+
+Source: `src/NexNet/Transports/HttpSocket/HttpSocketTransport.cs` (`ConnectAsync`, `MapException`),
+`src/NexNet/Transports/HttpSocket/HttpHeaderConstants.cs`, `src/NexNet.Asp/HttpSocket/HttpSocketMiddleware.cs`,
+`src/NexNet.Asp/NexNetMiddlewareExtensions.HttpSocket.cs` (`MapHttpSocketNexus`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`ApplyAuthentication`, `PromoteQueryAccessToken`).
+
+### 13.7 WebSocket
+
+The NexNet stream is carried in the binary messages of an RFC 6455 WebSocket. The server is an ASP.NET Core
+application using `NexNet.Asp`.
+
+#### Opening handshake
+
+A standard RFC 6455 handshake over HTTP/1.1 (TLS for `wss`, with ALPN as in §13.6):
+
+```http
+GET /nexus HTTP/1.1
+Host: example.com:9001
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Authorization: Bearer eyJhbGciOi...
+```
+
+- **Path.** The configured path (`AspServerConfig.Path`), compared ordinally and case-sensitively. A query string may
+  follow.
+- **No subprotocol.** The client must not send `Sec-WebSocket-Protocol`. The server never selects one, and an RFC 6455
+  client that requested one fails the connection.
+- **No extensions.** The server negotiates none. A client may offer `permessage-deflate` (browsers do), and the
+  server's response then has no `Sec-WebSocket-Extensions`.
+- `Authorization` is optional, as in §13.6. Browsers cannot send it; they use the query token or the greeting token.
+- `Origin` is sent by browsers and optional for other clients. The C# client does not send it.
+- Success is `101` with `Sec-WebSocket-Accept`. Bytes after the response headers are WebSocket frames.
+
+The server checks, in order:
+
+| Status | Cause | C# `TransportError` |
+|---|---|---|
+| `403` | `Origin` present and not in `WebSocketServerConfig.AllowedOrigins` | `AuthenticationError` |
+| `101`, then the disconnect byte `29` | `AspEnableAuthentication` is on and ASP.NET authentication failed: refused inside the NexNet protocol (below), never with `401` | `AuthenticationError` |
+| `500` | Server error | `InternalError` |
+| other, typically `404` | Path not mapped, not a WebSocket request, or the NexNet server is not running | `ProtocolError` or another error from the WebSocket stack |
+| a `3xx` | A redirect. The client does not follow it | `ProtocolError` |
+
+Redirects are never followed, as in §13.6: a `3xx` fails the connect with `ProtocolError` and no second request is
+made. Browsers already fail a WebSocket handshake that answers with a redirect (the WHATWG WebSocket handshake uses
+redirect mode `error`).
+
+A browser cannot read the status of a failed handshake: it reports a generic error and close code 1006, so it cannot
+tell a refused upgrade (the `403` above) from any other connect failure. This is why a failed ASP.NET authentication
+is not refused at the upgrade.
+
+#### Authentication refusal
+
+When `AspEnableAuthentication` is on and ASP.NET authentication fails (the `Authorization` header, a cookie or the
+query-string token), the server refuses the session inside the NexNet protocol, so every client, browsers included,
+sees the same refusal as for a greeting token that `OnAuthenticate` refuses (§5.4):
+
+1. It answers the upgrade `101` and sends its preamble (§1) in a binary message, as a session does.
+2. It reads the client's preamble and first frame, within `HandshakeTimeout`. A `ClientGreeting` or
+   `ClientGreetingReconnection` is read to its end. Any other frame type, or a greeting body longer than 16 KiB (§2),
+   is not read further and is refused the same way.
+3. It answers with the disconnect byte `29` (`DisconnectReason.Authentication`, §5.6) in a binary message, waits
+   `DisconnectDelay`, then closes the WebSocket normally (close code **1000**, as under Closing below).
+
+No session is created, and the nexus and `OnAuthenticate` are never involved. If the client closes the WebSocket,
+sends a text message or a disconnect byte of its own first, or the handshake timeout passes, the server aborts the
+WebSocket without sending the disconnect byte.
+
+A client handles the refusal as any disconnect received before the connection completes (§5.1, §5.6): `connect` fails with
+`AuthenticationError` in every language. HttpSocket (§13.6) still refuses the same failure with `401`, and an
+`Origin` outside `AllowedOrigins` is still answered `403` before authentication runs.
+
+#### Data
+
+- **Binary messages only.** Each side sends NexNet bytes in binary messages (opcode `0x2`, with continuation frames
+  as RFC 6455 allows). A side must not send text messages. A receiver that gets a text message drops its payload
+  (it is never part of the NexNet stream), starts the close handshake with code **1003** (Unsupported Data) and ends
+  the session.
+- **Message boundaries carry no meaning.** The receiver appends the payload of every data message, in order, to the
+  NexNet stream. A NexNet frame may span several messages, and a message may hold several frames or parts of them.
+  The C# sender writes each batch of flushed bytes as one message, of whatever size the batch has.
+- Client-to-server frames are masked and server-to-client frames are not, as RFC 6455 requires.
+- Ping and Pong control frames are handled by the WebSocket layer and are not NexNet pings (§13.1).
+
+#### Closing
+
+- A side that ends the session writes the disconnect byte (§5.6) in a binary message, then starts the close
+  handshake. Both C# sides send close code **1000** (Normal Closure) with an empty reason, and wait at most 250 ms
+  for the peer's Close.
+- A side that receives a Close first answers with the same code.
+- Close codes carry no NexNet meaning: the reason is the disconnect byte, if one arrived. A receiver must accept any
+  code, including 1001 (going away) and 1006 (connection lost without a Close).
+
+#### Origin check
+
+`WebSocketServerConfig.AllowedOrigins` lists the allowed `Origin` values, for example `https://app.example.com`.
+
+- Empty (the default) or a `*` entry allows every origin.
+- A request without `Origin` is always allowed.
+- The comparison is case-insensitive against the whole value.
+- A rejected request is answered `403` before authentication runs.
+
+Set it whenever the server uses cookie authentication, to prevent cross-site WebSocket hijacking.
+
+#### Query-string token
+
+`WebSocketServerConfig.AccessTokenQueryParameter` works exactly as in §13.6. A browser connects to
+`wss://example.com/nexus?access_token=<token>`. A token that fails authentication is refused in-protocol, as
+under Authentication refusal above.
+
+#### HTTP/2
+
+ASP.NET Core can also accept WebSockets over HTTP/2 (RFC 8441). Clients need not use it; the C# client uses
+HTTP/1.1.
+
+Source: `src/NexNet/Transports/WebSocket/WebSocketTransport.cs` (`ConnectAsync`, `CloseAsync`, `MapException`),
+`src/NexNet/Transports/WebSocket/WebSocketPipe.cs` (`ReadInputAsync`, `CloseAsync`, `WebSocketStream`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.WebSocket.cs` (`MapWebSocketNexus`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`IsOriginAllowed`, `AuthenticateRequest`, `PromoteQueryAccessToken`),
+`src/NexNet.Asp/WebSocket/WebSocketAuthenticationRefusal.cs` (`RefuseAsync`),
+`src/NexNet.Asp/WebSocket/WebSocketServerConfig.cs`.

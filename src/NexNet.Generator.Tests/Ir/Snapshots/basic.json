@@ -1,0 +1,1392 @@
+{
+  "exports": [
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -128244316,
+          "id": 0
+        },
+        {
+          "hash": -128244316,
+          "id": 1
+        },
+        {
+          "hash": -128244316,
+          "id": 2
+        },
+        {
+          "hash": -128244316,
+          "id": 3
+        },
+        {
+          "hash": -128244316,
+          "id": 4
+        },
+        {
+          "hash": -128244316,
+          "id": 5
+        },
+        {
+          "hash": -128244316,
+          "id": 6
+        },
+        {
+          "hash": -128244316,
+          "id": 7
+        },
+        {
+          "hash": -128244316,
+          "id": 8
+        },
+        {
+          "hash": -128244316,
+          "id": 9
+        },
+        {
+          "hash": -128244316,
+          "id": 10
+        },
+        {
+          "hash": -128244316,
+          "id": 11
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -128244316,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 1452210287,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "ClientVoid",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -261769928,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "ClientVoidWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "id",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -289579200,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "ClientTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 330865152,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "ClientTaskWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 213478022,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "ClientTaskValue",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1812025615,
+            "id": 5,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": -793077031,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "ClientTaskWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": 1406074313,
+            "id": 7,
+            "isAuthorized": false,
+            "name": "ClientTaskWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": 148052624,
+            "id": 8,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": -1062959281,
+            "id": 9,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -893147728,
+            "id": 10,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithDuplexPipe",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1049217442,
+            "id": 11,
+            "isAuthorized": false,
+            "name": "ClientData",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -128244316,
+        "serverNexusHash": 1281559867
+      },
+      "name": "ClientNexus",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IServerNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [
+          {
+            "hash": 1207800312,
+            "id": 14,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "BiDirectional",
+            "name": "IntListBi"
+          },
+          {
+            "hash": 1438003605,
+            "id": 15,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "Relay",
+            "name": "IntListRelay"
+          },
+          {
+            "hash": 1009861764,
+            "id": 16,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "ServerToClient",
+            "name": "IntListSC"
+          }
+        ],
+        "hash": 1281559867,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -1867907217,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "ServerVoid",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -943645835,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "ServerVoidWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "id",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -568177251,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "ServerTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1306529237,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "ServerTaskWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -266080874,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "ServerTaskValue",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -158928310,
+            "id": 5,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": 1098548816,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "ServerTaskWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": -1958300593,
+            "id": 7,
+            "isAuthorized": false,
+            "name": "ServerTaskWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": -874674133,
+            "id": 8,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": 945545967,
+            "id": 9,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 128168522,
+            "id": 10,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithDuplexPipe",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1850691656,
+            "id": 11,
+            "isAuthorized": false,
+            "name": "ServerData",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -2017779222,
+            "id": 12,
+            "isAuthorized": false,
+            "name": "ServerDataResult",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "size",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "clr": "Array",
+              "kind": "Bin",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1051609112,
+            "id": 13,
+            "isAuthorized": false,
+            "name": "ServerEcho",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "clr": "Array",
+              "kind": "Bin",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IServerNexus",
+        "versions": []
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": -128244316,
+          "id": 0
+        },
+        {
+          "hash": -128244316,
+          "id": 1
+        },
+        {
+          "hash": -128244316,
+          "id": 2
+        },
+        {
+          "hash": -128244316,
+          "id": 3
+        },
+        {
+          "hash": -128244316,
+          "id": 4
+        },
+        {
+          "hash": -128244316,
+          "id": 5
+        },
+        {
+          "hash": -128244316,
+          "id": 6
+        },
+        {
+          "hash": -128244316,
+          "id": 7
+        },
+        {
+          "hash": -128244316,
+          "id": 8
+        },
+        {
+          "hash": -128244316,
+          "id": 9
+        },
+        {
+          "hash": -128244316,
+          "id": 10
+        },
+        {
+          "hash": -128244316,
+          "id": 11
+        }
+      ],
+      "clientApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IClientNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [],
+        "hash": -128244316,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": 1452210287,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "ClientVoid",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -261769928,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "ClientVoidWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "id",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -289579200,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "ClientTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 330865152,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "ClientTaskWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 213478022,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "ClientTaskValue",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1812025615,
+            "id": 5,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": -793077031,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "ClientTaskWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": 1406074313,
+            "id": 7,
+            "isAuthorized": false,
+            "name": "ClientTaskWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": 148052624,
+            "id": 8,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": -1062959281,
+            "id": 9,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -893147728,
+            "id": 10,
+            "isAuthorized": false,
+            "name": "ClientTaskValueWithDuplexPipe",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1049217442,
+            "id": 11,
+            "isAuthorized": false,
+            "name": "ClientData",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IClientNexus",
+        "versions": []
+      },
+      "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+      "handshake": {
+        "clientNexusHash": -128244316,
+        "serverNexusHash": 1281559867
+      },
+      "name": "ServerNexus",
+      "serverApi": {
+        "clrName": "NexNet.IntegrationTests.TestInterfaces.IServerNexus",
+        "clrNamespace": "NexNet.IntegrationTests.TestInterfaces",
+        "collections": [
+          {
+            "hash": 1207800312,
+            "id": 14,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "BiDirectional",
+            "name": "IntListBi"
+          },
+          {
+            "hash": 1438003605,
+            "id": 15,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "Relay",
+            "name": "IntListRelay"
+          },
+          {
+            "hash": 1009861764,
+            "id": 16,
+            "isAuthorized": false,
+            "item": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "kind": "List",
+            "mode": "ServerToClient",
+            "name": "IntListSC"
+          }
+        ],
+        "hash": 1281559867,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -1867907217,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "ServerVoid",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -943645835,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "ServerVoidWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "id",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -568177251,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "ServerTask",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1306529237,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "ServerTaskWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -266080874,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "ServerTaskValue",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": -158928310,
+            "id": 5,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithParam",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": 1098548816,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "ServerTaskWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": -1958300593,
+            "id": 7,
+            "isAuthorized": false,
+            "name": "ServerTaskWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": true,
+            "hash": -874674133,
+            "id": 8,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithCancellation",
+            "params": [
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": true,
+            "hash": 945545967,
+            "id": 9,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithValueAndCancellation",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 128168522,
+            "id": 10,
+            "isAuthorized": false,
+            "name": "ServerTaskValueWithDuplexPipe",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1850691656,
+            "id": 11,
+            "isAuthorized": false,
+            "name": "ServerData",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -2017779222,
+            "id": 12,
+            "isAuthorized": false,
+            "name": "ServerDataResult",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "size",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "clr": "Array",
+              "kind": "Bin",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1051609112,
+            "id": 13,
+            "isAuthorized": false,
+            "name": "ServerEcho",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "data",
+                "nullable": true,
+                "type": {
+                  "clr": "Array",
+                  "kind": "Bin",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "clr": "Array",
+              "kind": "Bin",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IServerNexus",
+        "versions": []
+      },
+      "targets": 0
+    }
+  ],
+  "irVersion": 1,
+  "types": []
+}

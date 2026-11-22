@@ -23,7 +23,8 @@ namespace NexNet.Fuzz;
 /// <list type="bullet">
 /// <item>a probe (ping, call or pipe open) that is neither answered nor ends in a disconnect within
 /// <see cref="ProbeTimeout"/>: something on the session waits on an application reader (requirement R1);</item>
-/// <item>no server greeting within <see cref="ProbeTimeout"/>: the program needs a completed connection;</item>
+/// <item>no server greeting within <see cref="SessionHarness.HandshakeTimeout"/>: the program needs a completed
+/// connection;</item>
 /// <item>a session still open <see cref="SessionHarness.SessionTimeout"/> after the stream ends;</item>
 /// <item>a disconnect reason outside <see cref="AllowedDisconnects"/>, or malformed server output;</item>
 /// <item>the server logging an exception type that hostile input should never cause.</item>
@@ -101,9 +102,9 @@ public static class FlowHarness
         client.Send(host.Greeting);
 
         // Anything sent before the connection completes is a protocol error, which would end every program here.
-        string? stall = output.WaitFor(o => o.Greeted, ProbeTimeout) && output.Greeted
+        string? stall = output.WaitFor(o => o.Greeted, SessionHarness.HandshakeTimeout) && output.Greeted
             ? null
-            : "Server did not complete the handshake.";
+            : $"Server did not complete the handshake within {SessionHarness.HandshakeTimeout.TotalMilliseconds} ms.";
         for (var i = 0; i + 4 <= data.Length && stall == null && !output.IsClosed; i += 4)
             stall = client.Execute((FlowOp)(data[i] % (int)FlowOp.Count), data[i + 1], data[i + 2], data[i + 3]);
 

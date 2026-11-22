@@ -24,6 +24,8 @@ internal sealed class CapturingLogger : INexusLogger
     public string FormattedPath => PathSegment ?? "";
     public string? PathSegment { get; set; }
 
+    public IEnumerable<(NexusLogLevel Level, string Message)> Messages => _messages;
+
     public IEnumerable<string> Warnings => _messages.Where(m => m.Level == NexusLogLevel.Warning).Select(m => m.Message);
 
     public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)

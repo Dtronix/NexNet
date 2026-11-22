@@ -11,7 +11,10 @@ public enum ConnectionState : int
     Unset = 0,
 
     /// <summary>
-    /// Connection has been established but but setup
+    /// The connection is being set up: the transport is opening or the handshake has not completed yet. A client is
+    /// Connecting from the start of an application connect (ConnectAsync or TryConnectAsync) until it is Connected,
+    /// or Disconnected when the connect fails; attempts of the reconnection loop do not raise it, the client stays
+    /// Reconnecting. A server session is Connecting until its handshake completes.
     /// </summary>
     Connecting = 1,
 

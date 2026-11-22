@@ -65,7 +65,7 @@ QUIC is a reliable UDP-based protocol guaranteeing packet transmission, order in
 
 WebSockets enable real-time, bidirectional data exchange over persistent TCP connections. NexNet uses binary WebSocket streams, which introduce a minor overhead of 4 bytes per message header/data frame.
 
-Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md).
+Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md). The handshake, message and close rules are in [WebSocket binding](../internals/protocol-specification.md#137-websocket).
 
 ### HttpSockets (ASP.NET Core)
 
@@ -73,7 +73,7 @@ HttpSockets establish a bidirectional, long-lived data stream by upgrading a sta
 
 Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md).
 
-HttpSockets upgrade with the custom token `Upgrade: nexnet-httpsockets`. A reverse proxy must forward that header and the upgraded stream; one that only passes WebSocket upgrades will reject the connection. A direct connection, or a network layer that forwards TCP (for example a VPN), needs no configuration.
+HttpSockets upgrade with the custom token `Upgrade: nexnet-httpsockets`. A reverse proxy must forward that header and the upgraded stream; one that only passes WebSocket upgrades will reject the connection. A direct connection, or a network layer that forwards TCP (for example a VPN), needs no configuration. The exact upgrade request and response are in [HttpSocket binding](../internals/protocol-specification.md#136-httpsocket).
 
 ## TLS and Certificates
 
@@ -122,6 +122,44 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? to
 
 The certificate belongs to the connection and is valid while the session is connected; copy it (`X509CertificateLoader.LoadCertificate(cert.RawData)`) to keep it longer. For ASP.NET Core servers see [Client certificates](asp-net-integration.md#client-certificates).
 
+## Multiple Endpoints
+
+One server can accept sessions on several transports at once. The configuration passed to the constructor is the **primary** one; add more endpoints before starting:
+
+```csharp
+var server = ServerNexus.CreateServer(new TcpTlsServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 9001), ... },
+    () => new ServerNexus());
+server.AddListener(new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/run/app.sock") }, "uds");
+server.AddListener(new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 9002) }, "tcp-local");
+await server.StartAsync();
+```
+
+- `AddListener(config, name)` takes a listener configuration (TCP, TLS, UDS, QUIC). `AddExternalEndpoint(config, name)` returns an `IAcceptsExternalTransport` that the application (or NexNet.Asp, see [ASP.NET Integration](asp-net-integration.md#multiple-endpoints)) feeds connected transports to.
+- Both are allowed only after the server is configured and while it is stopped. Endpoints can not be removed or added while running.
+- Names are unique within the server. The primary endpoint is named after its transport (`tcp`, `tls`, `uds`, `quic`, `websocket`, `httpsocket`). A second endpoint on the same TCP port (an any-address bind included), UDS path, ASP.NET path or configuration object is rejected.
+- Start binds every listener; if one fails, the ones already bound are closed and the server stays `Stopped`. A listener that faults while running stops only that endpoint; the server stops when no listener or external endpoint is left.
+- `server.Endpoints` lists `NexusEndpointInfo(Name, Transport, IsSecure, Path)`, the primary first. While the server runs, `BoundEndPoint` on a TCP, TLS or UDS listener is the end point it actually bound, so a listener configured with port 0 reports the port the OS picked (`((IPEndPoint)server.Endpoints[0].BoundEndPoint!).Port`); it is null while stopped and for ASP.NET and QUIC endpoints. `server.GetSnapshot().Endpoints` adds each endpoint's state, address (the bound end point while running) and session count.
+
+**Which settings come from where.** Each endpoint's configuration supplies its sessions' settings: `Timeout`, `HandshakeTimeout`, `MaxMessageSize`, flow control (`SessionBudget`, `PipeWindow`, `InvocationCredits`, ...), `Authenticate`, `AuthorizationCacheDuration`, TLS and socket options, and the ASP.NET path, authentication and proxy headers. Server-wide settings come from the primary configuration only: `Logger`, `Time`, `MeterFactory`, `RateLimiting` (its limits count connections on every endpoint together), `MaxPendingHandshakes` and collections. An added endpoint must keep the primary's `Time` and leave `RateLimiting` null.
+
+**Authentication guard.** When the primary configuration sets `Authenticate = true`, `StartAsync` throws unless every endpoint does, so an added endpoint can not silently skip `OnAuthenticate`.
+
+**In the nexus.** `Context.Endpoint` tells a session which endpoint accepted it, from `OnAuthenticate` onward:
+
+```csharp
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token)
+{
+    // Allow the local UDS endpoint without a token.
+    if (Context.Endpoint?.Name == "uds")
+        return new(new DefaultIdentity { DisplayName = "local" });
+    ...
+}
+```
+
+`IsSecure` is true for TLS and QUIC. For WebSocket and HttpSocket it is the `HttpRequest.IsHttps` of the request that opened the connection.
+
+**Metrics and logs.** Server sessions and rejections carry the `nexnet.endpoint` metric tag with the endpoint name, next to `nexnet.role` and `nexnet.transport`. Sessions of an added endpoint log under `SV{id}/{name}`; those of the primary endpoint under `SV{id}`, as before.
+
 ## Transport Selection Guide
 
 | Scenario | Recommended Transport | Reason |
@@ -142,3 +180,4 @@ Additional transports can be added with relative ease as long as the new transpo
 - [ASP.NET Integration](asp-net-integration.md) — WebSocket and HttpSocket setup with middleware
 - [Rate Limiting](rate-limiting.md) — Rate limiting works across all transport types
 - [Wire Protocol](../internals/protocol-specification.md) — Wire protocol details
+- [Transport bindings](../internals/protocol-specification.md#13-transport-bindings) — How each transport carries the NexNet stream: TLS, the HttpSocket upgrade request, WebSocket messages and close codes

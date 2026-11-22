@@ -49,7 +49,17 @@ internal class NexusListRelayServer<T> : NexusBroadcastServer<INexusCollectionLi
         if (opResult is NoopOperation<T>)
         {
             op.Return();
-            sourceClient?.BufferTryWrite(NexusCollectionListNoopMessage.Rent().Wrap());
+
+            // The request was made obsolete by a concurrent change: answer the originator only, with Ack set, so
+            // its pending request completes with false. Nothing changed, so nothing is broadcast.
+            // The answer goes through the broadcast channel, so the originator sees the winning change first.
+            if (sourceClient != null)
+            {
+                var noop = NexusCollectionListNoopMessage.Rent();
+                noop.Flags = NexusCollectionMessageFlags.Ack;
+                return new ProcessResult(null, false, noop);
+            }
+
             return new ProcessResult(null, false);
         }
 
@@ -106,36 +116,31 @@ internal class NexusListRelayServer<T> : NexusBroadcastServer<INexusCollectionLi
         return _itemList.State.List.GetEnumerator();
     }
 
-    protected override void OnConnected(NexusBroadcastSession<INexusCollectionListMessage> client)
+    protected override IEnumerable<INexusCollectionListMessage> CaptureSnapshot()
     {
+        // Captured here, on the processing loop; the messages are built as they are written.
         var state = _itemList.State;
-        
+        return SnapshotMessages(state, state.List.Count);
+    }
+
+    private static IEnumerable<INexusCollectionListMessage> SnapshotMessages(VersionedList<T>.ListState state, int totalValues)
+    {
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
-        reset.TotalValues = state.List.Count;
-        client.BufferTryWrite(reset.Wrap());
-        
-        foreach (var values in ResetValuesEnumerator(state))
-        {
-            client.BufferTryWrite(values);
-        }
-        
-        client.BufferTryWrite(NexusCollectionListResetCompleteMessage.Rent().Wrap());
-    }
-    private IEnumerable<INexusCollectionBroadcasterMessageWrapper<INexusCollectionListMessage>> ResetValuesEnumerator(
-        VersionedList<T>.ListState state)
-    {
-        if (state.List.Count == 0)
-            yield break;
+        reset.TotalValues = totalValues;
+        yield return reset;
 
-        var bufferSize = Math.Min(state.List.Count, 40);
-        
-        foreach (var item in state.List.MemoryChunk(bufferSize))
+        if (state.List.Count > 0)
         {
-            var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = PayloadSerializer.Serialize(item);
-            yield return message.Wrap();
+            var bufferSize = Math.Min(state.List.Count, 40);
+            foreach (var item in state.List.MemoryChunk(bufferSize))
+            {
+                var message = NexusCollectionListResetValuesMessage.Rent();
+                message.Values = PayloadSerializer.Serialize(item);
+                yield return message;
+            }
         }
+
+        yield return NexusCollectionListResetCompleteMessage.Rent();
     }
-    
 }

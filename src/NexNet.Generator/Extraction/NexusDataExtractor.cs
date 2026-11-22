@@ -114,6 +114,27 @@ internal static class NexusDataExtractor
         };
     }
 
+    /// <summary>
+    /// The server and client interface data of an export given by its interfaces alone
+    /// (<c>[assembly: NexusClientExport&lt;TServer, TClient&gt;]</c>): exactly what a C# client nexus
+    /// <c>[Nexus&lt;TClient, TServer&gt;(NexusType = NexusType.Client)]</c> extracts. No class, so no authorization data.
+    /// </summary>
+    internal static (InvocationInterfaceData Server, InvocationInterfaceData Client) ExtractExportInterfaces(
+        INamedTypeSymbol serverInterface,
+        INamedTypeSymbol clientInterface,
+        ShapeBuilder shapes,
+        CancellationToken cancellationToken)
+    {
+        var attribute = new NexusAttributeData(
+            IsServer: false,
+            IsClient: true,
+            NexusInterfaceTypeName: clientInterface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            ProxyInterfaceTypeName: serverInterface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+
+        return (ExtractInterfaceData(serverInterface, attribute, shapes, cancellationToken),
+            ExtractInterfaceData(clientInterface, attribute, shapes, cancellationToken));
+    }
+
     private static void AddSerializationRoots(SerializationBuilder builder, INamedTypeSymbol interfaceSymbol)
     {
         foreach (var iface in new[] { interfaceSymbol }.Concat(interfaceSymbol.AllInterfaces))

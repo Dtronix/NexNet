@@ -2,32 +2,445 @@
 
 *Unreleased*
 
-## Security/correctness
+## Highlights
 
-- **Fixed: data from one connection could appear in another connection (HttpSocket and WebSocket).** When an HttpSocket or WebSocket connection closed while a read was still in progress, the transport returned the read's buffer to the shared buffer pool before the read finished. Another connection in the same process (another client's session on a server) could then get that buffer, and the late bytes of the closed connection landed in its incoming data. The other session could receive foreign protocol headers, invocations or pipe data (usually ending with `ProtocolError`), and data could be disclosed across sessions. Affected 0.20.0 and earlier, on both clients and servers (`NexNet.Asp`). Now only the read loop completes a transport's input, after its read has ended: `HttpSocketDuplexPipe.CompleteAsync` no longer completes `Input` (its reader completes it), and `IWebSocketPipe.CompleteAsync` stops the receive loop and waits for it to exit (up to 250 ms) before the input is completed; it no longer completes the input's reader. Upgrading is recommended for every HttpSocket and WebSocket user.
+NexNet 0.21 adds **Java and JavaScript clients**. A server nexus written in C# opts in with `Targets`, and the existing
+source generator writes a complete Java client (Java 11+, Android API 24+) and a JavaScript client (Node 22+ and
+browsers) next to your project, including each language's client runtime. Nothing is published to npm or Maven: the
+generator, shipped in the `NexNet.Generator` NuGet package, writes everything a client needs. The Java and JavaScript
+clients have the C# client's features and pass the same tests. A **server can now listen on several transports at
+once** (for example TCP + TLS for services, WebSocket for browsers and QUIC for .NET), so every client language reaches
+the same nexus. The release also fixes a cross-session data corruption in the HttpSocket and WebSocket transports of
+0.20.0 and several hangs and data-loss bugs, and moves the whole test suite to TUnit with a cross-language harness that
+runs every C# client test against every client language.
 
-## Behaviour changes
+- **Upgrade first:** [security and correctness fixes](#upgrade-first-security-and-correctness-fixes), led by the
+  HttpSocket/WebSocket buffer corruption ([#223](https://github.com/Dtronix/NexNet/pull/223)).
+- **Act on:** [breaking and behaviour changes](#breaking-and-behaviour-changes), mainly pre-send cancellation
+  ([#105](https://github.com/Dtronix/NexNet/pull/105)), the nullable `PingInterval` and the new `ServerGreeting` field ([#159](https://github.com/Dtronix/NexNet/pull/159)).
+- **New:** [Java and JavaScript clients](#multi-language-clients) ([#298](https://github.com/Dtronix/NexNet/pull/298)), [one server with many
+  endpoints](#server) ([#119](https://github.com/Dtronix/NexNet/pull/119)).
+- **Every merged pull request** is listed in the [full change log](https://github.com/Dtronix/NexNet/pull/326#issuecomment-7053892215).
 
-- **Behavior change: a call canceled before it is sent throws `TaskCanceledException`.** When the `CancellationToken` of a `ValueTask` or `ValueTask<T>` method is already canceled, or is canceled while the call waits for invocation credit, the call now throws `TaskCanceledException`. Before, `ValueTask` completed successfully and `ValueTask<T>` returned `default`, so a canceled call could not be told apart from a real result. As before, nothing is sent and no invocation ID is used. Fire-and-forget (`void`) methods and broadcasts are unchanged. See [Hub Invocations: Cancellation](../hub-invocations.md#cancellation).
-- **Behavior change: the client gets its authentication token before the transport connects.** `ClientConfig.Authenticate` is now called before the connection opens rather than after. If it throws, no connection is opened: `TryConnectAsync` returns a failed `ConnectionResult` (`StateValue.Exception`, `DisconnectReason.Authentication`) carrying the exception, and `ConnectAsync` rethrows it. Before, the exception escaped `TryConnectAsync` and left the transport open. See [Authentication](../authentication.md#asynchronous-token).
-- **Plaintext transports log a warning.** A client on plain TCP, `ws://` or `http://` logs `NexNet: unencrypted transport (<transport>); credentials and data are visible on the network.` at Warning level, once per client instance on its first connect. UDS, TLS, QUIC, `wss://` and `https://` do not warn. A custom `ClientConfig` subclass warns, named by its type, unless it overrides `IsSecureTransport` to return true. See [Authentication: Plaintext Transports](../authentication.md#plaintext-transports).
-- **An unauthorized pipe, channel or collection connect refuses the caller's pipe.** When `OnAuthorize` returns `AuthorizeResult.Unauthorized` for a method with an `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter, or for a synchronized collection connect, the server now sends `Refused` for the caller's pipe, as it does when the pipe limit is reached. The caller's `ReadyTask` (for a channel, `BasePipe.ReadyTask`; for a collection, `EnableAsync()`) fails at once with `NexusBusyException` and the session stays up. Before, nothing was sent and `ReadyTask` waited until the session ended. The wire protocol is unchanged, so the client cannot tell an authorization refusal from a limit refusal. `AuthorizeResult.Disconnect` still disconnects the session. See [Authorization](../authorization.md#authorization-results).
+Pre-1.0, servers and clients upgrade together: run 0.21 on both sides, including the Java and JavaScript clients
+generated by the 0.21 generator.
+
+---
+
+## Upgrade first: security and correctness fixes
+
+These fix silent data corruption, data loss or calls that never complete. Upgrade if you use the affected feature.
+
+- **Fixed: data from one connection could appear in another connection (HttpSocket and WebSocket).** When an HttpSocket or WebSocket connection closed while a read was still in progress, the transport returned the read's buffer to the shared buffer pool before the read finished. Another connection in the same process (another client's session on a server) could then get that buffer, and the late bytes of the closed connection landed in its incoming data. The other session could receive foreign protocol headers, invocations or pipe data (usually ending with `ProtocolError`), and data could be disclosed across sessions. Affected 0.20.0 and earlier, on both clients and servers (`NexNet.Asp`). Now only the read loop completes a transport's input, after its read has ended: `HttpSocketDuplexPipe.CompleteAsync` no longer completes `Input` (its reader completes it), and `IWebSocketPipe.CompleteAsync` stops the receive loop and waits for it to exit (up to 250 ms) before the input is completed; it no longer completes the input's reader. Upgrading is recommended for every HttpSocket and WebSocket user. ([#223](https://github.com/Dtronix/NexNet/pull/223), [#228](https://github.com/Dtronix/NexNet/pull/228)) Further investigation traced two other symptoms under load to the same cause, because TCP, UDS and TLS session
+  buffers and certificate loading rent from the same shared pool: a TCP session waiting for a frame whose bytes were
+  overwritten (no protocol error, only a timeout), and a `CryptographicException` when loading a PFX file. **Who is
+  affected:** any 0.20.0 (or earlier) process, client or server, that uses HttpSocket or WebSocket, including the other
+  sessions of that process ([#234](https://github.com/Dtronix/NexNet/pull/234)).
+- **Fixed: a call could wait forever after the session disconnected.** A `ValueTask` or `ValueTask<T>` call made while its session was closing (for example while the server disconnected it) could register just after the disconnect had canceled every pending call. It was then sent and, with no result ever coming, never completed (about 1 in 3000 server-initiated disconnects under load). Such a call now throws `TaskCanceledException` at once, as calls pending at the disconnect do, and nothing is sent. ([#232](https://github.com/Dtronix/NexNet/pull/232), [#239](https://github.com/Dtronix/NexNet/pull/239)) **Who is affected:** C# clients and servers whose sessions are disconnected by the other
+  side while calls are being made.
+- **`DisconnectedTask` is completed after a failed connect attempt.** When `ConnectAsync`, `TryConnectAsync` or a reconnection attempt failed to open the transport (no server listening, a TLS failure, a canceled connect), `NexusClient.DisconnectedTask` was replaced by a task that never completed, so code awaiting it (and `IRentedNexusClient.DisconnectedTask` after a failed `EnsureConnectedAsync`) waited forever. `DisconnectedTask` now changes only once the transport is connected; after a failed attempt it stays completed. ([#263](https://github.com/Dtronix/NexNet/pull/263), [#269](https://github.com/Dtronix/NexNet/pull/269)) **Who is affected:** code that awaits `DisconnectedTask` (directly or through the client
+  pool) after a connect can fail.
+- **Synchronized collections could lose or duplicate data.** **Who is affected:** applications using `INexusList`,
+  especially large lists, relay collections and lists changed while clients connect.
+  - Large snapshots arrive whole. The server wrote a new client's snapshot into the client's 1000-message outgoing buffer without waiting and dropped what did not fit, so a list of roughly 40,000 items or more could reach a client incomplete; the client then closed the collection as a protocol error (value count mismatch) and the enable failed. The snapshot is now written through the pipe's flow control, so a list of any size reaches even a slow client whole, for both `NexusList` collections and relay collections. A client that falls more than 1000 messages behind on live changes is still disconnected from the collection, now with a logged reason; enabling it again resynchronizes it. See the [protocol specification](../../internals/protocol-specification.md) §12.5 and §12.8. ([#217](https://github.com/Dtronix/NexNet/pull/217), [#252](https://github.com/Dtronix/NexNet/pull/252), [#258](https://github.com/Dtronix/NexNet/pull/258))
+  - Clients connected to a relay collection now follow the relay when it resynchronizes from its parent. When the relay reconnected to its parent, or the parent's list was cleared or had an item moved, the relay updated its own list but sent nothing to its clients, which kept stale data until they enabled the collection again. The relay now sends its connected clients a reset with its new list, as it does for a new client, and later changes apply on top of it. See the [protocol specification](../../internals/protocol-specification.md) §12.2. ([#267](https://github.com/Dtronix/NexNet/pull/267), [#284](https://github.com/Dtronix/NexNet/pull/284)) The resync reset is written to each client with the same flow control as
+    a snapshot ([#284](https://github.com/Dtronix/NexNet/pull/284)).
+  - A relay applied a change from its parent outside its processing loop, so a client that connected in that gap
+    received the change twice (once in its snapshot and once as a change). Relay changes and resyncs now run on the
+    relay's processing loop. The unused internal `OnConnected` hook of the collection broadcast server was removed ([#261](https://github.com/Dtronix/NexNet/pull/261)).
+  - A new client receives its snapshot before any change; before, a change made while it connected could arrive ahead of the snapshot. ([#152](https://github.com/Dtronix/NexNet/pull/152))
+- **A pipe closing while a write is in flight no longer drops the session.** When a pipe, channel or collection pipe was closed or reset while the application was still writing or flushing to it, the flush could send from buffers already returned to the pool, or send data after the pipe's completion; the session then ended with a protocol error, taking every other pipe and pending call with it (for example, a client that disabled a collection mid-stream had its next `EnableAsync()` fail with `TaskCanceledException`). Now only that pipe ends: data written after the close is dropped, buffers are released only once no flush or caller still uses them, and nothing is sent for the pipe after its completion. ([#180](https://github.com/Dtronix/NexNet/pull/180), [#204](https://github.com/Dtronix/NexNet/pull/204)) **Who is affected:** applications that close or reset pipes, channels or collections while
+  other code writes to them.
+
+## Breaking and behaviour changes
+
+Each item says what changed, what it was before and what to do. The public API changes are: `ClientConfig.PingInterval`
+is now `int?`; `NexusServerState` has two new values; and there are new types and members listed under
+[New features](#new-features). No public C# API was removed.
+
+- **Behavior change: a call canceled before it is sent throws `TaskCanceledException`.** When the `CancellationToken` of a `ValueTask` or `ValueTask<T>` method is already canceled, or is canceled while the call waits for invocation credit, the call now throws `TaskCanceledException`. Before, `ValueTask` completed successfully and `ValueTask<T>` returned `default`, so a canceled call could not be told apart from a real result. As before, nothing is sent and no invocation ID is used. Fire-and-forget (`void`) methods and broadcasts are unchanged. See [Hub Invocations: Cancellation](../hub-invocations.md#cancellation). ([#105](https://github.com/Dtronix/NexNet/pull/105))
+  - **Before:** a canceled `ValueTask<T>` call returned `default`. **After:** it throws `TaskCanceledException`.
+  - **Migration:** if you relied on the `default` result, catch `OperationCanceledException` around calls whose
+    token may already be canceled.
+  - The Java and JavaScript clients behave the same way: the future fails with `CancellationException`, the promise
+    rejects with the signal's reason (or an `AbortError`) ([#160](https://github.com/Dtronix/NexNet/pull/160), [#158](https://github.com/Dtronix/NexNet/pull/158)).
+- **Behavior change: the client derives its ping interval from the server's idle timeout.** `ServerGreeting` carries a new trailing field, `idleTimeoutMs`: the `Timeout` of the endpoint that accepted the session. `ClientConfig.PingInterval` is now `int?` and null by default. When it is null, the client pings at a third of the advertised timeout, at least every second, so a server with a short `Timeout` no longer times out clients that use the default interval. Against a server that advertises no timeout, the client pings every 10 s, as before. An explicit `PingInterval` is used as is; if it is not below the server's `Timeout`, the client logs a warning on connect. Client snapshots carry the interval in use as `NexusSessionSnapshot.PingInterval`. Setting `PingInterval` to zero or a negative value now throws `ArgumentOutOfRangeException`. Code that reads `PingInterval` as an `int` must handle null. See [Sessions & Lifetimes: Ping and Keep-Alive](../sessions-and-lifetimes.md#ping-and-keep-alive) and the [protocol specification](../../internals/protocol-specification.md) §4.2 and §5.5. ([#159](https://github.com/Dtronix/NexNet/pull/159)) The Java and JavaScript clients derive their ping interval the same way ([#167](https://github.com/Dtronix/NexNet/pull/167), [#166](https://github.com/Dtronix/NexNet/pull/166)).
+  - **Before:** clients pinged every 10 s whatever the server's `Timeout`. **After:** a third of the advertised
+    timeout, at least every second.
+  - **Migration:** code that reads `PingInterval` as an `int` must handle null. The new `idleTimeoutMs` is a trailing
+    field that older readers ignore, so mixed versions still connect, but upgrade servers and clients together
+    (pre-1.0 policy).
+- **Behavior change: `MapWebSocketNexus` / `MapHttpSocketNexus` with a configuration that is not the server's primary one now apply that configuration's session settings.** Before, such a mapping only contributed its path and ASP.NET options, and its sessions used the primary configuration's `Timeout`, `MaxMessageSize`, flow control and `Authenticate`. When the server is already configured at mapping time, the configuration now becomes its own endpoint (see [Multiple Endpoints](../asp-net-integration.md#multiple-endpoints)). Mapping the primary configuration behaves exactly as before. ([#119](https://github.com/Dtronix/NexNet/pull/119))
+  - **Migration:** if a non-primary configuration was mapped only for its path, check that its session settings are the
+    ones you want for those sessions.
+- **`NexusServerState.Starting` and `NexusServerState.Stopping`.** `State` now reports `Starting` while `StartAsync` binds its listeners and `Stopping` while `StopAsync` disconnects sessions; no session is accepted in either. Code that only compares against `Running` and `Stopped` is unaffected; code that switches over every value should handle the two new ones. ([#107](https://github.com/Dtronix/NexNet/pull/107))
+  - **Migration:** a `switch` over every `NexusServerState` value must handle `Starting` (3) and `Stopping` (4).
+- **Behavior change: the client gets its authentication token before the transport connects.** `ClientConfig.Authenticate` is now called before the connection opens rather than after. If it throws, no connection is opened: `TryConnectAsync` returns a failed `ConnectionResult` (`StateValue.Exception`, `DisconnectReason.Authentication`) carrying the exception, and `ConnectAsync` rethrows it. Before, the exception escaped `TryConnectAsync` and left the transport open. See [Authentication](../authentication.md#asynchronous-token). ([#114](https://github.com/Dtronix/NexNet/pull/114))
+  - **Migration:** code that caught exceptions from `Authenticate` around `TryConnectAsync` now reads them from the
+    returned `ConnectionResult`.
+- **Plaintext transports log a warning.** A client on plain TCP, `ws://` or `http://` logs `NexNet: unencrypted transport (<transport>); credentials and data are visible on the network.` at Warning level, once per client instance on its first connect. UDS, TLS, QUIC, `wss://` and `https://` do not warn. A custom `ClientConfig` subclass warns, named by its type, unless it overrides `IsSecureTransport` to return true. See [Authentication: Plaintext Transports](../authentication.md#plaintext-transports). ([#114](https://github.com/Dtronix/NexNet/pull/114)) The Java (`isSecure()`) and JavaScript (`client.isSecure`) clients also warn once per client on a plaintext transport.
+- **An unauthorized pipe, channel or collection connect refuses the caller's pipe.** When `OnAuthorize` returns `AuthorizeResult.Unauthorized` for a method with an `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter, or for a synchronized collection connect, the server now sends `Refused` for the caller's pipe, as it does when the pipe limit is reached. The caller's `ReadyTask` (for a channel, `BasePipe.ReadyTask`; for a collection, `EnableAsync()`) fails at once with `NexusBusyException` and the session stays up. Before, nothing was sent and `ReadyTask` waited until the session ended. The wire protocol is unchanged, so the client cannot tell an authorization refusal from a limit refusal. `AuthorizeResult.Disconnect` still disconnects the session. See [Authorization](../authorization.md#authorization-results). ([#111](https://github.com/Dtronix/NexNet/pull/111))
+  - **Before:** the caller's `ReadyTask` waited until the session ended. **After:** it fails at once with
+    `NexusBusyException`.
+- **Behavior change: a collection's `ReadyTask` fails when the collection disconnects before its first synchronization.** Each `EnableAsync()` now starts a fresh `ReadyTask`, which fails with `InvalidOperationException` when the enable fails or the collection disconnects before its initial synchronization completes. `INexusList.ConnectAsync()` therefore throws in that case. Before, `ReadyTask` never completed and `ConnectAsync()` waited forever (or returned quietly for a collection that was never synchronized). See [Synchronized Collections](../synchronized-collections.md#connection-lifecycle). ([#153](https://github.com/Dtronix/NexNet/pull/153), [#185](https://github.com/Dtronix/NexNet/pull/185))
+  - **Migration:** handle the exception from `ConnectAsync()`/`ReadyTask` (retry with `EnableAsync()`).
+- **Behavior change: a collection whose message processor fails is restarted or disabled.** On the server, a collection message processor that stops on an unexpected error is restarted after a backoff (100 ms, doubling), and the collection pipes of its clients are closed so they resynchronize. After 5 restarts within one minute, the next failure stops the collection: its clients are disconnected from it and new enables are refused until the server restarts. On a client, a processor failure disables the collection: `State` becomes `Disconnected`, `ReadyTask` fails and a pending `EnableAsync()` throws. Plain client lists must call `EnableAsync()` or `ConnectAsync()` again; relay collections re-enable themselves. Before, the collection silently stopped processing changes. See [Synchronized Collections: Failures](../synchronized-collections.md#failures). ([#133](https://github.com/Dtronix/NexNet/pull/133), [#150](https://github.com/Dtronix/NexNet/pull/150))
+- **`INexusList.State` reports the collection's real state.** It is `Connected` once the initial synchronization completes and `Disconnected` before it and after the collection pipe closes. Before, it did not track the collection. ([#149](https://github.com/Dtronix/NexNet/pull/149))
+- **NexNet.Quic no longer requires preview features.** The package was marked `[RequiresPreviewFeatures]`, a holdover from when `System.Net.Quic` was a preview API (it has been stable since .NET 9). Projects using NexNet.Quic no longer need `EnablePreviewFeatures`. Before, a `net10.0` project built with a newer SDK (such as SDK 11) failed with CA2252 even with `EnablePreviewFeatures` set, because the SDK only marks a project as preview when it targets the newest framework. ([#123](https://github.com/Dtronix/NexNet/pull/123))
+  - **Migration:** remove `EnablePreviewFeatures` if you set it only for NexNet.Quic.
+- **HttpSocket and WebSocket upgrades are stricter.** The HttpSocket client accepts only `101 Switching Protocols`:
+  another 2xx answer now fails the connect with `TransportException(ProtocolError)` (before, the response body was read
+  as the session stream). No client follows a redirect on the upgrade request any more: a 3xx answer fails with
+  `ProtocolError` and no second request is made (before, the C# clients followed it). A WebSocket server or client that
+  receives a text message closes with 1003 and ends the session. The HttpSocket middleware's origin check now ignores
+  case, like the WebSocket one. **Migration:** point clients at the final URL instead of a redirecting one
+  ([#186](https://github.com/Dtronix/NexNet/pull/186), [#206](https://github.com/Dtronix/NexNet/pull/206)).
+- **QUIC connect errors.** A rejected server certificate (chain, host name or validation callback) now fails a QUIC
+  connect with `TransportException(AuthenticationError)` instead of `ConnectionRefused`. When the connection opens but
+  its stream cannot, the client disposes the connection and throws `TransportException` (`ConnectionTimeout` for a
+  cancel or timeout, the mapped `QuicError` otherwise); before, the connection stayed open until the server's idle
+  timeout ([#120](https://github.com/Dtronix/NexNet/pull/120), [#144](https://github.com/Dtronix/NexNet/pull/144), [#186](https://github.com/Dtronix/NexNet/pull/186)).
+- **Behavior change: NexNet.Asp refuses a failed WebSocket authentication inside the protocol.** With
+  `AspEnableAuthentication`, a WebSocket request that fails ASP.NET authentication (header, cookie or
+  `AccessTokenQueryParameter` token) is no longer answered `401`: the server accepts the WebSocket, sends its preamble
+  and answers the client's greeting with `DisconnectReason.Authentication`. No session is created and the nexus is not
+  involved. Browsers cannot read the status of a refused upgrade, so a `401` looked to them like a network failure
+  (`InternalError`); every client (C#, Java, Node and browsers) now reports `TransportError.AuthenticationError`, as
+  for a refused greeting token.
+  HttpSocket still answers `401`, and an `Origin` outside `AllowedOrigins` is still answered `403`.
+  - **Migration:** a C#, Java or Node client already reported `AuthenticationError`. Code that inspected the HTTP status
+    of a refused WebSocket upgrade (a proxy, or a raw WebSocket client) sees a `101` followed by the refusal instead.
+- **Behavior change: the C# client refuses a change to a read-only list up front.** A write (`AddAsync`,
+  `InsertAsync`, `RemoveAsync`, `RemoveAtAsync`, `ReplaceAsync`, `MoveAsync`, `ClearAsync`) to a client list whose
+  mode is not `BiDirectional` (`ServerToClient` or `Relay`) now throws `InvalidOperationException` ("The collection is
+  read-only …") before anything else is checked, as the Java and JavaScript clients do. Before, the refusal depended on
+  the list's state: `RemoveAsync` of a missing item returned false, a write before `EnableAsync` threw "Client not
+  connected", and any other write threw "Can't send when writer is not set." Argument checks (a negative index) still
+  come first. ([#355](https://github.com/Dtronix/NexNet/pull/355))
+  - **Migration:** code that relied on `RemoveAsync` returning false on a read-only list must not call it there.
+- **Behavior change: a C# client list's `IsReadOnly` reflects its mode.** `INexusList<T>.IsReadOnly` on a client list
+  is now `true` for `ServerToClient` and `Relay` lists (the ones whose writes throw) and `false` for `BiDirectional`,
+  as `ICollection<T>.IsReadOnly` does. Before, it was always `false`. Server lists are unchanged (`false`). Java and
+  JavaScript have no such flag: their list's `mode` tells the same thing.
+  - **Migration:** code that read `IsReadOnly` on a client list and expected `false` on a `ServerToClient` or `Relay`
+    list should check the mode instead, or treat `true` as "do not write".
+- **Behavior change: the C# client reports `Reconnecting` while it reconnects.** When a lost session starts the
+  reconnection loop, `NexusClient.StateChanged` now raises `ConnectionState.Reconnecting` (after the lost session's
+  `Disconnecting` and `Disconnected`), and `State` reads `Reconnecting` until an attempt connects (`Connected`) or the
+  policy gives up (`Disconnected`, raised once). Failed attempts no longer report their own `Disconnecting`/`Disconnected`.
+  Before, the client never raised `Reconnecting` and `State` read `Disconnected` between attempts. The Java and
+  JavaScript clients already reported `Reconnecting`. ([#385](https://github.com/Dtronix/NexNet/pull/385))
+  - **Migration:** code that waited for `Disconnected` to notice a lost session while a reconnection policy is set
+    should also handle `Reconnecting`; `DisconnectedTask` is unchanged.
+- **Behavior change: the C# client reports `Connecting` when a connect starts.** `ConnectAsync`/`TryConnectAsync` now
+  raise `ConnectionState.Connecting` through `NexusClient.StateChanged` before the authentication token is acquired, and
+  `State` reads `Connecting` until the session reports `Connected`. A connect that fails before it opens a session
+  (token provider, transport connect) then raises `Disconnected`. Attempts of the reconnection loop raise no
+  `Connecting`: the client stays `Reconnecting`. Before, the first state change of a connect was `Connected` and a
+  connect that failed before the transport was up raised nothing. The Java and JavaScript clients already reported
+  `Connecting`; every client language now reports `Connecting`, `Connected` for a first connect.
+  - **Migration:** a `StateChanged` handler that treated every state other than `Connected` as a lost connection
+    should ignore `Connecting`.
+- **Behavior change: the Java and JavaScript clients stay `Reconnecting` between attempts.** As the C# client does
+  now, they read `Reconnecting` from the start of the reconnection loop until an attempt connects, and `Disconnected`
+  only once the loop ends (the policy gave up, or `disconnect()`/`close()` stopped it). Before, each failed attempt
+  went back to `Disconnected` until the next one, and the JavaScript client read `Disconnected` during the first delay.
+  Tested on every client language and transport.
+- **Behavior change: the Java client reports the lost session's `DISCONNECTING` and `DISCONNECTED`.** When the
+  server or the network ends a session, the Java client now reports `CONNECTED` → `DISCONNECTING` → `DISCONNECTED`
+  and then, with a reconnection policy, `RECONNECTING` → `CONNECTED`, as the C# and JavaScript clients do. Before, it
+  went straight from `CONNECTED` to `RECONNECTING` (or to `DISCONNECTED` without a policy).
+- **Behavior change: the JavaScript client checks upgrade headers when it is created.** `webSocket.headers` and
+  `httpSocket.headers` follow the rules of C# `UpgradeHeaderCollection` and Java `ClientConfig.Builder.header`: a
+  header the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`,
+  `Transfer-Encoding`), a name that is not an HTTP token or is set twice ignoring case, or a value with CR, LF or
+  another control or non-Latin-1 character makes `createClient` throw `TypeError`. Before, Node sent the headers as
+  given (a `Host` entry replaced the real one) and a CR/LF value failed only at connect. Tested on every client
+  language that sends headers.
 
 ## New features
 
-- **`ClientConfig.AuthenticateAsync`.** An asynchronous authentication token provider, `Func<CancellationToken, ValueTask<Memory<byte>>>`, for tokens fetched or refreshed from an identity provider. It is called on every connect and reconnect, before the transport connects, and must complete within `HandshakeTimeout`. Setting both `Authenticate` and `AuthenticateAsync` is a configuration error. See [Authentication](../authentication.md#asynchronous-token).
-- **`INexusClient.IsSecure`.** True when the client's transport is encrypted or local (TLS, `wss://`, `https://`, QUIC, UDS); false for plain TCP, `ws://` and `http://`. Client snapshots carry it as `NexusSessionSnapshot.IsSecure` (null on server sessions). `ClientConfig.IsSecureTransport` defaults to false, so a custom `ClientConfig` subclass reports `IsSecure` false unless it overrides it.
-- **WebSocket `AllowedOrigins`.** `WebSocketServerConfig.AllowedOrigins` restricts the `Origin` header of WebSocket requests to prevent Cross-Site WebSocket Hijacking when cookies are used. A request from another origin is answered 403. Empty (the default) allows every origin, as before. `UseWebSocketNexusServerAsync` passes the list to `WebSocketOptions.AllowedOrigins`, and `MapWebSocketNexus` checks it on every request. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients).
-- **Opt-in query-string access token.** `AccessTokenQueryParameter` on `WebSocketServerConfig` and `HttpSocketServerConfig` (null by default) promotes a query-string token to `Authorization: Bearer <token>` before `AspAuthenticationScheme` runs, for clients such as browsers that cannot send the header. The parameter is removed from the request's query string and its value is never logged by NexNet. The NexNet greeting token remains the canonical mechanism. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients).
+### Multi-language clients
 
-## Fixes
+- **Java and JavaScript clients.** A server nexus opts in with `Targets = NexusTargets.Java | NexusTargets.JavaScript` (or `[assembly: NexusClientExport<TServer, TClient>]`), and the build writes a Java client (Java 11+, Android API 24+; WebSocket, HttpSocket, TCP and TLS) and a JavaScript client (Node 22+ with WebSocket, HttpSocket, TCP, TLS and UDS; browsers with WebSocket) into the directories set by `NexNetJavaOutputDir`/`NexNetJavaPackage` and `NexNetJavaScriptOutputDir`. The clients have the C# client's features: invocations and cancellation, client nexus methods, pipes, channels, synchronized collections, greeting-token authentication, reconnection, the client pool, logging, metrics and snapshots. The generator also writes each client's runtime next to the generated code (`EmitRuntime`, on by default; `RuntimeImport` for JavaScript, `Nullness` for Java), so nothing is installed from npm or Maven: the clients are distributed only through `NexNet.Generator`. See [Multi-language Clients](../multi-language-clients.md), [JavaScript Client](../javascript-client.md) and [Java Client](../java-client.md). ([#298](https://github.com/Dtronix/NexNet/pull/298))
+  - **How it works.** The generator builds a language-neutral model of each exported nexus (`nexnet-ir.json`)
+    ([#113](https://github.com/Dtronix/NexNet/pull/113)); the opt-in surface is `NexusTargets`, `[assembly: NexusClientExport<TServer, TClient>]` and
+    `[assembly: NexusTargetFormatter<T>]` for types with a custom formatter ([#117](https://github.com/Dtronix/NexNet/pull/117)). The generated files travel in
+    a comment-only `NexNet.Targets.g.cs` bundle and an MSBuild target imported from `build/` and `buildTransitive/`
+    writes them after `CoreCompile`, rewriting only files whose bytes changed and deleting files no longer generated
+    ([#131](https://github.com/Dtronix/NexNet/pull/131), [#187](https://github.com/Dtronix/NexNet/pull/187)). See [Multi-language Clients: Configuring output](../multi-language-clients.md#configuring-output).
+  - **Emitted runtime.** Each output directory also receives the client runtime of its language, so the generated code
+    and the runtime always match ([#285](https://github.com/Dtronix/NexNet/pull/285)). The JavaScript runtime comes with its `.d.ts` files, so TypeScript needs no
+    `allowJs` ([#292](https://github.com/Dtronix/NexNet/pull/292), [#303](https://github.com/Dtronix/NexNet/pull/303)). The optional Java modules (`android`, `kotlin`, `okhttp`, `micrometer`) are written only
+    when listed in `NexNetJavaEmitRuntimeModules` ([#297](https://github.com/Dtronix/NexNet/pull/297)). See
+    [Multi-language Clients: The emitted runtime](../multi-language-clients.md#the-emitted-runtime) and
+    [the internals page](../../internals/generator-emitted-runtime.md).
+  - **Hashes and handshake.** Generated clients use the method ids, hashes and handshake constants the C# generator
+    computes, checked against compiled C# clients by hash parity tests ([#129](https://github.com/Dtronix/NexNet/pull/129)).
 
-- **Fixed: a call could wait forever after the session disconnected.** A `ValueTask` or `ValueTask<T>` call made while its session was closing (for example while the server disconnected it) could register just after the disconnect had canceled every pending call. It was then sent and, with no result ever coming, never completed (about 1 in 3000 server-initiated disconnects under load). Such a call now throws `TaskCanceledException` at once, as calls pending at the disconnect do, and nothing is sent.
-- **`DisconnectedTask` is completed after a failed connect attempt.** When `ConnectAsync`, `TryConnectAsync` or a reconnection attempt failed to open the transport (no server listening, a TLS failure, a canceled connect), `NexusClient.DisconnectedTask` was replaced by a task that never completed, so code awaiting it (and `IRentedNexusClient.DisconnectedTask` after a failed `EnsureConnectedAsync`) waited forever. `DisconnectedTask` now changes only once the transport is connected; after a failed attempt it stays completed.
-- **NexNet.Quic no longer requires preview features.** The package was marked `[RequiresPreviewFeatures]`, a holdover from when `System.Net.Quic` was a preview API (it has been stable since .NET 9). Projects using NexNet.Quic no longer need `EnablePreviewFeatures`. Before, a `net10.0` project built with a newer SDK (such as SDK 11) failed with CA2252 even with `EnablePreviewFeatures` set, because the SDK only marks a project as preview when it targets the newest framework.
+### Server
 
-- **Duplicate nexus method names are reported as NEXNET042 instead of crashing the generator.** A nexus interface that overloads a method name, or declares a name that an inherited interface also declares, made the source generator throw, so the build reported only a generator failure (CS8785). It is now the error NEXNET042, reported at the duplicate method, and that nexus is not generated. Method names must be unique across a nexus interface and its inherited interfaces. A nexus class that overloads the name of an authorized method no longer crashes the generator either; the authorization of the overload that implements the interface method is used.
-- **Generator diagnostics are reported at their source location.** Nexus validation and serialization diagnostics (NEXNET001 – NEXNET042) had no location, so the build and the IDE showed them without a file or line. They now point at the method, member, interface or class they are about.
+- **One server, many endpoints.** `NexusServer.AddListener(config, name)` adds TCP, TLS, UDS or QUIC listeners and `AddExternalEndpoint(config, name)` adds externally fed endpoints, next to the endpoint built from the primary configuration; `server.Endpoints` lists them. Each endpoint's configuration supplies its sessions' settings (timeouts, message size, flow control, `Authenticate`, TLS and ASP.NET options); logger, time, meter factory, rate limiting (counted across all endpoints) and `MaxPendingHandshakes` stay server-wide. Start binds every listener and rolls all of them back if one fails. When the primary configuration sets `Authenticate`, `StartAsync` throws unless every endpoint does. See [Transports: Multiple Endpoints](../transports.md#multiple-endpoints). ([#107](https://github.com/Dtronix/NexNet/pull/107), [#119](https://github.com/Dtronix/NexNet/pull/119))
+- **`Context.Endpoint`** (`NexusEndpointInfo(Name, Transport, IsSecure, Path)`) tells a server nexus which endpoint accepted the session, from `OnAuthenticate` onward. For WebSocket and HttpSocket, `IsSecure` is `HttpRequest.IsHttps`. ([#119](https://github.com/Dtronix/NexNet/pull/119))
+- **`NexusEndpointInfo.BoundEndPoint`**: the end point a TCP, TLS, UDS or QUIC listener actually bound, set while the server runs, so listeners can bind port 0 and report the picked port (also in `GetSnapshot().Endpoints[i].Address`). `Context.Endpoint` carries it too. ([#145](https://github.com/Dtronix/NexNet/pull/145), [#151](https://github.com/Dtronix/NexNet/pull/151))
+- **Per-endpoint metrics and snapshots.** Server instruments carry a `nexnet.endpoint` tag with the endpoint name (the primary endpoint is named after its transport, for example `tcp`). `NexusServerSnapshot.Endpoints` gives each endpoint's state, address and session count, and `NexusSessionSnapshot.Endpoint` the endpoint of a server session. Sessions of an added endpoint log under `SV{id}/{name}`. ([#119](https://github.com/Dtronix/NexNet/pull/119))
+- **NexNet.Asp: endpoints and hosted lifecycle.** `MapNexusWebSocket(server, config)` and `MapNexusHttpSocket(server, config)` map a WebSocket or HttpSocket endpoint of a configured server. `AddNexusServer(o => { o.Configure(primary); o.AddListener(tcp, "tcp"); })` configures the server and registers a hosted service that starts it once the application has started (after Kestrel binds) and stops it when the application stops. `UseWebSocketNexusServerAsync` and `UseHttpSocketNexusServerAsync` attach to an already configured server instead of throwing. See [ASP.NET Integration: Multiple Endpoints](../asp-net-integration.md#multiple-endpoints). ([#119](https://github.com/Dtronix/NexNet/pull/119))
+- **WebSocket `AllowedOrigins`.** `WebSocketServerConfig.AllowedOrigins` restricts the `Origin` header of WebSocket requests to prevent Cross-Site WebSocket Hijacking when cookies are used. A request from another origin is answered 403. Empty (the default) allows every origin, as before. `UseWebSocketNexusServerAsync` passes the list to `WebSocketOptions.AllowedOrigins`, and `MapWebSocketNexus` checks it on every request. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients). ([#110](https://github.com/Dtronix/NexNet/pull/110))
+- **Opt-in query-string access token.** `AccessTokenQueryParameter` on `WebSocketServerConfig` and `HttpSocketServerConfig` (null by default) promotes a query-string token to `Authorization: Bearer <token>` before `AspAuthenticationScheme` runs, for clients such as browsers that cannot send the header. The parameter is removed from the request's query string and its value is never logged by NexNet. The NexNet greeting token remains the canonical mechanism. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients). ([#110](https://github.com/Dtronix/NexNet/pull/110))
+
+### C# client
+
+- **`ClientConfig.AuthenticateAsync`.** An asynchronous authentication token provider, `Func<CancellationToken, ValueTask<Memory<byte>>>`, for tokens fetched or refreshed from an identity provider. It is called on every connect and reconnect, before the transport connects, and must complete within `HandshakeTimeout`. Setting both `Authenticate` and `AuthenticateAsync` is a configuration error. See [Authentication](../authentication.md#asynchronous-token). ([#114](https://github.com/Dtronix/NexNet/pull/114))
+- **`INexusClient.IsSecure`.** True when the client's transport is encrypted or local (TLS, `wss://`, `https://`, QUIC, UDS); false for plain TCP, `ws://` and `http://`. Client snapshots carry it as `NexusSessionSnapshot.IsSecure` (null on server sessions). `ClientConfig.IsSecureTransport` defaults to false, so a custom `ClientConfig` subclass reports `IsSecure` false unless it overrides it. ([#114](https://github.com/Dtronix/NexNet/pull/114))
+- **WebSocket and HttpSocket clients report the server's endpoint.** On a C# client, `Context.RemoteAddress` and `Context.RemotePort` were null on WebSocket and HttpSocket connections; they now hold the address and port of the socket the client connected to, as on TCP, TLS and QUIC and as on the Java and Node clients. An IPv4 peer is reported as IPv4 (`127.0.0.1`, not `::ffff:127.0.0.1`). When the client connects through an HTTP proxy, this is the proxy's endpoint.
+- **Custom upgrade headers.** `HttpClientConfig.UpgradeHeaders` adds headers to the WebSocket and HttpSocket upgrade request (`UpgradeHeaders = { ["X-Tenant"] = "acme" }`), as the Java and Node clients can. Each name and value is checked when it is set (`ArgumentException`): no headers the transport sets, no content headers, no control characters. `AuthenticationHeader`, when set, replaces an `Authorization` entry. See [ASP.NET Integration: Client Connection](../asp-net-integration.md#client-connection).
+
+### Generator
+
+- **Opt-in targets.** `Targets = NexusTargets.Java | NexusTargets.JavaScript` on a server `[Nexus]`, or
+  `[assembly: NexusClientExport<TServer, TClient>]` for a pair of interfaces (for example an older API version).
+  Projects that configure no `NexNetTarget` build exactly as before ([#117](https://github.com/Dtronix/NexNet/pull/117), [#131](https://github.com/Dtronix/NexNet/pull/131)). See
+  [Multi-language Clients](../multi-language-clients.md#exporting-a-server-nexus).
+- **MSBuild configuration.** `NexNetJavaOutputDir`, `NexNetJavaPackage`, `NexNetJavaScriptOutputDir`, the
+  `EmitRuntime`, `Nullness`, `RuntimeImport`, `ModuleName` and `EmitRuntimeModules` options, `NexNetIrOutputPath`,
+  and the generic `<NexNetTarget Include="lang" … />` item ([#131](https://github.com/Dtronix/NexNet/pull/131), [#285](https://github.com/Dtronix/NexNet/pull/285), [#297](https://github.com/Dtronix/NexNet/pull/297)). See
+  [Multi-language Clients: Properties](../multi-language-clients.md#properties).
+- **Diagnostics NEXNET040 to NEXNET048** for exports: an unrepresentable type (040), a name collision, including one
+  created by escaping a target keyword (041), duplicate method names (042, every nexus), `Targets` on a client nexus
+  (043), a target without an output directory (044, warning), an invalid target configuration (045), a reference-equality
+  set element or key (046, warning), an output file collision (047) and an invalid `NexusTargetFormatter` (048). The
+  unpack target reports NEXNETB001 to NEXNETB005 ([#125](https://github.com/Dtronix/NexNet/pull/125), [#255](https://github.com/Dtronix/NexNet/pull/255), [#109](https://github.com/Dtronix/NexNet/pull/109), [#117](https://github.com/Dtronix/NexNet/pull/117), [#131](https://github.com/Dtronix/NexNet/pull/131)). See
+  [Multi-language Clients: Diagnostics](../multi-language-clients.md#diagnostics).
+- **`[NexusJsNumber]`: checked `number` for `long`/`ulong` in generated JavaScript.** The generated JavaScript client maps C# `long` and `ulong` to `bigint` by default. `[NexusJsNumber]` on a `[NexusObject]` member, a nexus method parameter or return value (`[return: NexusJsNumber]`), a channel parameter or a collection property, or `[assembly: NexusJsNumber]` for the whole assembly, maps those values to a safe-integer `number` instead (including inside nullables, sequences, dictionaries, tuples and generic type arguments; primitive arrays such as `long[]` stay `BigInt64Array`). Writing or reading a value beyond ±(2^53 − 1) fails. The wire format, the C# and Java APIs and the nexus hashes are unchanged. ([#259](https://github.com/Dtronix/NexNet/pull/259)) See [Multi-language Clients: `[NexusJsNumber]`](../multi-language-clients.md#nexusjsnumber-number-instead-of-bigint).
+
+### Java client
+
+Package `com.dtronix.nexnet`, Java 11 bytecode built with JDK 21, checked against the Android API 24 signature, no
+runtime dependencies. Async results are `CompletableFuture`s; cancellation uses the runtime's `CancellationToken`, and
+`future.cancel(true)` also cancels the call on the server. See the [Java Client](../java-client.md) guide.
+
+- **Session and transports:** a reader and a writer thread per connection, user futures completed on an executor;
+  WebSocket (its own RFC 6455 client, `ws://`/`wss://`), HttpSocket, TCP and TCP + TLS (hostname verification on)
+  ([#137](https://github.com/Dtronix/NexNet/pull/137), [#147](https://github.com/Dtronix/NexNet/pull/147), [#156](https://github.com/Dtronix/NexNet/pull/156)).
+- **Invocations, pipes, channels and collections:** both directions, invocation credits, cancellation, large values,
+  greeting-token authentication; `NexusDuplexPipe` with `InputStream`/`OutputStream` adapters and `forwardTo`/`bridge`;
+  channels; synchronized `NexusList`s in every mode ([#160](https://github.com/Dtronix/NexNet/pull/160), [#168](https://github.com/Dtronix/NexNet/pull/168), [#188](https://github.com/Dtronix/NexNet/pull/188)).
+- **Reconnection, client pool, logging, metrics and snapshots** ([#169](https://github.com/Dtronix/NexNet/pull/169), [#197](https://github.com/Dtronix/NexNet/pull/197)).
+- **Configuration:** upgrade headers, `authorization(…)` and a query-string token on `ClientConfig`; PEM CA and
+  PKCS#12 trust and certificate pins in `TlsOptions` ([#163](https://github.com/Dtronix/NexNet/pull/163)); invocation options and the progress (stall) timeout,
+  including a stuck outbound write ([#165](https://github.com/Dtronix/NexNet/pull/165), [#191](https://github.com/Dtronix/NexNet/pull/191)); `PipeOptions` (`maxPipes`, `pipeWindow`) ([#192](https://github.com/Dtronix/NexNet/pull/192)).
+- **Codec and types:** MessagePack codec and the value types (`NexusDateTime`, `NexusTimeSpan`, `NexusDecimal`, …)
+  with converters that need no `java.time`, checked against the golden vectors ([#205](https://github.com/Dtronix/NexNet/pull/205), [#243](https://github.com/Dtronix/NexNet/pull/243), [#256](https://github.com/Dtronix/NexNet/pull/256)); generated formatters,
+  proxies and client nexus bases ([#216](https://github.com/Dtronix/NexNet/pull/216), [#244](https://github.com/Dtronix/NexNet/pull/244)).
+- **Optional modules:** `android` (main-thread executor, `android.util.Log` logger, a connection keeper that follows the app lifecycle and network changes), `kotlin` (coroutines: `nexusCall`,
+  `connectAwait`, a `Flow` of states), `okhttp` (a WebSocket connector over OkHttp; it uses a connection pool of its own, not the given `OkHttpClient`'s, so it can report the remote endpoint ([#371](https://github.com/Dtronix/NexNet/pull/371))) and `micrometer` (a binder that maps the NexNet metrics to Micrometer meters), emitted on
+  request ([#288](https://github.com/Dtronix/NexNet/pull/288), [#297](https://github.com/Dtronix/NexNet/pull/297), [#296](https://github.com/Dtronix/NexNet/pull/296)). See [Java Client: Optional modules](../java-client.md#optional-modules).
+- **Cancellable pipe forward and bridge:** `forwardTo(destination, CancellationToken)` and
+  `NexusDuplexPipe.bridge(a, b, CancellationToken)`, like the C# `ForwardToAsync`/`BridgeAsync` token and the JS
+  `{ signal }`. A canceled forward or bridge stops and completes neither pipe; the bytes it did not send stay in the
+  source ([#382](https://github.com/Dtronix/NexNet/pull/382)).
+- **A Java pipe bridge ends when one of its pipes ends.** `NexusDuplexPipe.bridge(a, b)` now watches both pipes, like
+  the C# `BridgeAsync` and the JS `bridge`: when a pipe completes while the direction writing to it is still open (a
+  reset, its session ending, or its peer completing it), the bridge completes the other pipe in both directions and
+  returns. Before, it only half-closed the other pipe and could wait forever; a failed direction now completes both
+  pipes, not only their outputs ([#387](https://github.com/Dtronix/NexNet/pull/387)).
+- **JSpecify nullness** for Kotlin and NullAway users with `Nullness=jspecify` ([#242](https://github.com/Dtronix/NexNet/pull/242)).
+- C# parity details fixed while porting the tests: `connect()` on a connected client does nothing ([#277](https://github.com/Dtronix/NexNet/pull/277));
+  `NexusRemoteError.code` is nullable ([#289](https://github.com/Dtronix/NexNet/pull/289)); collections created through the proxy use the client's logger
+  ([#235](https://github.com/Dtronix/NexNet/pull/235)); a WebSocket disconnect no longer waits over 1 s when the server is not reading ([#282](https://github.com/Dtronix/NexNet/pull/282)).
+
+### JavaScript client
+
+ES modules with JSDoc and `.d.ts` typings, no dependencies. Node 22+ (WebSocket, HttpSocket, TCP, TLS, UDS through
+`@dtronix/nexnet/node`) and browsers (WebSocket; the browser entry never imports `node:` modules). Results are
+`Promise`s, cancellation is a trailing `{ signal }`, 64-bit integers are `bigint`. See the
+[JavaScript Client](../javascript-client.md) guide.
+
+- **Session and transports:** WebSocket in browsers, and in Node its own RFC 6455 client, HttpSocket, TCP, TLS and
+  UDS ([#135](https://github.com/Dtronix/NexNet/pull/135), [#148](https://github.com/Dtronix/NexNet/pull/148), [#155](https://github.com/Dtronix/NexNet/pull/155)).
+- **Invocations, pipes (Web Streams), channels (async iterables) and collections** ([#158](https://github.com/Dtronix/NexNet/pull/158), [#164](https://github.com/Dtronix/NexNet/pull/164), [#189](https://github.com/Dtronix/NexNet/pull/189), [#201](https://github.com/Dtronix/NexNet/pull/201)); channel
+  `forwardTo` with backpressure, like C# `ForwardToAsync<T>` ([#175](https://github.com/Dtronix/NexNet/pull/175)).
+- **Reconnection, client pool, logging, metrics and snapshots** ([#162](https://github.com/Dtronix/NexNet/pull/162), [#183](https://github.com/Dtronix/NexNet/pull/183)). In browsers the keepalive runs in a Web
+  Worker so background tabs keep their session, and reconnection retries when the tab becomes visible or the network
+  returns ([#148](https://github.com/Dtronix/NexNet/pull/148), [#162](https://github.com/Dtronix/NexNet/pull/162)). See [JavaScript Client: Browser notes](../javascript-client.md#browser-notes).
+- **Query-string token:** `webSocket.queryToken` and `httpSocket.queryToken` (`{ name, value }`) append a token for the
+  NexNet.Asp `AccessTokenQueryParameter` hook to the upgrade URL, so browsers can pass an ASP.NET token; the Java
+  client has `ClientConfig.Builder.queryToken` ([#342](https://github.com/Dtronix/NexNet/pull/342)).
+- **TLS (Node):** certificate pins (`TlsOptions.pins`), `remoteCertificate`, and leak-audit counters exported from
+  `@dtronix/nexnet/diagnostics` ([#174](https://github.com/Dtronix/NexNet/pull/174)).
+- **Codec and types:** MessagePack codec and value types checked against the golden vectors ([#203](https://github.com/Dtronix/NexNet/pull/203), [#226](https://github.com/Dtronix/NexNet/pull/226), [#256](https://github.com/Dtronix/NexNet/pull/256));
+  generated formatters, proxies and client nexus bases with `.d.ts` ([#246](https://github.com/Dtronix/NexNet/pull/246), [#260](https://github.com/Dtronix/NexNet/pull/260), [#265](https://github.com/Dtronix/NexNet/pull/265)).
+- **Typings:** `createChannel` with a generated class formatter (typed `Formatter<T | null>`) now gives a
+  `NexusDuplexChannel<T>`, so it can be passed to a proxy channel parameter without a cast ([#304](https://github.com/Dtronix/NexNet/pull/304)). `NexusList`,
+  `NexusClient` and the reconnect controller have typed event maps (`addEventListener('changed', e => e.detail)` is
+  typed) ([#307](https://github.com/Dtronix/NexNet/pull/307)).
+- C# parity details fixed while porting the tests: a refused authentication rejects with `AuthenticationError`
+  ([#299](https://github.com/Dtronix/NexNet/pull/299)); a fire-and-forget handler's token is canceled on disconnect ([#301](https://github.com/Dtronix/NexNet/pull/301)); `connect()` on a connected client
+  does nothing ([#277](https://github.com/Dtronix/NexNet/pull/277)); closing with a stuck transport write does not hang ([#194](https://github.com/Dtronix/NexNet/pull/194)); on Node 22 a refused upgrade
+  fails as a `SocketError` instead of timing out ([#220](https://github.com/Dtronix/NexNet/pull/220)); the disconnect delay runs on real time ([#291](https://github.com/Dtronix/NexNet/pull/291)).
+
+### Collections, metrics and diagnostics
+
+- Java and JavaScript lists support every collection mode of the C# `INexusList` ([#188](https://github.com/Dtronix/NexNet/pull/188), [#189](https://github.com/Dtronix/NexNet/pull/189)).
+- Client snapshots carry `PingInterval` and `IsSecure`; server instruments and snapshots are per endpoint (above)
+  ([#159](https://github.com/Dtronix/NexNet/pull/159), [#114](https://github.com/Dtronix/NexNet/pull/114), [#119](https://github.com/Dtronix/NexNet/pull/119)). The Java and JavaScript clients expose the same instruments and snapshots ([#169](https://github.com/Dtronix/NexNet/pull/169), [#197](https://github.com/Dtronix/NexNet/pull/197), [#162](https://github.com/Dtronix/NexNet/pull/162), [#183](https://github.com/Dtronix/NexNet/pull/183)).
+  See [Metrics and Diagnostics](../metrics.md).
+- The snapshot's `Invocations.AwaitingResults` no longer counts a call that is still waiting for invocation credit
+  (`CreditWaits` counts it): the C# client now takes the invocation ID once the call has credit, as the Java and
+  JavaScript clients do, so the field means the same in all three ([#356](https://github.com/Dtronix/NexNet/pull/356)).
+
+## Client parity
+
+The C#, Java and JavaScript clients behave the same unless listed here. The full tables are in
+[Multi-language Clients: Feature parity](../multi-language-clients.md#feature-parity) and
+[Type mapping](../multi-language-clients.md#type-mapping) ([#298](https://github.com/Dtronix/NexNet/pull/298)).
+
+| Area | C# | Java | JavaScript |
+|---|---|---|---|
+| Transports | TCP, TLS, UDS, QUIC, WebSocket, HttpSocket | WebSocket, HttpSocket, TCP, TLS (no UDS, no QUIC) | Node: WebSocket, HttpSocket, TCP, TLS, UDS. Browser: WebSocket only (no QUIC) |
+| Browser limits | n/a | n/a | No upgrade headers, client certificate, custom CA, pinning or server certificate; use the greeting token ([#110](https://github.com/Dtronix/NexNet/pull/110)) |
+| Async results | `ValueTask` | `CompletableFuture` | `Promise` |
+| Cancel before send | `TaskCanceledException` ([#105](https://github.com/Dtronix/NexNet/pull/105)) | `CancellationException` | rejects with `signal.reason` or an `AbortError` |
+| `long` / `ulong` | `long` / `ulong` | `long` (`ulong` as raw bits) | `bigint`; checked `number` with `[NexusJsNumber]` ([#259](https://github.com/Dtronix/NexNet/pull/259)) |
+| `decimal` negative zero | kept | `BigDecimal` reads `-0m` as `0`; use `NexusDecimal` for exact bits ([#268](https://github.com/Dtronix/NexNet/pull/268)) | kept (`NexusDecimal`) |
+| `Half` NaN payload | kept | kept | any NaN is written back as `0x7E00` (still NaN) ([#274](https://github.com/Dtronix/NexNet/pull/274)) |
+| Dates and times | BCL types | `NexusDateTime` … (ticks, no `java.time` needed) | `NexusDateTime` … (`bigint` ticks) |
+| Reconnection default | off | off | off in Node, on in browsers |
+| `void` client nexus methods | slot freed at once | slot freed at once | slot held until the method settles |
+| Frames queued at `disconnect()` under backpressure | may be dropped | sent | sent ([#211](https://github.com/Dtronix/NexNet/pull/211)) |
+| `AsyncLocal` flow into nexus methods | yes | no | no |
+| Dictionary/set keys | value equality | value equality | `Map`/`Set` compare objects by identity (NEXNET046 warns) |
+| Members an older peer did not send | member initializer runs | constant initializers only | constant initializers only |
+
+## Other fixes
+
+- **TLS and QUIC handshakes no longer block the accept loop.** A TLS connection now takes its `MaxPendingHandshakes` slot and its rate-limit slot when it is accepted, before the TLS handshake, and the handshake runs on its own task, bounded by `HandshakeTimeout` and the server's stop; a failed handshake frees both slots. A QUIC connection that never opens a stream is dropped after `HandshakeTimeout` instead of blocking the listener. The server and client set the NexNet ALPN on a copy of the SSL options, leaving the caller's (possibly shared) options unchanged. ([#139](https://github.com/Dtronix/NexNet/pull/139), [#144](https://github.com/Dtronix/NexNet/pull/144))
+- **Listener accept errors.** An accept error on a TCP, UDS or TLS listener no longer surfaces as a `NullReferenceException`: fatal errors are rethrown and transient ones skipped. A client that fails its QUIC handshake no longer stops a QUIC server. ([#118](https://github.com/Dtronix/NexNet/pull/118), [#127](https://github.com/Dtronix/NexNet/pull/127))
+- **QUIC endpoints.** Adding a QUIC endpoint whose UDP end point overlaps another endpoint's is rejected when it is added, like overlapping TCP ports. Server snapshots report a QUIC endpoint's address. ([#138](https://github.com/Dtronix/NexNet/pull/138))
+- **Server restarts.** Restarting a server with collections right after stopping it no longer fails with "Broadcaster is already running". In fast stop/start cycles, a late accept failure of the previous run no longer faults or stops the restarted server, and its accept loop no longer keeps spinning. A collection pipe flush canceled after the server stopped no longer raises an unobserved `ObjectDisposedException`. ([#128](https://github.com/Dtronix/NexNet/pull/128), [#157](https://github.com/Dtronix/NexNet/pull/157), [#177](https://github.com/Dtronix/NexNet/pull/177))
+- **Synchronized collection fixes.**
+  - A request that loses a race to a concurrent change is answered with `Noop` after the winning change is broadcast, and the `Noop` completes the client's pending operation (it returns `false`). Before, the operation could wait forever. ([#149](https://github.com/Dtronix/NexNet/pull/149))
+  - A request based on a version older than the server keeps is answered with `Noop` instead of closing the collection pipe, and requests are rebased correctly across a `Clear`. ([#134](https://github.com/Dtronix/NexNet/pull/134), [#149](https://github.com/Dtronix/NexNet/pull/149))
+  - A malformed synchronization from the server (a protocol error) closes the collection pipe instead of leaving the list inconsistent. ([#149](https://github.com/Dtronix/NexNet/pull/149))
+  - A refused `EnableAsync()` (pipe limit or authorization), and a collection whose connection ends, return their pipe; refused enables no longer leak pipe slots. ([#141](https://github.com/Dtronix/NexNet/pull/141), [#208](https://github.com/Dtronix/NexNet/pull/208), [#219](https://github.com/Dtronix/NexNet/pull/219)) `DisableAsync()` now waits until the pipe is freed, so enabling right after a disable
+    is not refused by the pipe limit, even with a server `MaxPipes` of 1 ([#208](https://github.com/Dtronix/NexNet/pull/208), [#219](https://github.com/Dtronix/NexNet/pull/219)).
+    The Java and JavaScript clients' `disable()` waits the same way, and they log the C# client's rate-limited
+    `Reset pipe` warning when a channel item resets a pipe ([#367](https://github.com/Dtronix/NexNet/pull/367)).
+  - A pipe whose state notification fails now closes completely, and `EnableAsync()` no longer throws a
+    `NullReferenceException` when the server stops during the enable ([#193](https://github.com/Dtronix/NexNet/pull/193)).
+  - A collection reader closed during shutdown logs at Debug instead of reporting an error, and a pipe reader no
+    longer throws and catches a `NullReferenceException` when it is completed during a read ([#283](https://github.com/Dtronix/NexNet/pull/283)).
+- **Returning a pooled client after its `NexusClientPool` is disposed no longer throws.** Disposing an `IRentedNexusClient` after `NexusClientPool.DisposeAsync` disposed its client and then threw `ObjectDisposedException` from the pool's disposed semaphore. It now just disposes the client. ([#247](https://github.com/Dtronix/NexNet/pull/247))
+- **The client pool's collection connector no longer leaks a pool slot.** Each `GetCollection()` on a `NexusClientPool.GetCollectionConnector` connector rented a new client without returning the one it already held, so the pool lost a slot per call: a relay that reconnected `MaxConnections` times blocked for good, at once with `MaxConnections = 1`. The connector now returns its earlier rental before it rents, and holds at most one client. The Java and JavaScript connectors do the same (Java rented before returning the earlier client, and JavaScript kept every rental until the release). ([#408](https://github.com/Dtronix/NexNet/pull/408))
+- **Duplicate nexus method names are reported as NEXNET042 instead of crashing the generator.** A nexus interface that overloads a method name, or declares a name that an inherited interface also declares, made the source generator throw, so the build reported only a generator failure (CS8785). It is now the error NEXNET042, reported at the duplicate method, and that nexus is not generated. Method names must be unique across a nexus interface and its inherited interfaces. A nexus class that overloads the name of an authorized method no longer crashes the generator either; the authorization of the overload that implements the interface method is used. ([#109](https://github.com/Dtronix/NexNet/pull/109))
+- **Generator diagnostics are reported at their source location.** Nexus validation and serialization diagnostics (NEXNET001 – NEXNET042) had no location, so the build and the IDE showed them without a file or line. They now point at the method, member, interface or class they are about. ([#109](https://github.com/Dtronix/NexNet/pull/109))
+- **Nullable annotations inside tuple elements and type arguments are kept in generated code.** Generated proxies and
+  nexus bases dropped the `?` of nested reference types such as `(int, string?)` or `List<string?>`, which gave
+  CS8613/CS8614/CS8620 warnings ([#179](https://github.com/Dtronix/NexNet/pull/179)).
+- **QUIC: an authentication rejection is reported as `Authentication`.** A QUIC client could see `SocketError`
+  instead, because the server's stream was disposed before its disconnect frame was sent ([#200](https://github.com/Dtronix/NexNet/pull/200)).
+- **A QUIC connect fails within `ConnectionTimeout`.** When the server never answered (for example a stopped server
+  whose port drops the packets), a C# QUIC connect failed about 3 s after its connection timeout, because a canceled
+  `QuicConnection.ConnectAsync` only completes once msquic has shut the half-open connection down. The client now
+  stops waiting when the timeout fires and reports `TransportException(ConnectionTimeout)` instead of
+  `ConnectionRefused` ([#388](https://github.com/Dtronix/NexNet/pull/388)).
+- **A stopped QUIC server frees its UDP port at once.** The QUIC transport closed its connections without disposing
+  them, and msquic keeps a UDP binding alive while any connection on it has an open handle, so a stopped server's port
+  stayed bound (exclusively) until the finalizers ran: seconds to more than a minute. A restart on the same port, or
+  another server binding it, failed meanwhile. Connections are now disposed when they close. A client connecting to a
+  stopped server's port may therefore be refused at once instead of timing out ([#406](https://github.com/Dtronix/NexNet/pull/406)).
+- **HttpSocket `TargetHost`.** The `SslClientAuthenticationOptions` remarks now say that `TargetHost` is ignored for
+  HttpSocket and WebSocket clients: the URL host is always used for SNI and certificate validation ([#120](https://github.com/Dtronix/NexNet/pull/120)).
+- **A connect fails at once when the transport closes during it.** When a send found the transport already closed (for
+  example a WebSocket server that sends a text message right after the upgrade), the session disconnected while still
+  holding its write lock, so the disconnect waited out its 5 s write-lock timeout before `ConnectAsync` failed. The
+  send now releases the lock first ([#363](https://github.com/Dtronix/NexNet/pull/363)).
+- **C# client: `DisconnectAsync` stops a running reconnection.** A `DisconnectAsync` made while the client was
+  reconnecting did not stop the reconnection loop: between attempts it did nothing, and during an attempt's handshake
+  (or right after the attempt connected, from `OnConnected`) the disconnected attempt was retried, so the client
+  connected again after a graceful disconnect. It now ends the loop wherever it is; the client ends `Disconnected`
+  and does not reconnect. A reconnection attempt and a concurrent `ConnectAsync` can no longer both open a session.
+  The Java and JavaScript clients already stopped reconnecting on `disconnect()`.
+- **C# client: reconnection edge cases.** A session that a reconnection attempt opened and that was lost before the
+  reconnection loop had finished did not start a new loop, so the client stayed `Disconnected`. And canceling the
+  token passed to `ConnectAsync`/`TryConnectAsync` after the connect had succeeded turned off reconnection for that
+  session. The loop now reconnects such a session when it ends, and the connect token cancels only the connect.
+- **Java client: a session lost before the reconnection loop ends is reconnected.** As in the C# client above, a
+  session that a reconnection attempt opened and that was lost before the loop had finished (for example from a
+  `ReconnectListener.onReconnected` listener) started no new loop, so the client stayed `DISCONNECTED`. The
+  controller now starts a new loop for it when the old one ends ([#398](https://github.com/Dtronix/NexNet/pull/398)).
+- **Java client: no `RECONNECTING` when the reconnection policy declines the reason.** A session lost for a reason
+  the policy does not reconnect (for example a graceful server disconnect) reported `RECONNECTING` before the client
+  settled on `DISCONNECTED`. It now ends at `DISCONNECTED`, as the C# and JavaScript clients do
+  ([#396](https://github.com/Dtronix/NexNet/pull/396)).
+- **JavaScript client: `disconnect()` aborts a reconnection attempt in progress.** A `disconnect()` made during a
+  reconnection attempt's handshake waited for the attempt to finish: the attempt connected (`onConnected(true)` was
+  called) and was then disconnected, a brief reconnect after a graceful disconnect. `disconnect()` (and
+  `ReconnectController.stop()`) now aborts the attempt; it opens no session and `disconnect()` returns without
+  waiting for the server.
 
 ## Documentation
-## Documentation
+
+- [Metrics and Diagnostics](../metrics.md) documents the `nexnet.endpoint` tag and the endpoint snapshot fields (`NexusServerSnapshot.Endpoints`, `NexusSessionSnapshot.Endpoint`). ([#142](https://github.com/Dtronix/NexNet/pull/142))
+- The [Serialization](../serialization.md) link to the wire protocol's payload encoding points at its current section. ([#142](https://github.com/Dtronix/NexNet/pull/142))
+- New guides: [Multi-language Clients](../multi-language-clients.md), [Java Client](../java-client.md),
+  [JavaScript Client](../javascript-client.md) and [Contributing (Java & JS)](../contributing-multilang.md); the
+  samples of the Java and JavaScript guides compile in CI ([#298](https://github.com/Dtronix/NexNet/pull/298), [#104](https://github.com/Dtronix/NexNet/pull/104), [#306](https://github.com/Dtronix/NexNet/pull/306), [#305](https://github.com/Dtronix/NexNet/pull/305)).
+- [Transports: Multiple Endpoints](../transports.md#multiple-endpoints), [ASP.NET Integration: Browser
+  Clients](../asp-net-integration.md#browser-clients), [Authentication](../authentication.md#asynchronous-token) and
+  the [Synchronized Collections](../synchronized-collections.md) failure and backpressure sections ([#142](https://github.com/Dtronix/NexNet/pull/142), [#185](https://github.com/Dtronix/NexNet/pull/185), [#258](https://github.com/Dtronix/NexNet/pull/258), [#306](https://github.com/Dtronix/NexNet/pull/306)).
+- The [protocol specification](../../internals/protocol-specification.md) now covers the handshake, ping, disconnect,
+  pipes, limits and bit layouts, the collection synchronization protocol and the transport bindings, enough to write a
+  client in another language ([#108](https://github.com/Dtronix/NexNet/pull/108), [#126](https://github.com/Dtronix/NexNet/pull/126), [#130](https://github.com/Dtronix/NexNet/pull/130), [#140](https://github.com/Dtronix/NexNet/pull/140), [#154](https://github.com/Dtronix/NexNet/pull/154), [#199](https://github.com/Dtronix/NexNet/pull/199), [#273](https://github.com/Dtronix/NexNet/pull/273)).
+- New internals pages: [the IR](../../internals/nexnet-ir.md), the [Java](../../internals/java-runtime-contract.md)
+  and [JavaScript](../../internals/js-runtime-contract.md) runtime contracts, the
+  [interop control protocol](../../internals/interop-control-protocol.md) and
+  [the emitted runtime](../../internals/generator-emitted-runtime.md) ([#113](https://github.com/Dtronix/NexNet/pull/113), [#137](https://github.com/Dtronix/NexNet/pull/137), [#135](https://github.com/Dtronix/NexNet/pull/135), [#209](https://github.com/Dtronix/NexNet/pull/209), [#285](https://github.com/Dtronix/NexNet/pull/285)).
+
+## Test and infrastructure changes
+
+These change how NexNet is built and tested, not the packages.
+
+- **TUnit.** Every test project runs on Microsoft.Testing.Platform ([#106](https://github.com/Dtronix/NexNet/pull/106)) and TUnit: Serialization.Tests
+  ([#115](https://github.com/Dtronix/NexNet/pull/115)), Generator.Tests ([#116](https://github.com/Dtronix/NexNet/pull/116)) and IntegrationTests ([#143](https://github.com/Dtronix/NexNet/pull/143)). The integration tests run in parallel, with a
+  process-wide port allocator and no static test state ([#173](https://github.com/Dtronix/NexNet/pull/173), [#182](https://github.com/Dtronix/NexNet/pull/182)), and the flakes this exposed were fixed
+  ([#178](https://github.com/Dtronix/NexNet/pull/178), [#207](https://github.com/Dtronix/NexNet/pull/207), [#225](https://github.com/Dtronix/NexNet/pull/225), [#172](https://github.com/Dtronix/NexNet/pull/172), [#171](https://github.com/Dtronix/NexNet/pull/171), [#264](https://github.com/Dtronix/NexNet/pull/264)). Filters use `--treenode-filter`. Client-facing tests observe the server instead of
+  client-only hooks and use scaled timeouts ([#210](https://github.com/Dtronix/NexNet/pull/210), [#222](https://github.com/Dtronix/NexNet/pull/222)).
+- **Cross-language harness.** `IClientUnderTest` and the `[ClientMatrix]` data source run one C#-authored test against
+  every client language and transport ([#190](https://github.com/Dtronix/NexNet/pull/190), [#253](https://github.com/Dtronix/NexNet/pull/253), [#254](https://github.com/Dtronix/NexNet/pull/254), [#221](https://github.com/Dtronix/NexNet/pull/221)). The C# runner drives long-lived language hosts (Node,
+  browser, JVM) over a JSON control protocol on loopback, with a leak audit after each test and automatic host restarts
+  ([#209](https://github.com/Dtronix/NexNet/pull/209), [#212](https://github.com/Dtronix/NexNet/pull/212), [#276](https://github.com/Dtronix/NexNet/pull/276), [#272](https://github.com/Dtronix/NexNet/pull/272), [#293](https://github.com/Dtronix/NexNet/pull/293)). Shared test nexuses and an interop type zoo ([#170](https://github.com/Dtronix/NexNet/pull/170), [#251](https://github.com/Dtronix/NexNet/pull/251), [#278](https://github.com/Dtronix/NexNet/pull/278), [#286](https://github.com/Dtronix/NexNet/pull/286)), a multi-endpoint
+  test server ([#136](https://github.com/Dtronix/NexNet/pull/136)) and generated remote proxies ([#146](https://github.com/Dtronix/NexNet/pull/146), [#262](https://github.com/Dtronix/NexNet/pull/262), [#270](https://github.com/Dtronix/NexNet/pull/270)) support it. The client-facing integration tests
+  (about 380 test methods) were ported to it ([#229](https://github.com/Dtronix/NexNet/pull/229), [#227](https://github.com/Dtronix/NexNet/pull/227), [#224](https://github.com/Dtronix/NexNet/pull/224), [#233](https://github.com/Dtronix/NexNet/pull/233), [#231](https://github.com/Dtronix/NexNet/pull/231), [#241](https://github.com/Dtronix/NexNet/pull/241), [#248](https://github.com/Dtronix/NexNet/pull/248), [#238](https://github.com/Dtronix/NexNet/pull/238), [#266](https://github.com/Dtronix/NexNet/pull/266), [#295](https://github.com/Dtronix/NexNet/pull/295)). Interop rows run only when `NEXNET_TEST_LANGS`
+  is set, so `dotnet build`/`dotnet test` need only the .NET SDK.
+- **Golden vectors.** `tests/golden/*.jsonl` hold the wire bytes of values, messages, frames and collection
+  synchronization; the C#, Java and JavaScript codecs are all checked against them ([#181](https://github.com/Dtronix/NexNet/pull/181), [#202](https://github.com/Dtronix/NexNet/pull/202), [#237](https://github.com/Dtronix/NexNet/pull/237), [#203](https://github.com/Dtronix/NexNet/pull/203), [#205](https://github.com/Dtronix/NexNet/pull/205), [#243](https://github.com/Dtronix/NexNet/pull/243)).
+- **CI.** Pull requests into any branch run CI ([#124](https://github.com/Dtronix/NexNet/pull/124)). The C# job fails if `dotnet build` or `dotnet test` ever
+  starts a Java or JavaScript tool; new jobs run the golden vectors, the JavaScript and Java gates, the interop matrix,
+  an Android build, D8/R8 check and emulator smoke test on pull requests that touch the Java client, the generator
+  or the interop server, and a weekly run with every browser and transport that skips itself when nothing changed
+  ([#213](https://github.com/Dtronix/NexNet/pull/213), [#250](https://github.com/Dtronix/NexNet/pull/250), [#296](https://github.com/Dtronix/NexNet/pull/296)). The doc samples of the Java and JavaScript guides are compiled ([#305](https://github.com/Dtronix/NexNet/pull/305)).
+- **.NET SDK pin.** `global.json` pins the SDK to major 10 (`rollForward: latestFeature`), so a newer SDK on the build
+  machine (SDK 11 reported CA2252 for NexNet.Quic) does not change the build ([#122](https://github.com/Dtronix/NexNet/pull/122)).
+- **Toolchain and repository.** Contributor setup for Java (JDK 21) and JavaScript (Node 22+) ([#104](https://github.com/Dtronix/NexNet/pull/104));
+  regenerated test certificates with a CA and SAN, so non-.NET TLS stacks accept them ([#112](https://github.com/Dtronix/NexNet/pull/112)); `.gitattributes` and
+  ignore rules ([#121](https://github.com/Dtronix/NexNet/pull/121), [#176](https://github.com/Dtronix/NexNet/pull/176), [#198](https://github.com/Dtronix/NexNet/pull/198)).
+- **SDK-gated generator tests in CI.** A `generator-sdks` job runs the whole Generator test suite with JDK 21, Node 24
+  and `NEXNET_REQUIRE_SDKS=1`, so the javac and tsc checks of the emitted Java and JavaScript (proxies, scaffolding, the
+  emitted runtime, the guides' samples) run on every pull request, and the job fails if any of them is skipped ([#312](https://github.com/Dtronix/NexNet/pull/312)).
+- **Interop rows are required.** A failing Node, Java or Chromium interop row now fails the `interop` CI job; the job
+  no longer skips a missing language host. The Generator test count floor in `dotnet.yml` rises to the current 606.
+- **Emitted runtime compile check.** `gradlew check` compiles the Java runtime in the form the generator emits it,
+  with the `kotlin`, `okhttp` and `micrometer` modules against their own libraries (warnings are errors), whenever the
+  integration sample's Java output exists; the Android CI job builds that output with every module and also
+  compiles the `android` module in an Android library build ([#315](https://github.com/Dtronix/NexNet/pull/315)).
+- **Emitted modules in pull-request CI.** The `generator-sdks` job builds the integration sample with the `kotlin`,
+  `okhttp` and `micrometer` modules and runs the emitted runtime compile check, and fails if it is skipped, so a pull
+  request that breaks an emitted Java module fails CI. The Android CI job also dexes the emitted runtime and
+  `android` module with D8 at `--min-api 24`.
+
+## Full change log
+
+Every merged pull request, grouped and linked: [v0.21.0 change log](https://github.com/Dtronix/NexNet/pull/326#issuecomment-7053892215) (a comment on
+[#326](https://github.com/Dtronix/NexNet/pull/326)).
+

@@ -1,0 +1,34 @@
+// Used only by .github/scripts/gradle-retry.sh, on the retry after a dependency-resolution failure (H35).
+//
+// Maven Central answers some AWS-hosted GitHub runners with 404 for artifacts it has, or with 429, for minutes at a
+// time, so re-running against Central from the same runner fails the same way. For the retry this script points every
+// Maven Central repository the settings files declare (pluginManagement and dependencyResolutionManagement, in the
+// included build-logic too) at Google's mirror of Central. The repository order is unchanged: plugin markers still come
+// from the plugin portal and Android artifacts from Google's Maven repository.
+//
+// Android artifacts are kept away from the mirror and the plugin portal: neither has them, and the portal redirects a
+// request for anything it does not host to Maven Central, the repository this retry avoids.
+def centralMirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def centralHosts = ['repo.maven.apache.org', 'repo1.maven.org']
+def portalHosts = ['plugins.gradle.org']
+
+def useMirror = { RepositoryHandler repositories ->
+    repositories.configureEach { repo ->
+        if (!(repo instanceof MavenArtifactRepository)) return
+        def host = repo.url?.host
+        if (centralHosts.contains(host)) {
+            repo.url = centralMirror
+        }
+        if (centralHosts.contains(host) || portalHosts.contains(host)) {
+            repo.content {
+                excludeGroupByRegex 'com\\.android.*'
+                excludeGroupByRegex 'androidx.*'
+            }
+        }
+    }
+}
+
+beforeSettings { settings ->
+    useMirror(settings.pluginManagement.repositories)
+    useMirror(settings.dependencyResolutionManagement.repositories)
+}

@@ -7,16 +7,20 @@ using NexNet.Logging;
 
 namespace NexNet.Transports;
 
-internal class TcpTlsTransportListener : ITransportListener
+internal class TcpTlsTransportListener : IPendingTransportListener, IBoundTransportListener
 {
     private readonly TcpTlsServerConfig _config;
     private readonly Socket _socket;
 
-    private TcpTlsTransportListener(TcpTlsServerConfig config, Socket socket)
+    internal TcpTlsTransportListener(TcpTlsServerConfig config, Socket socket)
     {
         _config = config;
         _socket = socket;
+        BoundEndPoint = SocketTransportListener.GetBoundEndPoint(socket);
     }
+
+    /// <inheritdoc />
+    public EndPoint? BoundEndPoint { get; }
 
     public ValueTask CloseAsync(bool linger)
     {
@@ -31,30 +35,104 @@ internal class TcpTlsTransportListener : ITransportListener
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Accepts the next connection and performs the TLS handshake inline. Returns null when the accept was canceled,
+    /// when a connection failed before it was accepted (reset or aborted by the peer), or when an accepted connection
+    /// could not be set up (including a failed or timed-out TLS handshake). Any other accept error means the listener
+    /// itself is unusable, and the original exception is rethrown so the server faults the endpoint.
+    /// </summary>
+    /// <remarks>
+    /// The server does not use this: it calls <see cref="AcceptPendingAsync"/> and runs each handshake on its own
+    /// task, so one slow client does not block other accepts.
+    /// </remarks>
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        Socket clientSocket = null!;
+        var pending = await AcceptPendingAsync(cancellationToken).ConfigureAwait(false);
+        return pending == null
+            ? null
+            : await pending.CompleteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Accepts the next raw connection; the TLS handshake runs later in <see cref="IPendingTransport.CompleteAsync"/>.
+    /// Returns null when the accept was canceled or a connection failed before it was accepted (reset or aborted by
+    /// the peer). Any other accept error means the listener itself is unusable, and the original exception is
+    /// rethrown so the server faults the endpoint.
+    /// </summary>
+    public async ValueTask<IPendingTransport?> AcceptPendingAsync(CancellationToken cancellationToken)
+    {
+        Socket clientSocket;
         try
         {
             clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
-            SocketTransport.SetNoDelay(clientSocket);
-
-            return await TcpTlsTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // noop.
+            return null;
         }
-        catch (Exception e)
+        catch (SocketException e) when (SocketTransportListener.IsTransientAcceptError(e.SocketErrorCode))
         {
-            _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
-
-            // Immediate disconnect.
-            clientSocket.LingerState = new LingerOption(true, 0);
-            clientSocket.Close(0);
+            _config.Logger?.LogWarning(e, $"Client connection failed during accept ({e.SocketErrorCode}); listener continues.");
+            return null;
         }
 
-        return null;
+        return new PendingTlsTransport(clientSocket, _config);
+    }
+
+    /// <summary>
+    /// An accepted socket whose TLS handshake has not run yet.
+    /// </summary>
+    private sealed class PendingTlsTransport : IPendingTransport
+    {
+        private readonly Socket _socket;
+        private readonly TcpTlsServerConfig _config;
+
+        public string? RemoteAddress { get; }
+
+        public PendingTlsTransport(Socket socket, TcpTlsServerConfig config)
+        {
+            _socket = socket;
+            _config = config;
+
+            try
+            {
+                RemoteAddress = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint).Address;
+            }
+            catch (Exception)
+            {
+                // The peer may already be gone; the handshake then fails and closes the socket.
+                RemoteAddress = null;
+            }
+        }
+
+        public async ValueTask<ITransport?> CompleteAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                SocketTransport.SetNoDelay(_socket);
+                return await TcpTlsTransport.CreateFromSocket(_socket, _config, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
+                Abort();
+                return null;
+            }
+        }
+
+        public void Abort()
+        {
+            // Immediate disconnect.
+            try
+            {
+                _socket.LingerState = new LingerOption(true, 0);
+                _socket.Close(0);
+            }
+            catch (Exception closeException)
+            {
+                _config.Logger?.LogDebug(closeException, "Failed to close the rejected client socket.");
+            }
+        }
     }
 
     /// <summary>

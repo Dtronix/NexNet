@@ -1,28 +1,26 @@
 using NexNet.Pipes;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
-
-[TestFixture]
 public class PipeIdTests
 {
-    [TestCase((byte)0, (byte)0)]
-    [TestCase((byte)1, (byte)0)]
-    [TestCase((byte)0, (byte)1)]
-    [TestCase((byte)7, (byte)200)]
-    [TestCase((byte)255, (byte)255)]
-    public void ComposeAndExtractRoundTrip(byte clientId, byte serverId)
+    [Test]
+    [Arguments((byte)0, (byte)0)]
+    [Arguments((byte)1, (byte)0)]
+    [Arguments((byte)0, (byte)1)]
+    [Arguments((byte)7, (byte)200)]
+    [Arguments((byte)255, (byte)255)]
+    public async Task ComposeAndExtractRoundTrip(byte clientId, byte serverId)
     {
         var id = NexusPipeManager.ComposeId(clientId, serverId);
         var (c, s) = NexusPipeManager.ExtractClientAndServerId(id);
-        Assert.That(c, Is.EqualTo(clientId));
-        Assert.That(s, Is.EqualTo(serverId));
+        await Assert.That(c).IsEqualTo(clientId);
+        await Assert.That(s).IsEqualTo(serverId);
     }
 
     [Test]
-    public void ComposedValueIsClientLowServerHigh()
+    public async Task ComposedValueIsClientLowServerHigh()
     {
         // Defined by the wire spec as (clientId | serverId << 8), independent of host byte order.
-        Assert.That(NexusPipeManager.ComposeId(0x12, 0x34), Is.EqualTo((ushort)0x3412));
+        await Assert.That(NexusPipeManager.ComposeId(0x12, 0x34)).IsEqualTo((ushort)0x3412);
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- NexNet connects to a server. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- NexusConnectionKeeper follows the default network (ConnectivityManager.registerDefaultNetworkCallback). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+</manifest>

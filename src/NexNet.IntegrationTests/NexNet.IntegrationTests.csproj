@@ -7,26 +7,19 @@
     <IsPackable>false</IsPackable>
     <LanguageVersion>latest</LanguageVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\server.pfx" Link="server.pfx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!-- Test-only CA, server and client certificates; see certs/README.md. -->
+    <None Include="certs\**" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="Security\AdvancedProtocolSecurityTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
-    <PackageReference Include="NUnit" Version="5.0.0" />
-    <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
     <PackageReference Include="StreamStruct" Version="0.3.3" />
   </ItemGroup>
 
@@ -35,6 +28,9 @@
     <ProjectReference Include="..\NexNet.Quic\NexNet.Quic.csproj" />
     <ProjectReference Include="..\NexNet.Asp\NexNet.Asp.csproj" />
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.TestNexus\NexNet.TestNexus.csproj" />
+    <!-- The cross-language harness (IClientUnderTest, ClientMatrix, remote drivers) for client-matrix tests (P01). -->
+    <ProjectReference Include="..\NexNet.Interop\NexNet.Interop.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 

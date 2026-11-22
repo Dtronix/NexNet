@@ -1,0 +1,35 @@
+{"id":"seq.string-array.nil","type":"string[]","mode":"both","value":null,"hex":"c0"}
+{"id":"seq.string-array.empty","type":"string[]","mode":"both","value":[],"hex":"90"}
+{"id":"seq.string-array.2","type":"string[]","mode":"both","value":["a","b"],"hex":"92a161a162"}
+{"id":"seq.string-array.with-nil","type":"string[]","mode":"both","value":[null,"x"],"hex":"92c0a178"}
+{"id":"seq.string-list","type":"List<string>","mode":"both","note":"List<T> of a non-primitive is the same array as T[]","value":["a","b"],"hex":"92a161a162"}
+{"id":"seq.string-ilist","type":"IList<string>","mode":"both","value":["x","y","z"],"hex":"93a178a179a17a"}
+{"id":"seq.item-read-only-list","type":"IReadOnlyList<InteropItem>","mode":"both","value":[[1,"one"],[2,null]],"hex":"929201a36f6e659202c0"}
+{"id":"seq.nullable-int-list","type":"List<int?>","mode":"both","note":"List<int?> is element-wise, not ext 78","value":[1,null,3],"hex":"9301c003"}
+{"id":"seq.fixarray-15","type":"List<string>","mode":"both","note":"longest fixarray","value":["s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14"],"hex":"9fa27330a27331a27332a27333a27334a27335a27336a27337a27338a27339a3733130a3733131a3733132a3733133a3733134"}
+{"id":"seq.array16-16","type":"List<string>","mode":"both","note":"shortest array16","value":["s0","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11","s12","s13","s14","s15"],"hex":"dc0010a27330a27331a27332a27333a27334a27335a27336a27337a27338a27339a3733130a3733131a3733132a3733133a3733134a3733135"}
+{"id":"seq.from-array16","type":"List<string>","mode":"decode","value":["a"],"hex":"dc0001a161"}
+{"id":"seq.from-array32","type":"List<string>","mode":"decode","value":["a"],"hex":"dd00000001a161"}
+{"id":"set.string","type":"HashSet<string>","mode":"both","value":["a","b","c"],"hex":"93a161a162a163"}
+{"id":"set.int","type":"HashSet<int>","mode":"both","note":"a set is an array in its enumeration order","value":[3,1,2],"hex":"93030102"}
+{"id":"queue.int","type":"Queue<int>","mode":"both","note":"front first","value":[1,2,3],"hex":"93010203"}
+{"id":"stack.string","type":"Stack<string>","mode":"both","note":"top first: pushed a, b, c","value":["c","b","a"],"hex":"93a163a162a161"}
+{"id":"map.string-int","type":"Dictionary<string,int>","mode":"both","value":[["a",1],["b",2]],"hex":"82a16101a16202"}
+{"id":"map.empty","type":"Dictionary<string,int>","mode":"both","value":[],"hex":"80"}
+{"id":"map.nil","type":"Dictionary<string,int>","mode":"both","value":null,"hex":"c0"}
+{"id":"map.string-string","type":"Dictionary<string,string>","mode":"both","note":"a null value is nil","value":[["k","v"],["n",null]],"hex":"82a16ba176a16ec0"}
+{"id":"map.fixmap-15","type":"Dictionary<string,string>","mode":"both","note":"longest fixmap","value":[["k0","v0"],["k1","v1"],["k2","v2"],["k3","v3"],["k4","v4"],["k5","v5"],["k6","v6"],["k7","v7"],["k8","v8"],["k9","v9"],["k10","v10"],["k11","v11"],["k12","v12"],["k13","v13"],["k14","v14"]],"hex":"8fa26b30a27630a26b31a27631a26b32a27632a26b33a27633a26b34a27634a26b35a27635a26b36a27636a26b37a27637a26b38a27638a26b39a27639a36b3130a3763130a36b3131a3763131a36b3132a3763132a36b3133a3763133a36b3134a3763134"}
+{"id":"map.map16-16","type":"Dictionary<string,string>","mode":"both","note":"shortest map16","value":[["k0","v0"],["k1","v1"],["k2","v2"],["k3","v3"],["k4","v4"],["k5","v5"],["k6","v6"],["k7","v7"],["k8","v8"],["k9","v9"],["k10","v10"],["k11","v11"],["k12","v12"],["k13","v13"],["k14","v14"],["k15","v15"]],"hex":"de0010a26b30a27630a26b31a27631a26b32a27632a26b33a27633a26b34a27634a26b35a27635a26b36a27636a26b37a27637a26b38a27638a26b39a27639a36b3130a3763130a36b3131a3763131a36b3132a3763132a36b3133a3763133a36b3134a3763134a36b3135a3763135"}
+{"id":"map.int-item","type":"Dictionary<int,InteropItem>","mode":"both","value":[[-1,[-1,"minus"]],[7,[7,"seven"]]],"hex":"82ff92ffa56d696e7573079207a5736576656e"}
+{"id":"map.guid-long","type":"Dictionary<Guid,long>","mode":"both","value":[["00112233-4455-6677-8899-aabbccddeeff","-9223372036854775808"]],"hex":"81c41000112233445566778899aabbccddeeffd38000000000000000"}
+{"id":"map.string-int-idictionary","type":"IDictionary<string,int>","mode":"both","value":[["x",1]],"hex":"81a17801"}
+{"id":"map.int-string-read-only","type":"IReadOnlyDictionary<int,string>","mode":"both","value":[[1,"one"],[2,"two"]],"hex":"8201a36f6e6502a374776f"}
+{"id":"map.nested","type":"Dictionary<string,List<int[]>>","mode":"both","note":"a map of lists of ext 78 arrays","value":[["a",[[1,2],[]]],["b",[]]],"hex":"82a16192c7094e040100000002000000d44e04a16290"}
+{"id":"map.from-map16","type":"Dictionary<string,int>","mode":"decode","value":[["a",1]],"hex":"de0001a16101"}
+{"id":"map.from-map32","type":"Dictionary<string,int>","mode":"decode","value":[["a",1]],"hex":"df00000001a16101"}
+{"id":"tuple.3","type":"(int,string,double)","mode":"both","value":[1,"a","f64:0x3FF8000000000000"],"hex":"9301a161cb3ff8000000000000"}
+{"id":"tuple.7","type":"(int,long,string,bool,double,Guid,byte)","mode":"both","value":[1,"9223372036854775807","s",true,"f64:0xBFE0000000000000","00112233-4455-6677-8899-aabbccddeeff",255],"hex":"9701cf7fffffffffffffffa173c3cbbfe0000000000000c41000112233445566778899aabbccddeeffccff"}
+{"id":"tuple.reference","type":"Tuple<int,string>","mode":"both","note":"System.Tuple, a reference type","value":[5,"five"],"hex":"9205a466697665"}
+{"id":"tuple.reference.nil","type":"Tuple<int,string>","mode":"both","value":null,"hex":"c0"}
+{"id":"tuple.key-value-pair","type":"KeyValuePair<string,int>","mode":"both","note":"[key, value]","value":["k",9],"hex":"92a16b09"}
+{"id":"limit.elements.at-limit","type":"List<string>","mode":"both","options":{"maxElements":3},"note":"3 elements with maxElements 3","value":["a","b","c"],"hex":"93a161a162a163"}

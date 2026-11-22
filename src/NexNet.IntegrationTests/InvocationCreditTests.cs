@@ -1,119 +1,145 @@
 using System.Diagnostics;
 using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Invocation credits (docs/internals/flow-control.md, section 4.7).
+/// Invocation credits (docs/internals/flow-control.md, section 4.7). Tests of how a client spends and waits for credit
+/// run on the client matrix (P01b); tests of the server's broadcasts to raw or stalled clients stay C#-only.
 /// </summary>
-internal class InvocationCreditTests : BaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class InvocationCreditTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
-    public async Task CallerWaitsLocallyForCredit(Type type)
+    /// <inheritdoc />
+    protected override bool CompleteServerMethodsByDefault => true;
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task CallerWaitsLocallyForCredit(ClientTarget target)
     {
         // Two credits and one slot: one call runs, two wait in the server's queue, the fourth waits on the client.
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.InvocationCredits = 2;
-        serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
-        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueEvent = async _ =>
-        {
-            Interlocked.Increment(ref received);
-            await release.Task;
-            return 1;
-        });
-        await server.StartAsync().Timeout(1);
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sent = ArrivedInvocations(3, out var tap);
+        await using var server = await StartServerAsync(
+            nexus => nexus.ServerTaskValueEvent = async _ =>
+            {
+                Interlocked.Increment(ref received);
+                running.TrySetResult();
+                await release.Task;
+                return 1;
+            },
+            config =>
+            {
+                config.InvocationCredits = 2;
+                config.MaxConcurrentConnectionInvocations = 1;
+                tap(config);
+            });
+        await using var client = await ConnectAsync(target, server);
+        var proxy = Proxy(client);
 
-        var calls = Enumerable.Range(0, 4).Select(_ => client.Proxy.ServerTaskValue().AsTask()).ToArray();
-        await Task.Delay(200);
+        var calls = Enumerable.Range(0, 4).Select(_ => proxy.ServerTaskValue().AsTask()).ToArray();
+        // The tap sees frames as they arrive, before the session starts running them: wait for both.
+        await sent.Timeout(T(1));
+        await running.Task.Timeout(T(1));
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
-        Assert.That(received, Is.EqualTo(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(Volatile.Read(ref received)).IsEqualTo(1);
+        await AssertState(client, ConnectionState.Connected);
 
         release.SetResult();
-        Assert.That(await Task.WhenAll(calls).Timeout(1), Is.All.EqualTo(1));
-        Assert.That(received, Is.EqualTo(4));
+        await Assert.That(await Task.WhenAll(calls).Timeout(T(1))).All(x => Equals(x, 1));
+        await Assert.That(received).IsEqualTo(4);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    public async Task CallCanceledWhileWaitingForCredit_IsNeverSent(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task CallCanceledWhileWaitingForCredit_IsNeverSent(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.InvocationCredits = 1;
-        serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
-        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, _) =>
-        {
-            Interlocked.Increment(ref received);
-            await release.Task;
-            return 1;
-        });
-        await server.StartAsync().Timeout(1);
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        var sent = ArrivedInvocations(2, out var tap);
+        await using var server = await StartServerAsync(
+            nexus => nexus.ServerTaskValueWithCancellationEvent = async (_, _) =>
+            {
+                Interlocked.Increment(ref received);
+                await release.Task;
+                return 1;
+            },
+            config =>
+            {
+                config.InvocationCredits = 1;
+                config.MaxConcurrentConnectionInvocations = 1;
+                tap(config);
+            });
+        await using var client = await ConnectAsync(target, server);
+        var proxy = Proxy(client);
 
         // The first runs; the second takes the returned credit and waits in the queue; the third waits for credit.
-        var first = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
-        var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
-        // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
-        using var cts = new CancellationTokenSource(100);
-        var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        var first = proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
+        var second = proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
+        await sent.Timeout(T(1));
+        // Canceled (in the client's process) before it is sent: like any call canceled before sending, it throws
+        // TaskCanceledException.
+        var waiting = proxy.ServerTaskValueWithCancellation(RemoteCancel.After(100)).AsTask();
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
 
         release.SetResult();
-        await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1), Is.EqualTo(1));
+        await Task.WhenAll(first, second).Timeout(T(1));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await Assert.That(await proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(T(1))).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.InvocationCredits = 1;
-        serverConfig.MaxConcurrentConnectionInvocations = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var received = 0;
-        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
-        {
-            Interlocked.Increment(ref received);
-            await release.Task;
-        });
-        await server.StartAsync().Timeout(1);
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        var sent = ArrivedInvocations(2, out var tap);
+        await using var server = await StartServerAsync(
+            nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
+            {
+                Interlocked.Increment(ref received);
+                await release.Task;
+            },
+            config =>
+            {
+                config.InvocationCredits = 1;
+                config.MaxConcurrentConnectionInvocations = 1;
+                tap(config);
+            });
+        await using var client = await ConnectAsync(target, server);
+        var proxy = Proxy(client);
 
-        var first = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
-        var second = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
-        await Task.Delay(100);
-        using var cts = new CancellationTokenSource(100);
-        var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        var first = proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
+        var second = proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
+        await sent.Timeout(T(1));
+        var waiting = proxy.ServerTaskWithCancellation(RemoteCancel.After(100)).AsTask();
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
 
         release.SetResult();
-        await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Task.WhenAll(first, second).Timeout(T(1));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await AssertState(client, ConnectionState.Connected);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    /// <summary>
+    /// C#-only: sends through the C# session's internal <c>SendInvocation</c> with a token canceled before the send.
+    /// </summary>
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CancellationAfterCreditIsTaken_StillSendsTheInvocation(Type type)
     {
         // One credit: if the canceled send kept it without writing the invocation, the next call would wait forever.
@@ -125,9 +151,9 @@ internal class InvocationCreditTests : BaseTests
             nexus.ServerVoidEvent = _ => voidCalled.TrySetResult();
             nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
@@ -138,38 +164,40 @@ internal class InvocationCreditTests : BaseTests
             InvocationId = 0,
             MethodId = 0 // ServerVoid
         };
-        Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1), Is.True);
+        await Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(T(1))).IsTrue();
 
-        await voidCalled.Task.Timeout(1);
-        Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(1));
+        await voidCalled.Task.Timeout(T(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(T(1))).IsEqualTo(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    public async Task FireAndForgetBurst_StaysWithinCredit(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task FireAndForgetBurst_StaysWithinCredit(ClientTarget target)
     {
         // Fire-and-forget calls use credit too: a burst much larger than the credits is paced, not a violation.
         const int count = 2000;
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.InvocationCredits = 4;
         var received = 0;
         var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, nexus => nexus.ServerVoidWithParamEvent = (_, _) =>
-        {
-            if (Interlocked.Increment(ref received) == count)
-                all.TrySetResult();
-        });
-        await server.StartAsync().Timeout(1);
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await using var server = await StartServerAsync(
+            nexus => nexus.ServerVoidWithParamEvent = (_, _) =>
+            {
+                if (Interlocked.Increment(ref received) == count)
+                    all.TrySetResult();
+            },
+            config => config.InvocationCredits = 4);
+        await using var client = await ConnectAsync(target, server);
+        var proxy = Proxy(client);
 
         for (var i = 0; i < count; i++)
-            client.Proxy.ServerVoidWithParam(i);
+            proxy.ServerVoidWithParam(i);
 
-        await all.Task.Timeout(10);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await client.BarrierAsync().Timeout(T(10));
+        await all.Task.Timeout(T(10));
+        await AssertState(client, ConnectionState.Connected);
+        await EndAsync(client);
     }
 
+    /// <summary>C#-only: a raw protocol client that never returns credit; the server's broadcast is under test.</summary>
     [Test]
     public async Task BroadcastToAClientThatNeverReturnsCredit_DropsItsInvocationAndCompletes()
     {
@@ -188,18 +216,22 @@ internal class InvocationCreditTests : BaseTests
             ServerNexusHash = IInvocationMethodHash.GetMethodHash<ServerNexus>(),
             ClientNexusHash = IInvocationMethodHash.GetMethodHash<ClientNexus>(),
             InvocationCredits = 1,
-        }).Timeout(1);
-        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
+        }).Timeout(T(1));
+        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(T(1));
 
         using var context = server.ContextProvider.Rent();
 
         // The first uses the only credit; the second waits ProgressTimeout, is dropped, and the broadcast finishes.
-        await context.Proxy.All.ClientTask().Timeout(1);
-        await context.Proxy.All.ClientTask().Timeout(2);
-        Assert.That(raw.IsConnected, Is.True);
+        await context.Proxy.All.ClientTask().Timeout(T(1));
+        await context.Proxy.All.ClientTask().Timeout(T(2));
+        await Assert.That(raw.IsConnected).IsTrue();
     }
 
+    /// <summary>
+    /// C#-only: raw stalled clients and wall-clock bounds on the server's broadcast; the healthy clients are incidental.
+    /// </summary>
     [Test]
+    [NotInParallel]
     public async Task BroadcastWithStalledClients_ReachesHealthyClientsWithoutWaiting()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
@@ -221,30 +253,34 @@ internal class InvocationCreditTests : BaseTests
                     tcs.TrySetResult();
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             received.Add(tcs.Task);
         }
 
         using var context = server.ContextProvider.Rent();
 
         // Uses the stalled clients' only credit.
-        await context.Proxy.All.ClientTaskWithParam(0).Timeout(1);
+        await context.Proxy.All.ClientTaskWithParam(0).Timeout(T(1));
 
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientTaskWithParam(1).AsTask();
 
         // The healthy clients get it while the broadcast still waits for the stalled ones.
-        await Task.WhenAll(received).Timeout(1);
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
-        Assert.That(broadcast.IsCompleted, Is.False);
+        await Task.WhenAll(received).Timeout(T(1));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
+        await Assert.That(broadcast.IsCompleted).IsFalse();
 
         // Both stalled clients are waited for at the same time: one timeout, not two.
-        await broadcast.Timeout(3);
-        Assert.That(elapsed.ElapsedMilliseconds, Is.InRange(900, 1800));
-        Assert.That(stalled1.IsConnected && stalled2.IsConnected, Is.True);
+        await broadcast.Timeout(T(3));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsBetween(900, 1800);
+        await Assert.That(stalled1.IsConnected && stalled2.IsConnected).IsTrue();
     }
 
+    /// <summary>
+    /// C#-only: a raw stalled client and wall-clock bounds on the server's broadcast; the healthy clients are incidental.
+    /// </summary>
     [Test]
+    [NotInParallel]
     public async Task BroadcastLargeArgumentWithStalledClient_ReachesHealthyClientsWithoutWaiting()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
@@ -265,106 +301,107 @@ internal class InvocationCreditTests : BaseTests
                 tcs.TrySetResult(data.Length);
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
             received.Add(tcs.Task);
         }
 
         using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTask().Timeout(1);
+        await context.Proxy.All.ClientTask().Timeout(T(1));
 
         // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(300 * 1024));
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
+        await Assert.That(await Task.WhenAll(received).Timeout(T(1))).All(x => Equals(x, 300 * 1024));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
 
-        await broadcast.Timeout(3);
-        Assert.That(stalled.IsConnected, Is.True);
+        await broadcast.Timeout(T(3));
+        await Assert.That(stalled.IsConnected).IsTrue();
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    public async Task Broadcasts_ArriveInOrderAtEachClient(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task Broadcasts_ArriveInOrderAtEachClient(ClientTarget target)
     {
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
-        // order they arrive.
+        // order they arrive (each call is reported when its handler starts).
         const int count = 500;
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await using var server = await StartServerAsync();
 
-        var orders = new List<List<int>>();
-        var done = new List<Task>();
-        for (var i = 0; i < 3; i++)
+        var clients = new List<IClientUnderTest>();
+        try
         {
-            var clientConfig = CreateClientConfig(type);
-            clientConfig.InvocationCredits = 2;
-            clientConfig.MaxConcurrentConnectionInvocations = 1;
-            var order = new List<int>();
-            var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var (client, clientNexus) = CreateClient(clientConfig);
-            clientNexus.ClientTaskWithParamEvent = (_, id) =>
+            for (var i = 0; i < 3; i++)
             {
-                lock (order)
+                clients.Add(await ConnectAsync(target, server, configure: spec =>
                 {
-                    order.Add(id);
-                    if (order.Count == count)
-                        all.TrySetResult();
-                }
+                    spec.InvocationCredits = 2;
+                    spec.MaxConcurrentConnectionInvocations = 1;
+                }));
+            }
 
-                return default;
-            };
-            await client.ConnectAsync().Timeout(1);
-            orders.Add(order);
-            done.Add(all.Task);
+            using (var context = server.Server.ContextProvider.Rent())
+            {
+                for (var i = 0; i < count; i++)
+                    await context.Proxy.All.ClientTaskWithParam(i).Timeout(T(1));
+            }
+
+            foreach (var client in clients)
+            {
+                var order = new List<int>(count);
+                for (var i = 0; i < count; i++)
+                    order.Add((await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(5))).data);
+                await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
+            }
+
+            foreach (var client in clients)
+                await EndAsync(client);
         }
-
-        using var context = server.ContextProvider.Rent();
-        for (var i = 0; i < count; i++)
-            await context.Proxy.All.ClientTaskWithParam(i).Timeout(1);
-
-        await Task.WhenAll(done).Timeout(5);
-        foreach (var order in orders)
-            Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
+        finally
+        {
+            foreach (var client in clients)
+                await client.DisposeAsync();
+        }
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    public async Task Broadcast_WritesOneEncodedFrameToEveryClient(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task Broadcast_WritesOneEncodedFrameToEveryClient(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
         var frames = new List<byte[]>();
-        serverConfig.InternalOnSend = (_, bytes) =>
+        await using var server = await StartServerAsync(configure: config => ServerTaps.OnSend(config, (_, frame) =>
         {
-            if (bytes.Length > 0 && bytes[0] == (byte)MessageType.Invocation)
+            if (frame.Type == MessageType.Invocation)
                 lock (frames)
-                    frames.Add(bytes);
-        };
-        var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+                    frames.Add(frame.Frame);
+        }));
 
-        var received = new List<Task<int>>();
-        for (var i = 0; i < 3; i++)
+        var clients = new List<IClientUnderTest>();
+        try
         {
-            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var (client, clientNexus) = CreateClient(CreateClientConfig(type));
-            clientNexus.ClientTaskWithParamEvent = (_, data) =>
-            {
-                tcs.TrySetResult(data);
-                return default;
-            };
-            await client.ConnectAsync().Timeout(1);
-            received.Add(tcs.Task);
+            for (var i = 0; i < 3; i++)
+                clients.Add(await ConnectAsync(target, server));
+
+            using (var context = server.Server.ContextProvider.Rent())
+                await context.Proxy.All.ClientTaskWithParam(12345).Timeout(T(1));
+
+            foreach (var client in clients)
+                await Assert.That((await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(1))).data).IsEqualTo(12345);
+
+            byte[][] sent;
+            lock (frames)
+                sent = frames.ToArray();
+
+            await Assert.That(sent).Count().IsEqualTo(3);
+            await Assert.That(sent[1]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
+            await Assert.That(sent[2]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
+
+            foreach (var client in clients)
+                await EndAsync(client);
         }
-
-        using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
-
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(12345));
-        lock (frames)
+        finally
         {
-            Assert.That(frames, Has.Count.EqualTo(3));
-            Assert.That(frames[1], Is.EqualTo(frames[0]));
-            Assert.That(frames[2], Is.EqualTo(frames[0]));
+            foreach (var client in clients)
+                await client.DisposeAsync();
         }
     }
 
@@ -382,8 +419,24 @@ internal class InvocationCreditTests : BaseTests
             ServerNexusHash = IInvocationMethodHash.GetMethodHash<ServerNexus>(),
             ClientNexusHash = IInvocationMethodHash.GetMethodHash<ClientNexus>(),
             InvocationCredits = 1,
-        }).Timeout(1);
-        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
+        }).Timeout(T(1));
+        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(T(1));
         return raw;
+    }
+
+    /// <summary>
+    /// Completes once the server has received <paramref name="count"/> invocation frames: the calls the client was
+    /// allowed to send have arrived. <paramref name="tap"/> installs the observer on an endpoint's configuration.
+    /// </summary>
+    private static Task ArrivedInvocations(int count, out Action<Transports.ServerConfig> tap)
+    {
+        var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invocations = 0;
+        tap = config => ServerTaps.OnReceive(config, (_, frame) =>
+        {
+            if (frame.Type == MessageType.Invocation && Interlocked.Increment(ref invocations) == count)
+                arrived.TrySetResult();
+        });
+        return arrived.Task;
     }
 }

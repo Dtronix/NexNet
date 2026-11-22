@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 using NexNet.Generator.Serialization;
-using NUnit.Framework;
+using TUnit.Assertions.Enums;
 
 namespace NexNet.Generator.Tests;
 
@@ -16,12 +16,12 @@ public class ShapeBuilderTests
     {
         var (shapes, compilation) = Build(source);
         var type = compilation.GetTypeByMetadataName(typeName)
-                   ?? throw new AssertionException($"Type '{typeName}' not found.");
+                   ?? throw new InvalidOperationException($"Type '{typeName}' not found.");
         return (ObjectShape)shapes.Get(type);
     }
 
     [Test]
-    public void MembersAreInKeyOrder()
+    public async Task MembersAreInKeyOrder()
     {
         var shape = GetObject("""
             [NexusObject] public class Message
@@ -32,13 +32,13 @@ public class ShapeBuilderTests
             }
             """, "Message");
 
-        Assert.That(shape.Members.Select(m => m.Key), Is.EqualTo(new[] { 0, 1, 3 }));
-        Assert.That(shape.Members.Select(m => m.Name), Is.EqualTo(new[] { "A", "B", "C" }));
-        Assert.That(shape.Members.Select(m => m.LocalName), Is.EqualTo(new[] { "__m0", "__m1", "__m2" }));
+        await Assert.That(shape.Members.Select(m => m.Key).ToArray()).IsEquivalentTo(new[] { 0, 1, 3 }, CollectionOrdering.Matching);
+        await Assert.That(shape.Members.Select(m => m.Name).ToArray()).IsEquivalentTo(new[] { "A", "B", "C" }, CollectionOrdering.Matching);
+        await Assert.That(shape.Members.Select(m => m.LocalName).ToArray()).IsEquivalentTo(new[] { "__m0", "__m1", "__m2" }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void NexusIgnoreRemovesKeyedMember()
+    public async Task NexusIgnoreRemovesKeyedMember()
     {
         var shape = GetObject("""
             [NexusObject] public class Message
@@ -48,11 +48,11 @@ public class ShapeBuilderTests
             }
             """, "Message");
 
-        Assert.That(shape.Members.Select(m => m.Name), Is.EqualTo(new[] { "A" }));
+        await Assert.That(shape.Members.Select(m => m.Name).ToArray()).IsEquivalentTo(new[] { "A" }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void ConstructedGenericHasSubstitutedMembers()
+    public async Task ConstructedGenericHasSubstitutedMembers()
     {
         var (shapes, compilation) = Build("""
             [NexusObject] public class Envelope<T> { [NexusKey(0)] public T Value { get; set; } = default!; }
@@ -62,16 +62,16 @@ public class ShapeBuilderTests
 
         var shape = (ObjectShape)shapes.Get(constructed);
         var member = (NamedShape)shape.Members.Single().Type;
-        Assert.That(member.Kind, Is.EqualTo(NamedKind.Special));
-        Assert.That(member.MetadataName, Is.EqualTo("System.Int32"));
+        await Assert.That(member.Kind).IsEqualTo(NamedKind.Special);
+        await Assert.That(member.MetadataName).IsEqualTo("System.Int32");
 
         var open = (ObjectShape)shapes.Get(definition);
-        Assert.That(open, Is.Not.SameAs(shape));
-        Assert.That(open.Members.Single().Type, Is.InstanceOf<TypeParameterShape>());
+        await Assert.That(open).IsNotSameReferenceAs(shape);
+        await Assert.That(open.Members.Single().Type).IsAssignableTo<TypeParameterShape>();
     }
 
     [Test]
-    public void SelfReferenceReturnsSameShape()
+    public async Task SelfReferenceReturnsSameShape()
     {
         var shape = GetObject("""
             [NexusObject] public class Node
@@ -81,11 +81,11 @@ public class ShapeBuilderTests
             }
             """, "Node");
 
-        Assert.That(shape.Members[1].Type, Is.SameAs(shape));
+        await Assert.That(shape.Members[1].Type).IsSameReferenceAs(shape);
     }
 
     [Test]
-    public void ReferenceNullabilityGivesSameShape()
+    public async Task ReferenceNullabilityGivesSameShape()
     {
         var shape = GetObject("""
             [NexusObject] public class Message
@@ -95,8 +95,8 @@ public class ShapeBuilderTests
             }
             """, "Message");
 
-        Assert.That(shape.Members[0].Type, Is.InstanceOf<NamedShape>());
-        Assert.That(shape.Members[1].Type, Is.SameAs(shape.Members[0].Type));
-        Assert.That(shape.Members[1].DeclaredType.NullableAnnotation, Is.EqualTo(NullableAnnotation.Annotated));
+        await Assert.That(shape.Members[0].Type).IsAssignableTo<NamedShape>();
+        await Assert.That(shape.Members[1].Type).IsSameReferenceAs(shape.Members[0].Type);
+        await Assert.That(shape.Members[1].DeclaredType.NullableAnnotation).IsEqualTo(NullableAnnotation.Annotated);
     }
 }

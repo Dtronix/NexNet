@@ -220,11 +220,12 @@ internal sealed class ServerOutput
                 case MessageType.ServerGreeting:
                 {
                     var reader = new MsgPackReader(body);
-                    reader.ReadArrayHeader(4);
+                    reader.ReadArrayHeader(5);
                     reader.ReadInt32();
                     reader.ReadInt64();
                     reader.ReadInt32();
                     InvocationCredits += reader.ReadInt32();
+                    reader.ReadUInt32(); // idleTimeoutMs
                     Greeted = true;
                     break;
                 }

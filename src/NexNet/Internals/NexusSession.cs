@@ -83,6 +83,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private readonly TaskCompletionSource _disconnectCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Action<ConnectionState>? OnStateChanged;
+
+    /// <summary>
+    /// A client session's ready task: completes once the session has processed the ServerGreeting (the handshake is
+    /// complete and nexus.Connected has started), or when the session ends first. Completed for a server session.
+    /// </summary>
+    internal Task ReadyTask => _readyTaskCompletionSource?.Task ?? Task.CompletedTask;
     private readonly INexusClient? _client;
     
     private int _versionHash = 0;
@@ -152,6 +158,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     // Metrics (docs/articles/metrics.md): the tags this session is counted under, and its slot in their table.
     private readonly MetricsTagSet _metricsTags;
     public MetricsTagSet MetricsTags => _metricsTags;
+
+    // Server only: the endpoint this session was accepted on.
+    private readonly NexusEndpointInfo? _endpoint;
     int IMeteredSession.MetricsSlot { get; set; } = -1;
     long IMeteredSession.MetricsStartTimestamp { get; set; }
 
@@ -178,6 +187,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     }
     
     public IServerSessionManager? SessionManager => _sessionManager;
+
+    /// <summary>
+    /// Client only: the idle timeout the server advertised in its greeting, in milliseconds; 0 if it advertised none.
+    /// </summary>
+    internal uint PeerIdleTimeoutMs { get; private set; }
     public ISessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
@@ -233,8 +247,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _nexus = configurations.Nexus;
         _disconnectionCts = new CancellationTokenSource();
         CollectionManager = configurations.CollectionManager;
+        _endpoint = configurations.Endpoint;
         _nexus.SessionContext = IsServer
-            ? new ServerSessionContext<TProxy>(this, _sessionManager!)
+            ? new ServerSessionContext<TProxy>(this, _sessionManager!) { Endpoint = _endpoint }
             : new ClientSessionContext<TProxy>(this);
 
         // Store remote endpoint info from transport
@@ -328,7 +343,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // Counted from here; DisconnectCore or the end of the read loop stops counting it.
         _metricsTags.Metrics.Register(this);
 
-        _state = ConnectionState.Connected;
+        // A disconnect that started while the preamble was sent owns the state: the session must not report Connected
+        // after it (a client's DisconnectAsync can reach a session its reconnection loop has just created).
+        var previous = _state;
+        if (previous is ConnectionState.Disconnecting or ConnectionState.Disconnected
+            || Interlocked.CompareExchange(ref _state, ConnectionState.Connected, previous) != previous)
+            return;
+
         OnStateChanged?.Invoke(State);
     }
 
@@ -358,7 +379,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         greetingMessage.InvocationCredits = _config.InvocationCredits;
         
         await InitializeConnection().ConfigureAwait(false);
-        
+
+        // Disconnected before it connected: the disconnect has completed the ready task; nothing is left to start.
+        if (IsDisconnectStarted)
+            return;
+
         // Start the reading loop on a task.
         _ = Task.Factory.StartNew(static state => Unsafe.As<NexusSession<TNexus, TProxy>>(state!).StartReadAsync(), 
             this, 
@@ -636,6 +661,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             Id = Id,
             IsServer = IsServer,
             Transport = _metricsTags.TransportName,
+            Endpoint = _endpoint?.Name,
             State = _state,
             IsEstablished = (_internalState & InternalState.NexusCompletedConnection) != 0,
             Connected = startTimestamp == 0 ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp),
@@ -702,37 +728,51 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
         where TMessage : IMessageBase
     {
-        if (!_outboundCredits.TryTake())
+        if (!await TakeInvocationCredit(cancellationToken, creditTimeout).ConfigureAwait(false))
+            return false;
+
+        await SendInvocationWithCredit(message, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public ValueTask<bool> TakeInvocationCredit(CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        => _outboundCredits.TryTake() ? new ValueTask<bool>(true) : WaitForInvocationCredit(cancellationToken, creditTimeout);
+
+    // Pooled: every caller awaits it exactly once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private async ValueTask<bool> WaitForInvocationCredit(CancellationToken cancellationToken, TimeSpan? creditTimeout)
+    {
+        Interlocked.Increment(ref _creditWaiters);
+        CreditWaitResult wait;
+        try
         {
-            Interlocked.Increment(ref _creditWaiters);
-            CreditWaitResult wait;
-            try
-            {
-                // The gate is closed when the session ends, which ends this wait with Closed.
-                wait = await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _creditWaiters);
-            }
-
-            if (wait == CreditWaitResult.TimedOut)
-            {
-                RecordCreditDrop();
-                return false;
-            }
-
-            if (wait == CreditWaitResult.Closed)
-                return false; // The session ended while waiting.
+            // The gate is closed when the session ends, which ends this wait with Closed.
+            wait = await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _creditWaiters);
         }
 
+        if (wait == CreditWaitResult.TimedOut)
+        {
+            RecordCreditDrop();
+            return false;
+        }
+
+        // Closed: the session ended while waiting.
+        return wait != CreditWaitResult.Closed;
+    }
+
+    /// <inheritdoc />
+    public ValueTask SendInvocationWithCredit<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase
         // The credit is spent: only the peer returns it, when it takes the invocation, so the invocation is always
         // written. A cancellation from here on stops only a streamed argument; otherwise the caller sends an
         // InvocationCancellation once the invocation is out.
-        await SendMessage(message, CancellationToken.None, cancellationToken).ConfigureAwait(false);
-        return true;
-    }
+        => SendMessage(message, CancellationToken.None, cancellationToken);
 
     /// <summary>
     /// Logs, at most once per 10 s, invocations dropped because the peer granted no credit in time.

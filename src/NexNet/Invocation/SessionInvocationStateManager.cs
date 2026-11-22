@@ -151,7 +151,26 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         message.SetArguments(serializedArguments);
 
-        // Taken after the size check so a rejected call does not hold an ID.
+        // Credit first, then the ID (the Java and JavaScript clients do the same): a call waiting for credit holds no
+        // ID and is not counted in OutstandingCount. Canceled or ended while waiting, it was never sent, so it throws
+        // TaskCanceledException like any call canceled before it is sent.
+        bool credit;
+        try
+        {
+            credit = await session.TakeInvocationCredit(cancellationToken ?? default).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            credit = false;
+        }
+
+        if (!credit)
+        {
+            state.TrySetCanceled();
+            return;
+        }
+
+        // The credit is spent from here on, so the invocation is always written.
         message.InvocationId = GetNextId(true);
 
         state.InvocationId = message.InvocationId;
@@ -187,18 +206,12 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         try
         {
-            if (!await session.SendInvocation(message, cancellationToken ?? default).ConfigureAwait(false))
-            {
-                // The session ended while waiting for invocation credit.
-                ForgetUnsent(state);
-                state.TrySetCanceled();
-                return;
-            }
+            await session.SendInvocationWithCredit(message, cancellationToken ?? default).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // Canceled while waiting for invocation credit (or while streaming a large argument): never executed,
-            // so no reply comes. Like any call canceled before it is sent, it throws TaskCanceledException.
+            // Canceled while streaming a large argument: never executed, so no reply comes. Like any call canceled
+            // before it is sent, it throws TaskCanceledException.
             ForgetUnsent(state);
             state.TrySetCanceled();
             return;
@@ -253,6 +266,17 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
     }
 
     public int OutstandingCount => _invocationStates.Count;
+
+    public int ReservedIdCount
+    {
+        get
+        {
+            lock (_currentInvocationsLock)
+            {
+                return _currentInvocations.Count;
+            }
+        }
+    }
 
     public bool IsOutstanding(ushort invocationId)
     {

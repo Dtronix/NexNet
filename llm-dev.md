@@ -9,15 +9,26 @@ Token-condensed architecture reference for LLM navigation and modification.
 ```
 src/
 ├── NexNet/                    # Core library
-├── NexNet.Generator/          # Roslyn source generator
+├── NexNet.Generator/          # Roslyn source generator (C#; Java/JS targets: Ir/, Targets/, Runtime/, Bundle/, build/)
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
-├── NexNet.IntegrationTests/  # Integration tests (NUnit)
-├── NexNet.Generator.Tests/   # Generator tests
+├── NexNet.IntegrationTests/  # Integration tests (TUnit, parallel; [ClientMatrix] rows run per client language)
+├── NexNet.TestNexus/         # Shared test nexuses + interop type zoo (not packaged); writes the Java/JS host clients
+├── NexNet.Generator.Tests/   # Generator tests (incl. Java/JS emitter snapshots and SDK-gated compile checks)
 ├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
 ├── NexNet.Fuzz/              # SharpFuzz harnesses (libFuzzer), smoke runner, regression corpora
+├── NexNet.Interop/           # Cross-language harness: IClientUnderTest, drivers, language host pool (test-only)
+├── NexNet.Interop.Abstractions/ # Harness types generated scaffolding uses (typed JSON, remote descriptors)
+├── NexNet.Interop.Tests/     # Harness unit tests (control protocol, host supervision)
+├── NexNet.InteropServer/     # Test server exposing every endpoint kind at once
+├── NexNet.GoldenVectors/     # Writes tests/golden/*.jsonl (byte vectors every language checks)
+├── NexNet.Generator.IntegrationSample/ # Builds a sample nexus through the real build targets
 ├── NexNetBenchmarks/         # BenchmarkDotNet
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
+clients/
+├── js/                       # npm workspace: packages/nexnet (@dtronix/nexnet runtime), interop-host-node, interop-host-browser
+└── java/                     # Gradle build: nexnet-client (com.dtronix.nexnet runtime), optional -android/-kotlin/-okhttp/-micrometer, interop-host, build-logic
+tests/golden/                 # Golden vectors (checked in; format in tests/golden/README.md)
 ```
 
 Release: follow [llm-release.md](llm-release.md).
@@ -31,7 +42,27 @@ dotnet test src/NexNet.Serialization.Tests -c Release
 dotnet test src/NexNet.Generator.Tests -c Release
 dotnet test src/NexNet.IntegrationTests -c Release
 ```
-Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
+Tests run on Microsoft.Testing.Platform (the root `global.json` selects it), so options after the project path go to the
+test app. Every suite is TUnit; filter with `--treenode-filter`:
+- `dotnet test <proj> -c Release --treenode-filter "/*/*/*/TestName"` (class: `--treenode-filter "/*/*/ClassName/*"`).
+  The path is `/assembly/namespace/class/test`. `--filter` (VSTest syntax) is not supported.
+
+List tests: `dotnet test <proj> -c Release --list-tests`.
+
+IntegrationTests run in parallel (see 4.4). `NEXNET_TEST_PARALLEL=<n>` overrides how many tests run at once (`1` runs
+the suite serially, which helps when chasing a timing failure).
+
+Cross-language rows (`[ClientMatrix]` tests, `src/NexNet.Interop/`): each row is one client language times one transport
+and carries the TUnit properties `Lang` (`csharp`, `node`, `java`, `browser-chromium`, `browser-firefox`,
+`browser-webkit`) and `Transport` (a `ClientTransport` name such as `WebSocketTls`). Select rows by property:
+- `--treenode-filter "/*/*/*/*[Lang=node]"` runs one language's rows; `[Transport=Tcp]` one transport's.
+- `NEXNET_TEST_LANGS` (comma list) picks the languages. `csharp` (in process) always runs first; `browser` means
+  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked.
+- `NEXNET_TEST_TRANSPORTS` picks the transports of tests that name none of their own. Unset: HttpSocketTls and
+  WebSocketTls. `all`: every transport the language supports. A comma list of `ClientTransport` names
+  (case-insensitive) is used for every language; a transport a language lacks is a visible skip on its row, and an
+  unknown name is an error that lists the valid names.
+- A filter that selects no test exits with code 8; add `--ignore-exit-code 8` when an empty selection is expected.
 
 ---
 
@@ -40,7 +71,8 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.1 Entry Points
 
 - `NexusClient.cs` - Generic client managing connection, reconnection, proxy access, ping/timeout
-- `NexusServer.cs` - Generic server with Listener/Receiver modes, rate limiting, session management
+- `NexusServer.cs` - Generic server with Listener/Receiver modes, rate limiting, session management. Multi-endpoint: private `ServerEndpoint` list (primary first, named after its `TransportName`); public `AddListener`/`AddExternalEndpoint` (before start; validated: names, TCP ports, UDS/ASP paths, `Time`, `RateLimiting`), `Endpoints`. `TryAdmitTransport` builds each session from its endpoint: `Configs` = endpoint config, logger `SV{id}/{name}` (primary: `SV{id}`), `MetricsTags` with `nexnet.endpoint`, `Endpoint` (`NexusEndpointInfo`, `IsSecure` overridden per ASP request). Watchdog ticks at min(Timeout)/4 and checks each session against its own `Config.Timeout`. Start throws when the primary sets `Authenticate` and an endpoint does not
+- `NexusEndpointInfo.cs` - Public record (Name, Transport, IsSecure, Path); `Context.Endpoint` on server sessions (set in the `NexusSession` constructor from `NexusSessionConfigurations.Endpoint`)
 - `NexusClientPool.cs` - Connection pool with health checking, idle timeout, semaphore-controlled rental
 
 ### 1.2 Attributes (Source Generator Markers)
@@ -132,7 +164,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 **Configuration:**
 - `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`), `MeterFactory`, `TransportName` (metric tag, overridden per transport config)
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
-- `HttpClientConfig.cs` - Base of WebSocket/HttpSocket client configs: Url, AuthenticationHeader, SslClientAuthenticationOptions
+- `HttpClientConfig.cs` - Base of WebSocket/HttpSocket client configs: Url, AuthenticationHeader, UpgradeHeaders (custom upgrade-request headers; AuthenticationHeader, when set, replaces an `Authorization` entry), SslClientAuthenticationOptions
 
 **HTTP client transports:**
 - `HttpConnector.cs` - One connect attempt: `SocketsHttpHandler` + `HttpMessageInvoker` built from `HttpClientConfig`. Copies the TLS options (never mutates the config's), wraps certificate validation to keep a copy of the accepted server certificate (`TakeServerCertificate`), `IsTlsAuthenticationFailure`. When `SslClientAuthenticationOptions` gains properties, add them to `CreateSslOptions`
@@ -263,7 +295,7 @@ Per-frame counts (`_framesSent`/`_bytesSent` under the write mutex, `_framesRece
 ### 2.3 Utilities
 
 - `IncrementalHasher.cs` - FNV-1a hasher used for method, collection, interface and shape hashes
-- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization
+- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization; NEXNET039 is the `SeparatePool` warning on a pipe/channel method. NEXNET040-049 are reserved for the multi-language targets; add descriptors append-only with those IDs: 040 type not representable in a target, 041 target name collision, 042 duplicate/overloaded method names (any nexus interface, inherited ones included; nexus not generated), 043 `Targets` on a client nexus, 044 target without output dir (warning), 045 invalid target configuration, 046 reference-equality set/dictionary key (warning), 047 output file collision, 048 invalid `NexusTargetFormatter`, 049 reserved. `FindTargetDescriptor` maps the IDs `Validation/TargetValidator.cs` reports
 - `SymbolUtilities.cs` - Symbol inspection helpers
 
 ### 2.4 Serialization (Serialization/)
@@ -290,14 +322,20 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 3.2 NexNet.Asp (src/NexNet.Asp/)
 
-`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection and ApplyAuthentication().
+`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection, AuthenticateRequest() and ApplyAuthentication() (AuthenticateRequest plus a `401` answer on failure; used by HttpSocket). AuthenticateRequest promotes the opt-in `AccessTokenQueryParameter` query value to `Authorization: Bearer` when no header is sent, strips it from the query and never logs it.
 
-**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config.
+**Multi-endpoint and hosting:**
+- `AddNexusServer<>(o => ...)` takes `NexusServerOptions.cs` (`Configure(primary)`, `AddListener(config, name)`; the app's `ILogger`/`IMeterFactory` fill a primary that has none) and registers `NexusServerHostedService.cs`: starts the server on `ApplicationStarted` (after Kestrel binds; a start failure logs critical and stops the app) and stops it on `ApplicationStopping`
+- `MapNexusWebSocket(server, config[, name])` / `MapNexusHttpSocket(server, config[, name])` map an ASP endpoint of an already configured server (`AddExternalEndpoint`; the config supplies that endpoint's session settings)
+- `MapWebSocketNexus`/`MapHttpSocketNexus(config, server)`: the primary config behaves as before; another config on a configured server becomes its own endpoint
+- `UseWebSocketNexusServerAsync`/`UseHttpSocketNexusServerAsync` configure the server, or attach to one already configured instead of throwing
+
+**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config: `AllowedOrigins` (empty or `*` = any; checked per request by `MapWebSocketNexus`, 403 otherwise; `UseWebSocketNexusServerAsync` also passes it to `WebSocketOptions.AllowedOrigins`), `AccessTokenQueryParameter`. `WebSocket/WebSocketAuthenticationRefusal.cs`: a WebSocket request that fails ASP.NET authentication is not answered `401` (browsers cannot see it); `MapWebSocketNexus` accepts it, sends the preamble, reads the client greeting and answers with the disconnect byte `DisconnectReason.Authentication`, then closes (no session; spec §13.7).
 
 **HttpSocket (HttpSocket/):**
 - `HttpSocketMiddleware.cs` - ASP.NET middleware for dynamic HTTP/WebSocket upgrade
 - Both `Map*Nexus` paths build the transport with `ProxyHeaderResolver.GetRemoteEndPoint` and `context.Connection.ClientCertificate`
-- `HttpSocketServerConfig.cs` - HttpSocket transport config
+- `HttpSocketServerConfig.cs` - HttpSocket transport config; `AccessTokenQueryParameter`. Origins are checked by `HttpSocketOptions.AllowedOrigins`
 
 **Utilities:**
 - `NexusILoggerBridgeLogger.cs` - Adapts Microsoft.Extensions.Logging to INexusLogger
@@ -309,7 +347,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.1 Base Classes
 
-- `BaseTests.cs` - Abstract base: lifecycle (SetUp/TearDown), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test
+- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS endpoints from `NewUdsEndPoint()` in a per-test subdirectory of one run-wide temp directory (deleted after the test), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation (`FreeTcpPort()`/`FreeUdpPort()` delegate to `TestPorts`), TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
 - `BasePipeTests.cs` - Pipe test base: LogMode enum (None/OnTestFail/Always), Setup() with auto server/client connection
 - `NexusCollectionBaseTests.cs` (Collections/) - Collection base: ConnectServerAndClient(), CreateRelayCollectionClientServers() for relay topology
 - `BaseAspTests.cs` - ASP.NET base: AspCreateAuthServices(), AspAppAuthConfigure()
@@ -317,13 +355,14 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 ### 4.2 Test Infrastructure
 
 - `NexusServerFactory.cs` - Generic server wrapper tracking created nexuses in ConcurrentQueue
-- `TestInterfaces/BasicTestsInterfaces.cs` - IClientNexus, IServerNexus interfaces; ClientNexus, ServerNexus implementations with event callbacks
-- `TestInterfaces/VersionedTestsInterfaces.cs` - Version-specific test interfaces
-- `TestInterfaces/AuthorizationTestInterfaces.cs` - Authorization test nexuses with delegate handlers and cache invalidation helpers
+- Test nexus interfaces and classes live in `src/NexNet.TestNexus/TestInterfaces/` (see 4.5)
 - `Utilities.cs` - Dequeue<T>(), GetBytes<T>(), GetValue<T>(), InvokeAndNotifyAwait()
 - `TaskExtensions.cs` - Timeout() overloads, AssertTimeout()
 - `Collections/CollectionHelpers.cs` - WaitForEvent() extension, WaitForActionHandler
 - `PipeStateManagerStub.cs` - IPipeStateManager mock
+- `TestPorts.cs` - Process-wide loopback port allocator: walks 12000-31999 (below the OS ephemeral ranges) from a random offset, never hands a port out twice, skips ports not bindable for both TCP and UDP. Use it instead of binding port 0 and closing (that races under parallel runs)
+- `TestTimeouts.cs` - Shared hang guards in seconds for load-dependent steps: `Connect` (server start/stop, client connect; 5) and `CollectionEvent` (5). Use them in `.Timeout(...)` instead of `1` for such steps
+- `IntegrationParallelLimit.cs` - TUnit `IParallelLimit` for the assembly: half the logical processors (at least 2), or `NEXNET_TEST_PARALLEL`
 
 ### 4.3 Test Categories
 
@@ -345,6 +384,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `NexusServerTests_NexusGroupInvocations.cs` - Group invocations
 - `NexusServerTests_Versioned.cs` - Versioning
 - `NexusServerTests_Authorization.cs` - Authorization: allow/deny/disconnect, collections, caching (TTL, expiry, invalidation, concurrent access), multi-permission
+- `NexusServerTests_MultiEndpoint.cs` - One server, many endpoints (`BaseAspTests`): endpoint order, broadcasts and collections across transports, `Context.Endpoint` (incl. ASP over HTTPS), per-endpoint `MaxMessageSize`/`Authenticate`/`Timeout`, primary `Authenticate` rule, `nexnet.endpoint` metrics, bind-failure rollback, rate limit across transports, `AddListener`/`AddExternalEndpoint` validation, hosted service lifecycle, `Use*NexusServerAsync` attach, added ASP endpoints' `AllowedOrigins` and query-string token
 
 **Collections (Collections/, 24 files):**
 - `NexusCollectionAckTests.cs` - Acknowledgments
@@ -360,6 +400,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `NexusPipeReaderTests.cs` / `NexusPipeWriterTests.cs` - Pipe ops
 - `NexusDuplexPipeReaderTests.cs` / `NexusDuplexPipeWriterTests.cs` - Duplex ops
 - `NexusClientTests_NexusDuplexPipe.cs` / `NexusServerTests_NexusDuplexPipe.cs` - Integration
+- `NexusPipeWriterCloseRaceTests.cs` / `PipeCloseWriteRaceTests.cs` - A pipe closed or reset while a write or flush is in flight: buffers stay valid, no data after the Complete, the session survives
 
 **Security (Security/, 10 files):**
 - `AuthenticationTokenTests.cs` - Token validation
@@ -396,18 +437,57 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.4 Test Patterns
 
-**Multi-Transport:** `[TestCase(Type.Uds)]`, `[TestCase(Type.Tcp)]`, etc. for cross-transport coverage
+**TUnit:** the suite runs on TUnit in source-gen mode.
+
+**Parallelism:** tests run in parallel, up to `IntegrationParallelLimit` at once (`[assembly: ParallelLimiter<...>]` in `GlobalUsings.cs`; `NEXNET_TEST_PARALLEL` overrides it). A new test must be parallel-safe: take ports from `TestPorts` (via `FreeTcpPort()`/`FreeUdpPort()` or the `CreateServerConfig`/`CreateClientConfig` helpers), UDS paths from `NewUdsEndPoint()`, and never depend on session ID values or other process-wide state. Bound load-dependent steps with `TestTimeouts`. Opt out only where needed:
+- `[NotInParallel("stress")]`: stress tests (`Parallel.Invoke`, `Thread.Sleep`, high volume), metrics, session-budget, rate-limit and snapshot tests. They run alongside other tests but never alongside each other.
+- `[NotInParallel("static-state")]`: tests that read or reset process-wide state (object pools, `ObjectCache`, pooled completion sources, static counters), e.g. `PoolingTests`, `PooledResettableValueTaskCompletionSourceTests`. Prefer private types or injected state where a test can avoid the shared state.
+- `[NotInParallel]` (no key): tests that assert on wall-clock time; they run on their own.
+
+TUnit creates a new instance per test, so per-class state goes in static fields set by static `[Before(Class)]`/`[After(Class)]` hooks (see `TlsCertificateTests`).
+
+**Multi-Transport:** `[Test]` plus `[Transports]` (`TransportsAttribute.cs`) runs a test once per transport, passing it as the first `Type` parameter: `[Transports]` is every transport, `[Transports(Type.Uds, Type.Tcp)]` only those, `[Transports(Except = new[] { Type.Quic })]` all but those. Rows with more arguments use `[Arguments(Type.Tcp, true)]`; generated rows use `[MethodDataSource]`.
+
+**Asserts:** every TUnit assert is awaited (`await Assert.That(x).IsEqualTo(y)`). `IsEqualTo` on a collection compares references: compare items with `IsEquivalentTo(expected, CollectionOrdering.Matching)` (in order) or `IsEquivalentTo(expected)` (any order). `ThrowsExactly`/`ThrowsExactlyAsync` match the exact exception type; `Throws`/`ThrowsAsync` accept subtypes. Group asserts with `using (Assert.Multiple()) { await ...; }`. In a callback that cannot await (sync lambda, nexus event handler, transport hook), capture the value and assert after the await, or use the throwing `CallbackAssert` helpers. `[Repeat(n)]` runs n + 1 times, and each run is listed as its own test.
 
 **Async Pattern:** All async ops wrapped with `.Timeout(seconds)` using TaskExtensions
 
 **Setup Pattern:**
 ```
 var (server, client, clientNexus) = CreateServerClient(config, config);
-await server.StartAsync().Timeout(1);
-await client.ConnectAsync().Timeout(1);
+await server.StartAsync().Timeout(TestTimeouts.Connect);
+await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 ```
 
-**Event Assertions:** Set delegates on test nexus before operations, verify in callbacks
+**Event Assertions:** Set delegates on test nexus before operations; capture values in the callbacks and assert after awaiting them
+
+### 4.5 Shared Test Nexuses (src/NexNet.TestNexus/)
+
+A library of the nexuses the tests use, referenced by IntegrationTests (and, through `InternalsVisibleTo`, by the interop
+harness, the golden vector tool and Serialization.Tests). Not packaged.
+
+**TestInterfaces/** (moved from IntegrationTests; namespace still `NexNet.IntegrationTests.TestInterfaces`):
+- `BasicTestsInterfaces.cs` - IClientNexus, IServerNexus interfaces; ClientNexus, ServerNexus implementations with event callbacks
+- `VersionedTestsInterfaces.cs` - Version-specific test interfaces
+- `AuthorizationTestInterfaces.cs` - Authorization test nexuses with delegate handlers and cache invalidation helpers
+- `SeparatePoolTestInterfaces.cs` - Nexuses for the separate-pool tests
+
+**Interop/** (namespace `NexNet.TestNexus.Interop`): the interop type zoo for the cross-language harness. Wire layouts
+are part of the interop contract: never change keys, tags or enum values; add members and types instead.
+- `IInteropServerNexus.cs` / `InteropServerNexus.cs` - Echo method for every zoo type (spec §10), plus pipes, channels,
+  collections, cancellation, authorization (`admin`/`reader` identities) and token validation via
+  `NexNet.InteropServer`. `Targets = Java | JavaScript`
+- `IInteropClientNexus.cs` / `InteropClientNexus.cs` - Callbacks the server invokes; echo by default, scripted per test
+- `InteropTypes.cs` - Zoo types: enums (int, flags, long beyond 2^53), objects, unions, nullable and collection shapes,
+  and `InteropPoint` with a user formatter mapped by `NexusTargetFormatter` to Java and JS
+- `InteropVersionedNexus.cs` - Versioned pair: V2 server class plus a V1 `NexusClientExport`
+
+The project imports the generator's `buildTransitive` props/targets and writes the Java and JS clients to
+`artifacts/interop/<lang>/generated` (gitignored).
+
+`IntegrationTests/Interop/InteropZooTests.cs` smoke-tests the zoo with the C# client over UDS, and the test-only raw
+frame injection hook `NexusSession.InternalSendRawAsync` (`Internals/NexusSession.Sending.cs`), which writes a
+pre-built frame to the session's transport.
 
 ---
 
@@ -457,6 +537,79 @@ Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying i
 
 ---
 
+## 5c. Java and JavaScript Clients (clients/)
+
+Client-only runtimes; the server stays .NET. User docs: `docs/articles/multi-language-clients.md`,
+`javascript-client.md`, `java-client.md`. Contracts (frozen; changes need a contract amendment):
+`docs/internals/js-runtime-contract.md`, `java-runtime-contract.md`, `nexnet-ir.md`, `interop-control-protocol.md`,
+`tests/golden/README.md`.
+
+**Pipeline.** The generator builds a language-neutral IR (`NexNet.Generator/Ir/`, also written as `nexnet-ir.json`),
+validates it per target (`Validation/TargetValidator.cs`: NEXNET040-048), and each `Targets/<Lang>/` emitter
+(`ITargetLanguage`, `TargetRegistry`) writes proxies, client nexus bases, types and formatters. The runtime sources
+under `clients/` are embedded in `NexNet.Generator.dll` (`Runtime/EmbeddedRuntime.cs`; the clients are not published, so the generator carries everything a consumer needs) and emitted beside the
+generated code. Everything travels in the comment-only `NexNet.Targets.g.cs` bundle (`Bundle/`), unpacked after
+`CoreCompile` by `build/NexNet.Generator.targets` (task in `build/NexNet.Generator.Tasks.cs`; the bundle parser is
+duplicated in `Bundle/TargetBundle.cs`). `docs/internals/generator-emitted-runtime.md` covers the emitted runtime.
+
+**JavaScript** (`clients/js`, npm workspace): `packages/nexnet` is the runtime: ESM, JSDoc, zero dependencies,
+entries `src/index.js` (neutral), `src/browser.js` (WebSocket only, never imports `node:`) and `src/node.js` (adds
+HttpSocket/TCP/TLS/UDS). `src/contract/` is the generated-code API. Tests: Vitest (`test/`, Node; browser mode with
+Playwright). Gate: `npm ci --prefix clients/js`, `npm test --prefix clients/js`, `npm run typecheck --prefix clients/js`.
+
+**Java** (`clients/java`, Gradle Kotlin DSL, wrapper committed): `nexnet-client` is the runtime (package
+`com.dtronix.nexnet`, `--release 11`, Android API 24 via Animal Sniffer, no runtime dependencies; `spi` is the
+generated-code API). Gate: `clients/java/gradlew -p clients/java check` (JDK 21).
+
+Both runtimes version in lockstep with `src/NexNet/NexNet.csproj`. Editing a runtime file changes what the generator
+emits, so it rebuilds the generator. Language gates run when a change touches `clients/<lang>/**`,
+`Ir/**` or `Targets/<Lang>/**`.
+
+## 5d. Cross-language Test Harness (src/NexNet.Interop/)
+
+C#-authored TUnit tests run against every client language. `dotnet build src`/`dotnet test` never invoke npm,
+Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is set.
+
+- **Rows.** `[ClientMatrix(Transports = [...], CSharpTransports = [...], Requires = ClientCapabilities.X)]` makes one
+  row per language of `NEXNET_TEST_LANGS` (`csharp` always, first) times transport; the test takes a `ClientTarget`.
+  Only applicable rows are generated: a language that lacks the transport or a capability of `Requires` gets no row
+  (`ClientLanguages.cs` holds each language's transports, `ClientCapabilities` and variants; a host's hello can only
+  narrow them). Declare what the test needs in `Requires` (`ClientPool` for pools) instead of skipping in the body; a
+  test of C#-only API by design sets `Languages = [ClientLanguages.CSharp]` and is a parity exception. A language's
+  variants add their own rows: every Java `WebSocket`/`WebSocketTls` row also runs on OkHttp (`java/WebSocket(okhttp)`,
+  `ClientTarget.Variant` → `ClientSpec.WebSocketConnector`). Filtering: see the top of this file (`[Variant=okhttp]`
+  selects the variant rows).
+- **Skips.** In CI a matrix row may be skipped only for a reason that cites a card: `Skip.Test("K60: ...")` (a card id,
+  a colon and a space; `MatrixCoverage.IsCited`). With `NEXNET_MATRIX_REPORT=<dir>` the session writes the coverage
+  report (`matrix-coverage.json`/`.md`: rows run, passed, failed and skipped per language and variant, and the
+  combinations left out by reason), and in CI (`CI=true` or `NEXNET_REQUIRE_SDKS=1`) fails on an uncited skip. Local
+  runs may still skip for their environment (no msquic).
+- **Tests.** Derive from `IntegrationTests/MatrixTestBase.cs` (takes the `LanguageHostPool`): start an
+  `InteropServer` (`NexNet.InteropServer`: one server with every endpoint kind), create the client with
+  `Harness.CreateClientAsync(target, spec)` → `IClientUnderTest`, and assert on the server or through the client
+  under test (invoke, pipes, channels, lists, scripted client nexus, `IPoolUnderTest` for pools).
+- **Drivers.** `InProc/`: the C# client in process. `Remote/`: drives a language host over the JSON control protocol
+  (`docs/internals/interop-control-protocol.md`); `Hosts/`: launches, pools, supervises and restarts host processes
+  (`host.json` launch config, `HostBuildCommands`), with a per-test leak audit (`LeakReport`).
+- **Hosts.** `clients/js/packages/interop-host-node`, `interop-host-browser` (Playwright: Chromium, Firefox, WebKit),
+  `clients/java/interop-host`. They run clients generated by `src/NexNet.TestNexus` with `EmitTestScaffolding` into
+  `artifacts/interop/<lang>/generated` (gitignored) and the workspace runtime.
+- **Golden vectors.** `NexNet.GoldenVectors` writes `tests/golden/*.jsonl`; Serialization.Tests, the JS Vitest suite
+  and the Java JUnit suite all check them. Regenerate after a serializer or message change.
+- **Parity audit.** `IntegrationTests/Interop/ClientParityTests.cs` fails when a matrix test has no runnable row on a
+  language (its transports or capabilities by the built-in table, or `Languages`), checks part of its behavior on C# only (`InProc`,
+  a branch on `ClientLanguages.CSharp`, or a check or cast to an in-process driver type such as
+  `client as InProcClientDriver<,>`), or branches on any other language (a `ClientLanguages` name or the `"browser-"`
+  family, an `IsBrowser(target)` helper, `client is RemoteClientDriver`) and checks something else there. It scans the
+  IL of the test and of the helpers it calls. Each gap needs an entry in `Interop/ClientParityExceptions.cs` with its
+  reason (platform limit, by design, or the card that closes it); a helper whose driver-type check only adds a C# check
+  on top of an all-language one is exempt in `ClientParityExceptions.DriverTypeChecks` (`AssertNotOutstanding`). The
+  audit also fails on an entry no longer needed. Keep `docs/articles/multi-language-clients.md` "Parity exceptions" in
+  step.
+- `src/NexNet.Interop.Tests` tests the harness itself (framing, hello, host launch and crash handling, drivers).
+
+---
+
 ## 6. Key Architectural Concepts
 
 ### Protocol
@@ -499,7 +652,11 @@ Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specifi
 
 **Add collection:** Define INexusList<T> property with [NexusCollection(mode)] attribute
 
-**Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); use [TestCase(Type.X)] for transport coverage
+**Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); mark it `[Test]`, add `[Transports]` (or `[Transports(Type.X, ...)]`) for transport coverage, make it `async Task` and await every assert
+
+**Change the JS/Java runtime:** edit `clients/<lang>/`, keep the contract doc in step, run the language gate; the generator re-embeds the sources on its next build
+
+**Add a cross-language test:** `[Test, ClientMatrix(...)]` on a `MatrixTestBase` subclass, taking `ClientTarget`; run other languages with `NEXNET_TEST_LANGS=node,java`
 
 **Debug generator:** Use Generator.Tests with CSharpGeneratorRunner.RunGenerator(); check Diagnostic[] output
 

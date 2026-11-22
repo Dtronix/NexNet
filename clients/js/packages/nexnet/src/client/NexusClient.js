@@ -1,0 +1,698 @@
+/**
+ * The client: connect, handshake, state machine, events, plaintext warning and disconnect.
+ * Reconnection, pooling and full snapshots live in their own modules. Invocations and pipes attach to each session before it
+ * starts (`attachSessionLayers`).
+ * @module
+ */
+
+import { ConnectionResultState, ConnectionState, DisconnectReason } from '../contract/enums.js';
+import { NexusTransportError, cancellationError } from '../contract/errors.js';
+import { webSocketTransport } from '../transport/WebSocketTransport.js';
+import { transportError } from '../transport/TransportBase.js';
+import { NexusSession } from '../session/NexusSession.js';
+import { resolveClientOptions } from '../session/options.js';
+import { MAX_VERSION_LENGTH } from '../session/protocol.js';
+import { attachInvocations } from '../invocation/InvocationManager.js';
+import { attachPipes, createChannel, createPipe } from '../pipes/PipeManager.js';
+import { bindNexusClient } from './ClientNexusBase.js';
+import { ReconnectController } from '../reconnect/ReconnectController.js';
+import { isBrowserEnvironment, resolveReconnectionPolicy } from '../reconnect/environment.js';
+import { getClientSnapshot } from '../diagnostics/snapshot.js';
+
+/**
+ * Result of {@link NexusClient#tryConnect}. Mirrors C# `ConnectionResult`.
+ *
+ * @typedef {object} ConnectionResult
+ * @property {boolean} success
+ * @property {import('../contract/enums.js').ConnectionResultStateValue} state
+ * @property {import('../contract/enums.js').DisconnectReasonValue} disconnectReason `None` on success.
+ * @property {unknown} [error] The error when `state` is `Exception`.
+ */
+
+/**
+ * `detail` of the `statechange` event.
+ * @typedef {{ state: import('../contract/enums.js').ConnectionStateValue, previous: import('../contract/enums.js').ConnectionStateValue }} StateChangeDetail
+ */
+
+/**
+ * `detail` of the `disconnected` event.
+ * @typedef {{ reason: import('../contract/enums.js').DisconnectReasonValue }} DisconnectedDetail
+ */
+
+/**
+ * The events of a {@link NexusClient}, for `addEventListener`.
+ * @typedef {object} NexusClientEventMap
+ * @property {CustomEvent<StateChangeDetail>} statechange
+ * @property {CustomEvent<DisconnectedDetail>} disconnected
+ */
+
+/**
+ * The opaque session handle passed to the generated proxy. It follows the client's current session.
+ * @typedef {{ readonly client: NexusClient<any, any>, readonly session: NexusSession | null }} ClientSessionHandle
+ */
+
+/** @type {ConnectionResult} */
+const SUCCESS = Object.freeze({ success: true, state: ConnectionResultState.Success, disconnectReason: DisconnectReason.None });
+
+/**
+ * A NexNet client: one session to one server. Dispatches `statechange` and `disconnected` events (`CustomEvent`
+ * with {@link StateChangeDetail} and {@link DisconnectedDetail}), always from a microtask, never re-entrantly.
+ * Create it with the generated `create<Export>Client(config, nexus)`, which calls {@link NexusClient.create}.
+ *
+ * @template {import('../contract/nexus.js').ClientNexusBase<TProxy>} TNexus
+ * @template {import('../contract/proxy.js').ProxyBase} TProxy
+ */
+export class NexusClient extends EventTarget {
+  /**
+   * @readonly
+   * @type {import('../contract/config.js').ClientConfig}
+   */
+  config;
+
+  /**
+   * @readonly
+   * @type {TNexus}
+   */
+  nexus;
+
+  /**
+   * @protected
+   * @readonly
+   * @type {import('../contract/handshake.js').ClientBinding<TProxy>}
+   */
+  _binding;
+
+  /**
+   * Transport factories this entry point supports, keyed by {@link ClientConfig} transport property.
+   * The browser entry has `webSocket` only; the Node entry's `NexusClient` adds the rest.
+   *
+   * @type {Readonly<Partial<Record<import('../contract/config.js').TransportKind, import('../transport/ITransport.js').TransportFactory>>>}
+   */
+  static transports = Object.freeze({
+    webSocket: webSocketTransport,
+  });
+
+  /** @type {import('../session/options.js').ResolvedClientOptions} */
+  #options;
+  /** @type {NexusSession | null} */
+  #session = null;
+  /** @type {import('../contract/enums.js').ConnectionStateValue} */
+  #state = ConnectionState.Disconnected;
+  /** @type {TProxy | null} */
+  #proxy = null;
+  /** @type {ClientSessionHandle} */
+  #handle;
+  #plaintextWarned = false;
+  /** @type {Promise<ConnectionResult> | null} */
+  #connecting = null;
+  /** @type {Promise<void>} */
+  #disconnected = Promise.resolve();
+  /** Resolves {@link NexusClient#disconnected} once reconnection gave up (or none applies). @type {(() => void) | null} */
+  #resolveDisconnected = null;
+  /** @type {import('../contract/config.js').ReconnectionPolicy | null} */
+  #reconnectionPolicy;
+  /** Created on the first successful connect; stopped by {@link NexusClient#disconnect}. @type {ReconnectController | null} */
+  #reconnect = null;
+  /** True while a reconnection loop runs (C# `_reconnectLoopActive`): the state reads Reconnecting until it ends. */
+  #reconnectLoop = false;
+  /** Counts the reconnection loops, so the end of an old loop does not end a newer one. */
+  #reconnectLoops = 0;
+
+  /**
+   * Creates a client of the class it is called on. Validates `config` and throws `TypeError` when it is invalid
+   * (no transport, several transports, or a transport this entry point does not support).
+   *
+   * @template {import('../contract/nexus.js').ClientNexusBase<TP>} TN
+   * @template {import('../contract/proxy.js').ProxyBase} TP
+   * @param {import('../contract/config.js').ClientConfig} config
+   * @param {TN} nexus
+   * @param {import('../contract/handshake.js').ClientBinding<TP>} binding Supplied by the generated factory.
+   * @returns {NexusClient<TN, TP>}
+   */
+  static create(config, nexus, binding) {
+    return new this(config, nexus, binding);
+  }
+
+  /**
+   * Use {@link NexusClient.create}.
+   *
+   * @param {import('../contract/config.js').ClientConfig} config
+   * @param {TNexus} nexus
+   * @param {import('../contract/handshake.js').ClientBinding<TProxy>} binding
+   */
+  constructor(config, nexus, binding) {
+    super();
+    const ctor = /** @type {typeof NexusClient} */ (this.constructor);
+    this.#options = resolveClientOptions(config, ctor.transports);
+    validateBinding(binding);
+    this.#reconnectionPolicy = resolveReconnectionPolicy(config);
+    this.config = config;
+    this.nexus = nexus;
+    this._binding = binding;
+    bindNexusClient(nexus, this);
+    const client = this;
+    this.#handle = Object.freeze({
+      client,
+      get session() {
+        return client.#session;
+      },
+    });
+  }
+
+  /**
+   * The connection state. While the reconnection loop runs (from the loss of a session until an attempt connects or
+   * the loop ends) it is `Reconnecting`, also between failed attempts, as in C#.
+   * @returns {import('../contract/enums.js').ConnectionStateValue}
+   */
+  get state() {
+    return this.#state;
+  }
+
+  /** The server proxy. Throws before the first successful connect. @returns {TProxy} */
+  get proxy() {
+    if (this.#proxy === null) throw new Error('Client not connected');
+    return this.#proxy;
+  }
+
+  /** True when the transport is TLS, WSS, HTTPS or UDS. Plaintext is allowed but logs a warning once per client. @returns {boolean} */
+  get isSecure() {
+    return this.#options.isSecure;
+  }
+
+  /**
+   * The server certificate of the current connection: Node's `X509Certificate` (`node:crypto`) on the Node TLS
+   * transports (`tcpTls`, `wss:` WebSocket, `https:` HttpSocket). Null when not connected, and on every other
+   * transport, the browser WebSocket included (browsers do not expose it).
+   * @returns {unknown}
+   */
+  get remoteCertificate() {
+    return this.#session?.remoteCertificate ?? null;
+  }
+
+  /**
+   * The server's address on the current connection (C# `Context.RemoteAddress`, Java `remoteAddress()`): the IP
+   * address of the Node socket's peer on every Node transport, or the socket path for UDS. Null when not connected, and
+   * always in the browser, which does not expose it.
+   * @returns {string | null}
+   */
+  get remoteAddress() {
+    return this.#session?.remoteAddress ?? null;
+  }
+
+  /**
+   * The server's port on the current connection (C# `Context.RemotePort`, Java `remotePort()`) on the Node TCP-based
+   * transports. Null when not connected, for UDS, and always in the browser.
+   * @returns {number | null}
+   */
+  get remotePort() {
+    return this.#session?.remotePort ?? null;
+  }
+
+  /** Resolves when the current session ends (after reconnection gives up). @returns {Promise<void>} */
+  get disconnected() {
+    return this.#disconnected;
+  }
+
+  /**
+   * The current session, or null. Runtime-internal (invocations, pipes, reconnection).
+   * @returns {NexusSession | null}
+   */
+  get _session() {
+    return this.#session;
+  }
+
+  /**
+   * Connects and completes the handshake. Rejects with `NexusTransportError` on failure and the abort reason
+   * when `signal` aborts. A connect the server refuses for its authentication (`DisconnectReason.Authentication`
+   * during the handshake), or an `authenticate` that exceeds `handshakeTimeout`, rejects with `transportError`
+   * `AuthenticationError`, as C# `ConnectAsync` throws `TransportException(AuthenticationError)`.
+   *
+   * @param {{ signal?: AbortSignal }} [options]
+   * @returns {Promise<void>}
+   */
+  async connect(options) {
+    const result = await this.tryConnect(options);
+    if (result.success) return;
+    if (result.state === ConnectionResultState.Canceled) throw cancellationError(options?.signal);
+    const reason = result.disconnectReason || DisconnectReason.SocketError;
+    if (result.error instanceof NexusTransportError) throw result.error;
+    if (result.state === ConnectionResultState.Disconnected && reason === DisconnectReason.Authentication) {
+      throw transportError('Authentication failed.', { kind: 'AuthenticationError' });
+    }
+    const message = result.state === ConnectionResultState.Exception
+      ? `Connection failed (${describeReason(reason)}).`
+      : `Server disconnected during the handshake (${describeReason(reason)}).`;
+    throw new NexusTransportError(message, { reason, cause: result.error });
+  }
+
+  /**
+   * Like {@link NexusClient#connect}, but resolves a result instead of rejecting.
+   *
+   * @param {{ signal?: AbortSignal }} [options]
+   * @returns {Promise<ConnectionResult>}
+   */
+  tryConnect(options) {
+    return this.#connectOnce(false, options?.signal);
+  }
+
+  /**
+   * Starts one connect attempt unless one is in flight (user connects and reconnect attempts share it).
+   * @param {boolean} isReconnecting
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<ConnectionResult>}
+   */
+  #connectOnce(isReconnecting, signal) {
+    if (this.#session !== null) return Promise.resolve(SUCCESS);
+    if (this.#connecting !== null) return this.#connecting;
+    const attempt = this.#tryConnectCore(isReconnecting, signal);
+    this.#connecting = attempt;
+    void attempt.finally(() => {
+      if (this.#connecting === attempt) this.#connecting = null;
+    });
+    return attempt;
+  }
+
+  /**
+   * Typed for the events of {@link NexusClientEventMap}; any other type takes a plain listener.
+   * @template {keyof NexusClientEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | AddEventListenerOptions} [options]
+   */
+  addEventListener(type, listener, options) {
+    super.addEventListener(type, listener, options);
+  }
+
+  /**
+   * Typed like {@link NexusClient#addEventListener}.
+   * @template {keyof NexusClientEventMap} K
+   * @overload
+   * @param {K} type
+   * @param {(this: NexusClient<TNexus, TProxy>, event: NexusClientEventMap[K]) => void} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @overload
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   * @returns {void}
+   */
+  /**
+   * @param {string} type
+   * @param {EventListenerOrEventListenerObject | null} listener
+   * @param {boolean | EventListenerOptions} [options]
+   */
+  removeEventListener(type, listener, options) {
+    super.removeEventListener(type, listener, options);
+  }
+
+  /** Disconnects gracefully and stops reconnection. @returns {Promise<void>} */
+  async disconnect() {
+    const reconnect = this.#reconnect;
+    this.#reconnect = null;
+    if (reconnect !== null) {
+      await reconnect.stop();
+      this.#endReconnectLoop();
+    }
+    const session = this.#session;
+    if (session !== null) await session.disconnect(DisconnectReason.Graceful);
+    this.#resolveDisconnected?.();
+    await this.#disconnected;
+  }
+
+  /** The reconnection controller, or null before the first connect and when reconnection is off. @returns {ReconnectController | null} */
+  get reconnection() {
+    return this.#reconnect;
+  }
+
+  /**
+   * Creates a pipe to pass to a pipe method. It reserves a pipe slot and receive window until it is disposed.
+   * Throws `NexusTransportError` when not connected and `NexusBusyError` when `maxPipes` or the session budget is
+   * reached.
+   * @returns {import('../contract/pipes.js').NexusDuplexPipe}
+   */
+  createPipe() {
+    return createPipe(this.#session);
+  }
+
+  /**
+   * Creates a channel to pass to a channel method. A generated class formatter (and `stringFormatter`) is typed as
+   * reading `T | null`; this overload gives a `NexusDuplexChannel<T>`, the type a channel parameter of a generated
+   * proxy takes. Pass the type argument (`createChannel<T | null>(formatter)`) for a channel of nullable items.
+   * @template T
+   * @overload
+   * @param {import('../contract/codec.js').Formatter<T | null>} formatter
+   * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+   */
+  /**
+   * Creates a channel to pass to a channel method.
+   * @template T
+   * @overload
+   * @param {import('../contract/codec.js').Formatter<T>} formatter
+   * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
+   */
+  /**
+   * @param {import('../contract/codec.js').Formatter<any>} formatter
+   * @returns {import('../contract/pipes.js').NexusDuplexChannel<any>}
+   */
+  createChannel(formatter) {
+    return createChannel(this.#session, formatter);
+  }
+
+  /**
+   * Diagnostic snapshot, field names as C# `NexusClientSnapshot` camelCased; null when not connected.
+   * The session layer fills the session fields; reconnection, pool and metrics fill the rest.
+   * @returns {object | null}
+   */
+  getSnapshot() {
+    return getClientSnapshot(this);
+  }
+
+  /** Same as {@link NexusClient#disconnect}. @returns {Promise<void>} */
+  [Symbol.asyncDispose]() {
+    return this.disconnect();
+  }
+
+  /**
+   * One connect attempt (C# `TryConnectAsyncCore`). The reconnect loop calls it with `isReconnecting`.
+   *
+   * @protected
+   * @param {boolean} isReconnecting
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<ConnectionResult>}
+   */
+  async _tryConnectCore(isReconnecting, signal) {
+    return this.#connectOnce(isReconnecting, signal);
+  }
+
+  /**
+   * @param {boolean} isReconnecting
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<ConnectionResult>}
+   */
+  async #tryConnectCore(isReconnecting, signal) {
+    if (this.#session !== null) return SUCCESS;
+    if (signal?.aborted) return canceled();
+    const options = this.#options;
+
+    this.#warnPlaintextOnce();
+    this.#setState(isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting);
+
+    // The token is acquired before the transport connects, bounded by the handshake timeout. A failing provider
+    // opens no connection.
+    /** @type {Uint8Array | null} */
+    let token;
+    try {
+      token = await this.#authenticate(signal);
+    } catch (error) {
+      this.#setState(ConnectionState.Disconnected);
+      if (signal?.aborted) return canceled();
+      this.#log('error', 'Could not acquire the authentication token.', error);
+      return { success: false, state: ConnectionResultState.Exception, disconnectReason: DisconnectReason.Authentication, error };
+    }
+
+    const ctor = /** @type {typeof NexusClient} */ (this.constructor);
+    const factory = /** @type {import('../transport/ITransport.js').TransportFactory} */ (ctor.transports[options.kind]);
+    /** @type {import('../transport/ITransport.js').Transport} */
+    let transport;
+    const timeout = this.#timeoutSignal(options.connectionTimeout, 'Connection timed out.');
+    try {
+      transport = await factory(this.config, { signal: anySignal(signal, timeout.signal) });
+    } catch (error) {
+      this.#setState(ConnectionState.Disconnected);
+      if (signal?.aborted) return canceled();
+      if (error instanceof NexusTransportError) {
+        return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: error.reason || DisconnectReason.SocketError, error };
+      }
+      if (timeout.signal.aborted) {
+        const timedOut = new NexusTransportError(`Connection timed out after ${options.connectionTimeout} ms.`, { reason: DisconnectReason.Timeout, cause: error });
+        return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: DisconnectReason.Timeout, error: timedOut };
+      }
+      return { success: false, state: ConnectionResultState.Exception, disconnectReason: DisconnectReason.SocketError, error };
+    } finally {
+      timeout.cancel();
+    }
+
+    const session = new NexusSession({ transport, options, handshake: this._binding.handshake, isReconnecting });
+    this.#attachSessionLayers(session);
+    this.#session = session;
+    session.onStateChange = (state) => this.#setState(state);
+    // A reconnect keeps the promise of the session it replaces: it resolves once reconnection gives up.
+    if (this.#resolveDisconnected === null) {
+      this.#disconnected = new Promise((resolve) => {
+        this.#resolveDisconnected = () => {
+          this.#resolveDisconnected = null;
+          resolve();
+        };
+      });
+    }
+    // A session whose connect was aborted after the handshake completed is never handed over: its close is not reported.
+    let handedOver = false;
+    session.onClose((reason) => this.#onSessionClosed(session, reason, handedOver || !signal?.aborted));
+
+    const onAbort = () => void session.abort(DisconnectReason.SocketError);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      if (signal?.aborted) {
+        await session.abort(DisconnectReason.SocketError);
+      } else {
+        session.start(token);
+      }
+      const ok = await session.ready;
+      // An abort that lands after the greeting but before this continuation has already started closing the session.
+      if (!ok || signal?.aborted) {
+        await session.closed;
+        if (signal?.aborted) return canceled();
+        return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: session.disconnectReason };
+      }
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+
+    if (this.#proxy === null) this.#proxy = new this._binding.proxy(this.#handle);
+    if (this.#reconnect === null && this.#reconnectionPolicy !== null) {
+      const reconnect = new ReconnectController(/** @type {any} */ (this), { policy: this.#reconnectionPolicy, lifecycle: isBrowserEnvironment() });
+      reconnect.addEventListener('reconnecting', () => this.#beginReconnectLoop(reconnect));
+      reconnect.addEventListener('reconnectfailed', () => {
+        this.#endReconnectLoop();
+        this.#resolveDisconnected?.();
+      });
+      this.#reconnect = reconnect;
+    }
+    handedOver = true;
+    const nexus = this.nexus;
+    queueMicrotask(() => this.#callHook('onConnected', () => nexus.onConnected(isReconnecting)));
+    return SUCCESS;
+  }
+
+  /**
+   * Attaches the per-session layers before the session starts, so frames that arrive in the same read as the
+   * ServerGreeting find their handlers. The invocation layer fails its pending calls when the session closes; the
+   * pipe layer resolves pipe parameters of dispatched invocations and ends its pipes with the session.
+   * @param {NexusSession} session
+   */
+  #attachSessionLayers(session) {
+    const invocations = attachInvocations(session, { nexus: this.nexus, handshake: this._binding.handshake });
+    attachPipes(session, invocations);
+  }
+
+  /**
+   * @param {NexusSession} session
+   * @param {number} reason
+   * @param {boolean} report False for a session whose connect was aborted: it ends like one that never completed its handshake.
+   */
+  #onSessionClosed(session, reason, report) {
+    if (this.#session !== session) return;
+    this.#session = null;
+    const reconnect = this.#reconnect;
+    const established = session.isHandshakeComplete && report;
+    const reconnecting = established && reconnect !== null && !reconnect.stopped
+      && reconnect.wouldReconnect(reason);
+    // A session that never completed its handshake is reported through the connect result only.
+    if (established) {
+      const nexus = this.nexus;
+      queueMicrotask(() => {
+        this.dispatchEvent(new CustomEvent('disconnected', { detail: /** @type {DisconnectedDetail} */ ({ reason }) }));
+        this.#callHook('onDisconnected', () => nexus.onDisconnected(reason));
+      });
+    }
+    // A failed reconnect attempt leaves the promise to the loop; anything else that ends ends it. Resolved after the
+    // hook is queued, so awaiting `disconnected` sees onDisconnected.
+    if (!reconnecting && reconnect?.isReconnecting !== true) this.#resolveDisconnected?.();
+  }
+
+  /**
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<Uint8Array | null>}
+   */
+  async #authenticate(signal) {
+    const authenticate = this.#options.authenticate;
+    if (authenticate === null) return null;
+    signal?.throwIfAborted();
+    const ms = this.#options.handshakeTimeout;
+    const timeout = this.#timeoutSignal(ms, 'authenticate timed out.');
+    try {
+      const pending = authenticate({ signal: anySignal(signal, timeout.signal) });
+      const token = await new Promise((resolve, reject) => {
+        const onAbort = () => {
+          if (signal?.aborted) reject(cancellationError(signal));
+          else reject(transportError(`authenticate did not complete within handshakeTimeout (${ms} ms).`, { kind: 'AuthenticationError' }));
+        };
+        if (signal?.aborted || timeout.signal.aborted) return onAbort();
+        signal?.addEventListener('abort', onAbort, { once: true });
+        timeout.signal.addEventListener('abort', onAbort, { once: true });
+        Promise.resolve(pending).then(resolve, reject).finally(() => {
+          signal?.removeEventListener('abort', onAbort);
+          timeout.signal.removeEventListener('abort', onAbort);
+        });
+      });
+      if (token === null || token === undefined) return null;
+      if (!(token instanceof Uint8Array)) throw new TypeError('authenticate must return a Uint8Array, null or undefined');
+      return token;
+    } finally {
+      timeout.cancel();
+    }
+  }
+
+  /**
+   * An AbortSignal that aborts with a `TimeoutError` after `ms` on the client clock.
+   * @param {number} ms
+   * @param {string} message
+   * @returns {{ signal: AbortSignal, cancel: () => void }}
+   */
+  #timeoutSignal(ms, message) {
+    const clock = this.#options.clock;
+    const controller = new AbortController();
+    const handle = clock.setTimeout(() => controller.abort(new DOMException(message, 'TimeoutError')), ms);
+    return { signal: controller.signal, cancel: () => clock.clearTimeout(handle) };
+  }
+
+  #warnPlaintextOnce() {
+    if (this.#options.isSecure || this.#plaintextWarned) return;
+    this.#plaintextWarned = true;
+    this.#log('warning', `NexNet: unencrypted transport (${this.#options.transportName}); credentials and data are visible on the network.`);
+  }
+
+  /**
+   * A reconnection loop started: the client is Reconnecting until an attempt connects or the loop ends. A failed
+   * attempt's own states are not reported (C# parity).
+   * @param {ReconnectController} reconnect
+   */
+  #beginReconnectLoop(reconnect) {
+    const loop = ++this.#reconnectLoops;
+    this.#reconnectLoop = true;
+    this.#setState(ConnectionState.Reconnecting);
+    // The event is dispatched while the controller starts the loop; `idle` is that loop's promise once it returns.
+    queueMicrotask(() => void reconnect.idle.then(() => {
+      if (loop === this.#reconnectLoops) this.#endReconnectLoop();
+    }));
+  }
+
+  /** The reconnection loop ended (gave up or stopped): without a session the client is Disconnected again. */
+  #endReconnectLoop() {
+    if (!this.#reconnectLoop) return;
+    this.#reconnectLoop = false;
+    if (this.#session === null) this.#setState(ConnectionState.Disconnected);
+  }
+
+  /** @param {import('../contract/enums.js').ConnectionStateValue} state */
+  #setState(state) {
+    if (this.#reconnectLoop) {
+      if (state === ConnectionState.Connected) this.#reconnectLoop = false;
+      else state = ConnectionState.Reconnecting;
+    }
+    const previous = this.#state;
+    if (previous === state) return;
+    this.#state = state;
+    queueMicrotask(() => {
+      this.dispatchEvent(new CustomEvent('statechange', { detail: /** @type {StateChangeDetail} */ ({ state, previous }) }));
+    });
+  }
+
+  /**
+   * Runs a nexus hook; a throw or rejection is logged, never propagated.
+   * @param {string} name
+   * @param {() => void | Promise<void>} hook
+   */
+  #callHook(name, hook) {
+    try {
+      const result = hook();
+      if (result && typeof result.then === 'function') {
+        result.then(undefined, (error) => this.#log('error', `${name} threw.`, error));
+      }
+    } catch (error) {
+      this.#log('error', `${name} threw.`, error);
+    }
+  }
+
+  /**
+   * @param {import('../contract/config.js').NexusLogLevel} level
+   * @param {string} message
+   * @param {unknown} [error]
+   */
+  #log(level, message, error) {
+    const logger = this.#options.logger;
+    if (!logger) return;
+    try {
+      logger.log(level, message, error);
+    } catch {
+      // A logger must never break the client.
+    }
+  }
+}
+
+/** @returns {ConnectionResult} */
+function canceled() {
+  return { success: false, state: ConnectionResultState.Canceled, disconnectReason: DisconnectReason.None };
+}
+
+/**
+ * @param {AbortSignal | undefined} a
+ * @param {AbortSignal} b
+ * @returns {AbortSignal}
+ */
+function anySignal(a, b) {
+  return a ? AbortSignal.any([a, b]) : b;
+}
+
+/** @param {number} reason @returns {string} */
+function describeReason(reason) {
+  const names = /** @type {Record<string, number>} */ (DisconnectReason);
+  const name = Object.keys(names).find((key) => names[key] === reason);
+  return name ? `${name} (${reason})` : `reason ${reason}`;
+}
+
+/**
+ * @param {import('../contract/handshake.js').ClientBinding<any>} binding
+ */
+function validateBinding(binding) {
+  if (typeof binding !== 'object' || binding === null || typeof binding.handshake !== 'object' || binding.handshake === null) {
+    throw new TypeError('binding.handshake is required (pass the generated binding)');
+  }
+  const { version, serverNexusHash, clientNexusHash } = binding.handshake;
+  if (version !== null && (typeof version !== 'string' || version.length > MAX_VERSION_LENGTH)) {
+    throw new TypeError(`binding.handshake.version must be null or a string of at most ${MAX_VERSION_LENGTH} characters`);
+  }
+  for (const [name, value] of [['serverNexusHash', serverNexusHash], ['clientNexusHash', clientNexusHash]]) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < -0x80000000 || value > 0x7fffffff) {
+      throw new TypeError(`binding.handshake.${name} must be an int32`);
+    }
+  }
+  if (typeof binding.proxy !== 'function') throw new TypeError('binding.proxy must be the generated proxy class');
+}

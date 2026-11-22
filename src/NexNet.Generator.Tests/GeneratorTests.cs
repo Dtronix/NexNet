@@ -1,12 +1,11 @@
 ﻿using Microsoft.CodeAnalysis;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
 class GeneratorTests
 {
     [Test]
-    public void MustBePartial_Server()
+    public async Task MustBePartial_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -24,11 +23,11 @@ class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id)).IsTrue();
     }
 
     [Test]
-    public void MustBePartial_Client()
+    public async Task MustBePartial_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -46,11 +45,11 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id)).IsTrue();
     }
 
     [Test]
-    public void MustNotBeAbstract_Server()
+    public async Task MustNotBeAbstract_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -68,12 +67,12 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id)).IsTrue();
 
     }
 
     [Test]
-    public void MustNotBeAbstract_Client()
+    public async Task MustNotBeAbstract_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -91,12 +90,12 @@ abstract partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id)).IsTrue();
 
     }
 
     [Test]
-    public void NexusMustNotBeGeneric()
+    public async Task NexusMustNotBeGeneric()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -114,12 +113,12 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id)).IsTrue();
 
     }
 
     [Test]
-    public void InvokeMethodCoreReservedMethodName()
+    public async Task InvokeMethodCoreReservedMethodName()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -141,12 +140,12 @@ partial class ServerNexus : IServerNexus
 }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvokeMethodCoreReservedMethodName.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvokeMethodCoreReservedMethodName.Id)).IsTrue();
 
     }
 
     [Test]
-    public void InvokeMethodCoreUsesPoolingBuilder()
+    public async Task InvokeMethodCoreUsesPoolingBuilder()
     {
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(CSharpGeneratorRunner.CreateCompilation("""
 using NexNet;
@@ -165,22 +164,21 @@ partial class ServerNexus : IServerNexus
     public ValueTask<int> Get() => new(1);
 }
 """));
-        Assert.That(errors, Is.Empty, string.Join("\n", errors.Select(e => e.ToString())));
+        await Assert.That(errors).IsEmpty().Because(string.Join("\n", errors.Select(e => e.ToString())));
 
         var nexusSources = result.Results.Single().GeneratedSources
             .Select(s => s.SourceText.ToString())
             .Where(s => s.Contains("override async global::System.Threading.Tasks.ValueTask InvokeMethodCore("))
             .ToArray();
-        Assert.That(nexusSources.Length, Is.EqualTo(2));
+        await Assert.That(nexusSources.Length).IsEqualTo(2);
         foreach (var code in nexusSources)
         {
-            Assert.That(code, Does.Contain(
-                "[global::System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(global::System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder))]"));
+            await Assert.That(code).Contains("[global::System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(global::System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder))]");
         }
     }
 
     [Test]
-    public void NexusMustNotBeGeneric_Client()
+    public async Task NexusMustNotBeGeneric_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -199,12 +197,12 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id)).IsTrue();
 
     }
 
     [Test]
-    public void NexusMustNotBeGeneric_Server()
+    public async Task NexusMustNotBeGeneric_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -223,7 +221,7 @@ partial class ServerNexus<T> : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id)).IsTrue();
 
     }
 
@@ -231,7 +229,7 @@ partial class ServerNexus<T> : IServerNexus
 
 
     [Test]
-    public void CanGenerateClientOnly()
+    public async Task CanGenerateClientOnly()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -244,12 +242,12 @@ partial class ClientNexus : IClientNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
 
     }
 
     [Test]
-    public void DuplicatedMethodId_Client()
+    public async Task DuplicatedMethodId_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -267,12 +265,12 @@ partial class ClientNexus : IClientNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id)).IsTrue();
     }
 
 
     [Test]
-    public void DuplicatedMethodId_Server()
+    public async Task DuplicatedMethodId_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -290,11 +288,11 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id)).IsTrue();
     }
 
     [Test]
-    public void InvalidReturnValue_Client()
+    public async Task InvalidReturnValue_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -306,11 +304,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id)).IsTrue();
     }
 
     [Test]
-    public void InvalidReturnValue_Server()
+    public async Task InvalidReturnValue_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -323,11 +321,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus { }
 
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id)).IsTrue();
     }
 
     [Test]
-    public void CompilesSimpleServerAndClient()
+    public async Task CompilesSimpleServerAndClient()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -345,11 +343,11 @@ partial class ServerNexus : IServerNexus
     public void Update(string arg) { }
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void CompilesSimpleServerAndClientWithNullableReturn()
+    public async Task CompilesSimpleServerAndClientWithNullableReturn()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -364,11 +362,11 @@ partial class ServerNexus : IServerNexus
 
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void InvalidCancellationToken_Client()
+    public async Task InvalidCancellationToken_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -380,11 +378,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id)).IsTrue();
     }
 
     [Test]
-    public void InvalidCancellationToken_Server()
+    public async Task InvalidCancellationToken_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -396,12 +394,12 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id)).IsTrue();
     }
 
 
     [Test]
-    public void CancellationTokenOnVoid_Client()
+    public async Task CancellationTokenOnVoid_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -413,11 +411,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id)).IsTrue();
     }
 
     [Test]
-    public void CancellationTokenOnVoid_Server()
+    public async Task CancellationTokenOnVoid_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -429,11 +427,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id)).IsTrue();
     }
 
     [Test]
-    public void CompilesWhenInterfacesAndNexusesAreInSeparateNamespaces()
+    public async Task CompilesWhenInterfacesAndNexusesAreInSeparateNamespaces()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -463,7 +461,6 @@ namespace HubNameSpaces2.Seven.Eight
     }
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 }
-

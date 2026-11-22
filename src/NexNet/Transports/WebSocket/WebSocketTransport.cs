@@ -50,8 +50,9 @@ internal class WebSocketTransport : ITransport
         User = user;
     }
 
+    // Client side: the remote endpoint is the socket peer the connector reached (the server, or an HTTP proxy).
     private WebSocketTransport(IWebSocketPipe pipe, ClientWebSocket client, HttpConnector connector)
-        : this(pipe, null, null, connector.TakeServerCertificate())
+        : this(pipe, connector.RemoteEndPoint.Address, connector.RemoteEndPoint.Port, connector.TakeServerCertificate())
     {
         _client = client;
         _connector = connector;
@@ -101,6 +102,10 @@ internal class WebSocketTransport : ITransport
         {
             client.Options.CollectHttpResponseDetails = true;
 
+            foreach (var (name, value) in config.UpgradeHeaders)
+                client.Options.SetRequestHeader(name, value);
+
+            // The typed header wins over an Authorization entry of UpgradeHeaders (SetRequestHeader replaces).
             if (config.AuthenticationHeader != null)
                 client.Options.SetRequestHeader("Authorization", config.AuthenticationHeader.ToString());
 
@@ -137,6 +142,10 @@ internal class WebSocketTransport : ITransport
             case WebSocketException e when statusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
                 return new TransportException(TransportError.AuthenticationError,
                     $"Websocket connection authentication failed with Http status code: {statusCode}", e);
+
+            case WebSocketException e when (int)statusCode is >= 300 and < 400:
+                return new TransportException(TransportError.ProtocolError,
+                    $"Websocket upgrade failed: the server answered with redirect {(int)statusCode}; redirects are not followed.", e);
 
             case WebSocketException e when statusCode == HttpStatusCode.InternalServerError:
                 return new TransportException(TransportError.InternalError,

@@ -26,8 +26,8 @@ internal class BasePipeTests : BaseTests
         var (server, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, log),
             CreateClientConfig(type, log));
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (server, client, cNexus, tcs);
     }
     
@@ -56,8 +56,8 @@ internal class BasePipeTests : BaseTests
         var (server, client, cNexus) = CreateServerClient(
             CreateServerConfigWithLog(type, serverLogger),
             CreateClientConfigWithLog(type, clientLogger));
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (server, client, cNexus, tcs);
     }
 }

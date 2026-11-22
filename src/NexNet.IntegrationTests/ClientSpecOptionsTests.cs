@@ -1,0 +1,277 @@
+using System.Diagnostics;
+using NexNet.IntegrationTests.Metrics;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Logging;
+using NexNet.Pipes;
+#pragma warning disable VSTHRD200
+
+namespace NexNet.IntegrationTests;
+
+/// <summary>
+/// The client configuration fields of <see cref="ClientSpec"/> on every row of the client matrix: session budget, pipe
+/// limits, log level, certificate verification and the invocation queue warning. What each field changes is observed
+/// on the server or through <see cref="IClientUnderTest"/>.
+/// </summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class ClientSpecOptionsTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
+{
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task SessionBudget_IsTheLimitOfTheClientsBudget(ClientTarget target)
+    {
+        const int budget = 32 * 1024 * 1024;
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.SessionBudget = budget);
+
+        var snapshot = await client.GetBudgetAsync().Timeout(T(1));
+        await Assert.That(snapshot).IsNotNull();
+        await Assert.That(snapshot!.Limit).IsEqualTo(budget);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task PipeWindow_IsReservedForEachOpenPipe(ClientTarget target)
+    {
+        const int window = 32 * 1024;
+        await using var server = await StartServerAsync(nexus =>
+            nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask);
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.PipeWindow = window);
+        var baseline = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+
+        await using (var pipe = await client.CreatePipeAsync())
+        {
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
+            await Assert.That(await WaitForReservedAsync(client, baseline + window)).IsEqualTo(baseline + window);
+        }
+
+        // Released once both sides closed the pipe.
+        await Assert.That(await WaitForReservedAsync(client, baseline)).IsEqualTo(baseline);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task MaxPipes_RefusesAPipeOverTheLimit_AndTheSessionStaysUp(ClientTarget target)
+    {
+        await using var server = await StartServerAsync(nexus =>
+        {
+            nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
+            nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
+        });
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
+        var baseline = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+
+        await using (var first = await client.CreatePipeAsync())
+        {
+            await Proxy(client).ServerTaskValueWithDuplexPipe(first).Timeout(T(1));
+            await first.WhenReadyAsync().AsTask().Timeout(T(1));
+
+            // The second pipe is refused locally: it never reaches the server.
+            await Assert.ThrowsExactlyAsync<NexusBusyException>(async () =>
+            {
+                await using var second = await client.CreatePipeAsync();
+                await Proxy(client).ServerTaskValueWithDuplexPipe(second).Timeout(T(1));
+            });
+            await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
+        }
+
+        // The slot frees once both sides closed the first pipe, which also releases its window.
+        await WaitForReservedAsync(client, baseline);
+        await using (var again = await client.CreatePipeAsync())
+        {
+            await Proxy(client).ServerTaskValueWithDuplexPipe(again).Timeout(T(5));
+            await again.WhenReadyAsync().AsTask().Timeout(T(1));
+        }
+
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task LogLevel_Warning_DeliversThePlaintextWarning(ClientTarget target)
+    {
+        var logger = new CapturingLogger();
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec =>
+        {
+            spec.Logger = logger;
+            spec.LogLevel = NexusLogLevel.Warning;
+        });
+
+        await WaitUntil(() => logger.Warnings.Any(w => w.Contains("unencrypted transport", StringComparison.Ordinal)));
+        await Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport", StringComparison.Ordinal))).IsEqualTo(1);
+        await Assert.That(logger.Messages.Any(m => m.Level < NexusLogLevel.Warning)).IsFalse();
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task LogLevel_Error_FiltersOutWarnings(ClientTarget target)
+    {
+        var logger = new CapturingLogger();
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1));
+        await using var client = await ConnectAsync(target, server, configure: spec =>
+        {
+            spec.Logger = logger;
+            spec.LogLevel = NexusLogLevel.Error;
+        });
+
+        // A round trip after the connect: a warning logged at connect would have arrived by now.
+        await RoundTripAsync(client);
+        await Assert.That(logger.Messages.Where(m => m.Level < NexusLogLevel.Error).Select(m => m.Message)).IsEmpty();
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.TcpTls, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls], Requires = ClientCapabilities.CustomCa)]
+    public async Task InsecureSkipVerify_AcceptsACertificateTheClientDoesNotTrust(ClientTarget target)
+    {
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1));
+
+        // No CA: the test server's certificate chains to the F08 test CA, which no system store trusts.
+        await using var client = await ConnectAsync(target, server, configure: spec =>
+        {
+            spec.CaPem = null;
+            spec.InsecureSkipVerify = true;
+        });
+
+        await Assert.That(await Proxy(client).ServerTaskValue().Timeout(T(1))).IsEqualTo(1);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task InvocationQueueWarningThreshold_WarnsWhenAnInvocationWaitsLonger(ClientTarget target)
+    {
+        var logger = new CapturingLogger();
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            script => script.ClientTaskWithParam.Delay(300),
+            spec =>
+            {
+                spec.Logger = logger;
+                spec.LogLevel = NexusLogLevel.Warning;
+                spec.MaxConcurrentConnectionInvocations = 1;
+                spec.InvocationQueueWarningThresholdMs = 50;
+            });
+
+        // One execution slot: the second call waits about 300 ms for it.
+        using (var context = server.Server.ContextProvider.Rent())
+        {
+            await context.Proxy.All.ClientTaskWithParam(1).Timeout(T(1));
+            await context.Proxy.All.ClientTaskWithParam(2).Timeout(T(1));
+        }
+
+        await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(1));
+        await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(1));
+        await WaitUntil(() => logger.Warnings.Any(w => w.Contains("for an execution slot", StringComparison.Ordinal)));
+        await Assert.That(logger.Warnings.Any(w => w.Contains("threshold 50 ms", StringComparison.Ordinal))).IsTrue();
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task MaxSeparatePoolInvocations_QueuesSeparatePoolCallsOverTheLimit(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server,
+            script => script.ClientSeparatePool.AwaitSignal("release"),
+            spec => spec.MaxSeparatePoolInvocations = 1);
+
+        using (var context = server.Server.ContextProvider.Rent())
+        {
+            await context.Proxy.All.ClientSeparatePool(1).Timeout(T(1));
+            await context.Proxy.All.ClientSeparatePool(2).Timeout(T(1));
+        }
+
+        // The only separate-pool slot runs the first call, which waits for the signal.
+        await Assert.That((await Script(client).ClientSeparatePool.NextCallAsync().AsTask().Timeout(T(1))).data).IsEqualTo(1);
+
+        // The normal pool is not affected: a plain call runs while the second separate-pool call waits.
+        using (var context = server.Server.ContextProvider.Rent())
+            await context.Proxy.All.ClientTaskWithParam(3).Timeout(T(1));
+        await Assert.That((await Script(client).ClientTaskWithParam.NextCallAsync().AsTask().Timeout(T(1))).data).IsEqualTo(3);
+
+        // The second call stays queued until the first one finishes.
+        var second = Script(client).ClientSeparatePool.NextCallAsync().AsTask();
+        await Task.WhenAny(second, Task.Delay(300));
+        await Assert.That(second.IsCompleted).IsFalse();
+
+        await client.SignalAsync("release").Timeout(T(1));
+        await Assert.That((await second.Timeout(T(1))).data).IsEqualTo(2);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_KeepsTheTransportOpenAfterTheDisconnectMessage(ClientTarget target)
+    {
+        const int delay = 1500;
+        var clock = new Stopwatch();
+        var serverDisconnected = Signal<long>();
+        await using var server = await StartServerAsync(nexus => nexus.OnDisconnectedEvent = _ =>
+        {
+            serverDisconnected.TrySetResult(clock.ElapsedMilliseconds);
+            return ValueTask.CompletedTask;
+        });
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.DisconnectDelayMs = delay);
+
+        clock.Start();
+        var disconnect = client.DisconnectAsync();
+
+        // The disconnect message goes out first: the server ends its session while the client still waits.
+        var serverAt = await serverDisconnected.Task.Timeout(T(TestTimeouts.Connect));
+        await disconnect.Timeout(T(TestTimeouts.Connect) + delay / 1000.0);
+        var clientAt = clock.ElapsedMilliseconds;
+
+        await Assert.That(serverAt).IsLessThan(delay - 500);
+        // Timers may fire a tick early.
+        await Assert.That(clientAt).IsGreaterThanOrEqualTo(delay - 50);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_Default_IsTheRuntimesDefault(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server);
+
+        // Every runtime defaults to 200 ms.
+        var clock = Stopwatch.StartNew();
+        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(clock.ElapsedMilliseconds).IsGreaterThanOrEqualTo(150);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_Zero_ClosesWithoutWaiting(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.DisconnectDelayMs = 0);
+
+        var clock = Stopwatch.StartNew();
+        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+        // Far below the delay of the test above; loose, since a remote driver adds a control round trip.
+        await Assert.That(clock.ElapsedMilliseconds).IsLessThan(500);
+        await EndAsync(client);
+    }
+
+    /// <summary>Waits, for at most <c>T(1)</c>, until the client's budget reserves <paramref name="expected"/>; returns the last value.</summary>
+    private static async Task<long> WaitForReservedAsync(IClientUnderTest client, long expected)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(T(1));
+        var reserved = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+        while (reserved != expected && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+            reserved = (await client.GetBudgetAsync().Timeout(T(1)))!.Reserved;
+        }
+
+        return reserved;
+    }
+}

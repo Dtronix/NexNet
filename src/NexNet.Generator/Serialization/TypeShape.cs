@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using NexNet.Generator.Ir;
 
 namespace NexNet.Generator.Serialization;
 
@@ -49,6 +50,12 @@ internal sealed class MemberShape
     public bool IsRequired;
     public IFieldSymbol? BackingField;
     public string LocalName = null!;
+
+    /// <summary>True when the declared reference type may be null (annotated or nullable-oblivious). Not hashed.</summary>
+    public bool RefNullable;
+
+    /// <summary>The member's initializer when it is a simple constant; null otherwise. Not hashed.</summary>
+    public LiteralIr? DefaultLiteral;
 }
 
 /// <summary>A [NexusObject] abstract class or interface with [NexusUnion&lt;T&gt;(tag)] cases, written as [tag, value].</summary>
@@ -69,10 +76,23 @@ internal sealed class EnumShape : TypeShape
         Values = values;
     }
 
+    public EnumShape(INamedTypeSymbol type, SpecialType underlying, long[] values, (string Name, long Value)[] members, bool isFlags)
+        : this(type, underlying, values)
+    {
+        Members = members;
+        IsFlags = isFlags;
+    }
+
     public SpecialType Underlying { get; }
 
-    /// <summary>Distinct constant values, ascending. Member names are not part of the shape.</summary>
+    /// <summary>Distinct constant values, ascending. Member names are not part of the hashed shape.</summary>
     public long[] Values { get; }
+
+    /// <summary>Members in declaration order with their raw 64-bit values. Not hashed.</summary>
+    public (string Name, long Value)[] Members { get; } = Array.Empty<(string, long)>();
+
+    /// <summary>True when the enum has [Flags]. Not hashed.</summary>
+    public bool IsFlags { get; }
 }
 
 /// <summary>A <see cref="Nullable{T}"/> value type.</summary>

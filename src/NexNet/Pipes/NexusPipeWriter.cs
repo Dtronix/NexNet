@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -12,13 +13,31 @@ using NexNet.Messages;
 
 namespace NexNet.Pipes;
 
+/// <summary>
+/// Sends pipe data frames on behalf of a <see cref="NexusPipeWriter"/>.
+/// </summary>
+internal interface IPipeChunkSender
+{
+    /// <summary>
+    /// Sends one DuplexPipeWrite frame, unless <paramref name="writer"/> has completed by the time the frame would
+    /// be written: the pipe's Complete is sent after the writer completes, and no data may follow it.
+    /// </summary>
+    ValueTask SendPipeChunk(
+        NexusPipeWriter writer,
+        ReadOnlyMemory<byte> pipeId,
+        ReadOnlySequence<byte> body,
+        bool flush,
+        CancellationToken cancellationToken);
+}
+
 internal class NexusPipeWriter : PipeWriter, IDisposable
 {
     private readonly IPipeStateManager _stateManager;
 
     private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 64);
     private bool _isCanceled;
-    private bool _isCompleted;
+    // Read by the session under its write lock while another thread completes the writer.
+    private volatile bool _isCompleted;
     private CancellationTokenSource? _flushCts;
     private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
     /// <summary>
@@ -43,6 +62,18 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly NexusDuplexPipe.State _completedFlag;
     private bool _hasPipeId;
     private int _flushCounter;
+
+    // Dispose can run on another thread while the application writes or flushes (the pipe is released or reset
+    // mid-write). Buffers are returned to the pool only when nothing references them: if a flush is sending from
+    // them, or the application holds a span or memory from GetSpan/GetMemory, the writer's own thread releases them
+    // when it is done (end of the flush, Advance, the next flush or CompleteAsync). After Dispose, written data is
+    // discarded.
+    private readonly object _disposeLock = new();
+    private bool _flushInProgress;
+    private volatile bool _disposed;
+    private bool _released;
+    private int _bufferInUse;
+    private byte[]? _discard;
 
     // While a flush waits for credit: when the wait started (TimeProvider tick count, 0 when not waiting) and the
     // bytes left to send. Written on the wait path only, read by snapshots.
@@ -148,19 +179,53 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Advance(int bytes)
     {
+        if (_disposed)
+        {
+            // The pipe is closed: the bytes are dropped.
+            AdvanceDisposed(bytes);
+            return;
+        }
+
         _bufferWriter.Advance(bytes);
+        Volatile.Write(ref _bufferInUse, 0);
+
+        // Dispose ran while the application held the span; it left the buffers to this thread.
+        if (_disposed)
+            ReleaseDeferred();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Memory<byte> GetMemory(int sizeHint = 0)
     {
-        return _bufferWriter.GetMemory(sizeHint);
+        // Marked before Dispose is checked, and Dispose marks itself before it checks this: one of them sees the other.
+        Interlocked.Exchange(ref _bufferInUse, 1);
+        return _disposed ? GetDiscard(sizeHint) : _bufferWriter.GetMemory(sizeHint);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Span<byte> GetSpan(int sizeHint = 0)
     {
-        return _bufferWriter.GetSpan(sizeHint);
+        Interlocked.Exchange(ref _bufferInUse, 1);
+        return _disposed ? GetDiscard(sizeHint).Span : _bufferWriter.GetSpan(sizeHint);
+    }
+
+    private void AdvanceDisposed(int bytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(bytes);
+        Volatile.Write(ref _bufferInUse, 0);
+        ReleaseDeferred();
+    }
+
+    /// <summary>
+    /// Scratch memory for writes after Dispose, whose data is dropped.
+    /// </summary>
+    private Memory<byte> GetDiscard(int sizeHint)
+    {
+        ReleaseDeferred();
+        var size = Math.Max(sizeHint, 4096);
+        if (_discard == null || _discard.Length < size)
+            _discard = new byte[size];
+        return _discard;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -180,6 +245,13 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     public override ValueTask CompleteAsync(Exception? exception = null)
     {
         _isCompleted = true;
+
+        if (_disposed)
+        {
+            // The application is done writing; buffers Dispose left behind can go back to the pool.
+            Volatile.Write(ref _bufferInUse, 0);
+            ReleaseDeferred();
+        }
 
         if (_messenger == null)
             return default;
@@ -208,7 +280,41 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     {
         // Ensure no concurrent flushing occurs.
         using var _ = await _flushSemaphore.WaitDisposableAsync().ConfigureAwait(false);
-        
+
+        // A flush ends the application's use of any span or memory it got.
+        Volatile.Write(ref _bufferInUse, 0);
+
+        lock (_disposeLock)
+        {
+            _flushInProgress = !_disposed;
+        }
+
+        if (!_flushInProgress)
+        {
+            // Closed: nothing written is sent.
+            ReleaseDeferred();
+            return new FlushResult(_isCanceled, true);
+        }
+
+        try
+        {
+            return await FlushCoreAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_disposeLock)
+            {
+                _flushInProgress = false;
+            }
+
+            // Dispose ran during this flush and left the buffers to it.
+            if (_disposed)
+                ReleaseDeferred();
+        }
+    }
+
+    private async ValueTask<FlushResult> FlushCoreAsync(CancellationToken cancellationToken)
+    {
         if (_isCompleted)
             return new FlushResult(_isCanceled, _isCompleted);
 
@@ -233,7 +339,15 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         {
             cancellationTokenRegistration = cancellationToken.Register(static (object? ctsObject) =>
             {
-                Unsafe.As<CancellationTokenSource?>(ctsObject)?.Cancel();
+                try
+                {
+                    Unsafe.As<CancellationTokenSource?>(ctsObject)?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The writer was disposed (its pipe freed) while this flush waited; there is nothing left to
+                    // cancel. Throwing here would fail the caller's Cancel instead.
+                }
             }, _flushCts);
         }
 
@@ -305,12 +419,21 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
                 // We are passing the cancellation token from the method instead of the _flushCts due to
                 // the fact that the _flushCts can be canceled even after this method is completed due
                 // to some transport implementations such as QUIC.
-                await _messenger.SendHeaderWithBody(
-                    MessageType.DuplexPipeWrite,
-                    _pipeId,
-                    sendingBuffer,
-                    flush,
-                    cancellationToken).ConfigureAwait(false);
+                if (_messenger is IPipeChunkSender chunkSender)
+                {
+                    // Dropped if this writer completes before the frame is written (see IPipeChunkSender).
+                    await chunkSender.SendPipeChunk(this, _pipeId, sendingBuffer, flush, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await _messenger.SendHeaderWithBody(
+                        MessageType.DuplexPipeWrite,
+                        _pipeId,
+                        sendingBuffer,
+                        flush,
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (InvalidOperationException)
             {
@@ -320,6 +443,12 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             }
             catch (TaskCanceledException)
             {
+                break;
+            }
+            catch (Exception e) when (_isCompleted)
+            {
+                // The pipe closed while this chunk was being sent; only this pipe ends, never the session.
+                _logger?.LogDebug(e, $"Pipe closed while writing on Invocation Id: {_stateManager.Id}.");
                 break;
             }
             catch (Exception e)
@@ -363,11 +492,57 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         _metricsTags?.Metrics.RecordPipeCreditWait(_metricsTags, waitMs / 1000.0);
     }
 
+    /// <summary>
+    /// Completes the writer and releases its buffers. Safe to call while the application writes or flushes on
+    /// another thread: a flush in progress stops after the chunk being sent, and buffers still in use are released by
+    /// the writer's own thread once it is done with them.
+    /// </summary>
     public void Dispose()
+    {
+        // Stops a flush in progress after its current chunk, and wakes one waiting for credit.
+        SetComplete();
+
+        lock (_disposeLock)
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            // Full fence: pairs with the exchange in GetSpan/GetMemory.
+            Interlocked.MemoryBarrier();
+            if (_flushInProgress || Volatile.Read(ref _bufferInUse) != 0)
+                return;
+
+            _released = true;
+        }
+
+        ReleaseResources();
+    }
+
+    /// <summary>
+    /// Releases the buffers once Dispose ran, unless a flush still sends from them or they are already released.
+    /// Called by the writer's own thread when it stops using them.
+    /// </summary>
+    private void ReleaseDeferred()
+    {
+        lock (_disposeLock)
+        {
+            if (!_disposed || _released || _flushInProgress)
+                return;
+
+            _released = true;
+        }
+
+        ReleaseResources();
+    }
+
+    private void ReleaseResources()
     {
         _bufferWriter.Dispose();
         _flushCts?.Dispose();
-        _creditSignal.Dispose();
-        _flushSemaphore.Dispose();
+
+        // The semaphores are not disposed: a flush may still be waiting on or releasing them, and SemaphoreSlim
+        // holds nothing that needs disposing unless its wait handle is used.
     }
 }

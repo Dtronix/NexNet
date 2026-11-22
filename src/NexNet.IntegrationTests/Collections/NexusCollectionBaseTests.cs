@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using NexNet.Collections.Lists;
+using NexNet.Interop;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
@@ -16,8 +18,8 @@ internal class NexusCollectionBaseTests : BaseTests
             CreateServerConfig(type, logMode),
             CreateClientConfig(type, logMode));
         
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (server, client, clientNexus);
     }
 
@@ -50,8 +52,8 @@ internal class NexusCollectionBaseTests : BaseTests
 
         if (startServers)
         {
-            await server1.StartAsync().Timeout(1);
-            await server2.StartAsync().Timeout(1);
+            await server1.StartAsync().Timeout(TestTimeouts.Connect);
+            await server2.StartAsync().Timeout(TestTimeouts.Connect);
         }
         return new RelayedCollectionServerClient(server1, client1.client, server2, client2.client);
     }
@@ -77,8 +79,8 @@ internal class NexusCollectionBaseTests : BaseTests
 
         if (startServers)
         {
-            await server1.StartAsync().Timeout(1);
-            await server2.StartAsync().Timeout(1);
+            await server1.StartAsync().Timeout(TestTimeouts.Connect);
+            await server2.StartAsync().Timeout(TestTimeouts.Connect);
         }
         return new RelayedCollectionServerClient(server1, client1.client, server2, client2.client);
     }
@@ -110,9 +112,9 @@ internal class NexusCollectionBaseTests : BaseTests
         var child2 = CreateServer(serverConfig3, nexus => { }, configureCollections: nexus =>
             nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
 
-        await parent.StartAsync().Timeout(1);
-        await child1.StartAsync().Timeout(1);
-        await child2.StartAsync().Timeout(1);
+        await parent.StartAsync().Timeout(TestTimeouts.Connect);
+        await child1.StartAsync().Timeout(TestTimeouts.Connect);
+        await child2.StartAsync().Timeout(TestTimeouts.Connect);
 
         var parentRelay = parent.ContextProvider.Rent().Collections.IntListBi;
         var child1Relay = child1.ContextProvider.Rent().Collections.IntListRelay;
@@ -138,10 +140,48 @@ internal class NexusCollectionBaseTests : BaseTests
         ConnectAdditionalClientToRelay(ClientConfig config)
     {
         var (client, _) = CreateClient(config);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = client.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (client, relayList);
     }
 
+    // ----- Client matrix (the client under test of each ClientTarget row) -----
+
+    /// <summary>
+    /// Starts a C# server of <see cref="ServerNexus"/> for <paramref name="target"/>'s transport. Returns the spec its
+    /// clients connect with and the nexus of each session, in connection order; the server collections (such as
+    /// <c>IntListBi</c>) are the same on every nexus.
+    /// </summary>
+    protected async Task<(ClientSpec Spec, ConcurrentQueue<ServerNexus> Nexuses)> StartMatrixServerAsync(ClientTarget target)
+    {
+        target.SkipIfUnsupported();
+        var type = MatrixTestBase.ToType(target.Transport);
+        var nexuses = new ConcurrentQueue<ServerNexus>();
+        var server = CreateServer(CreateServerConfig(type), nexuses.Enqueue);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        return (MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger), nexuses);
+    }
+
+    /// <summary>Creates and connects a client of <paramref name="target"/> with <paramref name="spec"/>.</summary>
+    protected static Task<IClientUnderTest> ConnectMatrixClientAsync(ClientTarget target, ClientSpec spec)
+        => MatrixTestBase.ConnectAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec.Clone());
+
+    /// <summary>The client's view of <c>IntListBi</c>.</summary>
+    protected static IRemoteList<int> IntListBi(IClientUnderTest client) => client.List<int>(nameof(IServerNexus.IntListBi));
+
+    /// <summary>Waits until the client's list holds exactly <paramref name="expected"/>, in order.</summary>
+    protected static async Task WaitForItemsAsync(IRemoteList<int> list, IReadOnlyList<int> expected, string because)
+    {
+        try
+        {
+            await list.WaitForAsync(items => items.SequenceEqual(expected), TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)));
+        }
+        catch (TimeoutException)
+        {
+            // Reported by the assertion below.
+        }
+
+        await Assert.That(await list.SnapshotAsync().AsTask().Timeout(T(1))).IsEquivalentTo(expected, CollectionOrdering.Matching).Because(because);
+    }
 }

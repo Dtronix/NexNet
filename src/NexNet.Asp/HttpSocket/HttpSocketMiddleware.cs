@@ -22,7 +22,7 @@ public class HttpSocketMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger _logger;
     private readonly bool _anyOriginAllowed;
-    private readonly List<string> _allowedOrigins;
+    private readonly HashSet<string> _allowedOrigins;
     private readonly HttpSocketOptions _options;
 
     /// <summary>
@@ -38,7 +38,8 @@ public class HttpSocketMiddleware
 
         _next = next;
         _options = options;
-        _allowedOrigins = _options.AllowedOrigins.Select(o => o.ToLowerInvariant()).ToList();
+        // Origins compare case-insensitively, as the WebSocket origin check does.
+        _allowedOrigins = new HashSet<string>(_options.AllowedOrigins, StringComparer.OrdinalIgnoreCase);
         _anyOriginAllowed = _options.AllowedOrigins.Count == 0 || _options.AllowedOrigins.Contains("*", StringComparer.Ordinal);
 
         _logger = loggerFactory.CreateLogger<HttpSocketMiddleware>();
@@ -69,7 +70,7 @@ public class HttpSocketMiddleware
                 if (!StringValues.IsNullOrEmpty(originHeader) && webSocketFeature.IsHttpSocketRequest)
                 {
                     // Check allowed origins to see if request is allowed
-                    if (!_allowedOrigins.Contains(originHeader.ToString(), StringComparer.Ordinal))
+                    if (!_allowedOrigins.Contains(originHeader.ToString()))
                     {
                         if (_logger.IsEnabled(LogLevel.Debug))
                         {

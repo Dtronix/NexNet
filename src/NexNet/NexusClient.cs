@@ -31,12 +31,48 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private NexusSession<TClientNexus, TServerProxy>? _session;
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
-    private bool _isReconnecting = false;
+    private volatile bool _reconnectLoopActive;
+
+    // Guards _session's assignment, the reconnection loop's ownership and the state changes the client raises itself,
+    // so a DisconnectAsync, a ConnectAsync and a reconnection attempt agree on who owns the connection.
+    private readonly object _connectionLock = new();
+
+    // Counts DisconnectAsync calls. A session records the count it was created under; the reconnection loop it starts
+    // runs only while the count is unchanged, so a DisconnectAsync stops a loop at any point (between attempts, during
+    // an attempt's handshake or right after it connected) and a loop that has not started yet never starts.
+    private int _disconnectRequests;
+
+    // Cancels the running reconnection loop's delay and connect; taken and canceled by DisconnectAsync.
+    private CancellationTokenSource? _reconnectLoop;
+
+    // A connected session lost while a reconnection loop still ran (for example the loop's own reconnected session,
+    // lost before the loop ended): the loop starts a new one for it when it ends with no session.
+    private (DisconnectReason Reason, int DisconnectRequests)? _lostWhileLoopRan;
+
+    // The last state change raised, so the client ends Disconnected exactly once when a loop stops.
+    private ConnectionState _lastRaisedState = ConnectionState.Disconnected;
+
+    // Application connect attempts that have not opened a session yet (acquiring the token or connecting the
+    // transport): while any runs and no session exists, the client is Connecting.
+    private int _pendingConnects;
     private readonly INexusLogger? _logger;
     private readonly MetricsTagSet _metricsTags;
     private int _plaintextWarningLogged;
+    private int _pingInterval;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
+
+    /// <summary>
+    /// Test hook: awaited by a connect attempt once its session's ready task completes (the handshake completed or the
+    /// session ended), before the attempt reads the outcome.
+    /// </summary>
+    internal Func<Task>? InternalOnSessionReady { get; set; }
+
+    /// <summary>
+    /// Test hook: awaited by the reconnection loop after one of its attempts connected, before the loop ends and
+    /// releases its ownership of the reconnection.
+    /// </summary>
+    internal Func<Task>? InternalOnReconnected { get; set; }
     
     /// <summary>
     /// Provides access to the client's nexus.
@@ -44,11 +80,28 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public TClientNexus Nexus => _nexus;
 
     /// <summary>
-    /// Current state of the connection
+    /// Current state of the connection. While the reconnection loop runs (between the loss of a session and either a
+    /// new connected session or the end of the loop) it is <see cref="ConnectionState.Reconnecting"/>. From the start of
+    /// a connect until its handshake completes it is <see cref="ConnectionState.Connecting"/>.
     /// </summary>
-    public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
+    public ConnectionState State
+    {
+        get
+        {
+            var state = _session?.State
+                        ?? (Volatile.Read(ref _pendingConnects) > 0 ? ConnectionState.Connecting : ConnectionState.Disconnected);
+            return _reconnectLoopActive && state != ConnectionState.Connected ? ConnectionState.Reconnecting : state;
+        }
+    }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A connect raises <see cref="ConnectionState.Connecting"/> when it starts (before the authentication token is
+    /// acquired), then <see cref="ConnectionState.Connected"/> once the transport is up, or
+    /// <see cref="ConnectionState.Disconnected"/> when it fails. An attempt of the reconnection loop raises no
+    /// Connecting: the client stays <see cref="ConnectionState.Reconnecting"/> until an attempt connects, as the Java
+    /// and JavaScript clients do.
+    /// </remarks>
     public event EventHandler<ConnectionState>? StateChanged;
 
 
@@ -79,7 +132,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// internal state, so do not serve it to unauthenticated callers. See docs/articles/metrics.md.
     /// </summary>
     public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot() is { } snapshot
-        ? snapshot with { IsSecure = IsSecure }
+        ? snapshot with
+        {
+            IsSecure = IsSecure,
+            PingInterval = Volatile.Read(ref _pingInterval) is var ping and > 0 ? TimeSpan.FromMilliseconds(ping) : null
+        }
         : null;
 
     /// <inheritdoc />
@@ -128,17 +185,27 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
     {
-        return TryConnectAsyncCore(false, cancellationToken);
+        return TryConnectAsyncCore(false, 0, cancellationToken);
     }
-    
-    private async Task<ConnectionResult> TryConnectAsyncCore(bool isReconnecting, CancellationToken cancellationToken = default)
+
+    /// <param name="isReconnecting">True for an attempt of the reconnection loop.</param>
+    /// <param name="disconnectRequests">
+    /// For a reconnection attempt, the <see cref="_disconnectRequests"/> count its loop runs under: the attempt opens
+    /// no session once a DisconnectAsync changed it. Unused otherwise.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the attempt.</param>
+    private async Task<ConnectionResult> TryConnectAsyncCore(bool isReconnecting, int disconnectRequests, CancellationToken cancellationToken = default)
     {
         if (_session != null)
             return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
-        
-        _isReconnecting = isReconnecting;
+
+        if (isReconnecting && Volatile.Read(ref _disconnectRequests) != disconnectRequests)
+            return new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None);
 
         LogPlaintextWarningOnce();
+
+        if (!isReconnecting)
+            BeginConnecting();
 
         // The token is acquired before the transport connects, so a slow provider does not run down the server's
         // handshake timeout and a failing one opens no connection.
@@ -149,11 +216,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (OperationCanceledException e) when (cancellationToken.IsCancellationRequested)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None, e);
         }
         catch (Exception e)
         {
             _logger?.LogError(e, "Could not acquire the authentication token.");
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.Authentication, e);
         }
 
@@ -165,6 +234,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (TransportException e)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected,
                 e.Error == TransportError.AuthenticationError
                     ? DisconnectReason.Authentication
@@ -172,19 +242,16 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (Exception e)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.SocketError, e);
         }
 
-        // The disconnected task of this attempt is published only once the transport is connected: from here on the
+        // The disconnected task of this attempt is published only once the session is created: from here on the
         // session completes it. A failed transport connect leaves DisconnectedTask on the previous, completed session
         // (or Task.CompletedTask) instead of on a task nothing would complete.
         // These TCSs need to run continuations asynchronously to avoid deadlocks on the receiving end.
         var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnectedTaskCompletionSource = new TaskCompletionSource<DisconnectReason>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = disconnectedTaskCompletionSource.Task.ContinueWith(ConnectionClosed, cancellationToken);
-        _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
-
-        _config.InternalOnClientConnect?.Invoke();
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
@@ -203,11 +270,87 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             MetricsTags = _metricsTags
         };
 
-        var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
+        var sessionConnected = false;
+        NexusSession<TClientNexus, TServerProxy>? session = null;
+        var stopped = false;
+        lock (_connectionLock)
         {
-            OnDisconnected = OnDisconnected,
-            OnStateChanged = state => StateChanged?.Invoke(this, state)
-        };
+            // From here the session (or the one another connect opened first) carries the state of this connect.
+            if (!isReconnecting)
+                _pendingConnects--;
+
+            // Checked and assigned together: a reconnection attempt and an application ConnectAsync that both passed
+            // the check at the top must not both open a session, and an attempt must not open one after a
+            // DisconnectAsync stopped its loop.
+            if (isReconnecting && _disconnectRequests != disconnectRequests)
+            {
+                stopped = true;
+            }
+            else if (_session == null)
+            {
+                // The session's loss starts a reconnection loop only if no DisconnectAsync is made after this point.
+                disconnectRequests = _disconnectRequests;
+                _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
+                session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
+                {
+                    OnDisconnected = () => OnDisconnected(session!),
+                    OnStateChanged = OnSessionStateChanged,
+                };
+
+                void OnSessionStateChanged(ConnectionState state)
+                {
+                    lock (_connectionLock)
+                    {
+                        if (state == ConnectionState.Connected)
+                        {
+                            sessionConnected = true;
+                            _reconnectLoopActive = false;
+                        }
+                        else if (!sessionConnected && _reconnectLoopActive)
+                        {
+                            // A reconnection attempt that never connected: the client stays Reconnecting until the loop
+                            // connects or gives up, so the attempt's own Disconnecting/Disconnected are not reported.
+                            return;
+                        }
+
+                        _lastRaisedState = state;
+                    }
+
+                    StateChanged?.Invoke(this, state);
+                }
+            }
+        }
+
+        if (session == null)
+        {
+            // Stopped by a DisconnectAsync, or another connect opened the session first.
+            try
+            {
+                await transport.CloseAsync(false).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _logger?.LogDebug(e, "Error while closing the transport of an abandoned connect attempt.");
+            }
+
+            return stopped
+                ? new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None)
+                : new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
+        }
+
+        // A reconnection attempt's session that never connected starts no loop: the loop that made the attempt retries.
+        // The connect token is not passed: it cancels this connect, not the reconnection of the session it opened.
+        _ = disconnectedTaskCompletionSource.Task.ContinueWith(
+            task => ConnectionClosed(task, disconnectRequests, !isReconnecting || SessionConnected()),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+
+        bool SessionConnected()
+        {
+            lock (_connectionLock)
+                return sessionConnected;
+        }
 
         _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
@@ -215,26 +358,88 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
 
+        if (InternalOnSessionReady is { } onSessionReady)
+            await onSessionReady().ConfigureAwait(false);
+
         if (session.DisconnectReason != DisconnectReason.None)
         {
             session.OnStateChanged = null;
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected, session.DisconnectReason);
         }
 
+        // The interval comes from the server's advertised idle timeout unless the config sets one.
+        var serverIdleTimeout = session.PeerIdleTimeoutMs;
+        var pingInterval = _config.GetEffectivePingInterval(serverIdleTimeout);
+        Volatile.Write(ref _pingInterval, pingInterval);
+        if (_config.PingInterval != null && serverIdleTimeout != 0 && pingInterval >= serverIdleTimeout)
+        {
+            _logger?.LogWarning(
+                $"PingInterval ({pingInterval} ms) is not below the server's idle timeout ({serverIdleTimeout} ms); the server may time the session out between pings.");
+        }
+
         // Construct the ping timer here so it uses whatever TimeProvider is on _config at connect-time.
         // Disposing any prior timer first lets reconnects pick up a fresh provider if Config.Time was swapped.
         _pingTimer?.Dispose();
         _pingTimer = _config.Time.CreateTimer(PingTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        _pingTimer.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
+        _pingTimer.Change(TimeSpan.FromMilliseconds(pingInterval), TimeSpan.FromMilliseconds(pingInterval));
 
         return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
     }
 
-    private async Task ConnectionClosed(Task<DisconnectReason> task)
+    /// <summary>
+    /// Starts an application connect: the client is Connecting, raised once, until the attempt opens a session or
+    /// fails. Inside a running reconnection loop the client stays Reconnecting instead.
+    /// </summary>
+    private void BeginConnecting()
     {
-        if (_isReconnecting)
+        bool raise;
+        lock (_connectionLock)
+        {
+            _pendingConnects++;
+            raise = _session == null && !_reconnectLoopActive && _lastRaisedState != ConnectionState.Connecting;
+            if (raise)
+                _lastRaisedState = ConnectionState.Connecting;
+        }
+
+        if (raise)
+            StateChanged?.Invoke(this, ConnectionState.Connecting);
+    }
+
+    /// <summary>
+    /// Ends an application connect that failed before it opened a session: the client is Disconnected again (raised once
+    /// the last such attempt ends, unless a session or a reconnection loop now owns the state).
+    /// </summary>
+    private void EndConnecting(bool isReconnecting)
+    {
+        if (isReconnecting)
             return;
-        
+
+        bool raise;
+        lock (_connectionLock)
+        {
+            _pendingConnects--;
+            raise = _pendingConnects == 0
+                    && _session == null
+                    && !_reconnectLoopActive
+                    && _lastRaisedState == ConnectionState.Connecting;
+            if (raise)
+                _lastRaisedState = ConnectionState.Disconnected;
+        }
+
+        if (raise)
+            StateChanged?.Invoke(this, ConnectionState.Disconnected);
+    }
+
+    /// <param name="task">The disconnected task of the session that ended.</param>
+    /// <param name="disconnectRequests">The <see cref="_disconnectRequests"/> count the session was created under.</param>
+    /// <param name="startsLoop">
+    /// False for the session of a reconnection attempt that never connected: its loop retries, so it starts none.
+    /// </param>
+    private async Task ConnectionClosed(Task<DisconnectReason> task, int disconnectRequests, bool startsLoop)
+    {
+        if (!startsLoop)
+            return;
+
         if (!task.IsCompletedSuccessfully)
             return;
         if (_config.ReconnectionPolicy == null)
@@ -251,57 +456,173 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return;
         }
 
-        _config.Logger?.LogInfo($"Connection Lost. Reconnecting. {reason}");
-        
         var clientHub = Unsafe.As<ClientNexusBase<TServerProxy>>(_nexus);
-        
-        OnReconnectingStatusChange(false);
 
-        //await TryConnectAsyncCore(true).ConfigureAwait(false);
-
-        // Notify the hub.
-        await clientHub.Reconnecting().ConfigureAwait(false);
-        var count = 0;
-
-        while (true)
+        // The client is Reconnecting from here until an attempt connects, the policy gives up or DisconnectAsync stops
+        // the loop. A DisconnectAsync made since the session was created means the loop does not start at all.
+        var loop = new CancellationTokenSource();
+        lock (_connectionLock)
         {
-            // Get the next delay or cancellation.
-            var delay = _config.ReconnectionPolicy.ReconnectDelay(count++);
-
-            if (delay == null)
+            if (_disconnectRequests != disconnectRequests)
                 return;
 
-            await Task.Delay(delay.Value, _config.Time).ConfigureAwait(false);
-            _config.ReconnectionPolicy.FireReconnection(this, count);
-
-            _config.Logger?.LogTrace($"Reconnection attempt {count}");
-
-            var result = await TryConnectAsyncCore(true).ConfigureAwait(false);
-
-            if (result.Success)
+            if (_reconnectLoop != null)
             {
-                _isReconnecting = false;
-                _config.Logger?.LogInfo("Reconnected");
+                // A loop still runs (it is ending after its attempt connected, or it is retrying while a ConnectAsync
+                // opened this session). It starts a new loop for this session when it ends without a session.
+                _lostWhileLoopRan = (reason, disconnectRequests);
                 return;
             }
 
-            if (result.Exception != null)
+            _reconnectLoop = loop;
+            _reconnectLoopActive = true;
+            _lastRaisedState = ConnectionState.Reconnecting;
+        }
+
+        _config.Logger?.LogInfo($"Connection Lost. Reconnecting. {reason}");
+        OnReconnectingStatusChange(false);
+        StateChanged?.Invoke(this, ConnectionState.Reconnecting);
+        var reconnected = false;
+        try
+        {
+            // Notify the hub.
+            await clientHub.Reconnecting().ConfigureAwait(false);
+            var count = 0;
+
+            while (!IsStopped())
             {
-                _config.Logger?.LogError(result.Exception, $"Reconnection failed with exception. State: {result.State}");
+                // Get the next delay or cancellation.
+                var delay = _config.ReconnectionPolicy.ReconnectDelay(count++);
+
+                if (delay == null)
+                    return;
+
+                try
+                {
+                    await Task.Delay(delay.Value, _config.Time, loop.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (loop.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (IsStopped())
+                    return;
+
+                _config.ReconnectionPolicy.FireReconnection(this, count);
+
+                _config.Logger?.LogTrace($"Reconnection attempt {count}");
+
+                var result = await TryConnectAsyncCore(true, disconnectRequests, loop.Token).ConfigureAwait(false);
+
+                // A DisconnectAsync during the attempt (its handshake included) ends the loop whatever the outcome:
+                // the session it disconnected must not be retried.
+                if (IsStopped())
+                    return;
+
+                if (result.Success)
+                {
+                    reconnected = true;
+                    _config.Logger?.LogInfo("Reconnected");
+
+                    if (InternalOnReconnected is { } onReconnected)
+                        await onReconnected().ConfigureAwait(false);
+
+                    return;
+                }
+
+                if (result.Exception != null)
+                {
+                    _config.Logger?.LogError(result.Exception, $"Reconnection failed with exception. State: {result.State}");
+                }
             }
         }
+        finally
+        {
+            // The loop gave up (or failed): the client is Disconnected again. A loop that DisconnectAsync stopped no
+            // longer owns the state; DisconnectAsync ends it.
+            var raiseDisconnected = false;
+            (DisconnectReason Reason, int DisconnectRequests)? lostWhileLoopRan = null;
+            lock (_connectionLock)
+            {
+                if (_reconnectLoop == loop)
+                {
+                    _reconnectLoop = null;
+
+                    // The session this loop connected was lost before the loop ended: its loss is reconnected now.
+                    // A session lost earlier was retried by this loop, and one that is still open needs nothing.
+                    if (reconnected && _session == null)
+                        lostWhileLoopRan = _lostWhileLoopRan;
+                    _lostWhileLoopRan = null;
+
+                    if (!reconnected && _reconnectLoopActive)
+                    {
+                        _reconnectLoopActive = false;
+                        raiseDisconnected = _lastRaisedState != ConnectionState.Disconnected;
+                        _lastRaisedState = ConnectionState.Disconnected;
+                    }
+                }
+            }
+
+            if (raiseDisconnected)
+                StateChanged?.Invoke(this, ConnectionState.Disconnected);
+
+            if (lostWhileLoopRan is { } lost)
+                _ = ConnectionClosed(Task.FromResult(lost.Reason), lost.DisconnectRequests, true);
+        }
+
+        bool IsStopped() => Volatile.Read(ref _disconnectRequests) != disconnectRequests;
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Also stops a running reconnection loop, whether it is waiting between attempts or an attempt is connecting:
+    /// the client then ends <see cref="ConnectionState.Disconnected"/> and does not reconnect.
+    /// </remarks>
     public async Task DisconnectAsync()
     {
-        if (_session == null)
+        NexusSession<TClientNexus, TServerProxy>? session;
+        TaskCompletionSource<DisconnectReason>? disconnected;
+        CancellationTokenSource? loop;
+        bool wasReconnecting;
+        lock (_connectionLock)
+        {
+            _disconnectRequests++;
+            session = _session;
+            disconnected = _disconnectedTaskCompletionSource;
+            loop = _reconnectLoop;
+            _reconnectLoop = null;
+            _lostWhileLoopRan = null;
+            wasReconnecting = _reconnectLoopActive;
+            _reconnectLoopActive = false;
+        }
+
+        // Wakes the loop from its delay or its attempt's connect; it sees the request and ends without raising a state.
+        loop?.Cancel();
+
+        if (session != null)
+        {
+            await session.DisconnectAsync(DisconnectReason.Graceful).ConfigureAwait(false);
+
+            if (disconnected != null)
+                await disconnected.Task.ConfigureAwait(false);
+        }
+
+        if (!wasReconnecting)
             return;
 
-        await _session.DisconnectAsync(DisconnectReason.Graceful).ConfigureAwait(false);
+        // The loop was stopped while Reconnecting: between attempts, or during an attempt whose session never reported
+        // its own state. The client ends Disconnected, once.
+        bool raise;
+        lock (_connectionLock)
+        {
+            raise = _lastRaisedState != ConnectionState.Disconnected;
+            if (raise)
+                _lastRaisedState = ConnectionState.Disconnected;
+        }
 
-        if(_disconnectedTaskCompletionSource != null)
-            await _disconnectedTaskCompletionSource.Task.ConfigureAwait(false);
+        if (raise)
+            StateChanged?.Invoke(this, ConnectionState.Disconnected);
     }
 
     /// <summary>
@@ -357,11 +678,18 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _session?.SendHeader(MessageType.Ping);
     }
 
-    private void OnDisconnected()
+    private void OnDisconnected(NexusSession<TClientNexus, TServerProxy> session)
     {
-        //_receiveLoopThread = null;
+        // Only the session that ended is cleared, never one that a later connect already opened.
+        lock (_connectionLock)
+        {
+            if (_session != session)
+                return;
+
+            _session = null;
+        }
+
         _pingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        _session = null;
     }
 
 
@@ -369,7 +697,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     {
         if (reconnected)
         {
-            _pingTimer?.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
+            var pingInterval = TimeSpan.FromMilliseconds(Volatile.Read(ref _pingInterval));
+            _pingTimer?.Change(pingInterval, pingInterval);
         }
         else
         {

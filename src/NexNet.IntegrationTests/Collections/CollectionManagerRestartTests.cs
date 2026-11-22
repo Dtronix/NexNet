@@ -1,0 +1,62 @@
+using NexNet.Collections;
+using NexNet.Invocation;
+using NexNet.IntegrationTests.TestInterfaces;
+
+namespace NexNet.IntegrationTests.Collections;
+
+/// <summary>
+/// A stop does not wait for the collection broadcaster loops to unwind, so a quick restart used to find them still
+/// running and throw "Broadcaster is already running." (S08).
+/// </summary>
+internal class CollectionManagerRestartTests : NexusCollectionBaseTests
+{
+    private const int Cycles = 200;
+
+    [Test]
+    public async Task CollectionManager_FastStopStartCycles_DoNotThrow()
+    {
+        var manager = new NexusCollectionManager(null, true, TimeProvider.System);
+        manager.ConfigureList<int>(0, NexusCollectionMode.BiDirectional);
+        manager.ConfigureList<int>(1, NexusCollectionMode.ServerToClient);
+        manager.CompleteConfigure();
+
+        await Assert.That(() =>
+        {
+            for (var i = 0; i < Cycles; i++)
+            {
+                manager.Stop();
+                manager.Start();
+            }
+        }).ThrowsNothing();
+
+        manager.Stop();
+    }
+
+    [Test]
+    public async Task Server_FastStopStartCycles_CollectionsWorkAfterLastStart()
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        for (var i = 0; i < Cycles; i++)
+        {
+            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(TestTimeouts.Connect);
+        }
+
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var serverNexus = server.NexusCreatedQueue.First();
+        await Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(1)).IsTrue();
+        await client.Proxy.IntListBi.AddAsync(1).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(2).Timeout(1);
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([1, 2]);
+            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2]);
+
+        }
+    }
+}

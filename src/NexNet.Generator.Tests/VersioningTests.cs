@@ -1,6 +1,5 @@
 ﻿using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
@@ -8,7 +7,7 @@ class VersioningTests
 {
     
     [Test]
-    public void CompilesServerNexusAcrossMultipleInterfaces()
+    public async Task CompilesServerNexusAcrossMultipleInterfaces()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -61,11 +60,11 @@ partial class ServerNexus
 
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void NexusObjects()
+    public async Task NexusObjects()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using System;
@@ -89,11 +88,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void VersionLock_ObjectsWithSameContentsProduceSameHash()
+    public async Task VersionLock_ObjectsWithSameContentsProduceSameHash()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -130,13 +129,13 @@ partial class ServerNexus2 {
     public void Update(Message2 data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
 
     
     [Test]
-    public void NexusUnion_Interface()
+    public async Task NexusUnion_Interface()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -167,11 +166,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(IMessageV1 data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Error);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void NexusObject_NestedCreation()
+    public async Task NexusObject_NestedCreation()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -210,11 +209,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(ValueTuple<Message> data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void HashLockFailsOnMemberChange()
+    public async Task HashLockFailsOnMemberChange()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using System;
@@ -238,11 +237,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
 """, minDiagnostic: DiagnosticSeverity.Error);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
 
     [Test]
-    public void HashLockFailsOnNextedMemberChange()
+    public async Task HashLockFailsOnNextedMemberChange()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -281,11 +280,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(ValueTuple<Message> data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Error);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
     
     [Test]
-    public void HashLockFailsOnReturnTypeMemberChange()
+    public async Task HashLockFailsOnReturnTypeMemberChange()
     {
         // The lock is the hash of the same source with Result.Value as an int.
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -308,11 +307,11 @@ partial class ServerNexus : IServerNexus {
     public ValueTask<Result> Get(int id) => default;
 }
 """, minDiagnostic: DiagnosticSeverity.Error);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
 
     [Test]
-    public void HashLockFailsOnCollectionItemMemberChange()
+    public async Task HashLockFailsOnCollectionItemMemberChange()
     {
         // The lock is the hash of the same source with Item.Value as an int.
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -334,11 +333,11 @@ partial interface IServerNexus {
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """, minDiagnostic: DiagnosticSeverity.Error);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
 
     [Test]
-    public void HashLockFailsOnVoidToValueTask()
+    public async Task HashLockFailsOnVoidToValueTask()
     {
         // The lock is the hash of the same source with "void Update();".
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -356,11 +355,11 @@ partial class ServerNexus : IServerNexus {
     public ValueTask Update() => default;
 }
 """, minDiagnostic: DiagnosticSeverity.Error);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
 
     [Test]
-    public void HashLockKeepsOnTypeRename()
+    public async Task HashLockKeepsOnTypeRename()
     {
         // The lock is the hash of the same source with the DTO named DataObject.
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -383,11 +382,11 @@ partial class ServerNexus : IServerNexus {
     public void Update(Payload data) { }
 }
 """, minDiagnostic: DiagnosticSeverity.Error);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void DuplicateNexusMethodsAcrossMultipleInterfacesFails()
+    public async Task DuplicateNexusMethodsAcrossMultipleInterfacesFails()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -416,11 +415,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id)).IsTrue();
     }
     
     [Test]
-    public void HashLockIsEffectedByNexusMethodId()
+    public async Task HashLockIsEffectedByNexusMethodId()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -449,11 +448,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id)).IsTrue();
     }
     
     [Test]
-    public void EnsureAllInterfacesAreVersioningIfOneIs()
+    public async Task EnsureAllInterfacesAreVersioningIfOneIs()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -481,11 +480,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id)).IsTrue();
     }
     
     [Test]
-    public void EnsureAllInterfacesAreVersioningIfOneIs2()
+    public async Task EnsureAllInterfacesAreVersioningIfOneIs2()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -514,11 +513,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id)).IsTrue();
     }
     
     [Test]
-    public void AllMethodsIdsShallBeSetForVersioningNexuses()
+    public async Task AllMethodsIdsShallBeSetForVersioningNexuses()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -546,11 +545,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallBeSetForVersioningNexuses.Id), Is.EqualTo(2));
+        await Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallBeSetForVersioningNexuses.Id)).IsEqualTo(2);
     }
     
     [Test]
-    public void AllMethodsIdsShallNotBe0ForVersioningNexuses()
+    public async Task AllMethodsIdsShallNotBe0ForVersioningNexuses()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -580,11 +579,11 @@ partial class ServerNexus
     public void Update3(){ }
 }
 """);
-        Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses.Id), Is.EqualTo(3));
+        await Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses.Id)).IsEqualTo(3);
     }
 
     [Test]
-    public void HashLockIsDeterministicAcrossMultipleRuns()
+    public async Task HashLockIsDeterministicAcrossMultipleRuns()
     {
         var source = """
 using System;
@@ -614,22 +613,20 @@ partial class ServerNexus : IServerNexus {
         {
             var diagnostics = CSharpGeneratorRunner.RunGenerator(source, minDiagnostic: DiagnosticSeverity.Error);
             var mismatch = diagnostics.FirstOrDefault(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id);
-            Assert.That(mismatch, Is.Not.Null, $"Expected NEXNET019 diagnostic on iteration {i}");
+            await Assert.That(mismatch).IsNotNull().Because($"Expected NEXNET019 diagnostic on iteration {i}");
 
             var match = Regex.Match(mismatch!.GetMessage(), @"HashLock of '(-?\d+)'");
-            Assert.That(match.Success, Is.True, $"Could not extract hash from diagnostic message: {mismatch.GetMessage()}");
+            await Assert.That(match.Success).IsTrue().Because($"Could not extract hash from diagnostic message: {mismatch.GetMessage()}");
             hashes.Add(match.Groups[1].Value);
         }
 
-        Assert.That(hashes.Distinct().Count(), Is.EqualTo(1),
-            $"Hash values were not deterministic across runs: {string.Join(", ", hashes)}");
-        Assert.That(hashes[0], Is.Not.EqualTo("0"),
-            "Extracted hash should not be zero");
+        await Assert.That(hashes.Distinct().Count()).IsEqualTo(1).Because($"Hash values were not deterministic across runs: {string.Join(", ", hashes)}");
+        await Assert.That(hashes[0]).IsNotEqualTo("0").Because("Extracted hash should not be zero");
     }
 
     /*
     [Test]
-    public void WarnsOnNoLockSet()
+    public async Task WarnsOnNoLockSet()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using System;
@@ -650,9 +647,8 @@ partial class ServerNexus : IServerNexus {
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
 """, minDiagnostic: DiagnosticSeverity.Warning);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockNotSet.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockNotSet.Id)).IsTrue();
     }
     */
 
 }
-

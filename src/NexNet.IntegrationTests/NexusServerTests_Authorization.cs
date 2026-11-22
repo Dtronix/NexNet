@@ -1,132 +1,75 @@
-using System.Net;
-using NexNet.Asp;
-using NexNet.Collections;
-using NexNet.IntegrationTests.Collections;
-using NexNet.Asp.HttpSocket;
-using NexNet.Asp.WebSocket;
+using System.Text;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Pipes;
+using NexNet.Quic;
+using NexNet.TestNexus.Interop;
 using NexNet.Transports;
-using NexNet.Transports.HttpSocket;
-using NexNet.Transports.WebSocket;
-using NUnit.Framework;
+using NexNet.Transports.Uds;
+using NexNet.InteropServer;
 #pragma warning disable VSTHRD200
+
+// The C# test scaffolding (remote proxies, script facades) of the authorization nexuses, for the client matrix.
+[assembly: NexNet.Interop.NexusTestScaffolding<NexNet.IntegrationTests.TestInterfaces.IAuthServerNexus, NexNet.IntegrationTests.TestInterfaces.IAuthClientNexus>]
+[assembly: NexNet.Interop.NexusTestScaffolding<NexNet.IntegrationTests.TestInterfaces.IAuthPipeServerNexus, NexNet.IntegrationTests.TestInterfaces.IAuthPipeClientNexus>]
 
 namespace NexNet.IntegrationTests;
 
-internal class NexusServerTests_Authorization : BaseTests
+/// <summary>
+/// Method, collection, pipe and channel authorization (<c>[NexusAuthorize]</c>, <c>OnAuthorize</c>, the authorization
+/// cache) and the NexNet greeting token, on the client matrix (P01d). The server is the C# server of the test; the
+/// client under test comes from <see cref="Harness"/> for each <see cref="ClientTarget"/> row.
+/// </summary>
+/// <remarks>
+/// The QUIC rows of the C# suite are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16).
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusServerTests_Authorization(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    private readonly List<WebApplication> _aspApps = new();
-    private readonly List<INexusServerFactory> _authServerFactories = new();
-    private readonly List<INexusClient> _authClients = new();
 
-    public override void TearDown()
+    /// <summary>
+    /// Starts an <see cref="AuthServerNexus"/> server for <paramref name="target"/>'s transport, then creates and connects the
+    /// client under test. <paramref name="nexusCreated"/> sets up each session's nexus; <paramref name="configure"/> the
+    /// server configuration.
+    /// </summary>
+    private async Task<IClientUnderTest> ConnectAuthAsync(
+        ClientTarget target,
+        Action<AuthServerNexus> nexusCreated,
+        Action<ServerConfig>? configure = null)
     {
-        foreach (var client in _authClients)
-        {
-            if (client.State == ConnectionState.Connected)
-                _ = client.DisconnectAsync();
-        }
-        _authClients.Clear();
-
-        foreach (var sf in _authServerFactories)
-        {
-            if (sf.ServerBase.State == NexusServerState.Running)
-                _ = sf.ServerBase.StopAsync();
-        }
-        _authServerFactories.Clear();
-
-        foreach (var app in _aspApps)
-        {
-            try { app.Lifetime.StopApplication(); } catch { }
-        }
-        _aspApps.Clear();
-
-        base.TearDown();
+        var type = ToType(target.Transport);
+        var serverConfig = CreateServerConfig(type);
+        configure?.Invoke(serverConfig);
+        var server = CreateServer<AuthServerNexus, AuthServerNexus.ClientProxy>(serverConfig, nexusCreated);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        return await ConnectAsync<AuthClientNexus, AuthClientNexus.ServerProxy>(
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
     }
 
-    private (NexusServerFactory<AuthServerNexus, AuthServerNexus.ClientProxy> server,
-        NexusClient<AuthClientNexus, AuthClientNexus.ServerProxy> client,
-        AuthClientNexus clientNexus)
-        CreateAuthServerClient(Type type, TimeSpan? authCacheDuration = null)
+    /// <summary>As <see cref="ConnectAuthAsync"/>, with an <see cref="AuthPipeServerNexus"/> server.</summary>
+    private async Task<IClientUnderTest> ConnectAuthPipeAsync(ClientTarget target, Action<AuthPipeServerNexus> nexusCreated)
     {
-        var sConfig = CreateServerConfig(type);
-        if (authCacheDuration.HasValue)
-            sConfig.AuthorizationCacheDuration = authCacheDuration.Value;
-        var cConfig = CreateClientConfig(type);
-        var serverFactory = new NexusServerFactory<AuthServerNexus, AuthServerNexus.ClientProxy>(sConfig);
-        var clientNexus = new AuthClientNexus();
-        var client = AuthClientNexus.CreateClient(cConfig, clientNexus);
-        _authServerFactories.Add(serverFactory);
-        _authClients.Add(client);
-
-        StartAspIfNeeded(sConfig, serverFactory);
-
-        return (serverFactory, client, clientNexus);
+        var type = ToType(target.Transport);
+        var serverConfig = CreateServerConfig(type);
+        var server = CreateServer<AuthPipeServerNexus, AuthPipeServerNexus.ClientProxy>(serverConfig, nexusCreated);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        return await ConnectAsync<AuthPipeClientNexus, AuthPipeClientNexus.ServerProxy>(
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
     }
 
-    private (NexusServerFactory<AuthPipeServerNexus, AuthPipeServerNexus.ClientProxy> server,
-        NexusClient<AuthPipeClientNexus, AuthPipeClientNexus.ServerProxy> client)
-        CreateAuthPipeServerClient(Type type)
+    private static Remote_IAuthServerNexus AuthProxy(IClientUnderTest client) => client.Proxy<Remote_IAuthServerNexus>();
+
+    private static Remote_IAuthPipeServerNexus PipeProxy(IClientUnderTest client) => client.Proxy<Remote_IAuthPipeServerNexus>();
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedMethod_Allowed_InvokesMethod(ClientTarget target)
     {
-        var sConfig = CreateServerConfig(type);
-        var cConfig = CreateClientConfig(type);
-        var serverFactory = new NexusServerFactory<AuthPipeServerNexus, AuthPipeServerNexus.ClientProxy>(sConfig);
-        var client = AuthPipeClientNexus.CreateClient(cConfig, new AuthPipeClientNexus());
-        _authServerFactories.Add(serverFactory);
-        _authClients.Add(client);
-
-        StartAspIfNeeded(sConfig, serverFactory);
-
-        return (serverFactory, client);
-    }
-
-    private void StartAspIfNeeded<TServerNexus, TClientProxy>(
-        ServerConfig sConfig,
-        NexusServerFactory<TServerNexus, TClientProxy> serverFactory)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
-        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
-    {
-        if (sConfig is not (WebSocketServerConfig or HttpSocketServerConfig))
-            return;
-
-        CurrentTcpPort ??= FreeTcpPort();
-        var builder = WebApplication.CreateBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.ConfigureKestrel((_, serverOptions) =>
-            serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
-        builder.Services.AddNexusServer<TServerNexus, TClientProxy>();
-        var app = builder.Build();
-
-        if (sConfig is WebSocketServerConfig wsConfig)
-        {
-            app.UseWebSockets();
-            app.MapWebSocketNexus(wsConfig, serverFactory.Server);
-        }
-        else if (sConfig is HttpSocketServerConfig hsConfig)
-        {
-            app.UseHttpSockets();
-            app.MapHttpSocketNexus(hsConfig, serverFactory.Server);
-        }
-
-        _ = app.RunAsync();
-        _aspApps.Add(app);
-    }
-
-
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedMethod_Allowed_InvokesMethod(Type type)
-    {
-        var methodInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var methodInvoked = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             nexus.ProtectedMethodHandler = (_, _) =>
@@ -134,84 +77,53 @@ internal class NexusServerTests_Authorization : BaseTests
                 methodInvoked.SetResult();
                 return ValueTask.CompletedTask;
             };
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.ProtectedMethod("test").Timeout(1);
-        await methodInvoked.Task.Timeout(1);
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
+        await methodInvoked.Task.Timeout(T(1));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedMethod_Unauthorized_ThrowsOnClient(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedMethod_Unauthorized_ThrowsOnClient(ClientTarget target)
     {
-        var (server, client, _) = CreateAuthServerClient(type);
+        await using var client = await ConnectAuthAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized));
 
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
-            await client.Proxy.ProtectedMethod("test").Timeout(1));
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
+            await AuthProxy(client).ProtectedMethod("test").Timeout(T(1)));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedMethod_Disconnect_DisconnectsSession(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedMethod_Disconnect_DisconnectsSession(ClientTarget target)
     {
-        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, clientNexus) = CreateAuthServerClient(type);
+        await using var client = await ConnectAuthAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect));
 
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
-        };
-
-        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        // The invocation will fail since the session gets disconnected
+        // The invocation fails: the session gets disconnected.
         try
         {
-            await client.Proxy.ProtectedMethod("test").Timeout(1);
+            await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
         }
         catch
         {
             // Expected - session disconnected
         }
 
-        await disconnected.Task.Timeout(2);
+        await client.WhenDisconnectedAsync(T(2));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task UnprotectedMethod_NoAuthCheck(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task UnprotectedMethod_NoAuthCheck(ClientTarget target)
     {
         var authCalled = false;
-        var methodInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var methodInvoked = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
@@ -223,29 +135,21 @@ internal class NexusServerTests_Authorization : BaseTests
                 methodInvoked.SetResult();
                 return ValueTask.CompletedTask;
             };
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.UnprotectedMethod().Timeout(1);
-        await methodInvoked.Task.Timeout(1);
-        Assert.That(authCalled, Is.False);
+        await AuthProxy(client).UnprotectedMethod().Timeout(T(1));
+        await methodInvoked.Task.Timeout(T(1));
+        await Assert.That(authCalled).IsFalse();
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task MarkerOnly_CallsOnAuthorizeWithEmptyPermissions(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task MarkerOnly_CallsOnAuthorizeWithEmptyPermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
-        var authCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var authCalled = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, perms) =>
             {
@@ -254,29 +158,21 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.MarkerOnlyMethodHandler = _ => ValueTask.CompletedTask;
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.MarkerOnlyMethod().Timeout(1);
-        await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(0));
+        await AuthProxy(client).MarkerOnlyMethod().Timeout(T(1));
+        await authCalled.Task.Timeout(T(1));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(0);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task OnAuthorize_ReceivesCorrectMethodName(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnAuthorize_ReceivesCorrectMethodName(ClientTarget target)
     {
         string? capturedName = null;
-        var authCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var authCalled = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, name, _) =>
             {
@@ -285,29 +181,21 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.ProtectedMethod("test").Timeout(1);
-        await authCalled.Task.Timeout(1);
-        Assert.That(capturedName, Is.EqualTo("ProtectedMethod"));
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
+        await authCalled.Task.Timeout(T(1));
+        await Assert.That(capturedName).IsEqualTo("ProtectedMethod");
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task OnAuthorize_ReceivesCorrectPermissions(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnAuthorize_ReceivesCorrectPermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
-        var authCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var authCalled = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, perms) =>
             {
@@ -316,30 +204,22 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.ProtectedMethod("test").Timeout(1);
-        await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(1));
-        Assert.That(capturedPermissions.Span[0], Is.EqualTo((int)TestPermission.Write));
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
+        await authCalled.Task.Timeout(T(1));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(1);
+        await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Write);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task OnAuthorize_ReceivesMultiplePermissions(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnAuthorize_ReceivesMultiplePermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
-        var authCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var authCalled = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, perms) =>
             {
@@ -348,123 +228,99 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.MultiPermissionMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.MultiPermissionMethod("test").Timeout(1);
-        await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(2));
-        Assert.That(capturedPermissions.Span[0], Is.EqualTo((int)TestPermission.Read));
-        Assert.That(capturedPermissions.Span[1], Is.EqualTo((int)TestPermission.Admin));
+        await AuthProxy(client).MultiPermissionMethod("test").Timeout(T(1));
+        await authCalled.Task.Timeout(T(1));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(2);
+        await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Read);
+        await Assert.That(capturedPermissions.Span[1]).IsEqualTo((int)TestPermission.Admin);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Authorized_WithReturnValue_ReturnsResult(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Authorized_WithReturnValue_ReturnsResult(ClientTarget target)
     {
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             nexus.ProtectedWithReturnHandler = (_, v) => new ValueTask<int>(v * 2);
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        var result = await client.Proxy.ProtectedWithReturn(21).Timeout(1);
-        Assert.That(result, Is.EqualTo(42));
+        var result = await AuthProxy(client).ProtectedWithReturn(21).Timeout(T(1));
+        await Assert.That(result).IsEqualTo(42);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Unauthorized_WithReturnValue_ThrowsNotReturns(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Unauthorized_WithReturnValue_ThrowsNotReturns(ClientTarget target)
     {
-        var (server, client, _) = CreateAuthServerClient(type);
+        await using var client = await ConnectAuthAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized));
 
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
-            await client.Proxy.ProtectedWithReturn(21).Timeout(1));
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
+            await AuthProxy(client).ProtectedWithReturn(21).Timeout(T(1)));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds, false)]
-    [TestCase(Type.Tcp, false)]
-    [TestCase(Type.TcpTls, false)]
-    [TestCase(Type.Quic, false)]
-    [TestCase(Type.WebSocket, false)]
-    [TestCase(Type.HttpSocket, false)]
-    [TestCase(Type.Uds, true)]
-    [TestCase(Type.Tcp, true)]
-    [TestCase(Type.TcpTls, true)]
-    [TestCase(Type.Quic, true)]
-    [TestCase(Type.WebSocket, true)]
-    [TestCase(Type.HttpSocket, true)]
-    public async Task Unauthorized_SessionRemainsUsable(Type type, bool cacheEnabled)
+    // One test per cache setting: a ClientMatrix row cannot be combined with [Arguments].
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task Unauthorized_SessionRemainsUsable(ClientTarget target)
+        => UnauthorizedSessionRemainsUsable(target, cacheEnabled: false);
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public Task Unauthorized_SessionRemainsUsable_CacheEnabled(ClientTarget target)
+        => UnauthorizedSessionRemainsUsable(target, cacheEnabled: true);
+
+    private async Task UnauthorizedSessionRemainsUsable(ClientTarget target, bool cacheEnabled)
     {
         var unprotectedInvoked = 0;
-        var (server, client, _) = CreateAuthServerClient(type,
-            cacheEnabled ? TimeSpan.FromSeconds(30) : null);
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
-            nexus.UnprotectedMethodHandler = _ =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref unprotectedInvoked);
-                return ValueTask.CompletedTask;
-            };
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+                nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+                nexus.UnprotectedMethodHandler = _ =>
+                {
+                    Interlocked.Increment(ref unprotectedInvoked);
+                    return ValueTask.CompletedTask;
+                };
+            },
+            config =>
+            {
+                if (cacheEnabled)
+                    config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30);
+            });
+        var proxy = AuthProxy(client);
 
         // Twice each, so that with the cache enabled the second refusal comes from the cache.
         for (var i = 0; i < 2; i++)
         {
-            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
-                await client.Proxy.ProtectedMethod("test").Timeout(1));
-            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
-                await client.Proxy.ProtectedWithReturn(21).Timeout(1));
+            await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
+                await proxy.ProtectedMethod("test").Timeout(T(1)));
+            await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
+                await proxy.ProtectedWithReturn(21).Timeout(T(1)));
 
             // Results arrive in order, so any extra result for a refused call has been read by the time this
             // call completes.
-            await client.Proxy.UnprotectedMethod().Timeout(1);
+            await proxy.UnprotectedMethod().Timeout(T(1));
         }
 
-        Assert.That(unprotectedInvoked, Is.EqualTo(2));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(unprotectedInvoked).IsEqualTo(2);
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task Unauthorized_MethodBodyNeverExecutes(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Unauthorized_MethodBodyNeverExecutes(ClientTarget target)
     {
         var bodyExecuted = false;
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             nexus.ProtectedMethodHandler = (_, _) =>
@@ -472,96 +328,68 @@ internal class NexusServerTests_Authorization : BaseTests
                 bodyExecuted = true;
                 return ValueTask.CompletedTask;
             };
-        };
+            nexus.UnprotectedMethodHandler = _ => ValueTask.CompletedTask;
+        });
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        try { await proxy.ProtectedMethod("test").Timeout(T(1)); } catch { }
 
-        try { await client.Proxy.ProtectedMethod("test").Timeout(1); } catch { }
-
-        // Small delay to ensure any async work settles
-        await Task.Delay(100);
-        Assert.That(bodyExecuted, Is.False);
+        // Barrier: a later call on the same session has completed.
+        await proxy.UnprotectedMethod().Timeout(T(1));
+        await Assert.That(bodyExecuted).IsFalse();
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedCollection_Allowed_ClientReceivesData(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedCollection_Allowed_ClientReceivesData(ClientTarget target)
     {
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        AuthServerNexus? serverNexus = null;
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
+            serverNexus ??= nexus;
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-        };
+        });
+        var list = AuthProxy(client).ProtectedList;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        var enabled = await list.EnableAsync().AsTask().Timeout(T(2));
+        await Assert.That(enabled).IsTrue();
 
-        var enabled = await client.Proxy.ProtectedList.EnableAsync().Timeout(2);
-        Assert.That(enabled, Is.True);
+        await serverNexus!.ProtectedList.AddAsync("hello");
+        var items = await list.WaitForAsync(l => l.Count == 1, TimeSpan.FromSeconds(T(2)));
 
-        var serverNexus = server.NexusCreatedQueue.First();
-        var completeTask = client.Proxy.ProtectedList.WaitForEvent(
-            NexNet.Collections.NexusCollectionChangedAction.Add, 1);
-
-        await serverNexus.ProtectedList.AddAsync("hello");
-        await completeTask.Wait(2);
-
-        Assert.That(client.Proxy.ProtectedList.Count, Is.EqualTo(1));
+        await Assert.That(items).IsEquivalentTo(new[] { "hello" });
+        await list.DisableAsync().AsTask().Timeout(T(1));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedCollection_Unauthorized_ClientDisconnected(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedCollection_Unauthorized_ClientDisconnected(ClientTarget target)
     {
-        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
-        {
-            // Return Disconnect for collection auth failures since Unauthorized without
-            // a return channel would just leave the client hanging
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
-        };
-
-        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        // Disconnect for collection auth failures: the session ends instead of the connect failing.
+        await using var client = await ConnectAuthAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect));
 
         try
         {
-            await client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(2);
+            await AuthProxy(client).ProtectedList.EnableAsync().AsTask().Timeout(T(2));
         }
         catch
         {
             // Expected - session disconnected
         }
 
-        await disconnected.Task.Timeout(2);
+        await client.WhenDisconnectedAsync(T(2));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedCollection_Unauthorized_EnableFailsFastAndSessionStaysUp(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedCollection_Unauthorized_EnableFailsFastAndSessionStaysUp(ClientTarget target)
     {
-        var unprotectedInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        var unprotectedInvoked = Signal();
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             nexus.UnprotectedMethodHandler = _ =>
@@ -569,267 +397,248 @@ internal class NexusServerTests_Authorization : BaseTests
                 unprotectedInvoked.TrySetResult();
                 return ValueTask.CompletedTask;
             };
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        });
+        var proxy = AuthProxy(client);
 
         // The server refuses the collection's pipe: the connect fails at once instead of hanging.
-        await AssertThrows<NexusBusyException>(client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(1));
+        await AssertThrows<NexusBusyException>(proxy.ProtectedList.EnableAsync().AsTask().Timeout(T(1)));
 
         // The session stays up and usable.
-        await client.Proxy.UnprotectedMethod().Timeout(1);
-        await unprotectedInvoked.Task.Timeout(1);
-        Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1), Is.True);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await proxy.UnprotectedMethod().Timeout(T(1));
+        await unprotectedInvoked.Task.Timeout(T(1));
+        await Assert.That(await proxy.UnprotectedList.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await proxy.UnprotectedList.DisableAsync().AsTask().Timeout(T(1));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task UnprotectedCollection_NoAuthCheck(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task UnprotectedCollection_NoAuthCheck(ClientTarget target)
     {
         var authCalled = false;
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
-        {
+        await using var client = await ConnectAuthAsync(target, nexus =>
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
                 authCalled = true;
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
-            };
-        };
+            });
+        var list = AuthProxy(client).UnprotectedList;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        var enabled = await client.Proxy.UnprotectedList.EnableAsync().Timeout(2);
-        Assert.That(enabled, Is.True);
-        Assert.That(authCalled, Is.False);
+        var enabled = await list.EnableAsync().AsTask().Timeout(T(2));
+        await Assert.That(enabled).IsTrue();
+        await Assert.That(authCalled).IsFalse();
+        await list.DisableAsync().AsTask().Timeout(T(1));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task OnAuthorize_ThrowsException_TreatedAsDisconnect(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnAuthorize_ThrowsException_TreatedAsDisconnect(ClientTarget target)
     {
-        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
+        await using var client = await ConnectAuthAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => throw new InvalidOperationException("Auth error"));
 
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => throw new InvalidOperationException("Auth error");
-        };
+        try { await AuthProxy(client).ProtectedMethod("test").Timeout(T(1)); } catch { }
 
-        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        try { await client.Proxy.ProtectedMethod("test").Timeout(1); } catch { }
-
-        await disconnected.Task.Timeout(2);
+        await client.WhenDisconnectedAsync(T(2));
+        await EndAsync(client);
     }
 
     // --- Authorization cache tests ---
-    // Use Uds only since caching is transport-independent
+    // Caching is transport-independent: UDS as before, plus WebSocket so that every client language has a row.
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_AttributeTtl_SecondCallUsesCachedResult(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_AttributeTtl_SecondCallUsesCachedResult(ClientTarget target)
     {
         var authCallCount = 0;
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var (server, client, _) = CreateAuthServerClient(type);
-        server.Server.Config.Time = fakeTime;
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+            },
+            config => config.Time = fakeTime);
+        var proxy = AuthProxy(client);
 
         // No time advance — every call falls within the cache TTL deterministically.
-        await client.Proxy.CachedMethod().Timeout(1);
-        await client.Proxy.CachedMethod().Timeout(1);
-        await client.Proxy.CachedMethod().Timeout(1);
+        await proxy.CachedMethod().Timeout(T(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await proxy.CachedMethod().Timeout(T(1));
 
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_AttributeTtl_ExpiredEntry_ReChecks(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_AttributeTtl_ExpiredEntry_ReChecks(ClientTarget target)
     {
         var authCallCount = 0;
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var (server, client, _) = CreateAuthServerClient(type);
-        server.Server.Config.Time = fakeTime;
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+            },
+            config => config.Time = fakeTime);
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Still cached
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Advance past the 2s TTL
         fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
 
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(2);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_FakeTimeProvider_AdvanceJustBeforeTtl_StaysCached(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_FakeTimeProvider_AdvanceJustBeforeTtl_StaysCached(ClientTarget target)
     {
         var authCallCount = 0;
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var (server, client, _) = CreateAuthServerClient(type);
-        server.Server.Config.Time = fakeTime;
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+            },
+            config => config.Time = fakeTime);
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Advance to just before the 2s TTL would expire
         fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
 
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1), "Cache should remain hot until the TTL elapses");
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(1).Because("Cache should remain hot until the TTL elapses");
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_FakeTimeProvider_MultipleExpiryCycles_ReChecksEachTime(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_FakeTimeProvider_MultipleExpiryCycles_ReChecksEachTime(ClientTarget target)
     {
         var authCallCount = 0;
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var (server, client, _) = CreateAuthServerClient(type);
-        server.Server.Config.Time = fakeTime;
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+            },
+            config => config.Time = fakeTime);
+        var proxy = AuthProxy(client);
 
         // Three full TTL cycles - each should re-invoke OnAuthorize once.
         for (var cycle = 1; cycle <= 3; cycle++)
         {
-            await client.Proxy.CachedMethod().Timeout(1);
-            await client.Proxy.CachedMethod().Timeout(1);
-            Assert.That(authCallCount, Is.EqualTo(cycle), $"Cycle {cycle}: cache hits within TTL should not re-invoke OnAuthorize");
+            await proxy.CachedMethod().Timeout(T(1));
+            await proxy.CachedMethod().Timeout(T(1));
+            await Assert.That(authCallCount).IsEqualTo(cycle).Because($"Cycle {cycle}: cache hits within TTL should not re-invoke OnAuthorize");
 
             fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
         }
+
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_NeverCached_AlwaysCallsOnAuthorize(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_NeverCached_AlwaysCallsOnAuthorize(ClientTarget target)
     {
         var authCallCount = 0;
         // Set server-level cache to prove CacheDurationSeconds=0 overrides it
-        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(60));
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.NeverCachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.NeverCachedMethodHandler = _ => ValueTask.CompletedTask;
+            },
+            config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(60));
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await proxy.NeverCachedMethod().Timeout(T(1));
+        await proxy.NeverCachedMethod().Timeout(T(1));
+        await proxy.NeverCachedMethod().Timeout(T(1));
 
-        await client.Proxy.NeverCachedMethod().Timeout(1);
-        await client.Proxy.NeverCachedMethod().Timeout(1);
-        await client.Proxy.NeverCachedMethod().Timeout(1);
-
-        Assert.That(authCallCount, Is.EqualTo(3));
+        await Assert.That(authCallCount).IsEqualTo(3);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_ServerConfigDefault_CachesWhenAttributeIsDefault(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_ServerConfigDefault_CachesWhenAttributeIsDefault(ClientTarget target)
     {
         var authCallCount = 0;
         // ProtectedMethod has no CacheDurationSeconds (defaults to -1), so server config applies
-        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
+                nexus.OnAuthorizeHandler = (_, _, _, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
+            },
+            config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await proxy.ProtectedMethod("a").Timeout(T(1));
+        await proxy.ProtectedMethod("b").Timeout(T(1));
+        await proxy.ProtectedMethod("c").Timeout(T(1));
 
-        await client.Proxy.ProtectedMethod("a").Timeout(1);
-        await client.Proxy.ProtectedMethod("b").Timeout(1);
-        await client.Proxy.ProtectedMethod("c").Timeout(1);
-
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_NoServerConfig_NoCaching(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_NoServerConfig_NoCaching(ClientTarget target)
     {
         var authCallCount = 0;
         // No server config cache, ProtectedMethod has no CacheDurationSeconds override
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
@@ -837,24 +646,22 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
+        });
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await proxy.ProtectedMethod("a").Timeout(T(1));
+        await proxy.ProtectedMethod("b").Timeout(T(1));
 
-        await client.Proxy.ProtectedMethod("a").Timeout(1);
-        await client.Proxy.ProtectedMethod("b").Timeout(1);
-
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await Assert.That(authCallCount).IsEqualTo(2);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_CachesUnauthorizedResult(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_CachesUnauthorizedResult(ClientTarget target)
     {
         var authCallCount = 0;
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
@@ -862,27 +669,23 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+        });
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        // Both calls are refused (ProxyUnauthorizedException); verify OnAuthorize is called once.
+        try { await proxy.CachedMethod().Timeout(T(1)); } catch { }
+        try { await proxy.CachedMethod().Timeout(T(1)); } catch { }
 
-        // CachedMethod has return type ValueTask (void), so Unauthorized with no return channel
-        // means silent drop. Just verify OnAuthorize is called once.
-        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
-        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
-
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_DisconnectNeverCached(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_DisconnectNeverCached(ClientTarget target)
     {
         var authCallCount = 0;
-        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
@@ -890,166 +693,152 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+        });
 
-        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
+        try { await AuthProxy(client).CachedMethod().Timeout(T(1)); } catch { }
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
-
-        await disconnected.Task.Timeout(2);
+        await client.WhenDisconnectedAsync(T(2));
         // Disconnect result should not be cached (session dies anyway)
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_DifferentMethodsHaveIndependentEntries(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_DifferentMethodsHaveIndependentEntries(ClientTarget target)
     {
         var protectedCallCount = 0;
         var cachedCallCount = 0;
-        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, methodId, _, _) =>
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                // Track per-method auth calls by checking which method was invoked
-                // ProtectedMethod and CachedMethod will have different method IDs
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.ProtectedMethodHandler = (_, _) =>
-            {
-                Interlocked.Increment(ref protectedCallCount);
-                return ValueTask.CompletedTask;
-            };
-            nexus.CachedMethodHandler = _ =>
-            {
-                Interlocked.Increment(ref cachedCallCount);
-                return ValueTask.CompletedTask;
-            };
-        };
+                // ProtectedMethod and CachedMethod have different method IDs.
+                nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                nexus.ProtectedMethodHandler = (_, _) =>
+                {
+                    Interlocked.Increment(ref protectedCallCount);
+                    return ValueTask.CompletedTask;
+                };
+                nexus.CachedMethodHandler = _ =>
+                {
+                    Interlocked.Increment(ref cachedCallCount);
+                    return ValueTask.CompletedTask;
+                };
+            },
+            config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.ProtectedMethod("a").Timeout(1);
-        await client.Proxy.CachedMethod().Timeout(1);
-        await client.Proxy.ProtectedMethod("b").Timeout(1);
-        await client.Proxy.CachedMethod().Timeout(1);
+        await proxy.ProtectedMethod("a").Timeout(T(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await proxy.ProtectedMethod("b").Timeout(T(1));
+        await proxy.CachedMethod().Timeout(T(1));
 
         // Both methods should have been invoked twice (cache is per-method)
-        Assert.That(protectedCallCount, Is.EqualTo(2));
-        Assert.That(cachedCallCount, Is.EqualTo(2));
+        await Assert.That(protectedCallCount).IsEqualTo(2);
+        await Assert.That(cachedCallCount).IsEqualTo(2);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_InvalidateAll_ClearsCache(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_InvalidateAll_ClearsCache(ClientTarget target)
     {
         var authCallCount = 0;
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        AuthServerNexus? serverNexus = null;
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
+            serverNexus ??= nexus;
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
                 Interlocked.Increment(ref authCallCount);
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+        });
+        var proxy = AuthProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Invalidate cache
-        var serverNexus = server.NexusCreatedQueue.First();
-        serverNexus.CallInvalidateAll();
+        serverNexus!.CallInvalidateAll();
 
-        await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await proxy.CachedMethod().Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(2);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_InvalidateByMethodId_ClearsSingleEntry(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_InvalidateByMethodId_ClearsSingleEntry(ClientTarget target)
     {
         var authCallCount = 0;
-        int cachedMethodId = -1;
-        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
-
-        server.OnNexusCreated = nexus =>
-        {
-            nexus.OnAuthorizeHandler = (_, methodId, name, _) =>
+        var cachedMethodId = -1;
+        AuthServerNexus? serverNexus = null;
+        await using var client = await ConnectAuthAsync(
+            target,
+            nexus =>
             {
-                Interlocked.Increment(ref authCallCount);
-                if (name == "CachedMethod")
-                    cachedMethodId = methodId;
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-            };
-            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-            nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+                serverNexus ??= nexus;
+                nexus.OnAuthorizeHandler = (_, methodId, name, _) =>
+                {
+                    Interlocked.Increment(ref authCallCount);
+                    if (name == "CachedMethod")
+                        cachedMethodId = methodId;
+                    return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                };
+                nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+                nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
+            },
+            config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
+        var proxy = AuthProxy(client);
 
         // Prime both caches
-        await client.Proxy.CachedMethod().Timeout(1);
-        await client.Proxy.ProtectedMethod("a").Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await proxy.CachedMethod().Timeout(T(1));
+        await proxy.ProtectedMethod("a").Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(2);
 
         // Invalidate only CachedMethod
-        var serverNexus = server.NexusCreatedQueue.First();
-        serverNexus.CallInvalidateMethod(cachedMethodId);
+        serverNexus!.CallInvalidateMethod(cachedMethodId);
 
         // CachedMethod should re-check, ProtectedMethod should still be cached
-        await client.Proxy.CachedMethod().Timeout(1);
-        await client.Proxy.ProtectedMethod("b").Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(3)); // Only CachedMethod re-checked
+        await proxy.CachedMethod().Timeout(T(1));
+        await proxy.ProtectedMethod("b").Timeout(T(1));
+        await Assert.That(authCallCount).IsEqualTo(3); // Only CachedMethod re-checked
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_ExceptionNotCached_NextCallReInvokes(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_ExceptionNotCached_NextCallReInvokes(ClientTarget target)
     {
         var authCallCount = 0;
-        var shouldThrow = true;
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
                 Interlocked.Increment(ref authCallCount);
-                if (shouldThrow)
-                    throw new InvalidOperationException("Auth error");
-                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+                throw new InvalidOperationException("Auth error");
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
+        });
 
-        _ = client.DisconnectedTask.ContinueWith(_ => { });
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
+        try { await AuthProxy(client).CachedMethod().Timeout(T(1)); } catch { }
 
         // Session disconnected due to exception — auth was called once
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await client.WhenDisconnectedAsync(T(2));
+        await Assert.That(authCallCount).IsEqualTo(1);
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    public async Task AuthCache_ConcurrentAccess_NoExceptions(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task AuthCache_ConcurrentAccess_NoExceptions(ClientTarget target)
     {
         var authCallCount = 0;
-        var allThreadsReady = new ManualResetEventSlim(false);
-        var (server, client, _) = CreateAuthServerClient(type);
-
-        server.OnNexusCreated = nexus =>
+        using var allThreadsReady = new ManualResetEventSlim(false);
+        await using var client = await ConnectAuthAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
@@ -1059,43 +848,38 @@ internal class NexusServerTests_Authorization : BaseTests
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        });
+        var proxy = AuthProxy(client);
 
         const int concurrentCalls = 10;
         var tasks = new Task[concurrentCalls];
-        for (int i = 0; i < concurrentCalls; i++)
+        for (var i = 0; i < concurrentCalls; i++)
         {
             tasks[i] = Task.Run(async () =>
             {
-                try { await client.Proxy.CachedMethod().Timeout(5); } catch { }
+                try { await proxy.CachedMethod().Timeout(T(5)); } catch { }
             });
         }
 
-        // Let all threads proceed once they've piled up
-        await Task.Delay(200);
+        // Let all threads proceed once they've piled up inside OnAuthorize (bounded: the invocation pool may run
+        // fewer at once).
+        await WaitUntil(() => Volatile.Read(ref authCallCount) >= concurrentCalls);
         allThreadsReady.Set();
 
-        await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(T(5)));
 
         // All calls should have completed without exceptions.
         // Auth may be called multiple times (cache misses race) but never throws.
-        Assert.That(authCallCount, Is.GreaterThan(0));
+        await Assert.That(authCallCount).IsGreaterThan(0);
+        await EndAsync(client);
     }
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedPipeMethod_Unauthorized_RefusesPipe(Type type)
-    {
-        var (server, client) = CreateAuthPipeServerClient(type);
-        var methodInvoked = false;
 
-        server.OnNexusCreated = nexus =>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedPipeMethod_Unauthorized_RefusesPipe(ClientTarget target)
+    {
+        var methodInvoked = false;
+        await using var client = await ConnectAuthPipeAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             nexus.ProtectedPipeHandler = (_, _) =>
@@ -1103,37 +887,30 @@ internal class NexusServerTests_Authorization : BaseTests
                 methodInvoked = true;
                 return ValueTask.CompletedTask;
             };
-        };
-
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        });
+        var proxy = PipeProxy(client);
 
         // Twice: the refused pipe's ID is freed and the second open fails the same way.
         for (var i = 0; i < 2; i++)
         {
-            await using var pipe = client.CreatePipe();
-            await client.Proxy.ProtectedPipe("test", pipe).Timeout(1);
-            await AssertThrows<NexusBusyException>(pipe.ReadyTask.Timeout(1));
+            await using var pipe = await client.CreatePipeAsync();
+            await proxy.ProtectedPipe("test", pipe).Timeout(T(1));
+            await AssertThrows<NexusBusyException>(pipe.WhenReadyAsync().AsTask().Timeout(T(1)));
         }
 
         // The session stays up and usable.
-        Assert.That(await client.Proxy.Ping(5).Timeout(1), Is.EqualTo(5));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(methodInvoked, Is.False);
+        await Assert.That(await proxy.Ping(5).Timeout(T(1))).IsEqualTo(5);
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await Assert.That(methodInvoked).IsFalse();
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedChannelMethod_Unauthorized_RefusesChannel(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedChannelMethod_Unauthorized_RefusesChannel(ClientTarget target)
     {
-        var (server, client) = CreateAuthPipeServerClient(type);
         var methodInvoked = false;
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthPipeAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             nexus.ProtectedChannelHandler = (_, _, _) =>
@@ -1141,32 +918,27 @@ internal class NexusServerTests_Authorization : BaseTests
                 methodInvoked = true;
                 return ValueTask.CompletedTask;
             };
-        };
+        });
+        var proxy = PipeProxy(client);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await using (var channel = await client.CreatePipeAsync())
+        {
+            await proxy.ProtectedChannel(42, "test", channel).Timeout(T(1));
+            await AssertThrows<NexusBusyException>(channel.WhenReadyAsync().AsTask().Timeout(T(1)));
+        }
 
-        await using var channel = client.CreateChannel<int>();
-        await client.Proxy.ProtectedChannel(42, "test", channel).Timeout(1);
-        await AssertThrows<NexusBusyException>(channel.BasePipe!.ReadyTask.Timeout(1));
-
-        Assert.That(await client.Proxy.Ping(7).Timeout(1), Is.EqualTo(7));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(methodInvoked, Is.False);
+        await Assert.That(await proxy.Ping(7).Timeout(T(1))).IsEqualTo(7);
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+        await Assert.That(methodInvoked).IsFalse();
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedPipeMethod_Allowed_PipeBecomesReady(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedPipeMethod_Allowed_PipeBecomesReady(ClientTarget target)
     {
-        var (server, client) = CreateAuthPipeServerClient(type);
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        server.OnNexusCreated = nexus =>
+        await using var client = await ConnectAuthPipeAsync(target, nexus =>
         {
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
             nexus.ProtectedPipeHandler = async (input, pipe) =>
@@ -1174,47 +946,92 @@ internal class NexusServerTests_Authorization : BaseTests
                 received.TrySetResult(input);
                 await pipe.CompleteTask;
             };
-        };
+        });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await using (var pipe = await client.CreatePipeAsync())
+        {
+            await PipeProxy(client).ProtectedPipe("test", pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
+            await Assert.That(await received.Task.Timeout(T(1))).IsEqualTo("test");
+        }
 
-        await using var pipe = client.CreatePipe();
-        await client.Proxy.ProtectedPipe("test", pipe).Timeout(1);
-        await pipe.ReadyTask.Timeout(1);
-        Assert.That(await received.Task.Timeout(1), Is.EqualTo("test"));
+        await EndAsync(client);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task AuthorizedPipeMethod_Disconnect_DisconnectsSession(Type type)
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task AuthorizedPipeMethod_Disconnect_DisconnectsSession(ClientTarget target)
     {
-        var (server, client) = CreateAuthPipeServerClient(type);
+        await using var client = await ConnectAuthPipeAsync(target, nexus =>
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect));
 
-        server.OnNexusCreated = nexus =>
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
-        };
+            try
+            {
+                await PipeProxy(client).ProtectedPipe("test", pipe).Timeout(T(1));
+            }
+            catch
+            {
+                // The session may already be closing.
+            }
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await using var pipe = client.CreatePipe();
-        try
-        {
-            await client.Proxy.ProtectedPipe("test", pipe).Timeout(1);
-        }
-        catch
-        {
-            // The session may already be closing.
+            await client.WhenDisconnectedAsync(T(2));
+            await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
         }
 
-        await client.DisconnectedTask.Timeout(2);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await EndAsync(client);
+    }
+
+    // --- NexNet greeting token (Authenticate): the canonical authentication of every client (D15) ---
+
+    /// <summary>
+    /// Starts an <see cref="InteropServerNexus"/> server that requires authentication and takes the greeting token as
+    /// the identity name (<see cref="InteropServerNexus.ReaderIdentity"/> may read, <see cref="InteropServerNexus.AdminIdentity"/>
+    /// may do everything); an empty or missing token is refused. Returns the spec of <paramref name="target"/>'s client.
+    /// </summary>
+    private async Task<ClientSpec> StartGreetingTokenServerAsync(ClientTarget target, string? token)
+    {
+        var type = ToType(target.Transport);
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(serverConfig, nexus =>
+            nexus.TokenValidator = (received, _) =>
+            {
+                var name = received is { Length: > 0 } value ? Encoding.UTF8.GetString(value.Span) : null;
+                return ValueTask.FromResult<IIdentity?>(name == null ? null : new DefaultIdentity { DisplayName = name });
+            });
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var spec = Spec(CreateClientConfig(type), target.Transport, Logger);
+        spec.AuthToken = token;
+        return spec;
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task GreetingToken_IdentityReachesServerAndAuthorizes(ClientTarget target)
+    {
+        var spec = await StartGreetingTokenServerAsync(target, InteropServerNexus.ReaderIdentity);
+        await using var client = await ConnectAsync<InteropClientNexus, InteropClientNexus.ServerProxy>(target, spec);
+        var proxy = client.Proxy<IInteropServerNexus>();
+
+        await Assert.That(await proxy.GetIdentity().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.ReaderIdentity);
+        await Assert.That(await proxy.ReadSecret().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.Secret);
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () => await proxy.AdminEcho(1).AsTask().Timeout(T(1)));
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task GreetingToken_Missing_ConnectFailsWithAuthenticationError(ClientTarget target)
+    {
+        var spec = await StartGreetingTokenServerAsync(target, token: null);
+        await using var client = await Harness.CreateClientAsync(target, spec);
+
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(TestTimeouts.Connect)));
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
+        await EndAsync(client);
     }
 
     private static async Task AssertThrows<TException>(Task task)
@@ -1229,50 +1046,6 @@ internal class NexusServerTests_Authorization : BaseTests
             return;
         }
 
-        Assert.Fail($"Expected {typeof(TException).Name}.");
+        Fail.Test($"Expected {typeof(TException).Name}.");
     }
 }
-
-public partial interface IAuthPipeServerNexus
-{
-    ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe);
-    ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel);
-    ValueTask<int> Ping(int value);
-}
-
-public partial interface IAuthPipeClientNexus { }
-
-[Nexus<IAuthPipeServerNexus, IAuthPipeClientNexus>(NexusType = NexusType.Server)]
-public partial class AuthPipeServerNexus
-{
-    public Func<ServerSessionContext<ClientProxy>, int, string, ReadOnlyMemory<int>, ValueTask<AuthorizeResult>>? OnAuthorizeHandler;
-    public Func<string, INexusDuplexPipe, ValueTask>? ProtectedPipeHandler;
-    public Func<int, string, INexusDuplexChannel<int>, ValueTask>? ProtectedChannelHandler;
-
-    [NexusAuthorize<TestPermission>(TestPermission.Write)]
-    public ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe)
-    {
-        return ProtectedPipeHandler?.Invoke(input, pipe) ?? ValueTask.CompletedTask;
-    }
-
-    [NexusAuthorize<TestPermission>(TestPermission.Write)]
-    public ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel)
-    {
-        return ProtectedChannelHandler?.Invoke(value, input, channel) ?? ValueTask.CompletedTask;
-    }
-
-    public ValueTask<int> Ping(int value) => new(value);
-
-    protected override ValueTask<AuthorizeResult> OnAuthorize(
-        ServerSessionContext<ClientProxy> context,
-        int methodId,
-        string methodName,
-        ReadOnlyMemory<int> requiredPermissions)
-    {
-        return OnAuthorizeHandler?.Invoke(context, methodId, methodName, requiredPermissions)
-               ?? new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-    }
-}
-
-[Nexus<IAuthPipeClientNexus, IAuthPipeServerNexus>(NexusType = NexusType.Client)]
-public partial class AuthPipeClientNexus { }

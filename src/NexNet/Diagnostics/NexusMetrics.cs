@@ -26,6 +26,7 @@ internal sealed class NexusMetrics
 {
     public const string TagRole = "nexnet.role";
     public const string TagTransport = "nexnet.transport";
+    public const string TagEndpoint = "nexnet.endpoint";
     public const string TagDirection = "nexnet.direction";
     public const string TagDisconnectReason = "nexnet.disconnect.reason";
     public const string TagPhase = "nexnet.session.phase";
@@ -183,19 +184,20 @@ internal sealed class NexusMetrics
         => Get(config.MeterFactory).GetTagSet(config is ServerConfig, config.TransportName);
 
     /// <summary>
-    /// The tag set for <paramref name="isServer"/> and <paramref name="transport"/>; created on first use.
+    /// The tag set for <paramref name="isServer"/>, <paramref name="transport"/> and the server endpoint
+    /// <paramref name="endpoint"/> (null for clients); created on first use.
     /// </summary>
-    public MetricsTagSet GetTagSet(bool isServer, string transport)
+    public MetricsTagSet GetTagSet(bool isServer, string transport, string? endpoint = null)
     {
         lock (_lock)
         {
             foreach (var set in _tagSets)
             {
-                if (set.IsServer == isServer && set.TransportName == transport)
+                if (set.IsServer == isServer && set.TransportName == transport && set.EndpointName == endpoint)
                     return set;
             }
 
-            var created = new MetricsTagSet(this, isServer, transport);
+            var created = new MetricsTagSet(this, isServer, transport, endpoint);
             _tagSets = [.._tagSets, created];
             return created;
         }
@@ -259,31 +261,41 @@ internal sealed class NexusMetrics
     {
         var tags = session.MetricsTags;
         var reasonTag = new KeyValuePair<string, object?>(TagDisconnectReason, DisconnectReasonNames[(byte)reason]);
-        _disconnects.Add(1, tags.Role, tags.Transport, reasonTag, established ? PhaseEstablished : PhaseHandshake);
+        var list = tags.ToTagList();
+        list.Add(reasonTag);
         if (_sessionDuration.Enabled)
-        {
-            _sessionDuration.Record(Stopwatch.GetElapsedTime(session.MetricsStartTimestamp).TotalSeconds,
-                tags.Role, tags.Transport, reasonTag);
-        }
+            _sessionDuration.Record(Stopwatch.GetElapsedTime(session.MetricsStartTimestamp).TotalSeconds, in list);
+        list.Add(established ? PhaseEstablished : PhaseHandshake);
+        _disconnects.Add(1, in list);
     }
 
     /// <summary>
     /// Records a connection a server closed before starting a session.
     /// </summary>
     public void RecordRejection(MetricsTagSet tags, string reason)
-        => _connectionRejections.Add(1, tags.Role, tags.Transport, new(TagRejectionReason, reason));
+        => _connectionRejections.Add(1, With(tags, new(TagRejectionReason, reason)));
 
     public void RecordPipeReset(MetricsTagSet tags, PipeResetReason reason)
-        => _pipeResets.Add(1, tags.Role, tags.Transport, reason == PipeResetReason.TooLarge ? ResetTooLarge : ResetInvalidItem);
+        => _pipeResets.Add(1, With(tags, reason == PipeResetReason.TooLarge ? ResetTooLarge : ResetInvalidItem));
 
     public void RecordPipeRefusal(MetricsTagSet tags, bool local)
-        => _pipeRefusals.Add(1, tags.Role, tags.Transport, local ? RefusalLocal : RefusalRemote);
+        => _pipeRefusals.Add(1, With(tags, local ? RefusalLocal : RefusalRemote));
 
     public void RecordInvocationBusy(MetricsTagSet tags)
-        => _invocationBusy.Add(1, tags.Role, tags.Transport);
+        => _invocationBusy.Add(1, tags.ToTagList());
 
     public void RecordCreditDrop(MetricsTagSet tags)
-        => _creditDrops.Add(1, tags.Role, tags.Transport);
+        => _creditDrops.Add(1, tags.ToTagList());
+
+    /// <summary>
+    /// The fixed tags of <paramref name="tags"/> followed by <paramref name="extra"/>.
+    /// </summary>
+    private static TagList With(MetricsTagSet tags, KeyValuePair<string, object?> extra)
+    {
+        var list = tags.ToTagList();
+        list.Add(extra);
+        return list;
+    }
 
     /// <summary>
     /// True when a listener collects <c>nexnet.invocation.queue_wait</c>.
@@ -296,7 +308,7 @@ internal sealed class NexusMetrics
     public void RecordInvocationQueueWait(MetricsTagSet tags, bool separatePool, double seconds)
     {
         if (_invocationQueueWait.Enabled)
-            _invocationQueueWait.Record(seconds, tags.Role, tags.Transport, separatePool ? PoolSeparate : PoolNormal);
+            _invocationQueueWait.Record(seconds, With(tags, separatePool ? PoolSeparate : PoolNormal));
     }
 
     /// <summary>
@@ -305,7 +317,7 @@ internal sealed class NexusMetrics
     public void RecordPipeCreditWait(MetricsTagSet tags, double seconds)
     {
         if (_pipeCreditWait.Enabled)
-            _pipeCreditWait.Record(seconds, tags.Role, tags.Transport);
+            _pipeCreditWait.Record(seconds, tags.ToTagList());
     }
 
     public void RecordLargeMessageAbort(MetricsTagSet tags, bool inbound, LargeMessageAbortReason reason)
@@ -316,7 +328,9 @@ internal sealed class NexusMetrics
             LargeMessageAbortReason.TooLarge => AbortTooLarge,
             _ => AbortCancelled,
         };
-        _largeMessageAborts.Add(1, tags.Role, tags.Transport, inbound ? DirectionInbound : DirectionOutbound, reasonTag);
+        var list = With(tags, inbound ? DirectionInbound : DirectionOutbound);
+        list.Add(reasonTag);
+        _largeMessageAborts.Add(1, in list);
     }
 
     /// <summary>

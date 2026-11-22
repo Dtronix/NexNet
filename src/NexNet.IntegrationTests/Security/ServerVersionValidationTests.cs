@@ -1,7 +1,6 @@
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Security;
 
