@@ -473,14 +473,12 @@ internal class NexusListTests_Events(LanguageHostPool hosts) : MatrixTestBase(ho
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ClientDisconnectionTaskCompletesOnDisconnect(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
         var list = s.List;
-        var clientList = InProc(s.Client).Client.Proxy.IntListBi;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
-        await Assert.That(clientList.DisabledTask.IsCompleted).IsFalse();
+        await Assert.That((await list.GetStateAsync().AsTask().Timeout(T(1))).IsDisabled).IsFalse();
         await list.DisableAsync().Timeout(T(1));
-        await Assert.That(clientList.DisabledTask.IsCompleted).IsTrue();
+        await Assert.That((await list.GetStateAsync().AsTask().Timeout(T(1))).IsDisabled).IsTrue();
         await s.EndAsync();
     }
 

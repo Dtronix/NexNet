@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Collections;
+using NexNet.Diagnostics;
 using NexNet.Interop.Reflection;
 using NexNet.Interop.Scripting;
 using NexNet.Invocation;
@@ -113,6 +114,12 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         => Task.FromResult(_client.State == ConnectionState.Connected
             ? new RemoteEndpoint(Nexus.Context.RemoteAddress, Nexus.Context.RemotePort)
             : RemoteEndpoint.None);
+
+    /// <inheritdoc />
+    public Task<NexusBudgetSnapshot?> GetBudgetAsync() => Task.FromResult(_client.GetSnapshot()?.Budget);
+
+    /// <inheritdoc />
+    public Task<int> GetOutstandingInvocationsAsync() => Task.FromResult(_client.GetSnapshot()?.Invocations.AwaitingResults ?? 0);
 
     /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)

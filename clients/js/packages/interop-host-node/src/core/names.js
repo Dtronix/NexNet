@@ -3,7 +3,7 @@
  * @module
  */
 
-import { ConnectionState, ConnectionResultState, DisconnectReason, RemoteExceptionDetail } from '@dtronix/nexnet';
+import { ConnectionState, ConnectionResultState, DisconnectReason, RemoteExceptionDetail, NexusCollectionMode, NexusCollectionState } from '@dtronix/nexnet';
 
 /**
  * @param {Readonly<Record<string, number>>} values
@@ -16,6 +16,8 @@ function invert(values) {
 const stateNames = invert(ConnectionState);
 const reasonNames = invert(DisconnectReason);
 const resultNames = invert(ConnectionResultState);
+const collectionModeNames = invert(NexusCollectionMode);
+const collectionStateNames = invert(NexusCollectionState);
 
 /** @param {number} state @returns {string} */
 export const stateName = (state) => stateNames.get(state) ?? 'Unset';
@@ -25,6 +27,12 @@ export const reasonName = (reason) => reasonNames.get(reason ?? 0) ?? 'None';
 
 /** @param {number} state @returns {string} */
 export const resultStateName = (state) => resultNames.get(state) ?? 'Unset';
+
+/** @param {number} mode A `NexusCollectionMode` value. @returns {string} */
+export const collectionModeName = (mode) => collectionModeNames.get(mode) ?? 'Unset';
+
+/** @param {number} state A `NexusCollectionState` value. @returns {string} */
+export const collectionStateName = (state) => collectionStateNames.get(state) ?? 'Unset';
 
 /**
  * @param {string} name

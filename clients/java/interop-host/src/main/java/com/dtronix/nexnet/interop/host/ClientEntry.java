@@ -12,6 +12,11 @@ import com.dtronix.nexnet.client.ConnectionState;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.collections.NexusListChange;
+import com.dtronix.nexnet.collections.NexusListClient;
+import com.dtronix.nexnet.diagnostics.Diagnostics;
+import com.dtronix.nexnet.diagnostics.NexusBudgetSnapshot;
+import com.dtronix.nexnet.diagnostics.NexusInvocationSnapshot;
+import com.dtronix.nexnet.diagnostics.NexusSessionSnapshot;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
@@ -250,6 +255,28 @@ final class ClientEntry extends Driven implements ScriptHost {
         }
         int port = session.transport().remotePort();
         return Protocol.map("address", session.transport().remoteAddress(), "port", port < 0 ? null : port);
+    }
+
+    /**
+     * The receive budget of the current session (§6.4 {@code client.budget}).
+     *
+     * @return {@code {budget: {limit, reserved}}}, or {@code {budget: null}} when the client has no session
+     */
+    Map<String, Object> budget() {
+        NexusSessionSnapshot snapshot = Diagnostics.snapshot(client);
+        NexusBudgetSnapshot budget = snapshot == null ? null : snapshot.budget();
+        return Protocol.map("budget", budget == null ? null : Protocol.map("limit", budget.limit(), "reserved", budget.reserved()));
+    }
+
+    /**
+     * The outbound invocations the current session awaits a result for (§6.4 {@code client.outstanding}).
+     *
+     * @return {@code {invocations}}: the snapshot's {@code awaitingResults}, 0 when the client has no session
+     */
+    Map<String, Object> outstanding() {
+        NexusSessionSnapshot snapshot = Diagnostics.snapshot(client);
+        NexusInvocationSnapshot invocations = snapshot == null ? null : snapshot.invocations();
+        return Protocol.map("invocations", invocations == null ? 0L : (long) invocations.awaitingResults());
     }
 
     Map<String, Object> advanceTime(long millis) {
@@ -508,6 +535,19 @@ final class ClientEntry extends Driven implements ScriptHost {
             items.add(codec.toJson(item));
         }
         return Protocol.map("items", items);
+    }
+
+    /** {@code list.state} (§6.10): the mode, state and disabled signal of the collection. */
+    Map<String, Object> listState(Args args) {
+        NexusList<Object> list = list(args);
+        if (!(list instanceof NexusListClient)) {
+            throw new HostError(HostError.INVALID_OPERATION, "The collection is not a runtime list; its mode is unknown.");
+        }
+        // The Java list has no read-only flag (C# IsReadOnly): its mode tells whether the client can change it.
+        return Protocol.map(
+            "mode", Names.pascal(((NexusListClient<?>) list).mode()),
+            "state", Names.pascal(list.state()),
+            "disabled", list.disabled().isDone());
     }
 
     Map<String, Object> listWatch(Args args) {

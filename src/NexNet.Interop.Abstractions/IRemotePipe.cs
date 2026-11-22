@@ -126,6 +126,12 @@ public interface IRemoteList<T>
     /// <summary>The items the client currently has.</summary>
     ValueTask<IReadOnlyList<T>> SnapshotAsync();
 
+    /// <summary>
+    /// The collection's mode, state and disabled signal as the client sees them now (control protocol §6.10
+    /// <c>list.state</c>).
+    /// </summary>
+    ValueTask<RemoteListState> GetStateAsync();
+
     /// <summary>Waits until a snapshot satisfies <paramref name="predicate"/> and returns it.</summary>
     ValueTask<IReadOnlyList<T>> WaitForAsync(Func<IReadOnlyList<T>, bool> predicate, TimeSpan timeout);
 
