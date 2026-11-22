@@ -180,6 +180,51 @@ internal partial class NexusClientTests
     }
 
     /// <summary>
+    /// A DisconnectAsync while a reconnection attempt's handshake is running stops the loop on every language: the
+    /// server holds the attempt in its authentication, the client disconnects, and once the server lets the attempt go
+    /// on the client stays Disconnected and opens no other session.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task DisconnectDuringReconnectionHandshake_StopsReconnecting(ClientTarget target)
+    {
+        var options = AbruptStop();
+
+        // Authentication 1 is the first connect; 2 is the first reconnection attempt that reaches the server.
+        var hold = options.HoldAuthentication(2);
+        await using var server = await StartDedicatedServer(options);
+        try
+        {
+            await using var client = await Connect(target, server, spec =>
+            {
+                spec.ReconnectDelaysMs = [0, 200];
+                spec.ReconnectContinuously = true;
+            });
+            await WaitForFirstConnected(client);
+
+            var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+            await server.StopAsync();
+            await disconnected;
+            await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+            // A reconnection attempt has sent its greeting; the server holds its authentication.
+            await hold.Held.Timeout(T(TestTimeouts.Connect));
+            await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+            hold.Release();
+            await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
+
+            // A loop that still ran would retry the attempt now, every 200 ms.
+            await AssertNotReconnectedWithin(client, 1000, "DisconnectAsync during the handshake stopped the reconnection loop.");
+            await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected);
+            await Assert.That(hold.Count).IsEqualTo(2).Because("The stopped loop opened no other session.");
+        }
+        finally
+        {
+            hold.Release();
+        }
+    }
+
+    /// <summary>
     /// OnDisconnected runs once for the lost session: not again when the reconnection policy then gives up (the client
     /// goes from Reconnecting to Disconnected without a session of its own).
     /// </summary>
