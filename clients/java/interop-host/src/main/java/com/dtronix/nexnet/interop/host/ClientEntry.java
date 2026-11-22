@@ -19,6 +19,8 @@ import com.dtronix.nexnet.diagnostics.NexusSessionSnapshot;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
+import com.dtronix.nexnet.reconnect.ReconnectController;
+import com.dtronix.nexnet.reconnect.ReconnectListener;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import com.dtronix.nexnet.testnexus.scaffolding.ScriptCall;
@@ -65,6 +67,10 @@ final class ClientEntry extends Driven implements ScriptHost {
     private final NexusRemoteError invocationError;
     /** The client's metrics ({@code ClientSpec.metrics}), or null when it records none. */
     private volatile MetricsRecorder metrics;
+    /** The states the client reported, in order, since creation or the last reset (§6.4 {@code client.stateHistory}). */
+    private final List<String> stateHistory = new ArrayList<>();
+    /** The reconnection attempts the client started since creation or the last reset; guarded by {@link #stateHistory}. */
+    private int reconnectAttempts;
 
     /** The held pipes published under one name (§6.9 {@code pipe.hold}). */
     private static final class HeldBox {
@@ -102,6 +108,17 @@ final class ClientEntry extends Driven implements ScriptHost {
         // Tracked from creation, so every session of the client is counted.
         entry.metrics = MetricsRecorder.create(spec.optStr("metrics"), client);
         client.addStateListener(entry::onState);
+        ReconnectController reconnection = client.reconnection();
+        if (reconnection != null) {
+            reconnection.addListener(new ReconnectListener() {
+                @Override
+                public void onAttempt(int attempt) {
+                    synchronized (entry.stateHistory) {
+                        entry.reconnectAttempts++;
+                    }
+                }
+            });
+        }
         return entry;
     }
 
@@ -118,7 +135,29 @@ final class ClientEntry extends Driven implements ScriptHost {
                 lastFailure = null;
             }
         }
+        synchronized (stateHistory) {
+            stateHistory.add(Names.pascal(state));
+        }
         host.event(scope.id, handle, "client.state", Protocol.map("state", Names.pascal(state)));
+    }
+
+    /**
+     * The states the client reported and the reconnection attempts it started (§6.4 {@code client.stateHistory}),
+     * since creation or the last reset.
+     *
+     * @param reset clears the history after reading it
+     * @return {@code {states, reconnectAttempts}}
+     */
+    Map<String, Object> stateHistory(boolean reset) {
+        synchronized (stateHistory) {
+            Map<String, Object> result = Protocol.map("states", new ArrayList<Object>(stateHistory),
+                "reconnectAttempts", reconnectAttempts);
+            if (reset) {
+                stateHistory.clear();
+                reconnectAttempts = 0;
+            }
+            return result;
+        }
     }
 
     @Override

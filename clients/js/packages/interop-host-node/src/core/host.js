@@ -327,6 +327,12 @@ class ClientEntry extends InvokerEntry {
      * @type {{ metrics: NexusMetrics, events: Measurement[] } | null}
      */
     this.metrics = null;
+    /** The states the client reported, in order, since creation or the last reset (§6.4 `client.stateHistory`). @type {string[]} */
+    this.stateHistory = [];
+    /** The reconnection attempts the client started since creation or the last reset. */
+    this.reconnectAttempts = 0;
+    /** The reconnection controller whose attempts are counted. @type {EventTarget | null} */
+    this.countedReconnection = null;
   }
 
   get proxy() {
@@ -1471,7 +1477,16 @@ export class Host {
       }
       client.addEventListener('statechange', (/** @type {Event} */ event) => {
         const detail = /** @type {CustomEvent} */ (event).detail;
-        this.#event(entry, 'client.state', { state: stateName(detail?.state ?? client.state) });
+        const state = stateName(detail?.state ?? client.state);
+        entry.stateHistory.push(state);
+        // The client creates its reconnection controller on its first connect (again after a disconnect()), and a
+        // loop reports Reconnecting before its first attempt: count the attempts of every controller.
+        const reconnection = /** @type {EventTarget | null} */ (client.reconnection);
+        if (reconnection !== null && reconnection !== entry.countedReconnection) {
+          entry.countedReconnection = reconnection;
+          reconnection.addEventListener('reconnectattempt', () => { entry.reconnectAttempts++; });
+        }
+        this.#event(entry, 'client.state', { state });
       });
       client.addEventListener('disconnected', (/** @type {Event} */ event) => {
         entry.lastReason = /** @type {CustomEvent} */ (event).detail?.reason ?? null;
@@ -1513,6 +1528,15 @@ export class Host {
       const entry = this.#invoker(ctx, args.h);
       const state = entry instanceof RentalEntry ? entry.rental.state : entry.client.state;
       return { state: stateName(state) };
+    });
+    op('client.stateHistory', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.stateHistory');
+      const result = { states: [...entry.stateHistory], reconnectAttempts: entry.reconnectAttempts };
+      if (args.reset === true) {
+        entry.stateHistory.length = 0;
+        entry.reconnectAttempts = 0;
+      }
+      return result;
     });
     op('client.remoteCertificate', (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.remoteCertificate');

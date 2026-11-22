@@ -101,6 +101,14 @@ public sealed class RemoteClientDriver : IClientUnderTest
         => Enum.Parse<ConnectionState>((await CallAsync("client.state", null, DefaultOpMs).ConfigureAwait(false))["state"]!.GetValue<string>());
 
     /// <inheritdoc />
+    public async Task<ClientStateHistory> GetStateHistoryAsync(bool reset = false)
+    {
+        var result = await CallAsync("client.stateHistory", reset ? new JsonObject { ["reset"] = true } : null, DefaultOpMs).ConfigureAwait(false);
+        var states = ((JsonArray)result["states"]!).Select(s => Enum.Parse<ConnectionState>(s!.GetValue<string>())).ToArray();
+        return new ClientStateHistory(states, result["reconnectAttempts"]!.GetValue<int>());
+    }
+
+    /// <inheritdoc />
     public async Task<byte[]?> GetRemoteCertificateAsync()
     {
         var der = (await CallAsync("client.remoteCertificate", null, DefaultOpMs).ConfigureAwait(false))["der"]?.GetValue<string>();

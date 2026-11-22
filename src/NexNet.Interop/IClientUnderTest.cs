@@ -56,6 +56,16 @@ public interface IClientUnderTest : IAsyncDisposable
     /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
     Task<RemoteEndpoint> GetRemoteEndpointAsync();
 
+    /// <summary>
+    /// The state changes the client raised, in order, and the reconnection attempts it made, since it was created or since
+    /// the last call with <paramref name="reset"/> (control protocol §6.4 <c>client.stateHistory</c>). Unlike polling
+    /// <see cref="GetStateAsync"/>, it misses no short-lived state.
+    /// </summary>
+    /// <param name="reset">Clears the history after reading it, so the next call reports only what follows.</param>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<ClientStateHistory> GetStateHistoryAsync(bool reset = false)
+        => throw new NotSupportedException($"{Target}: the state history of a pooled client is not available.");
+
     /// <summary>Waits until the client reaches state <paramref name="state"/>.</summary>
     /// <exception cref="TimeoutException">Not reached within <paramref name="seconds"/>.</exception>
     Task WaitForStateAsync(ConnectionState state, double seconds);

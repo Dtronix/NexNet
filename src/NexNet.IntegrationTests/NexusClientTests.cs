@@ -566,89 +566,115 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     /// <summary>
-    /// The C# client's StateChanged events while it reconnects: it stays Reconnecting between failed attempts (it does not
-    /// report each attempt's own disconnect) and raises the sequence Connected, Disconnecting, Disconnected, Reconnecting,
-    /// Connected. The other languages check their sequence in their own unit tests.
+    /// The exact state changes while the client reconnects: it stays Reconnecting between failed attempts (it does not
+    /// report each attempt's own disconnect) and raises Connected, Disconnecting, Disconnected, Reconnecting, Connected.
+    /// The attempt count shows several attempts failed while it stayed Reconnecting. Not on QUIC: an attempt to the
+    /// stopped server can outlast the connection timeout by seconds (S47), too slow for three attempts.
     /// </summary>
     [Test]
-    [Transports(Type.Uds)]
-    public async Task ReconnectingStateChangedSequenceBetweenRetries(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    public async Task ReconnectingStateChangedSequenceBetweenRetries(ClientTarget target)
     {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy([TimeSpan.FromMilliseconds(20)]);
-        serverConfig.InternalNoLingerOnShutdown = true;
-        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-        var attempts = 0;
-        clientConfig.ReconnectionPolicy.Reconnection += (_, _) => Interlocked.Increment(ref attempts);
-        var states = new List<ConnectionState>();
-        client.StateChanged += (_, state) =>
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
         {
-            lock (states)
-                states.Add(state);
-        };
+            spec.ReconnectDelaysMs = [20];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+        var connect = await WaitForHistoryAsync(client, ConnectionState.Connected);
+        await AssertConnectHistory(connect);
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-        await WaitForState(client, ConnectionState.Reconnecting, seconds: T(TestTimeouts.Connect));
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
 
         // Several attempts fail against the stopped server; the client stays Reconnecting throughout.
+        var attempts = 0;
         var deadline = DateTime.UtcNow.AddSeconds(T(TestTimeouts.Connect));
-        while (Volatile.Read(ref attempts) < 3 && DateTime.UtcNow < deadline)
+        while ((attempts = (await client.GetStateHistoryAsync()).ReconnectAttempts) < 3 && DateTime.UtcNow < deadline)
             await Task.Delay(10);
-        await Assert.That(Volatile.Read(ref attempts)).IsGreaterThanOrEqualTo(3);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Reconnecting);
+        await Assert.That(attempts).IsGreaterThanOrEqualTo(3);
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Reconnecting);
 
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await WaitForState(client, ConnectionState.Connected, seconds: T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
 
-        ConnectionState[] recorded;
-        lock (states)
-            recorded = states.ToArray();
-        await Assert.That(recorded).IsEquivalentTo(
-            [ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Connected],
-            CollectionOrdering.Matching);
+        var history = await WaitForHistoryAsync(client, ConnectionState.Connected, after: connect.States.Count);
+        await Assert.That(history.States.Skip(connect.States.Count)).IsEquivalentTo(
+            [ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Connected],
+            CollectionOrdering.Matching)
+            .Because($"the states since creation were {string.Join(", ", history.States)}");
+        await Assert.That(history.ReconnectAttempts).IsGreaterThanOrEqualTo(attempts);
     }
 
     /// <summary>
-    /// The C# client's StateChanged events when its reconnection policy gives up: Reconnecting, then Disconnected.
+    /// The exact state changes when the reconnection policy gives up: Disconnecting, Disconnected, Reconnecting, then
+    /// Disconnected once, after the policy's two attempts.
     /// </summary>
     [Test]
-    [Transports(Type.Uds)]
-    public async Task ReconnectingStateChangedSequenceWhenThePolicyGivesUp(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    public async Task ReconnectingStateChangedSequenceWhenThePolicyGivesUp(ClientTarget target)
     {
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy([TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20)], continuousRetry: false);
-        serverConfig.InternalNoLingerOnShutdown = true;
-        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-        var states = new List<ConnectionState>();
-        var gaveUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        client.StateChanged += (_, state) =>
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
         {
-            lock (states)
-            {
-                states.Add(state);
-                if (state == ConnectionState.Disconnected && states.Contains(ConnectionState.Reconnecting))
-                    gaveUp.TrySetResult();
-            }
-        };
+            spec.ReconnectDelaysMs = [20, 20];
+            spec.ReconnectContinuously = false;
+        });
+        await WaitForFirstConnected(client);
+        var connect = await WaitForHistoryAsync(client, ConnectionState.Connected);
+        await AssertConnectHistory(connect);
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-        await gaveUp.Task.Timeout(T(TestTimeouts.Connect));
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, T(TestTimeouts.Connect * 3));
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
-        ConnectionState[] recorded;
-        lock (states)
-            recorded = states.ToArray();
-        await Assert.That(recorded).IsEquivalentTo(
-            [ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected],
-            CollectionOrdering.Matching);
+        var history = await WaitForHistoryAsync(client, ConnectionState.Disconnected, after: connect.States.Count + 3);
+        await Assert.That(history.States.Skip(connect.States.Count)).IsEquivalentTo(
+            [ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected],
+            CollectionOrdering.Matching)
+            .Because($"the states since creation were {string.Join(", ", history.States)}");
+        await Assert.That(history.ReconnectAttempts).IsEqualTo(2);
+    }
+
+    /// <summary>
+    /// The state changes of the first connect, with no reconnection attempt: Connected, which the Java and JS clients
+    /// precede with Connecting (the C# client reports no Connecting through StateChanged).
+    /// </summary>
+    private static async Task AssertConnectHistory(ClientStateHistory connect)
+    {
+        var expected = connect.States.Count == 2 ? [ConnectionState.Connecting, ConnectionState.Connected] : new[] { ConnectionState.Connected };
+        await Assert.That(connect.States).IsEquivalentTo(expected, CollectionOrdering.Matching)
+            .Because($"the states of the first connect were {string.Join(", ", connect.States)}");
+        await Assert.That(connect.ReconnectAttempts).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// Reads the client's state history until its last state is <paramref name="last"/> with more than
+    /// <paramref name="after"/> states recorded (a Java state listener runs on the callback executor, so the history can
+    /// lag the state by a moment); returns it.
+    /// </summary>
+    private static async Task<ClientStateHistory> WaitForHistoryAsync(IClientUnderTest client, ConnectionState last, int after = 0)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(T(TestTimeouts.Connect));
+        ClientStateHistory history;
+        while (true)
+        {
+            history = await client.GetStateHistoryAsync();
+            if ((history.States.Count > after && history.States[^1] == last) || DateTime.UtcNow >= deadline)
+                break;
+            await Task.Delay(10);
+        }
+
+        await Assert.That(history.States.Count).IsGreaterThan(after)
+            .Because($"the states since creation were {string.Join(", ", history.States)}");
+        await Assert.That(history.States[^1]).IsEqualTo(last)
+            .Because($"the states since creation were {string.Join(", ", history.States)}");
+        return history;
     }
 
     [Test]
