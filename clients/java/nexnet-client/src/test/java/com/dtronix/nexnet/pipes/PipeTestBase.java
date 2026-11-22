@@ -59,6 +59,8 @@ abstract class PipeTestBase {
     final List<CountDownLatch> latches = new ArrayList<>();
     /** Results of client methods that run until the test ends; completed in {@link #tearDown()}. */
     final List<CompletableFuture<Void>> methodResults = new ArrayList<>();
+    /** Set under {@link #methodResults} once {@link #tearDown()} has completed them; later results start completed. */
+    private boolean methodResultsCompleted;
     /** The session's clock: drives its keepalive tick and so the progress check. */
     final ManualTimers sessionTimers = new ManualTimers();
     /** The session's progress timeout, set before connecting. */
@@ -112,11 +114,20 @@ abstract class PipeTestBase {
     /**
      * A result for a client method that keeps running until the test completes it, or until the test ends. Without
      * this the invocation stays running after the session is closed and the leak audit counts it.
+     *
+     * <p>A method can ask for its result after the test has ended: the method signals the test (completes a future
+     * the test awaits) before it returns, so a short test can reach {@link #tearDown()} before the invocation thread
+     * gets here. Such a result is returned completed, or the invocation would never finish and the leak audit would
+     * count it (K60).
      */
     CompletableFuture<Void> methodResult() {
         CompletableFuture<Void> result = new CompletableFuture<>();
         synchronized (methodResults) {
-            methodResults.add(result);
+            if (methodResultsCompleted) {
+                result.complete(null);
+            } else {
+                methodResults.add(result);
+            }
         }
         return result;
     }
@@ -132,6 +143,7 @@ abstract class PipeTestBase {
             waitFor(() -> pipes.openPipes() == 0);
         }
         synchronized (methodResults) {
+            methodResultsCompleted = true;
             for (CompletableFuture<Void> result : methodResults) {
                 result.complete(null);
             }
