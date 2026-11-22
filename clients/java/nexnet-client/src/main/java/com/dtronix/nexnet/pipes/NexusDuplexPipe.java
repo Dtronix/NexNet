@@ -122,13 +122,15 @@ public interface NexusDuplexPipe extends AutoCloseable {
     }
 
     /**
-     * Forwards {@code a} to {@code b} and {@code b} to {@code a} at once. Each direction half-closes its destination
-     * when its source completes. If a direction fails, both outputs are completed, the other direction stops and the
-     * future fails.
+     * Forwards {@code a} to {@code b} and {@code b} to {@code a} at once (C# {@code BridgeAsync}). Each direction
+     * half-closes its destination when its source's input completes, and the future completes once both have. If a
+     * pipe completes while the direction writing to it is still open (a reset, its session ending, or its peer
+     * completing it), both pipes are completed in both directions, the other direction stops and the future
+     * completes. If a direction fails, both pipes are completed, the other direction stops and the future fails.
      *
      * @param a the first pipe
      * @param b the second pipe
-     * @return a future that completes when both directions have ended
+     * @return a future that completes when both directions have ended or a pipe ended
      */
     static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b) {
         return bridge(a, b, CancellationToken.NONE);
@@ -142,7 +144,7 @@ public interface NexusDuplexPipe extends AutoCloseable {
      * @param a the first pipe
      * @param b the second pipe
      * @param cancellationToken stops both directions
-     * @return a future that completes when both directions have ended, and fails with a
+     * @return a future that completes when both directions have ended or a pipe ended, and fails with a
      *     {@link java.util.concurrent.CancellationException} when the bridge was canceled
      */
     static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b, CancellationToken cancellationToken) {

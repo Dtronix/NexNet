@@ -235,6 +235,13 @@ final class PipeForwarding {
         return pipe instanceof PipeImpl && ((PipeImpl) pipe).isOutputClosed();
     }
 
+    /**
+     * Forwards {@code a} to {@code b} and {@code b} to {@code a} (C# {@code BridgeAsync}). It returns once both
+     * directions half-closed. A pipe that completes while the direction writing to it is still open (a reset, its
+     * session ending, or its peer completing it) ends the bridge: both pipes are completed and the future completes. A
+     * direction that fails completes both pipes too, and the future fails with its error. The caller's cancellation
+     * stops both directions and completes neither pipe.
+     */
     static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b, CancellationToken cancellationToken) {
         if (a == null || b == null) {
             throw new NullPointerException(a == null ? "a" : "b");
@@ -249,38 +256,60 @@ final class PipeForwarding {
         }
         CancellationTokenSource stop = new CancellationTokenSource();
         Registration link = cancellationToken.register(stop::cancel);
-        CompletableFuture<Void> aToB = forward(a, b, stop.token(), new AtomicBoolean());
-        CompletableFuture<Void> bToA = forward(b, a, stop.token(), new AtomicBoolean());
+        AtomicBoolean aToBHalfClosed = new AtomicBoolean();
+        AtomicBoolean bToAHalfClosed = new AtomicBoolean();
+        CompletableFuture<Void> aToB = forward(a, b, stop.token(), aToBHalfClosed);
+        CompletableFuture<Void> bToA = forward(b, a, stop.token(), bToAHalfClosed);
         AtomicBoolean ended = new AtomicBoolean();
         CompletableFuture<Void> both = CompletableFuture.allOf(aToB, bToA);
-        BiConsumer<Void, Throwable> onDirection = (v, error) -> {
-            if (error == null) {
-                if (aToB.isDone() && bToA.isDone() && !aToB.isCompletedExceptionally()
-                    && !bToA.isCompletedExceptionally() && ended.compareAndSet(false, true)) {
-                    link.close();
-                    done.complete(null);
-                }
-                return;
-            }
+        Executor executor = NexusExecutors.shared();
+
+        // Ends the bridge abnormally: a direction failed (failure set) or a pipe ended while still bridged (null).
+        Consumer<@Nullable Throwable> end = failure -> {
             if (!ended.compareAndSet(false, true)) {
                 return;
             }
             link.close();
-            if (cancellationToken.isCancellationRequested()) {
+            if (failure != null && cancellationToken.isCancellationRequested()) {
                 // The caller's cancellation: stop the other direction, complete neither pipe.
                 stop.cancel();
                 both.handle((x, y) -> done.completeExceptionally(canceled()));
                 return;
             }
-            // A direction failed: end both pipes' output so neither side waits for more, and stop the other one.
-            a.completeOutput();
-            b.completeOutput();
+            // Complete both pipes so that neither side waits for more, and stop both directions.
+            completeBoth(a);
+            completeBoth(b);
             stop.cancel();
-            Throwable cause = PipeManager.unwrap(error);
-            both.handle((x, y) -> done.completeExceptionally(cause));
+            if (failure == null) {
+                both.handle((x, y) -> done.complete(null));
+            } else {
+                Throwable cause = PipeManager.unwrap(failure);
+                both.handle((x, y) -> done.completeExceptionally(cause));
+            }
         };
-        aToB.whenComplete(onDirection);
-        bToA.whenComplete(onDirection);
+        BiConsumer<Void, Throwable> onDirection = (v, error) -> {
+            if (error != null) {
+                end.accept(error);
+            } else if (aToB.isDone() && bToA.isDone() && !aToB.isCompletedExceptionally()
+                && !bToA.isCompletedExceptionally() && ended.compareAndSet(false, true)) {
+                link.close();
+                done.complete(null);
+            }
+        };
+        aToB.whenCompleteAsync(onDirection, executor);
+        bToA.whenCompleteAsync(onDirection, executor);
+        // A pipe is complete. After a normal half-close the reverse direction may still be draining what it buffered,
+        // so this is an abnormal end only while the direction writing to that pipe has not closed it.
+        a.completed().whenCompleteAsync((v, e) -> {
+            if (!bToAHalfClosed.get()) {
+                end.accept(null);
+            }
+        }, executor);
+        b.completed().whenCompleteAsync((v, e) -> {
+            if (!aToBHalfClosed.get()) {
+                end.accept(null);
+            }
+        }, executor);
         // A future canceled by its caller also stops both directions.
         done.whenComplete((v, e) -> {
             if (ended.compareAndSet(false, true)) {
@@ -289,5 +318,18 @@ final class PipeForwarding {
             }
         });
         return done;
+    }
+
+    /**
+     * Completes both directions of a pipe (C# {@code CompleteAsync}); a pipe that cannot complete its input alone
+     * completes its output only.
+     */
+    private static void completeBoth(NexusDuplexPipe pipe) {
+        pipe.completeOutput();
+        try {
+            pipe.completeInput();
+        } catch (UnsupportedOperationException e) {
+            // Not a pipe of this runtime: its output is complete, which is all it supports.
+        }
     }
 }

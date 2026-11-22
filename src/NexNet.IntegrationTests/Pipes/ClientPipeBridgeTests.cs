@@ -133,6 +133,59 @@ internal class ClientPipeBridgeTests(LanguageHostPool hosts) : MatrixTestBase(ho
         await EndAsync(client);
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Bridge_PipeCompletedWhileBridging_CompletesTheOtherPipe(ClientTarget target)
+    {
+        await using var server = await StartRelayServerAsync();
+        using var hold = HoldServerPipes();
+        await using var client = await ConnectAsync(target, server);
+        var (a, serverA) = await OpenAsync(client);
+        var (b, serverB) = await OpenAsync(client);
+
+        var bridge = a.BridgeAsync(b).AsTask();
+        await serverA.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverB.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+        await serverB.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverA.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+
+        // The server completes A in both directions while the bridge runs: an abnormal end, so the bridge completes B
+        // in both directions too and returns.
+        await serverA.CompleteAsync().AsTask().Timeout(T(1));
+        await serverB.CompleteTask.Timeout(T(5));
+        await bridge.Timeout(T(5));
+
+        await a.DisposeAsync();
+        await b.DisposeAsync();
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task Bridge_SessionOfOnePipeEndsWhileBridging_CompletesTheOtherPipe(ClientTarget target)
+    {
+        await using var server = await StartRelayServerAsync();
+        using var hold = HoldServerPipes();
+        await using var first = await ConnectAsync(target, server);
+        await using var second = await ConnectAsync(target, server);
+        var (a, serverA, sessionA) = await OpenWithNexusAsync(first);
+        var (b, serverB, _) = await OpenWithNexusAsync(second);
+
+        var bridge = a.BridgeAsync(b).AsTask();
+        await serverA.Output.WriteAsync(Data).AsTask().Timeout(T(1));
+        await Assert.That(await ReadExactAsync(serverB.Input, Data.Length)).IsEquivalentTo(Data, CollectionOrdering.Matching);
+
+        // The server ends A's session: the bridge completes B, on the other session, and returns.
+        await sessionA.Context.DisconnectAsync().Timeout(T(1));
+        await serverB.CompleteTask.Timeout(T(5));
+        await bridge.Timeout(T(5));
+
+        await a.DisposeAsync();
+        await b.DisposeAsync();
+        await EndAsync(first);
+        await EndAsync(second);
+    }
+
     /// <summary>
     /// A server whose <c>ServerTaskValueWithDuplexPipe</c> hands each pipe and its session's nexus to
     /// <see cref="OpenWithNexusAsync"/> and holds the pipe until it completes and the test released it.

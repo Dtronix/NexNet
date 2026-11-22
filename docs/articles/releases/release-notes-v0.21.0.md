@@ -207,6 +207,11 @@ runtime dependencies. Async results are `CompletableFuture`s; cancellation uses 
   `NexusDuplexPipe.bridge(a, b, CancellationToken)`, like the C# `ForwardToAsync`/`BridgeAsync` token and the JS
   `{ signal }`. A canceled forward or bridge stops and completes neither pipe; the bytes it did not send stay in the
   source ([#382](https://github.com/Dtronix/NexNet/pull/382)).
+- **A Java pipe bridge ends when one of its pipes ends.** `NexusDuplexPipe.bridge(a, b)` now watches both pipes, like
+  the C# `BridgeAsync` and the JS `bridge`: when a pipe completes while the direction writing to it is still open (a
+  reset, its session ending, or its peer completing it), the bridge completes the other pipe in both directions and
+  returns. Before, it only half-closed the other pipe and could wait forever; a failed direction now completes both
+  pipes, not only their outputs ([#387](https://github.com/Dtronix/NexNet/pull/387)).
 - **JSpecify nullness** for Kotlin and NullAway users with `Nullness=jspecify` ([#242](https://github.com/Dtronix/NexNet/pull/242)).
 - C# parity details fixed while porting the tests: `connect()` on a connected client does nothing ([#277](https://github.com/Dtronix/NexNet/pull/277));
   `NexusRemoteError.code` is nullable ([#289](https://github.com/Dtronix/NexNet/pull/289)); collections created through the proxy use the client's logger

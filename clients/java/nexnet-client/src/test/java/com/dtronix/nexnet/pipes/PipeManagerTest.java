@@ -464,6 +464,45 @@ class PipeManagerTest extends PipeTestBase {
     }
 
     @Test
+    void aPipeCompletedWhileBridgingCompletesTheOtherPipeAndEndsTheBridge() throws Exception {
+        connect(SMALL);
+        PipeImpl a = openPipe(1000);
+        PipeImpl b = registeredPipe(methodResult());
+        peer.sendWindow(b.id(), 1000);
+        CompletableFuture<Void> bridge = NexusDuplexPipe.bridge(a, b);
+        peer.sendData(a.id(), bytes(100, 1));
+        assertArrayEquals(bytes(100, 1), peer.awaitData(b.id(), 100));
+
+        // The server completes A in both directions: B's output and input are completed too, and the bridge returns.
+        peer.sendState(a.id(), PipeWire.COMPLETE, 0);
+        await(bridge);
+        // B's output, then its input: the server's ends of B see both directions complete.
+        peer.expectState(b.id(), PipeWire.READY | PipeWire.CLIENT_WRITER_COMPLETE, 0);
+        peer.expectState(b.id(), PipeWire.COMPLETE, 0);
+        await(b.completed());
+    }
+
+    @Test
+    void theSessionOfOnePipeEndingWhileBridgingCompletesTheOtherPipeAndEndsTheBridge() throws Exception {
+        connect(SMALL);
+        PipeImpl a = openPipe(1000);
+        PipeImpl b = registeredPipe(methodResult());
+        peer.sendWindow(b.id(), 1000);
+        CompletableFuture<Void> bridge = NexusDuplexPipe.bridge(a, b);
+        peer.sendData(a.id(), bytes(100, 1));
+        assertArrayEquals(bytes(100, 1), peer.awaitData(b.id(), 100));
+
+        // A's session ends (as if A were on another session): its input ends normally, which only half-closes B, and
+        // nothing more arrives on B. The bridge still completes B and returns.
+        a.onSessionClosed(DisconnectReason.GRACEFUL);
+        await(bridge);
+        // B's output, then its input: the server's ends of B see both directions complete.
+        peer.expectState(b.id(), PipeWire.READY | PipeWire.CLIENT_WRITER_COMPLETE, 0);
+        peer.expectState(b.id(), PipeWire.COMPLETE, 0);
+        await(b.completed());
+    }
+
+    @Test
     void aCanceledForwardWaitingForCreditStopsAndLeavesTheRestInTheSource() throws Exception {
         connect(SMALL);
         PipeImpl destination = openPipe(100);
