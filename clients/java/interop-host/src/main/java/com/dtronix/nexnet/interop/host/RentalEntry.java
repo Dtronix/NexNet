@@ -50,14 +50,15 @@ final class RentalEntry extends Driven {
         return rental.ensureConnected().thenApply(ok -> Protocol.map("ok", ok));
     }
 
-    /** Returns the client to the pool once. */
+    /**
+     * Returns the client to the pool once. The rental stops counting as rented before the client goes back: the
+     * return frees the pool slot, and a waiting rent can then complete (on this thread or another) and count itself
+     * before this one would have been uncounted, so pool.state could report more rentals than maxConnections.
+     */
     void release() {
         if (returned.compareAndSet(false, true)) {
-            try {
-                rental.close();
-            } finally {
-                pool.onReturned();
-            }
+            pool.onReturned();
+            rental.close();
         }
     }
 
