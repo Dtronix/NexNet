@@ -1758,6 +1758,9 @@ export class Host {
         default:
           throw badRequest('Unknown list op ' + JSON.stringify(args.op) + '.');
       }
+      if (args.count !== undefined && args.count !== null && typeof args.count !== 'boolean') throw badRequest('count must be a boolean.');
+      // count: read in the op's own reaction, so every change the server sent before its answer is applied (§6.10).
+      if (args.count === true) return result.then((ok) => ({ ok: ok === true, count: list.count }));
       return { ok: (await result) === true };
     });
     op('list.snapshot', (args, ctx) => {

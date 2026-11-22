@@ -115,56 +115,59 @@ internal class NexusCollectionSnapshotOrderTests(LanguageHostPool hosts) : Nexus
         }
     }
 
-    /// <remarks>
-    /// C#-only: it reads the lists' counts synchronously the moment a remove completes, which a language host cannot do
-    /// (a snapshot after the result is a later round trip, by when the winning change has arrived whatever the order).
-    /// </remarks>
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task ConcurrentRemove_LoserSeesWinningChangeBeforeFalse(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ConcurrentRemove_LoserSeesWinningChangeBeforeFalse(ClientTarget target)
     {
         const int rounds = 30;
 
-        var (server, client1, _) = await ConnectServerAndClient(type);
-        var serverList = server.NexusCreatedQueue.First().IntListBi;
-        var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var (spec, nexuses) = await StartMatrixServerAsync(target);
+        await using var client1 = await ConnectMatrixClientAsync(target, spec);
+        await using var client2 = await ConnectMatrixClientAsync(target, spec);
+        var serverList = nexuses.First().IntListBi;
 
         for (var i = 0; i < rounds; i++)
-            await serverList.AddAsync(i).Timeout(1);
+            await serverList.AddAsync(i).Timeout(T(1));
 
-        var list1 = client1.Proxy.IntListBi;
-        var list2 = client2.Proxy.IntListBi;
-        await Assert.That(await list1.EnableAsync().Timeout(1)).IsTrue();
-        await Assert.That(await list2.EnableAsync().Timeout(1)).IsTrue();
+        var list1 = IntListBi(client1);
+        var list2 = IntListBi(client2);
+        await Assert.That(await list1.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await Assert.That(await list2.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
 
         var noops = 0;
         for (var round = 0; round < rounds / 2; round++)
         {
             // Both lists hold every change made so far: each request completes after its own change, or after the
             // change that made it obsolete.
-            var deadline = DateTime.UtcNow.AddSeconds(1);
-            while (DateTime.UtcNow < deadline && (list1.Count != serverList.Count || list2.Count != serverList.Count))
-                await Task.Delay(1);
+            var expected = serverList.ToArray();
+            await WaitForItemsAsync(list1, expected, $"round {round}: list 1 before the removes");
+            await WaitForItemsAsync(list2, expected, $"round {round}: list 2 before the removes");
 
-            var results = await Task.WhenAll(list1.RemoveAtAsync(0), list2.RemoveAtAsync(0)).Timeout(1);
-
-            // Read before anything else runs. A request that completed with false (a Noop) must already see the
-            // winning change. When both win, the other client's change may still be on its way, so nothing is checked.
-            int count1 = list1.Count, count2 = list2.Count, serverCount = serverList.Count;
-            if (results.Contains(false))
+            // Each client reads its count the moment its remove completes, before it applies anything else. A request
+            // that completed with false (a Noop) must already see the winning change. When both win, the other client's
+            // change may still be on its way, so nothing is checked.
+            var results = await Task.WhenAll(
+                list1.RemoveAtWithCountAsync(0).AsTask(),
+                list2.RemoveAtWithCountAsync(0).AsTask()).Timeout(T(1));
+            var serverCount = serverList.Count;
+            if (!results[0].Ok || !results[1].Ok)
                 noops++;
 
             using (Assert.Multiple())
             {
-                await Assert.That(results.Contains(true)).IsTrue().Because($"round {round}: one request wins");
-                if (!results[0])
-                    await Assert.That(count1).IsEqualTo(serverCount).Because($"round {round}: list 1 got its Noop before the winning change");
-                if (!results[1])
-                    await Assert.That(count2).IsEqualTo(serverCount).Because($"round {round}: list 2 got its Noop before the winning change");
+                await Assert.That(results[0].Ok || results[1].Ok).IsTrue().Because($"round {round}: one request wins");
+                if (!results[0].Ok)
+                    await Assert.That(results[0].Count).IsEqualTo(serverCount).Because($"round {round}: list 1 got its Noop before the winning change");
+                if (!results[1].Ok)
+                    await Assert.That(results[1].Count).IsEqualTo(serverCount).Because($"round {round}: list 2 got its Noop before the winning change");
             }
         }
 
         await Assert.That(noops).IsGreaterThan(0).Because("at least one round must produce a Noop");
+
+        await list1.DisableAsync().AsTask().Timeout(T(1));
+        await list2.DisableAsync().AsTask().Timeout(T(1));
+        await MatrixTestBase.EndAsync(client1);
+        await MatrixTestBase.EndAsync(client2);
     }
 }

@@ -213,15 +213,7 @@ internal class ClientParityTests
         int Token(string name) => (typeof(MatrixTestBase).GetMethod(name, flags)
                                    ?? throw new InvalidOperationException($"MatrixTestBase.{name} not found: update the parity audit.")).MetadataToken;
 
-        // AssertNotOutstandingInProc is optional: AssertNotOutstanding replaced it and checks every language.
-        var csharpOnly = new[] { "InProc", "AssertNotOutstandingInProc" }
-            .Select(name => typeof(MatrixTestBase).GetMethod(name, flags))
-            .OfType<MethodInfo>()
-            .Select(m => m.MetadataToken)
-            .ToArray();
-        if (csharpOnly.Length == 0)
-            throw new InvalidOperationException("MatrixTestBase.InProc not found: update the parity audit.");
-        return new Helpers(Token("RequireInProc"), csharpOnly);
+        return new Helpers(Token("RequireInProc"), [Token("InProc")]);
     }
 
     /// <summary>What the IL of the test, its state machine, lambdas and local functions calls.</summary>

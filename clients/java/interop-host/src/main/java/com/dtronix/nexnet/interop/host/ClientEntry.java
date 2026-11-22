@@ -522,6 +522,10 @@ final class ClientEntry extends Driven implements ScriptHost {
             default:
                 throw HostError.badRequest("Unknown list op '" + args.str("op") + "'.");
         }
+        if (args.bool("count")) {
+            // Read the moment the op completes: every change the server sent before its answer is applied by then (§6.10).
+            return result.thenApply(ok -> Protocol.map("ok", ok, "count", list.size()));
+        }
         return result.thenApply(ok -> Protocol.map("ok", ok));
     }
 

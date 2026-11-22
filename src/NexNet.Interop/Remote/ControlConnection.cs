@@ -150,6 +150,12 @@ public sealed class ControlConnection : IAsyncDisposable
     /// <summary>True when <paramref name="test"/> has an open scope on this connection.</summary>
     public bool HasScope(string test) => _scopes.ContainsKey(test);
 
+    /// <summary>
+    /// Whether a request of a test scope is waiting for its response: the host is working for a test, and may answer a
+    /// ping late while it does (<see cref="Hosts.LanguageHostOptions.BusyPingTimeout"/>).
+    /// </summary>
+    public bool HasTestRequestsInFlight => _pending.Values.Any(p => p.Test != null);
+
     /// <summary>Routes events of (<paramref name="test"/>, <paramref name="handle"/>) to <paramref name="handler"/> (called on the read loop; must not block).</summary>
     public IDisposable Subscribe(string? test, string? handle, Action<ControlEvent> handler)
     {

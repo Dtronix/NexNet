@@ -41,6 +41,16 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
 
     public ValueTask<bool> MoveAsync(int fromIndex, int toIndex) => Op("move", from: fromIndex, to: toIndex);
 
+    /// <summary>
+    /// Removes the item at <paramref name="index"/> with <c>count</c> set (<see cref="RemoteListExtensions.RemoveAtWithCountAsync{T}"/>).
+    /// </summary>
+    public async ValueTask<RemoteListOpResult> RemoveAtWithCountAsync(int index)
+    {
+        var result = await OpCall("removeAt", index: index, count: true).ConfigureAwait(false);
+        var count = result["count"] ?? throw new ControlProtocolException("list.op with count returned no count.");
+        return new RemoteListOpResult(result["ok"]?.GetValue<bool>() == true, count.GetValue<int>());
+    }
+
     public ValueTask<bool> ClearAsync() => Op("clear");
 
     public async ValueTask<IReadOnlyList<T>> SnapshotAsync()
@@ -117,6 +127,12 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
 
     private async ValueTask<bool> Op(string op, T? item = default, int? index = null, int? from = null, int? to = null)
     {
+        var result = await OpCall(op, item, index, from, to).ConfigureAwait(false);
+        return result["ok"]?.GetValue<bool>() == true;
+    }
+
+    private async ValueTask<JsonObject> OpCall(string op, T? item = default, int? index = null, int? from = null, int? to = null, bool count = false)
+    {
         var args = new JsonObject { ["collection"] = ControlJson.ToJson(Collection), ["op"] = op };
         if (op is "add" or "insert" or "remove" or "replace")
             args["item"] = codec.Encode(item!);
@@ -126,7 +142,8 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
             args["from"] = from.Value;
         if (to != null)
             args["to"] = to.Value;
-        var result = await driver.CallAsync("list.op", args, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
-        return result["ok"]?.GetValue<bool>() == true;
+        if (count)
+            args["count"] = true;
+        return await driver.CallAsync("list.op", args, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
     }
 }
