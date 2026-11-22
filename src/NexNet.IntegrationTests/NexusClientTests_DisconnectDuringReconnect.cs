@@ -253,7 +253,7 @@ internal partial class NexusClientTests
     }
 
     /// <summary>
-    /// Asserts that the client stays Disconnected through &lt;see cref="NoRetryWindowMs"/&gt;: no further reconnection
+    /// Asserts that the client stays Disconnected through <see cref="NoRetryWindowMs"/>: no further reconnection
     /// attempt, no session, and Disconnected as the last state change.
     /// </summary>
     private static async Task AssertStaysDisconnected(

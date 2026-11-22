@@ -168,7 +168,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     /// <param name="isReconnecting">True for an attempt of the reconnection loop.</param>
     /// <param name="disconnectRequests">
-    /// For a reconnection attempt, the &lt;see cref="_disconnectRequests"/&gt; count its loop runs under: the attempt opens
+    /// For a reconnection attempt, the <see cref="_disconnectRequests"/> count its loop runs under: the attempt opens
     /// no session once a DisconnectAsync changed it. Unused otherwise.
     /// </param>
     /// <param name="cancellationToken">Cancels the attempt.</param>
@@ -344,7 +344,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <param name="task">The disconnected task of the session that ended.</param>
-    /// <param name="disconnectRequests">The &lt;see cref="_disconnectRequests"/&gt; count the session was created under.</param>
+    /// <param name="disconnectRequests">The <see cref="_disconnectRequests"/> count the session was created under.</param>
     private async Task ConnectionClosed(Task<DisconnectReason> task, int disconnectRequests)
     {
         if (_isReconnecting)
@@ -465,7 +465,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     /// <remarks>
     /// Also stops a running reconnection loop, whether it is waiting between attempts or an attempt is connecting:
-    /// the client then ends &lt;see cref="ConnectionState.Disconnected"/&gt; and does not reconnect.
+    /// the client then ends <see cref="ConnectionState.Disconnected"/> and does not reconnect.
     /// </remarks>
     public async Task DisconnectAsync()
     {
