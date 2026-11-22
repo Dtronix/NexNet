@@ -49,8 +49,17 @@ describe('TransportBase', () => {
     expect(transportError('x', { kind: 'AuthenticationError' }).reason).toBe(DisconnectReason.Authentication);
     expect(transportError('x', { kind: 'ConnectionRefused' }).reason).toBe(DisconnectReason.SocketError);
     expect(upgradeRefused('HttpSocket', 404, 'u')).toMatchObject({ transportError: 'InternalError', status: 404 });
+    expect(upgradeRefused('HttpSocket', 500, 'u')).toMatchObject({ transportError: 'InternalError', status: 500 });
+    expect(upgradeRefused('HttpSocket', 401, 'u')).toMatchObject({ transportError: 'AuthenticationError', status: 401 });
     expect(upgradeRefused('WebSocket', 404, 'u')).toMatchObject({ transportError: 'ProtocolError', status: 404 });
     expect(upgradeRefused('WebSocket', 503, 'u')).toMatchObject({ transportError: 'InternalError' });
     expect(upgradeRefused('WebSocket', 403, 'u')).toMatchObject({ transportError: 'AuthenticationError', reason: DisconnectReason.Authentication });
+  });
+
+  it('maps a 2xx answer to an HttpSocket upgrade to ProtocolError (protocol spec §13.6)', () => {
+    for (const status of [200, 204, 299]) {
+      const error = upgradeRefused('HttpSocket', status, 'u');
+      expect(error).toMatchObject({ transportError: 'ProtocolError', status, reason: DisconnectReason.SocketError });
+    }
   });
 });
