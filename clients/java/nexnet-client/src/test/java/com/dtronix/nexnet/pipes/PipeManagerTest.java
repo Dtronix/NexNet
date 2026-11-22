@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.dtronix.nexnet.CancellationTokenSource;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.invocation.InvocationOptions;
@@ -20,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -432,9 +434,9 @@ class PipeManagerTest extends PipeTestBase {
         peer.sendData(source.id(), data, 0, 200);
         peer.sendData(source.id(), data, 200, 200);
         assertEquals(100, peer.awaitData(destination.id(), 100).length);
-        // The destination has no credit left: the second buffer is not read, so the source grants nothing.
+        // The destination has no credit left: only what was sent is consumed, so the source grants nothing.
         Thread.sleep(100);
-        assertEquals(200, source.bufferedBytes());
+        assertEquals(300, source.bufferedBytes());
         peer.expectNone(MessageTypes.PIPE_WINDOW_UPDATE, source.id(), 50);
         peer.sendWindow(destination.id(), 300);
         byte[] rest = peer.awaitData(destination.id(), 300);
@@ -459,6 +461,110 @@ class PipeManagerTest extends PipeTestBase {
         peer.sendState(a.id(), PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
         peer.sendState(b.id(), PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
         await(bridge);
+    }
+
+    @Test
+    void aCanceledForwardWaitingForCreditStopsAndLeavesTheRestInTheSource() throws Exception {
+        connect(SMALL);
+        PipeImpl destination = openPipe(100);
+        PipeImpl source = registeredPipe(methodResult());
+        CancellationTokenSource cts = new CancellationTokenSource();
+        CompletableFuture<Void> forward = source.forwardTo(destination, cts.token());
+        byte[] data = bytes(300, 5);
+        peer.sendData(source.id(), data);
+        assertArrayEquals(java.util.Arrays.copyOf(data, 100), peer.awaitData(destination.id(), 100));
+        waitFor(() -> source.bufferedBytes() == 200);
+
+        cts.cancel();
+        assertCanceled(forward);
+        // Credit for the destination now: the forward is stopped, so nothing more is sent.
+        peer.sendWindow(destination.id(), 1000);
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, destination.id(), 100);
+        assertEquals(200, source.bufferedBytes(), "the bytes not sent stay in the source");
+        assertArrayEquals(java.util.Arrays.copyOfRange(data, 100, 300), toArray(await(source.read())));
+        // Neither pipe is completed.
+        assertFalse(source.isOutputClosed());
+        assertFalse(source.isInputComplete());
+        assertFalse(destination.isOutputClosed());
+        await(destination.write(ByteBuffer.wrap(bytes(10, 1))));
+        assertEquals(10, peer.awaitData(destination.id(), 10).length);
+    }
+
+    @Test
+    void aCanceledForwardWaitingForDataStopsAndTheSourceReadsWhatArrivesLater() throws Exception {
+        connect(SMALL);
+        PipeImpl destination = openPipe(1000);
+        PipeImpl source = registeredPipe(methodResult());
+        CancellationTokenSource cts = new CancellationTokenSource();
+        CompletableFuture<Void> forward = source.forwardTo(destination, cts.token());
+        peer.sendData(source.id(), bytes(50, 2));
+        assertEquals(50, peer.awaitData(destination.id(), 50).length);
+
+        cts.cancel();
+        assertCanceled(forward);
+        peer.sendData(source.id(), bytes(30, 3));
+        assertArrayEquals(bytes(30, 3), toArray(await(source.read())));
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, destination.id(), 50);
+        assertFalse(destination.isOutputClosed());
+        assertFalse(source.isOutputClosed());
+    }
+
+    @Test
+    void aForwardCanceledBeforeItStartsFailsAndForwardsNothing() throws Exception {
+        connect(SMALL);
+        PipeImpl destination = openPipe(1000);
+        PipeImpl source = registeredPipe(methodResult());
+        peer.sendData(source.id(), bytes(20, 4));
+        waitFor(() -> source.bufferedBytes() == 20);
+        CancellationTokenSource cts = new CancellationTokenSource();
+        cts.cancel();
+        assertCanceled(source.forwardTo(destination, cts.token()));
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, destination.id(), 50);
+        assertEquals(20, source.bufferedBytes());
+    }
+
+    @Test
+    void cancelingTheForwardsFutureStopsTheForward() throws Exception {
+        connect(SMALL);
+        PipeImpl destination = openPipe(1000);
+        PipeImpl source = registeredPipe(methodResult());
+        CompletableFuture<Void> forward = source.forwardTo(destination);
+        peer.sendData(source.id(), bytes(10, 6));
+        assertEquals(10, peer.awaitData(destination.id(), 10).length);
+        forward.cancel(false);
+        peer.sendData(source.id(), bytes(15, 7));
+        assertArrayEquals(bytes(15, 7), toArray(await(source.read())));
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, destination.id(), 50);
+    }
+
+    @Test
+    void aCanceledBridgeStopsBothDirectionsAndCompletesNeitherPipe() throws Exception {
+        connect(SMALL);
+        PipeImpl a = openPipe(1000);
+        PipeImpl b = registeredPipe(methodResult());
+        peer.sendWindow(b.id(), 1000);
+        CancellationTokenSource cts = new CancellationTokenSource();
+        CompletableFuture<Void> bridge = NexusDuplexPipe.bridge(a, b, cts.token());
+        peer.sendData(a.id(), bytes(100, 1));
+        assertArrayEquals(bytes(100, 1), peer.awaitData(b.id(), 100));
+
+        cts.cancel();
+        assertCanceled(bridge);
+        peer.sendData(a.id(), bytes(40, 8));
+        peer.sendData(b.id(), bytes(60, 9));
+        assertArrayEquals(bytes(40, 8), toArray(await(a.read())));
+        assertArrayEquals(bytes(60, 9), toArray(await(b.read())));
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, 50);
+        assertFalse(a.isOutputClosed());
+        assertFalse(b.isOutputClosed());
+        assertFalse(a.completed().isDone());
+        assertFalse(b.completed().isDone());
+    }
+
+    private static void assertCanceled(CompletableFuture<Void> future) throws Exception {
+        // A future completed with a CancellationException throws it from get() as it is.
+        assertThrows(CancellationException.class, () -> future.get(5, TimeUnit.SECONDS));
+        assertTrue(future.isCancelled());
     }
 
     @Test

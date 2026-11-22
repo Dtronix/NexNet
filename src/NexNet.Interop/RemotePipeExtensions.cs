@@ -19,13 +19,29 @@ public static class RemotePipeExtensions
     /// </returns>
     /// <exception cref="NotSupportedException">The pipes are not pipes of one harness driver.</exception>
     public static ValueTask ForwardToAsync(this IRemotePipe source, IRemotePipe destination)
+        => ForwardToAsync(source, destination, RemoteCancel.None);
+
+    /// <summary>
+    /// <see cref="ForwardToAsync(IRemotePipe, IRemotePipe)"/> that can be canceled (control protocol §6.7 <c>pipe.forward</c>
+    /// with <c>cancel</c>; C# <c>ForwardToAsync(destination, cancellationToken)</c>, Java
+    /// <c>forwardTo(destination, cancellationToken)</c>, JS <c>forwardTo(destination, { signal })</c>). A canceled forward
+    /// stops and completes neither pipe; the bytes it did not send stay in the source.
+    /// </summary>
+    /// <param name="source">The pipe whose input is forwarded.</param>
+    /// <param name="destination">A pipe of the same client, or of another client of the same driver.</param>
+    /// <param name="cancel">Cancels the forward: a host-side timer, or a local token.</param>
+    /// <returns>A task which completes when the forward ended, as <see cref="ForwardToAsync(IRemotePipe, IRemotePipe)"/>.</returns>
+    /// <exception cref="TaskCanceledException">The forward was canceled.</exception>
+    /// <exception cref="NotSupportedException">The pipes are not pipes of one harness driver.</exception>
+    public static ValueTask ForwardToAsync(this IRemotePipe source, IRemotePipe destination, RemoteCancel cancel)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(cancel);
         return (source, destination) switch
         {
-            (Remote.RemotePipe remote, Remote.RemotePipe to) => remote.ForwardToAsync(to),
-            (InProc.InProcRemotePipe inProc, InProc.InProcRemotePipe to) => inProc.ForwardToAsync(to),
+            (Remote.RemotePipe remote, Remote.RemotePipe to) => remote.ForwardToAsync(to, cancel),
+            (InProc.InProcRemotePipe inProc, InProc.InProcRemotePipe to) => inProc.ForwardToAsync(to, cancel),
             _ => throw new NotSupportedException(
                 $"{source.GetType()} cannot forward to {destination.GetType()}: both must be pipes of one harness driver."),
         };

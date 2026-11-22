@@ -139,9 +139,10 @@ final class PipeEntry {
 
     /**
      * {@code pipe.forward}: the runtime's {@link NexusDuplexPipe#forwardTo}. Bytes an earlier {@code pipe.read} left in
-     * this entry's buffer are written to {@code to} first (in C# they are still in the pipe's reader).
+     * this entry's buffer are written to {@code to} first (in C# they are still in the pipe's reader). A canceled forward
+     * fails with a {@link java.util.concurrent.CancellationException} (kind {@code Canceled}).
      */
-    CompletableFuture<Map<String, Object>> forwardTo(PipeEntry to) {
+    CompletableFuture<Map<String, Object>> forwardTo(PipeEntry to, CancellationToken cancellationToken) {
         if (to == this) {
             throw new HostError(HostError.INVALID_OPERATION, "A pipe cannot be forwarded to itself.");
         }
@@ -153,7 +154,7 @@ final class PipeEntry {
         CompletableFuture<Void> first = rest.length == 0
             ? CompletableFuture.completedFuture(null)
             : to.pipe.write(ByteBuffer.wrap(rest));
-        return first.thenCompose(v -> pipe.forwardTo(to.pipe)).thenApply(v -> Protocol.empty());
+        return first.thenCompose(v -> pipe.forwardTo(to.pipe, cancellationToken)).thenApply(v -> Protocol.empty());
     }
 
     /**

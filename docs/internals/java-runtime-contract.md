@@ -311,6 +311,14 @@ server `INexusList<T>` (protocol specification section 12):
   back. The server's writer then sees the pipe complete. This side can still write; the pipe completes when its output
   is complete too. A second call does nothing. The interface method is a `default` that throws
   `UnsupportedOperationException`, so other implementations keep compiling; the runtime's pipes implement it.
+- **Canceling a pipe forward or bridge (K52).** `forwardTo(destination, CancellationToken)` and
+  `NexusDuplexPipe.bridge(a, b, CancellationToken)` are the cancellable forms of `forwardTo(destination)` and
+  `bridge(a, b)` (which pass `CancellationToken.NONE`), like the C# `ForwardToAsync`/`BridgeAsync` token and the JS
+  `{ signal }`. A canceled forward stops and completes neither pipe; its future fails with a `CancellationException`.
+  Between pipes of the runtime the forward writes only what the destination's credit allows and consumes only what it
+  sent, so the bytes already forwarded stay delivered and the rest stay in the source for its next read. A canceled
+  bridge stops both directions and completes neither pipe. Canceling the returned future stops the forward or bridge
+  too. A bridge direction that fails completes both outputs and stops the other direction.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
   `tcpTls(host, port)`. UDS and QUIC are not available on Java (no portable UDS client API down to Android API 24). Builder options:
   - `tls(TlsOptions)`;

@@ -100,6 +100,8 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     // Output: credit granted by the peer and the writes waiting for it.
     private long sendCredit;
     private final ArrayDeque<WriteOp> writes = new ArrayDeque<>();
+    /** Waits of {@link #waitForSendCredit()}: a forward that writes only what the credit allows. */
+    private final ArrayDeque<CompletableFuture<Void>> creditWaiters = new ArrayDeque<>();
     private boolean outputClosed;
     private @Nullable Throwable outputFailure;
     private boolean outputCompleteRequested;
@@ -591,6 +593,43 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
         future.complete(null);
     }
 
+    /**
+     * Completes when there is send credit, or the output can no longer be written. A forward waits on it so that it
+     * writes only what the credit allows and leaves the rest in its source when it is canceled.
+     */
+    CompletableFuture<Void> waitForSendCredit() {
+        synchronized (lock) {
+            if (sendCredit > 0 || outputUnwritableLocked()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            CompletableFuture<Void> waiter = new CompletableFuture<>();
+            creditWaiters.add(waiter);
+            return waiter;
+        }
+    }
+
+    /** Stops a wait of {@link #waitForSendCredit()} (a canceled forward): forgets it and completes it. */
+    void abandonCreditWait(CompletableFuture<Void> future) {
+        synchronized (lock) {
+            creditWaiters.remove(future);
+        }
+        future.complete(null);
+    }
+
+    /** Copies up to {@code max} bytes from the start of the first buffered chunk without consuming them. */
+    byte[] peekHead(long max) {
+        synchronized (lock) {
+            byte[] head = chunks.peek();
+            if (head == null || max <= 0) {
+                return new byte[0];
+            }
+            int length = (int) Math.min(head.length - headOffset, max);
+            byte[] out = new byte[length];
+            System.arraycopy(head, headOffset, out, 0, length);
+            return out;
+        }
+    }
+
     /** The input has ended and everything buffered was read. */
     boolean isInputDrained() {
         synchronized (lock) {
@@ -863,6 +902,21 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
     private void pumpLocked(List<Runnable> after) {
         pumpWritesLocked(after);
         updateCreditWaitLocked(after);
+        wakeCreditWaitersLocked(after);
+    }
+
+    private boolean outputUnwritableLocked() {
+        return sessionClosed || refused || outputCompleteRequested || outputClosed || sentClose;
+    }
+
+    private void wakeCreditWaitersLocked(List<Runnable> after) {
+        if (creditWaiters.isEmpty() || (sendCredit <= 0 && !outputUnwritableLocked())) {
+            return;
+        }
+        while (!creditWaiters.isEmpty()) {
+            CompletableFuture<Void> waiter = creditWaiters.poll();
+            after.add(() -> waiter.complete(null));
+        }
     }
 
     private void pumpWritesLocked(List<Runnable> after) {
@@ -907,6 +961,7 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
             after.add(() -> op.future.completeExceptionally(error));
         }
         updateCreditWaitLocked(after);
+        wakeCreditWaitersLocked(after);
     }
 
     private void clearInputLocked(List<Runnable> after) {
