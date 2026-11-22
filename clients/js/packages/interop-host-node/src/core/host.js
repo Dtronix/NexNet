@@ -165,14 +165,12 @@ class ListThrottle {
     const { every, delayMs, firstDelayMs, pause } = this.options;
     if (n === 1 && pause) {
       return new Promise((resolve) => {
-        /** @type {ReturnType<typeof globalThis.setTimeout> | undefined} */
-        let timer;
         const release = () => {
           globalThis.clearTimeout(timer);
           if (this.release === release) this.release = null;
           resolve();
         };
-        timer = globalThis.setTimeout(release, THROTTLE_MAX_HOLD_MS);
+        const timer = globalThis.setTimeout(release, THROTTLE_MAX_HOLD_MS);
         this.release = release;
       });
     }
@@ -1949,7 +1947,7 @@ export class Host {
       const entry = this.#client(ctx, args.h, 'list.throttleState');
       const { name } = this.#list(entry, args.collection);
       const throttle = entry.throttles.get(name);
-      return { seen: throttle?.seen ?? 0, holding: throttle?.release != null };
+      return { seen: throttle?.seen ?? 0, holding: throttle !== undefined && throttle.release !== null };
     });
 
     // Client pools (§6.11).
