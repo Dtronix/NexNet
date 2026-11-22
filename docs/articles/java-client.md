@@ -251,7 +251,12 @@ try (NexusDuplexPipe pipe = client.createPipe()) {
 - `inputStream()` and `outputStream()` are blocking adapters: never use them on the Android main thread.
 - Credit is granted to the server only as you read, so a slow reader slows the server's writer, never the session.
 - `close()` releases the pipe. A pipe a client nexus method receives is closed when the method's future completes.
-- `forwardTo(other)` and `NexusDuplexPipe.bridge(a, b)` copy between pipes with backpressure.
+- `forwardTo(other)` and `NexusDuplexPipe.bridge(a, b)` copy between pipes with backpressure. Their cancellable
+  forms are `forwardTo(other, CancellationToken)` and `NexusDuplexPipe.bridge(a, b, CancellationToken)`: a canceled
+  forward or bridge stops and completes neither pipe (canceling the returned future does the same). A bridge returns
+  once both directions half-closed; when one pipe ends while the other direction is still open (a reset, its session
+  ending, its peer completing it) or a direction fails, it completes both pipes in both directions and returns (or
+  fails with the direction's error).
 
 ## 9. Channels
 

@@ -318,7 +318,13 @@ server `INexusList<T>` (protocol specification section 12):
   Between pipes of the runtime the forward writes only what the destination's credit allows and consumes only what it
   sent, so the bytes already forwarded stay delivered and the rest stay in the source for its next read. A canceled
   bridge stops both directions and completes neither pipe. Canceling the returned future stops the forward or bridge
-  too. A bridge direction that fails completes both outputs and stops the other direction.
+  too.
+- **Bridge completion (K53).** `NexusDuplexPipe.bridge` returns once both directions half-closed their destination.
+  It also watches `a.completed()` and `b.completed()`, like the C# `BridgeAsync` and the JS `bridgePipes`: a pipe
+  that completes while the direction writing to it has not half-closed it (a reset, its session ending, its peer
+  completing it) ends the bridge, which completes both pipes in both directions (`completeOutput()` and
+  `completeInput()`), stops both directions and completes normally. A direction that fails does the same and the
+  future fails with its error. Only the caller's cancellation completes neither pipe.
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
   `tcpTls(host, port)`. UDS and QUIC are not available on Java (no portable UDS client API down to Android API 24). Builder options:
   - `tls(TlsOptions)`;
