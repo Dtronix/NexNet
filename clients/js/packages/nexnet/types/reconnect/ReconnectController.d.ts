@@ -184,8 +184,8 @@ export declare class ReconnectController extends EventTarget {
      */
     retryNow(): boolean;
     /**
-     * Stops reconnecting for good: cancels a pending delay, stops listening to the client and detaches the lifecycle
-     * triggers. An attempt already connecting is not interrupted. Idempotent.
+     * Stops reconnecting for good: cancels a pending delay, aborts an attempt in progress (it opens no session and
+     * `nexus.onConnected` is not called), stops listening to the client and detaches the lifecycle triggers. Idempotent.
      * @returns {Promise<void>} Resolves when the loop has ended.
      */
     stop(): Promise<void>;

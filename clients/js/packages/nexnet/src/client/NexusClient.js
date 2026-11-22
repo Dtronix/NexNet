@@ -462,7 +462,9 @@ export class NexusClient extends EventTarget {
         };
       });
     }
-    session.onClose((reason) => this.#onSessionClosed(session, reason));
+    // A session whose connect was aborted after the handshake completed is never handed over: its close is not reported.
+    let handedOver = false;
+    session.onClose((reason) => this.#onSessionClosed(session, reason, handedOver || !signal?.aborted));
 
     const onAbort = () => void session.abort(DisconnectReason.SocketError);
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -473,7 +475,8 @@ export class NexusClient extends EventTarget {
         session.start(token);
       }
       const ok = await session.ready;
-      if (!ok) {
+      // An abort that lands after the greeting but before this continuation has already started closing the session.
+      if (!ok || signal?.aborted) {
         await session.closed;
         if (signal?.aborted) return canceled();
         return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: session.disconnectReason };
@@ -492,6 +495,7 @@ export class NexusClient extends EventTarget {
       });
       this.#reconnect = reconnect;
     }
+    handedOver = true;
     const nexus = this.nexus;
     queueMicrotask(() => this.#callHook('onConnected', () => nexus.onConnected(isReconnecting)));
     return SUCCESS;
@@ -511,15 +515,17 @@ export class NexusClient extends EventTarget {
   /**
    * @param {NexusSession} session
    * @param {number} reason
+   * @param {boolean} report False for a session whose connect was aborted: it ends like one that never completed its handshake.
    */
-  #onSessionClosed(session, reason) {
+  #onSessionClosed(session, reason, report) {
     if (this.#session !== session) return;
     this.#session = null;
     const reconnect = this.#reconnect;
-    const reconnecting = session.isHandshakeComplete && reconnect !== null && !reconnect.stopped
+    const established = session.isHandshakeComplete && report;
+    const reconnecting = established && reconnect !== null && !reconnect.stopped
       && reconnect.wouldReconnect(reason);
     // A session that never completed its handshake is reported through the connect result only.
-    if (session.isHandshakeComplete) {
+    if (established) {
       const nexus = this.nexus;
       queueMicrotask(() => {
         this.dispatchEvent(new CustomEvent('disconnected', { detail: /** @type {DisconnectedDetail} */ ({ reason }) }));

@@ -66,6 +66,8 @@ export class ReconnectController extends EventTarget {
   #attempts = 0;
   /** @type {{ handle: unknown, resolve: (proceed: boolean) => void } | null} */
   #wait = null;
+  /** Aborts the attempt in progress; {@link ReconnectController#stop} aborts it. @type {AbortController | null} */
+  #attempt = null;
   /** @type {Promise<void>} */
   #loop = Promise.resolve();
   /** @type {(() => void) | null} */
@@ -204,8 +206,8 @@ export class ReconnectController extends EventTarget {
   }
 
   /**
-   * Stops reconnecting for good: cancels a pending delay, stops listening to the client and detaches the lifecycle
-   * triggers. An attempt already connecting is not interrupted. Idempotent.
+   * Stops reconnecting for good: cancels a pending delay, aborts an attempt in progress (it opens no session and
+   * `nexus.onConnected` is not called), stops listening to the client and detaches the lifecycle triggers. Idempotent.
    * @returns {Promise<void>} Resolves when the loop has ended.
    */
   stop() {
@@ -216,6 +218,7 @@ export class ReconnectController extends EventTarget {
       this.#detachLifecycle?.();
       this.#detachLifecycle = null;
       this.#endWait(false);
+      this.#attempt?.abort(new DOMException('Reconnection stopped.', 'AbortError'));
     }
     return this.#loop;
   }
@@ -299,12 +302,17 @@ export class ReconnectController extends EventTarget {
       this.#log('trace', `Reconnection attempt ${this.#attempts}`);
       /** @type {import('../client/NexusClient.js').ConnectionResult} */
       let result;
+      const attempt = new AbortController();
+      this.#attempt = attempt;
       try {
-        result = await this.#client._tryConnectCore(true);
+        result = await this.#client._tryConnectCore(true, attempt.signal);
       } catch (error) {
-        this.#log('error', 'Reconnection attempt threw.', error);
+        if (!this.#stopped) this.#log('error', 'Reconnection attempt threw.', error);
         continue;
+      } finally {
+        this.#attempt = null;
       }
+      if (this.#stopped) return;
       if (result.success) {
         this.#log('information', 'Reconnected');
         this.#dispatch('reconnected', { attempts: this.#attempts });
