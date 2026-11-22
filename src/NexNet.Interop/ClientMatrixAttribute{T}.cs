@@ -11,7 +11,7 @@ namespace NexNet.Interop;
 /// <remarks>
 /// <para>
 /// Use it instead of a <c>[MethodDataSource]</c> that builds <see cref="ClientMatrixAttribute"/> rows itself: those can
-/// be built before the <c>LanguageHostPool</c> has registered what each host reports, so their skips would follow the
+/// be built before the <c>LanguageHostPool</c> has registered what each host reports, so their rows would follow the
 /// built-in capabilities. These rows, like those of <see cref="ClientMatrixAttribute"/>, are built when TUnit discovers
 /// the test, after the pool of the class is initialized.
 /// </para>
@@ -33,7 +33,8 @@ namespace NexNet.Interop;
 /// <typeparam name="T">The type of the extra dimension.</typeparam>
 /// <param name="dataSource">The name of the static member of the test class that holds the values.</param>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGeneratorAttribute<ClientTarget, T>, ITestDiscoveryEventReceiver
+public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGeneratorAttribute<ClientTarget, T>, ITestDiscoveryEventReceiver,
+    ITestEndEventReceiver, ITestSkippedEventReceiver
 {
     private const BindingFlags StaticMembers = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
 
@@ -59,11 +60,17 @@ public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGene
     /// <param name="values">The values of the extra dimension.</param>
     /// <param name="transportOverride">A <c>NEXNET_TEST_TRANSPORTS</c> value (<see cref="ClientMatrixAttribute.GetTargets(string?)"/>).</param>
     public IReadOnlyList<(ClientTarget Target, T Value)> GetRows(IEnumerable<T> values, string? transportOverride)
+        => GetRows(values, Matrix.Plan(transportOverride));
+
+    /// <summary>The settings of this attribute as a <see cref="ClientMatrixAttribute"/>, which builds the targets.</summary>
+    public ClientMatrixAttribute Matrix
+        => new() { Transports = Transports, CSharpTransports = CSharpTransports, Requires = Requires, Languages = Languages };
+
+    private static (ClientTarget Target, T Value)[] GetRows(IEnumerable<T> values, MatrixPlan plan)
     {
         ArgumentNullException.ThrowIfNull(values);
         var items = values.ToArray();
-        var matrix = new ClientMatrixAttribute { Transports = Transports, CSharpTransports = CSharpTransports, Requires = Requires, Languages = Languages };
-        return matrix.GetTargets(transportOverride).SelectMany(target => items.Select(value => (target, value))).ToArray();
+        return plan.Rows.SelectMany(target => items.Select(value => (target, value))).ToArray();
     }
 
     /// <summary>The values of <see cref="DataSource"/> on <paramref name="testClass"/>.</summary>
@@ -110,9 +117,16 @@ public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGene
         var testClass = dataGeneratorMetadata.TestInformation?.Class.Type
                         ?? throw new InvalidOperationException($"[ClientMatrix<{typeof(T).Name}>] has no test class to read '{DataSource}' from.");
         var values = GetValues(testClass);
-        foreach (var row in GetRows(values, Environment.GetEnvironmentVariable(ClientTransports.EnvironmentVariable)))
+        var items = values.ToArray();
+        foreach (var row in GetRows(items, Matrix.PlanAndRecord(dataGeneratorMetadata, rowsPerCombination: items.Length)))
             yield return () => row;
     }
+
+    /// <inheritdoc cref="ClientMatrixAttribute.OnTestEnd"/>
+    public ValueTask OnTestEnd(TestContext context) => MatrixCoverage.RecordResult(context, skipped: false);
+
+    /// <inheritdoc cref="ClientMatrixAttribute.OnTestSkipped"/>
+    public ValueTask OnTestSkipped(TestContext context) => MatrixCoverage.RecordResult(context, skipped: true);
 
     /// <summary>Tags the discovered row with its <see cref="ClientMatrixAttribute.LanguageProperty"/> and <see cref="ClientMatrixAttribute.TransportProperty"/>.</summary>
     /// <param name="context">The discovered test.</param>

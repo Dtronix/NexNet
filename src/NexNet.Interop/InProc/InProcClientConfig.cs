@@ -29,6 +29,8 @@ public static class InProcClientConfig
         ArgumentNullException.ThrowIfNull(spec);
         if (spec.Metrics == MetricsRecording.Micrometer)
             throw new NotSupportedException("Micrometer metrics are a Java module; the C# client records Native metrics.");
+        if (spec.WebSocketConnector != null)
+            throw new NotSupportedException($"The C# client has one WebSocket connector, not '{spec.WebSocketConnector}'.");
         var address = spec.Address;
         if (spec.QueryToken is { } queryToken)
         {

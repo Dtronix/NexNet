@@ -74,7 +74,8 @@ public static class Harness
 
     /// <summary>
     /// Creates a client of the nexus pair (<typeparamref name="TClientNexus"/>, <typeparamref name="TServerProxy"/>); it is
-    /// not connected. Skips the test (visibly) when <see cref="ClientTarget.SkipReason"/> is set.
+    /// not connected. Skips the test (visibly) when <see cref="ClientTarget.SkipReason"/> is set. The spec gets the
+    /// target's transport and variant (<see cref="ClientSpec.WebSocketConnector"/>).
     /// </summary>
     /// <exception cref="InvalidOperationException">No driver is registered for the target's language.</exception>
     public static async Task<IClientUnderTest> CreateClientAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec)
@@ -95,9 +96,7 @@ public static class Harness
                 + "Remote languages need their language host (H05).");
         }
 
-        var resolved = spec.Clone();
-        resolved.Transport = target.Transport;
-        return await factory.CreateAsync<TClientNexus, TServerProxy>(target, resolved).ConfigureAwait(false);
+        return await factory.CreateAsync<TClientNexus, TServerProxy>(target, Resolve(target, spec)).ConfigureAwait(false);
     }
 
     /// <summary>Creates a client pool of the interop nexus (<see cref="InteropClientNexus"/>).</summary>
@@ -107,14 +106,19 @@ public static class Harness
     /// <summary>
     /// Creates a client pool of the nexus pair (<typeparamref name="TClientNexus"/>, <typeparamref name="TServerProxy"/>)
     /// whose clients use <paramref name="spec"/>; it holds no client yet. Skips the test (visibly) when
-    /// <see cref="ClientTarget.SkipReason"/> is set or the language lacks <see cref="ClientCapabilities.ClientPool"/>.
+    /// <see cref="ClientTarget.SkipReason"/> is set. A test that creates pools declares
+    /// <see cref="ClientCapabilities.ClientPool"/> (<see cref="ClientMatrixAttribute.Requires"/>), so a language without
+    /// pools gets no row for it.
     /// </summary>
     /// <param name="target">The language and transport.</param>
     /// <param name="spec">The configuration of the pool's clients.</param>
     /// <param name="pool">The pool options; null for the runtime defaults.</param>
     /// <exception cref="ArgumentOutOfRangeException">A member of <paramref name="pool"/> is out of range (on every row).</exception>
     /// <exception cref="InvalidOperationException">No driver is registered for the target's language.</exception>
-    /// <exception cref="NotSupportedException">The language's driver has no pool driver.</exception>
+    /// <exception cref="NotSupportedException">
+    /// The language lacks <see cref="ClientCapabilities.ClientPool"/> (the test does not declare it), or its driver has no
+    /// pool driver.
+    /// </exception>
     public static async Task<IPoolUnderTest> CreatePoolAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec, ClientPoolSpec? pool = null)
         where TClientNexus : ClientNexusBase<TServerProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
         where TServerProxy : ProxyInvocationBase, IInvocationMethodHash, new()
@@ -125,7 +129,10 @@ public static class Harness
         options.Validate();
         target.SkipIfUnsupported();
         if ((ClientLanguages.Get(target.Language).Capabilities & ClientCapabilities.ClientPool) == 0)
-            Skip.Test($"The {target.Language} client lacks: {ClientCapabilities.ClientPool}.");
+        {
+            throw new NotSupportedException(
+                $"The {target.Language} client lacks: {ClientCapabilities.ClientPool}. Declare Requires = ClientCapabilities.ClientPool on the test's matrix.");
+        }
 
         if (spec.Transport is { } transport && transport != target.Transport)
             throw new ArgumentException($"The spec is for {transport}, the target for {target.Transport}.", nameof(spec));
@@ -140,8 +147,16 @@ public static class Harness
         if (factory is not IPoolDriverFactory pools)
             throw new NotSupportedException($"The '{target.Language}' driver creates no client pools.");
 
+        return await pools.CreatePoolAsync<TClientNexus, TServerProxy>(target, Resolve(target, spec), options).ConfigureAwait(false);
+    }
+
+    /// <summary>A copy of <paramref name="spec"/> with the transport and variant of <paramref name="target"/>.</summary>
+    private static ClientSpec Resolve(ClientTarget target, ClientSpec spec)
+    {
         var resolved = spec.Clone();
         resolved.Transport = target.Transport;
-        return await pools.CreatePoolAsync<TClientNexus, TServerProxy>(target, resolved, options).ConfigureAwait(false);
+        if (target.Variant != null)
+            resolved.WebSocketConnector = target.Variant;
+        return resolved;
     }
 }

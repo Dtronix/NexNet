@@ -44,9 +44,10 @@ public class HelloTests
         await Assert.That(hello.Transports).IsEquivalentTo(new[] { ClientTransport.Tcp, ClientTransport.WebSocketTls });
 
         var info = hello.ToLanguageInfo("fake");
-        await Assert.That(info.GetSkipReason(ClientTransport.Tcp, ClientCapabilities.None)).IsNull();
-        await Assert.That(info.GetSkipReason(ClientTransport.Uds, ClientCapabilities.None)).IsNotNull();
-        await Assert.That(info.GetSkipReason(ClientTransport.Tcp, ClientCapabilities.Pinning)).IsNotNull();
+        await Assert.That(info.GetNotApplicableReason(ClientTransport.Tcp, ClientCapabilities.None)).IsNull();
+        await Assert.That(info.GetNotApplicableReason(ClientTransport.Uds, ClientCapabilities.None)).IsNotNull();
+        await Assert.That(info.GetNotApplicableReason(ClientTransport.Tcp, ClientCapabilities.Pinning)).IsNotNull();
+        await Assert.That(info.Variants).IsEmpty();
     }
 
     [Test]

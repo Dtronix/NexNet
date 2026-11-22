@@ -41,11 +41,17 @@ public class HostPoolDiscoveryTests(DiscoveryHostPool hosts)
     {
         await Assert.That(hosts.Pool.Hosts.Keys).Contains(DiscoveryHostPool.Language);
 
-        // Without the hello the rows would use the unknown-language entry: every transport, no capability.
-        if (target.Transport == ClientTransport.Tcp)
-            await Assert.That(target.SkipReason).IsNull();
-        else
-            await Assert.That(target.SkipReason).IsEqualTo($"The {DiscoveryHostPool.Language} client has no WebSocket transport.");
+        // Without the hello the rows would use the unknown-language entry: every transport, no capability, so FakeTime
+        // would rule out both rows. The hello reports TCP and FakeTime: the TCP row only.
+        await Assert.That(target.Transport).IsEqualTo(ClientTransport.Tcp);
+        await Assert.That(target.SkipReason).IsNull();
+        var plan = new ClientMatrixAttribute { Languages = [DiscoveryHostPool.Language], Transports = [ClientTransport.Tcp, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime }
+            .Plan(transportOverride: null);
+        await Assert.That(plan.Rows).IsEquivalentTo(new[] { target });
+        await Assert.That(plan.NotApplicable).IsEquivalentTo(new[]
+        {
+            new NotApplicableRow(DiscoveryHostPool.Language, ClientTransport.WebSocket, $"The {DiscoveryHostPool.Language} client has no WebSocket transport."),
+        });
     }
 
     [Test]

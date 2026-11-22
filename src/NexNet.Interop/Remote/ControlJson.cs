@@ -62,6 +62,7 @@ public static class ControlJson
         }
         if (spec.QueryToken is { } queryToken)
             json["queryToken"] = new JsonObject { ["name"] = queryToken.Name, ["value"] = queryToken.Value };
+        Add(json, "webSocketConnector", spec.WebSocketConnector);
         Add(json, "maxMessageSize", spec.MaxMessageSize);
         Add(json, "invocationCredits", spec.InvocationCredits);
         Add(json, "maxConcurrentConnectionInvocations", spec.MaxConcurrentConnectionInvocations);

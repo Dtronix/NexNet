@@ -24,7 +24,7 @@ namespace NexNet.IntegrationTests;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class AspSessionUserTests(LanguageHostPool hosts) : BaseAspTests
 {
-    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    /// <summary>The language hosts of the session; their hello decides which rows are generated.</summary>
     public LanguageHostPool Hosts { get; } = hosts;
 
     private const string Scheme = "ClaimsToken";

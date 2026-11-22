@@ -39,7 +39,7 @@ final class SpecMapper {
         "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
         "authorizationHeader", "upgradeHeaders", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
         "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "disconnectDelayMs",
-        "metrics"));
+        "metrics", "webSocketConnector"));
 
     private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
         "token", "appendCallNumber", "delayMs", "hang", "throwMessage"));
@@ -267,7 +267,7 @@ final class SpecMapper {
             timers = fake;
         }
         return new Setup(builder.build(), options, timers, fake, invocationError,
-            Connectors.select(transport, tlsOptions));
+            Connectors.select(transport, tlsOptions, spec.optStr("webSocketConnector")));
     }
 
     /** The {@code DisconnectReason} names of {@code reconnectReasons}. */

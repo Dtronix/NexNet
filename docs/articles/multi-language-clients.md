@@ -240,7 +240,7 @@ connector holds at most one pooled client, and a request again (after a reconnec
 |---|---|
 | **Browsers: WebSocket only.** No HttpSocket, TCP or UDS (platform limit) | Expose a WebSocket endpoint (NexNet.Asp `MapNexusWebSocket`); one server can serve every transport (see [Multiple endpoints](#serving-several-languages-from-one-server)) |
 | **Browsers: no upgrade headers.** A browser WebSocket cannot send `Authorization` or other headers | Use the NexNet greeting token (`authenticate`), the canonical mechanism for every client. For ASP.NET authentication, cookies or the opt-in `AccessTokenQueryParameter` (send the token with `webSocket.queryToken`; [ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients)); restrict `AllowedOrigins` when cookies are used |
-| **Browsers: TLS is the platform's.** No client certificate, custom CA, pinning or access to the server certificate | Use a certificate the browser trusts; authenticate with the greeting token. These rows are skipped (never silently passed) in the browser test matrix |
+| **Browsers: TLS is the platform's.** No client certificate, custom CA, pinning or access to the server certificate | Use a certificate the browser trusts; authenticate with the greeting token. The browser gets no rows for these tests in the test matrix (never a silent pass), and they are documented parity exceptions |
 | **Browsers: background tabs** throttle timers | The runtime runs its keepalive in a Web Worker (needs `worker-src blob:` under a Content-Security-Policy) and reconnects on `visibilitychange`/`online`. See the [JavaScript guide](javascript-client.md#browser-notes) |
 | **Java has no Unix domain sockets** (Android and Java 11 portability) | Use TCP on loopback, or TLS |
 | **QUIC is .NET-only** (msquic) | Use TCP + TLS or WSS for Java and JavaScript clients, on another endpoint of the same server |
@@ -257,10 +257,20 @@ connector holds at most one pooled client, and a request again (after a reconnec
 
 ### Parity exceptions
 
-The cross-language test matrix runs every client-facing test on every language and transport, and a skipped row
-always names its reason. The list below is every intentional exception: a test row, or a test assertion, that does
-not run on some language, with the reason. Anything else that does not run on a language is a gap to fix, not an
-exception.
+The cross-language test matrix runs every client-facing test on every language and transport that applies to it. It
+generates only applicable rows: a language that lacks a transport or a capability the test needs (from the table in
+`src/NexNet.Interop/ClientLanguages.cs`, which a language host's hello can only narrow) gets no row for it, and a
+language that gains one gets its rows from the same table. A language's variants add their own rows: the Java client
+also runs every `WebSocket` and `WebSocketTls` row on the OkHttp connector of `nexnet-client-okhttp`
+(`java/WebSocket(okhttp)`), in the same CI job as the built-in connector. The list below is every intentional
+exception: a test row, or a test assertion, that does not run on some language, with the reason. Anything else that
+does not run on a language is a gap to fix, not an exception.
+
+Each CI interop job writes a coverage report to its step summary and uploads it as the `matrix-coverage-<lang>`
+artifact (JSON): per language and variant, the rows run, passed, failed and skipped, and the combinations no row was
+generated for, by reason. In CI a row may be skipped only for a reason that cites the card that will close the gap
+(`K60: ...`); any other skip fails the job. Locally, rows may still skip for the environment (no msquic). Set
+`NEXNET_MATRIX_REPORT=<dir>` to write the same report from a local run.
 
 The matrix tests in this list are also listed, with the same reasons, in
 `src/NexNet.IntegrationTests/Interop/ClientParityExceptions.cs`. The parity audit (`ClientParityTests`) fails when a

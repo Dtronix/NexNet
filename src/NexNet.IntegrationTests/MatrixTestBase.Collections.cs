@@ -11,16 +11,13 @@ namespace NexNet.IntegrationTests;
 /// <remarks>
 /// The client's list is read through <see cref="IRemoteList{T}"/> snapshots and its change events through a watch
 /// (<see cref="WatchAsync"/>), its mode, state and disabled signal through <see cref="IRemoteList{T}.GetStateAsync"/>.
-/// Tests of C#-only list members (<c>CopyTo</c>) drive the C# client directly and skip other languages visibly
-/// (<see cref="RequireInProc"/>).
+/// Tests of C#-only list members (<c>CopyTo</c>) drive the C# client directly (<see cref="InProc"/>) and run on C# rows
+/// only (<c>Languages = [ClientLanguages.CSharp]</c>).
 /// </remarks>
 internal abstract partial class MatrixTestBase
 {
     /// <summary>Skip reason of tests that install a change handler on the client's list that throws.</summary>
     protected const string ThrowingListHandler = "the harness cannot install a throwing change handler on the client's list";
-
-    /// <summary>Skip reason of tests of members only the C# list has.</summary>
-    protected const string CSharpListApi = "tests a member of the C# INexusList API";
 
     /// <summary>The name of the bidirectional collection most tests use.</summary>
     protected const string IntListBi = nameof(IServerNexus.IntListBi);

@@ -15,11 +15,12 @@ namespace NexNet.IntegrationTests.Interop;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The audit reads the attributes, not <c>NEXNET_TEST_LANGS</c>: it builds each language's rows with
-/// <see cref="ClientMatrixAttribute.GetTargets(string?)"/> and the default transports, as PR CI does. A language has
-/// no runnable row when every row has a <see cref="ClientTarget.SkipReason"/> (transport or capability), when the
-/// attribute's <c>Languages</c> leaves it out, or when the test skips other languages at run time
-/// (<c>MatrixTestBase.RequireInProc</c>).
+/// The audit reads the attributes, not <c>NEXNET_TEST_LANGS</c> or what the hosts report: it builds each language's rows
+/// with <see cref="ClientMatrixAttribute.Plan"/> from the built-in table (<see cref="ClientLanguages.GetBuiltIn"/>) and
+/// the default transports, as PR CI does. The matrix generates only applicable rows, so a language has no runnable row
+/// when its transports or capabilities rule out every row, or when the attribute's <c>Languages</c> leaves it out (a
+/// test of C#-only API by design). No runtime skip is involved: in CI every skipped row must cite a card
+/// (<see cref="MatrixCoverage"/>).
 /// </para>
 /// <para>
 /// A test that runs on a language can still check part of its behavior on the C# client only: a branch on
@@ -226,7 +227,7 @@ internal class ClientParityTests
                 var noRow = ParityLanguages.None;
                 foreach (var (language, group) in Languages)
                 {
-                    if (body.RequiresInProc || !source.HasRunnableRow(language))
+                    if (!source.HasRunnableRow(language))
                         noRow |= group;
                 }
 
@@ -279,36 +280,37 @@ internal class ClientParityTests
             };
         }
 
-        /// <summary>Whether <paramref name="language"/> gets a row without a skip reason (default transports, as on PR CI).</summary>
+        /// <summary>
+        /// Whether the matrix generates a row of <paramref name="language"/>, by the built-in table (default transports, as
+        /// on PR CI).
+        /// </summary>
         public bool HasRunnableRow(string language)
         {
             if (Languages.Length > 0 && !Languages.Contains(language))
                 return false;
 
-            var rows = new ClientMatrixAttribute { Transports = Transports, CSharpTransports = CSharpTransports, Requires = Requires, Languages = [language] }
-                .GetTargets(transportOverride: null);
-            return rows.Any(r => r.Language == language && r.SkipReason == null);
+            var plan = new ClientMatrixAttribute { Transports = Transports, CSharpTransports = CSharpTransports, Requires = Requires, Languages = [language] }
+                .Plan(transportOverride: null, ClientLanguages.GetBuiltIn);
+            return plan.Rows.Any(r => r.Language == language);
         }
     }
 
     // ----- The IL of a test -----
 
-    /// <param name="RequireInProc">The token of <c>MatrixTestBase.RequireInProc</c>.</param>
     /// <param name="CSharpOnly">The tokens of the helpers that check the C# client only (<c>MatrixTestBase.InProc</c>).</param>
     /// <param name="DriverCheckExempt">The helpers whose driver-type checks are exempt (<see cref="ClientParityExceptions.DriverTypeChecks"/>).</param>
-    private sealed record Helpers(int RequireInProc, int[] CSharpOnly, IReadOnlyList<MethodBase> DriverCheckExempt);
+    private sealed record Helpers(int[] CSharpOnly, IReadOnlyList<MethodBase> DriverCheckExempt);
 
     /// <summary>What the IL of a test (and of the helpers it calls) does.</summary>
-    /// <param name="RequiresInProc">It calls <c>MatrixTestBase.RequireInProc</c>.</param>
     /// <param name="HasCSharpOnlyAssertion">
     /// It branches on <see cref="ClientLanguages.CSharp"/>, checks or casts to an in-process driver type
     /// (<c>client as InProcClientDriver&lt;,&gt;</c>), or calls <c>MatrixTestBase.InProc</c>.
     /// </param>
     /// <param name="Variants">The languages it branches on, other than C#.</param>
-    private readonly record struct BodyScan(bool RequiresInProc, bool HasCSharpOnlyAssertion, ParityLanguages Variants)
+    private readonly record struct BodyScan(bool HasCSharpOnlyAssertion, ParityLanguages Variants)
     {
         public BodyScan Or(BodyScan other)
-            => new(RequiresInProc || other.RequiresInProc, HasCSharpOnlyAssertion || other.HasCSharpOnlyAssertion, Variants | other.Variants);
+            => new(HasCSharpOnlyAssertion || other.HasCSharpOnlyAssertion, Variants | other.Variants);
     }
 
     /// <summary>The metadata tokens of the <c>MatrixTestBase</c> helpers the audit looks for.</summary>
@@ -318,7 +320,7 @@ internal class ClientParityTests
         int Token(string name) => (typeof(MatrixTestBase).GetMethod(name, flags)
                                    ?? throw new InvalidOperationException($"MatrixTestBase.{name} not found: update the parity audit.")).MetadataToken;
 
-        return new Helpers(Token("RequireInProc"), [Token("InProc")], []);
+        return new Helpers([Token("InProc")], []);
     }
 
     /// <summary>The method a <see cref="DriverTypeCheckExemption.Helper"/> names (<c>Class.Method</c>), in this assembly.</summary>
@@ -452,10 +454,6 @@ internal class ClientParityTests
                     // languages that driver drives, unless the helper is exempt (ClientParityExceptions.DriverTypeChecks).
                     if (!exempt && DriverType(body, token) is { } type && DriverLanguages(type, out var csharp) is { } languages)
                         result = csharp ? result with { HasCSharpOnlyAssertion = true } : result with { Variants = result.Variants | languages };
-                }
-                else if (token == helpers.RequireInProc)
-                {
-                    result = result with { RequiresInProc = true };
                 }
                 else if (helpers.CSharpOnly.Contains(token))
                 {

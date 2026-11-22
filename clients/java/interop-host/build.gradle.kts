@@ -9,10 +9,8 @@
 // The JVM that runs the host: -Pnexnet.testRuntime=11|21 (default: nexnet.testJava, then 21), so CI can run the
 // host, like the unit tests, on Java 11.
 //
-// NEXNET_JAVA_WEBSOCKET=okhttp in the environment of the test run (the runner's environment reaches the host) runs the
-// WebSocket clients on the OkHttp connector of nexnet-client-okhttp instead of the built-in transport (Q08). The host
-// then reports only the WebSocket and WebSocketTls transports, so the other rows are skipped. CI runs it as the
-// "java-okhttp" interop job.
+// A client whose spec has webSocketConnector "okhttp" runs on the OkHttp connector of nexnet-client-okhttp instead of the
+// built-in transport (Q08, H55): the runner's java/WebSocket(okhttp) and java/WebSocketTls(okhttp) variant rows.
 
 plugins {
     id("nexnet.java-library")

@@ -16,7 +16,7 @@ namespace NexNet.Interop.Hosts;
 /// <para>
 /// The pool is an <see cref="IAsyncDiscoveryInitializer"/>: TUnit initializes it while it discovers the tests, before it
 /// builds the <see cref="ClientMatrixAttribute"/> rows of the class that takes it. So the transports and capabilities each
-/// host reports in its hello (<see cref="ClientLanguages.Register"/>) decide which rows are skipped. Every test class with
+/// host reports in its hello (<see cref="ClientLanguages.Register"/>) decide which rows are generated. Every test class with
 /// remote rows takes the pool, so its rows are built after the hosts are probed.
 /// </para>
 /// <para>

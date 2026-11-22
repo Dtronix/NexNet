@@ -63,8 +63,20 @@ public sealed record HostHello
             .Distinct()
             .ToArray();
 
-    /// <summary>What the language supports, as <see cref="ClientLanguages.Register"/> takes it.</summary>
-    public ClientLanguageInfo ToLanguageInfo(string language) => new(language, Transports, Capabilities);
+    /// <summary>
+    /// What the language supports, as <see cref="ClientLanguages.Register"/> takes it. The variants
+    /// (<see cref="ClientLanguageInfo.Variants"/>) come from the built-in table (<see cref="ClientLanguages.GetBuiltIn"/>),
+    /// limited to the transports the host reported.
+    /// </summary>
+    public ClientLanguageInfo ToLanguageInfo(string language)
+    {
+        var transports = Transports;
+        var variants = ClientLanguages.GetBuiltIn(language).Variants
+            .Select(v => v with { Transports = v.Transports.Where(transports.Contains).ToArray() })
+            .Where(v => v.Transports.Count > 0)
+            .ToArray();
+        return new(language, transports, Capabilities) { Variants = variants };
+    }
 
     /// <summary>Parses a hello message.</summary>
     /// <exception cref="ControlProtocolException">Not a hello, or a required member is missing.</exception>
