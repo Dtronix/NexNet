@@ -57,8 +57,8 @@
     "globalMetadata": {
       "_appTitle": "NexNet Documentation",
       "_appName": "NexNet",
-      "_appLogoPath": "images/logo-128.png",
-      "_appFaviconPath": "images/logo-128.png",
+      "_appLogoPath": "images/logo-master-tight.svg",
+      "_appFaviconPath": "images/logo-32.svg",
       "_enableSearch": true,
       "_enableNewTab": true,
       "_disableContribution": false,

@@ -1,4 +1,4 @@
-# <img src="./docs/images/logo-128.png" height="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)
+# <img src="./docs/images/logo-master-tight.svg" height="48" alt="NexNet logo"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)
 
 Real-time bidirectional networking for .NET. Source-generated hubs and proxies with zero reflection, multiple transports, and full AOT compatibility.
 

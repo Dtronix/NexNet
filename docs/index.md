@@ -3,7 +3,7 @@ _layout: landing
 ---
 
 <div style="text-align: center; padding: 0.75rem 0 0.5rem;">
-  <img src="images/logo-128.png" alt="NexNet" style="height: 64px; margin-bottom: 0.5rem;" />
+  <img src="images/logo-master-tight.svg" alt="NexNet" style="height: 64px; margin-bottom: 0.5rem;" />
   <h1 style="margin-bottom: 0.25rem; font-size: 2rem;">NexNet</h1>
   <p style="font-size: 1.1rem; color: #666; max-width: 640px; margin: 0 auto;">
     Real-time bidirectional networking for .NET. Source-generated hubs, multiple transports, zero reflection. AOT compatible.
