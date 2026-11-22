@@ -289,6 +289,10 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   instead, because the server's stream was disposed before its disconnect frame was sent ([#200](https://github.com/Dtronix/NexNet/pull/200)).
 - **HttpSocket `TargetHost`.** The `SslClientAuthenticationOptions` remarks now say that `TargetHost` is ignored for
   HttpSocket and WebSocket clients: the URL host is always used for SNI and certificate validation ([#120](https://github.com/Dtronix/NexNet/pull/120)).
+- **A connect fails at once when the transport closes during it.** When a send found the transport already closed (for
+  example a WebSocket server that sends a text message right after the upgrade), the session disconnected while still
+  holding its write lock, so the disconnect waited out its 5 s write-lock timeout before `ConnectAsync` failed. The
+  send now releases the lock first ([#PR](https://github.com/Dtronix/NexNet/pull/PR)).
 
 ## Documentation
 
