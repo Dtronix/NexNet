@@ -79,6 +79,46 @@ internal partial class CrossLanguageSmokeTests
         await EndAsync(leaf);
     }
 
+    /// <summary>
+    /// A relayed list is read-only for its leaf clients: every change a leaf client asks for is refused on the client
+    /// with the same error kind on every language (InvalidOperation), nothing reaches the relay, and the leaf keeps
+    /// mirroring the parent. Mirrors &lt;c&gt;NexusCollectionRelayTests.RelayPreventsModifications&lt;/c&gt;, which checks the
+    /// relay's own list.
+    /// </summary>
+    [Test]
+    [CrossLanguageSmoke(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    public async Task Relay_LeafClientWritesAreRefused(ClientTarget target)
+    {
+        await using var relay = await RelayServers.StartAsync();
+        var source = relay.Source();
+        foreach (var item in new[] { 1, 2, 3 })
+            await source.AddAsync(item).Timeout(T(1));
+        await relay.RelayReady();
+
+        await using var leaf = await relay.ConnectLeafAsync(target);
+        var list = leaf.List<int>(RelayList);
+        await Assert.That(await list.EnableAsync().Timeout(T(2))).IsTrue();
+        await WaitForListAsync(list, 1, 2, 3);
+
+        // Every operation targets an item or index that exists, so each one would reach the wire if it were allowed.
+        await AssertRefusedAsync(() => list.AddAsync(99));
+        await AssertRefusedAsync(() => list.InsertAsync(0, 99));
+        await AssertRefusedAsync(() => list.RemoveAsync(2));
+        await AssertRefusedAsync(() => list.RemoveAtAsync(0));
+        await AssertRefusedAsync(() => list.ReplaceAsync(0, 99));
+        await AssertRefusedAsync(() => list.MoveAsync(0, 2));
+        await AssertRefusedAsync(() => list.ClearAsync());
+
+        // Nothing changed, and the leaf's subscription is intact: it still receives the parent's changes.
+        await source.AddAsync(4).Timeout(T(1));
+        await WaitForListAsync(list, 1, 2, 3, 4);
+        await Assert.That(source.ToArray()).IsEquivalentTo(new[] { 1, 2, 3, 4 }, CollectionOrdering.Matching);
+        await EndAsync(leaf);
+
+        static async Task AssertRefusedAsync(Func<ValueTask<bool>> write)
+            => await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await write().Timeout(T(1)));
+    }
+
     /// <summary>Waits until the leaf client's list holds exactly <paramref name="expected"/>, in order.</summary>
     private static async Task WaitForListAsync(IRemoteList<int> list, params int[] expected)
         => await list.WaitForAsync(items => items.SequenceEqual(expected), TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)));
