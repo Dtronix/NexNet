@@ -572,8 +572,18 @@ Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is se
 
 - **Rows.** `[ClientMatrix(Transports = [...], CSharpTransports = [...], Requires = ClientCapabilities.X)]` makes one
   row per language of `NEXNET_TEST_LANGS` (`csharp` always, first) times transport; the test takes a `ClientTarget`.
-  A row whose language lacks the transport or capability is generated and skipped with the reason
-  (`ClientLanguages.cs` holds each language's transports and `ClientCapabilities`). Filtering: see the top of this file.
+  Only applicable rows are generated: a language that lacks the transport or a capability of `Requires` gets no row
+  (`ClientLanguages.cs` holds each language's transports, `ClientCapabilities` and variants; a host's hello can only
+  narrow them). Declare what the test needs in `Requires` (`ClientPool` for pools) instead of skipping in the body; a
+  test of C#-only API by design sets `Languages = [ClientLanguages.CSharp]` and is a parity exception. A language's
+  variants add their own rows: every Java `WebSocket`/`WebSocketTls` row also runs on OkHttp (`java/WebSocket(okhttp)`,
+  `ClientTarget.Variant` → `ClientSpec.WebSocketConnector`). Filtering: see the top of this file (`[Variant=okhttp]`
+  selects the variant rows).
+- **Skips.** In CI a matrix row may be skipped only for a reason that cites a card: `Skip.Test("K60: ...")` (a card id,
+  a colon and a space; `MatrixCoverage.IsCited`). With `NEXNET_MATRIX_REPORT=<dir>` the session writes the coverage
+  report (`matrix-coverage.json`/`.md`: rows run, passed, failed and skipped per language and variant, and the
+  combinations left out by reason), and in CI (`CI=true` or `NEXNET_REQUIRE_SDKS=1`) fails on an uncited skip. Local
+  runs may still skip for their environment (no msquic).
 - **Tests.** Derive from `IntegrationTests/MatrixTestBase.cs` (takes the `LanguageHostPool`): start an
   `InteropServer` (`NexNet.InteropServer`: one server with every endpoint kind), create the client with
   `Harness.CreateClientAsync(target, spec)` → `IClientUnderTest`, and assert on the server or through the client
@@ -587,7 +597,7 @@ Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is se
 - **Golden vectors.** `NexNet.GoldenVectors` writes `tests/golden/*.jsonl`; Serialization.Tests, the JS Vitest suite
   and the Java JUnit suite all check them. Regenerate after a serializer or message change.
 - **Parity audit.** `IntegrationTests/Interop/ClientParityTests.cs` fails when a matrix test has no runnable row on a
-  language (transport, capability, `Languages`, `RequireInProc`), checks part of its behavior on C# only (`InProc`,
+  language (its transports or capabilities by the built-in table, or `Languages`), checks part of its behavior on C# only (`InProc`,
   a branch on `ClientLanguages.CSharp`, or a check or cast to an in-process driver type such as
   `client as InProcClientDriver<,>`), or branches on any other language (a `ClientLanguages` name or the `"browser-"`
   family, an `IsBrowser(target)` helper, `client is RemoteClientDriver`) and checks something else there. It scans the
