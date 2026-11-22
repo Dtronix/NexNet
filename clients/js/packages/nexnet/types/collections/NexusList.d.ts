@@ -154,8 +154,9 @@ export declare class NexusList<T> extends EventTarget {
         signal?: AbortSignal;
     }): Promise<boolean>;
     /**
-     * Closes the collection pipe and waits until it closed. The list empties and raises `reset`. Resolves at once when
-     * not enabled.
+     * Closes the collection pipe and waits until it closed and was freed (the server confirmed the close), so an
+     * `enable` right after it finds the pipe slot available (C# `DisableAsync`). It waits at most `progressTimeout` for
+     * the server's confirmation. The list empties and raises `reset`. Resolves at once when not enabled.
      * @returns {Promise<void>}
      */
     disable(): Promise<void>;

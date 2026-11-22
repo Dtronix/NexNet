@@ -275,6 +275,8 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   - A malformed synchronization from the server (a protocol error) closes the collection pipe instead of leaving the list inconsistent. ([#149](https://github.com/Dtronix/NexNet/pull/149))
   - A refused `EnableAsync()` (pipe limit or authorization), and a collection whose connection ends, return their pipe; refused enables no longer leak pipe slots. ([#141](https://github.com/Dtronix/NexNet/pull/141), [#208](https://github.com/Dtronix/NexNet/pull/208), [#219](https://github.com/Dtronix/NexNet/pull/219)) `DisableAsync()` now waits until the pipe is freed, so enabling right after a disable
     is not refused by the pipe limit, even with a server `MaxPipes` of 1 ([#208](https://github.com/Dtronix/NexNet/pull/208), [#219](https://github.com/Dtronix/NexNet/pull/219)).
+    The Java and JavaScript clients' `disable()` waits the same way, and they log the C# client's rate-limited
+    `Reset pipe` warning when a channel item resets a pipe ([#367](https://github.com/Dtronix/NexNet/pull/367)).
   - A pipe whose state notification fails now closes completely, and `EnableAsync()` no longer throws a
     `NullReferenceException` when the server stops during the enable ([#193](https://github.com/Dtronix/NexNet/pull/193)).
   - A collection reader closed during shutdown logs at Debug instead of reporting an error, and a pipe reader no

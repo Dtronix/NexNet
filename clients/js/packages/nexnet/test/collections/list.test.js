@@ -153,6 +153,19 @@ async function readyList({ mode = BiDirectional, items = [1, 2, 3], version = 3,
 }
 
 /** @param {Harness} h */
+/**
+ * Disables the list, and confirms the client's close on the server so the pipe is freed and `disable` resolves.
+ * @param {NexusList<number>} list
+ * @param {ServerList} server
+ */
+async function disableConfirmed(list, server) {
+  const disabling = list.disable();
+  await until(() => server.clientClosed());
+  server.close();
+  await disabling;
+}
+
+/** @param {Harness} h */
 async function finish(h) {
   await h.client.disconnect();
   await tick();
@@ -275,11 +288,24 @@ describe('enable', () => {
     const h = await connectedHarness();
     /** @type {NexusList<number>} */
     const list = proxyOf(h)._collection(COLLECTION_ID, intFormatter);
+    const peer = new ServerPeer(h);
     const enabling = list.enable();
     await until(() => collectionInvocations(h).length === 1);
-    await list.disable();
+    const disabling = list.disable();
     await expect(enabling).rejects.toSatisfy(isCancellationError);
     expect(list.isEnabled).toBe(false);
+    // The server may still answer the open: the pipe closes once its Ready arrives, and is freed once the server
+    // confirmed the close. Only then does disable resolve, so the pipe slot is free for the next enable.
+    let resolved = false;
+    void disabling.then(() => (resolved = true));
+    const clientId = /** @type {number} */ (collectionInvocations(h)[0].args?.[1]);
+    const server = new ServerList(peer, peer.accept(clientId, SERVER_ID, 64 * 1024), clientId | (SERVER_ID << 8));
+    await until(() => server.clientClosed());
+    await tick();
+    expect(resolved).toBe(false);
+    server.close();
+    await disabling;
+    expect(getPipeCounters().openPipes).toBe(0);
     await finish(h);
   });
 });
@@ -464,7 +490,7 @@ describe('mutations', () => {
     for (const call of [() => list.insert(-1, 1), () => list.removeAt(-1), () => list.replace(1.5, 1), () => list.move(0, -2)]) {
       await expect(call()).rejects.toBeInstanceOf(RangeError);
     }
-    await list.disable();
+    await disableConfirmed(list, server);
     await expect(list.add(1)).rejects.toThrow(/not enabled/);
     expect(server.requests()).toEqual([]);
 
@@ -481,7 +507,7 @@ describe('closing', () => {
   it('disable closes the pipe, empties the list, raises reset and resolves disabled; enable again resynchronizes', async () => {
     const { h, peer, list, server, changes } = await readyList();
     const disabled = list.disabled;
-    await list.disable();
+    const disabling = list.disable();
     await disabled;
     expect(server.clientClosed()).toBe(true);
     expect(list.isEnabled).toBe(false);
@@ -490,14 +516,34 @@ describe('closing', () => {
     expect(changes).toEqual([{ action: 'reset' }]);
     // The ready outcome of the last enable is kept.
     await expect(list.ready).resolves.toBeUndefined();
-    server.close();
+    // disable resolves once the server confirmed the close and the pipe is freed.
+    let resolved = false;
+    void disabling.then(() => (resolved = true));
     await tick();
+    expect(resolved).toBe(false);
+    expect(getPipeCounters().openPipes).toBe(1);
+    server.close();
+    await disabling;
+    expect(getPipeCounters().openPipes).toBe(0);
 
     const { server: next, enabling } = await acceptEnable(h, peer, list);
     expect(next.id).not.toBe(server.id);
     next.send(start(9, 1), values([5]), complete());
     expect(await enabling).toBe(true);
     expect(list.toArray()).toEqual([5]);
+    await finish(h);
+  });
+
+  it('disable waits at most progressTimeout for the server to confirm the close', async () => {
+    const { h, list, server } = await readyList();
+    let resolved = false;
+    const disabling = list.disable().then(() => (resolved = true));
+    await until(() => server.clientClosed());
+    await tick();
+    expect(resolved).toBe(false);
+    h.clock.advance(h.client.config.progressTimeout ?? 30_000);
+    await disabling;
+    expect(list.isEnabled).toBe(false);
     await finish(h);
   });
 

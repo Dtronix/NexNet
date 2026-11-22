@@ -109,13 +109,11 @@ internal class ClientDiagnosticLogTests(LanguageHostPool hosts) : MatrixTestBase
                 .IsEqualTo(expected);
         }
 
-        // The rate-limited warning: the Java and JavaScript clients record the reset but log no warning for it.
-        if (target.Language == ClientLanguages.CSharp)
-        {
-            var resets = logger.Warnings.Where(w => w.StartsWith("Reset pipe", StringComparison.Ordinal)).ToList();
-            await Assert.That(resets).Count().IsEqualTo(1);
-            await Assert.That(resets[0]).Contains("a channel item breaks the framing");
-        }
+        // The rate-limited warning: one for the three resets. The JavaScript client starts its messages with the session
+        // ("S1: Reset pipe ..."), so the match is not anchored.
+        var resets = logger.Warnings.Where(w => w.Contains("Reset pipe P", StringComparison.Ordinal)).ToList();
+        await Assert.That(resets).Count().IsEqualTo(1);
+        await Assert.That(resets[0]).Contains("a channel item breaks the framing.");
 
         await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Connected);
         await EndAsync(client);

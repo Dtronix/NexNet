@@ -615,16 +615,20 @@ class NexusListClientTest {
 
         CompletableFuture<Void> disabled = list.disable();
         assertEquals(CollectionPeer.COMPLETE, peer.takeState(pipeId));
+        // disable() completes once the pipe is freed, which needs the server's confirmation of the close (C# S23).
+        await(disabledFuture);
+        Thread.sleep(100);
+        assertFalse(disabled.isDone(), "disable waits for the server to confirm the close");
+        assertEquals(1, pipes.openPipes());
         peer.sendState(pipeId, CollectionPeer.COMPLETE, 0);
         await(disabled);
-        await(disabledFuture);
+        assertEquals(0, pipes.openPipes(), "the pipe is freed when disable completes");
         assertFalse(await(pending), "the pending request completes with false when the pipe closes");
         assertEquals(NexusCollectionState.DISCONNECTED, list.state());
         assertTrue(list.isEmpty());
         assertEquals(0, list.version());
         events.await(NexusListChange.Action.RESET);
         assertInstanceOf(IllegalStateException.class, failure(list.addAsync(1L)));
-        waitFor(() -> pipes.openPipes() == 0);
 
         // A new pipe and a full reset; nothing carries over.
         CompletableFuture<Boolean> again = list.enable();

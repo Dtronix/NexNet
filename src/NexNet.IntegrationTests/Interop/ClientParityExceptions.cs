@@ -80,12 +80,6 @@ internal static class ClientParityExceptions
     private const string ExceptionTypeName =
         "By design: exception type names are language-specific; the other languages check the error kind and message.";
 
-    private const string DisableFreesPipe =
-        "Runtime gap (follow-up card from Q05): the Java and JavaScript clients return from DisableAsync before the collection's pipe is freed (S23 parity), so with one pipe slot the next enable is refused.";
-
-    private const string PipeResetWarning =
-        "Runtime gap (follow-up card from Q05): the Java and JavaScript clients record nexnet.pipe.resets but log no rate-limited 'Reset pipe' warning; the C# client does.";
-
     private const string ListTestCounter =
         "Runtime internal: the count of changes a list received before its snapshot is a C# test counter that no harness operation exposes; the other languages are checked by their final contents, which such a change would corrupt.";
 
@@ -120,11 +114,5 @@ internal static class ClientParityExceptions
         new("NexusClientTests_NexusDuplexPipe.Client_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ServerPipeObject),
         new("RemoteExceptionDetailTests.TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ExceptionTypeName),
         new("NexusCollectionSnapshotOrderTests.ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListTestCounter),
-
-        // Runtime gaps found by the Q05 ports, each with a follow-up card.
-        new("NexusCollectionDisableFreesPipeTests.DisableAsync_FreesThePipeBeforeReturning", ParityGap.NoRunnableRow, ParityLanguages.All, DisableFreesPipe),
-        new("NexusCollectionDisableFreesPipeTests.EnableDisableCycles_WithOnePipeSlot_AllSucceed", ParityGap.NoRunnableRow, ParityLanguages.All, DisableFreesPipe),
-        new("NexusCollectionDisableFreesPipeTests.EnableDisableCycles_WithOnePipeSlotOnBothSides_AllSucceed", ParityGap.NoRunnableRow, ParityLanguages.All, DisableFreesPipe),
-        new("ClientDiagnosticLogTests.PipeResets_RecordedWithTheirReason_AndWarnedAtMostOncePer10Seconds", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, PipeResetWarning),
     ];
 }

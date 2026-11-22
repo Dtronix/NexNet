@@ -28,11 +28,13 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -53,6 +55,7 @@ public final class PipeManager implements MessageHandler {
         Collections.singletonMap(MetricTags.RESET_REASON, "invalid_item");
     private static final Map<String, String> RESET_TOO_LARGE =
         Collections.singletonMap(MetricTags.RESET_REASON, "too_large");
+    private static final long RESET_WARNING_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(10);
 
     /** One wait for session budget for extra credit. */
     private static final class BudgetWaiter {
@@ -83,6 +86,11 @@ public final class PipeManager implements MessageHandler {
     private boolean closed;
     private DisconnectReason closeReason = DisconnectReason.NONE;
     private Registration budgetTimer = Registration.NONE;
+    // The rate-limited reset warning (C# NexusSession.ReportPipeReset): resets since the last warning, and when it was
+    // logged (session clock); guarded by lock.
+    private int resetsSinceWarning;
+    private boolean resetWarned;
+    private long lastResetWarningNanos;
 
     private PipeManager(InvocationRuntime runtime, Executor callbackExecutor, SessionTimers timers,
                         PipeOptions options, @Nullable NexusLogger logger) {
@@ -165,9 +173,28 @@ public final class PipeManager implements MessageHandler {
         session.recordMetric(NexusInstruments.PIPE_REFUSALS, 1, local ? REFUSAL_LOCAL : REFUSAL_REMOTE);
     }
 
-    /** Records {@code nexnet.pipe.resets}: a channel item that breaks the framing or is too large. */
-    void recordReset(boolean tooLarge) {
+    /**
+     * Records {@code nexnet.pipe.resets}: a channel item that breaks the framing or is too large. Logs a warning at
+     * most once per 10 s, with the number of resets since the last one, so a server that keeps sending broken items
+     * does not flood the log (C# {@code NexusSession.ReportPipeReset}).
+     */
+    void recordReset(int pipeId, boolean tooLarge) {
         session.recordMetric(NexusInstruments.PIPE_RESETS, 1, tooLarge ? RESET_TOO_LARGE : RESET_INVALID_ITEM);
+        int resets;
+        synchronized (lock) {
+            resetsSinceWarning++;
+            long now = session.nanoTime();
+            if (resetWarned && now - lastResetWarningNanos < RESET_WARNING_INTERVAL_NANOS) {
+                return;
+            }
+            resetWarned = true;
+            lastResetWarningNanos = now;
+            resets = resetsSinceWarning;
+            resetsSinceWarning = 0;
+        }
+        String cause = tooLarge ? "a channel item exceeds MaxMessageSize" : "a channel item breaks the framing";
+        log(NexusLogLevel.WARNING, String.format(Locale.ROOT, "Reset pipe P%05d: %s", pipeId, cause)
+            + (resets > 1 ? " (" + resets + " pipe resets since the last warning)." : "."), null);
     }
 
     /** Records {@code nexnet.pipe.credit_wait}. */
@@ -356,6 +383,7 @@ public final class PipeManager implements MessageHandler {
     }
 
     private void free(PipeImpl pipe) {
+        pipe.freedFuture.complete(null);
         synchronized (lock) {
             int key = pipe.id() != 0 ? pipe.id() : pipe.localId;
             if (pipes.get(key) == pipe) {
@@ -373,6 +401,38 @@ public final class PipeManager implements MessageHandler {
             budget.release(extra);
         }
         pumpBudget();
+    }
+
+    /**
+     * Waits until a pipe is freed: both sides closed it and the application released it, so its slot, receive window
+     * and id are available again (C# {@code NexusPipeManager.WaitFreedAsync}). Also completes when the session ends,
+     * and after the session's progress timeout when the server never confirms the close (the session's stall
+     * detection reports that). Completes at once for a pipe of another session. Completes on the callback executor.
+     *
+     * @param pipe a pipe of this session
+     * @return a future that completes normally
+     */
+    public CompletableFuture<Void> whenFreed(NexusDuplexPipe pipe) {
+        if (!(pipe instanceof PipeImpl) || ((PipeImpl) pipe).manager != this) {
+            return CompletableFuture.completedFuture(null);
+        }
+        CompletableFuture<Void> freed = ((PipeImpl) pipe).freedFuture;
+        if (freed.isDone()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Runnable done = () -> NexusExecutors.execute(callbackExecutor, () -> result.complete(null));
+        Registration timeout = timers.schedule(() -> {
+            if (!freed.isDone()) {
+                log(NexusLogLevel.DEBUG, "Pipe P" + pipe.id() + " was not freed within the progress timeout.", null);
+            }
+            done.run();
+        }, session.progressTimeoutMillis());
+        freed.whenComplete((v, e) -> {
+            timeout.close();
+            done.run();
+        });
+        return result;
     }
 
     // ------------------------------------------------------------------ budget for extra credit

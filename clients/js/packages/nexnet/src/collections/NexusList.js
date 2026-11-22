@@ -351,8 +351,9 @@ export class NexusList extends EventTarget {
   }
 
   /**
-   * Closes the collection pipe and waits until it closed. The list empties and raises `reset`. Resolves at once when
-   * not enabled.
+   * Closes the collection pipe and waits until it closed and was freed (the server confirmed the close), so an
+   * `enable` right after it finds the pipe slot available (C# `DisableAsync`). It waits at most `progressTimeout` for
+   * the server's confirmation. The list empties and raises `reset`. Resolves at once when not enabled.
    * @returns {Promise<void>}
    */
   async disable() {
@@ -365,6 +366,8 @@ export class NexusList extends EventTarget {
       await this.#releasePipe(run);
     }
     await run.disabled.promise;
+    const core = pipeCore(run.pipe);
+    await core.manager.whenFreed(core);
   }
 
   /** Inserts `item` at the end. @param {T} item @returns {Promise<boolean>} */

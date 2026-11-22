@@ -15,13 +15,17 @@ import com.dtronix.nexnet.diagnostics.NexusLargeMessageSnapshot;
 import com.dtronix.nexnet.diagnostics.NexusPartialItemSnapshot;
 import com.dtronix.nexnet.diagnostics.NexusPipeSnapshot;
 import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.session.FakeServer;
 import com.dtronix.nexnet.session.Frame;
+import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.session.SessionTimers;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -198,6 +202,39 @@ class PipeDiagnosticsTest extends PipeTestBase {
         assertEquals("nexnet.invocation.queue_wait {nexnet.invocation.pool=normal}", events.get(0));
         waitFor(() -> events.size() == 2);
         assertEquals("nexnet.pipe.resets 1 {nexnet.reset.reason=invalid_item}", events.get(1));
+    }
+
+    /** The server sends a broken item into a new channel; the client's read resets the pipe. Returns the pipe id. */
+    private int resetChannel(int serverId) throws Exception {
+        NexusDuplexChannel<byte[]> channel = registeredChannel(serverId);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        peer.sendData(id, new byte[] {2, (byte) 0xC0, (byte) 0xC0});
+        assertThrows(Exception.class, () -> await(reader.read()));
+        return id;
+    }
+
+    @Test
+    void aResetIsWarnedAtMostOncePer10SecondsWithTheResetsSinceTheLastWarning() throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        pipeLogger = (level, category, exception, message) -> {
+            if (level == NexusLogLevel.WARNING) {
+                warnings.add(message);
+            }
+        };
+        connectMetered(SMALL);
+        int first = resetChannel(9);
+        assertEquals(Collections.singletonList(
+            String.format(Locale.ROOT, "Reset pipe P%05d: a channel item breaks the framing.", first)), warnings);
+        resetChannel(10);
+        resetChannel(11);
+        assertEquals(1, warnings.size(), warnings.toString());
+        ManualTimers.awaitWriterIdle(session);
+        sessionTimers.advance(10_000);
+        resetChannel(12);
+        assertEquals(2, warnings.size(), warnings.toString());
+        assertEquals("Reset pipe P: a channel item breaks the framing (3 pipe resets since the last warning).",
+            warnings.get(1).replaceFirst("P\\d{5}", "P"));
     }
 
     @Test

@@ -76,6 +76,7 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
     /** One enable: its pipe, futures and reset state. Lane-only fields are touched on {@link #lane} only. */
     private final class Run {
         final NexusDuplexChannel<byte[]> channel;
+        final PipeManager pipes;
         final PayloadCodec codec;
         final CompletableFuture<Boolean> enabled = new CompletableFuture<>();
         final CompletableFuture<Void> ready = new CompletableFuture<>();
@@ -92,8 +93,9 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
         int resetVersion;
         @Nullable List<CollectionWire.Message<T>> buffer;
 
-        Run(NexusDuplexChannel<byte[]> channel, PayloadCodec codec) {
+        Run(NexusDuplexChannel<byte[]> channel, PipeManager pipes, PayloadCodec codec) {
             this.channel = channel;
+            this.pipes = pipes;
             this.codec = codec;
         }
     }
@@ -207,7 +209,7 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
             } catch (RuntimeException e) {
                 return failed(e);
             }
-            created = new Run(channel, runtime.codec());
+            created = new Run(channel, pipes, runtime.codec());
             run = created;
             ready = created.ready;
         }
@@ -240,7 +242,12 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
         }
         // Completing the pipe runs the normal disconnect path when the server has closed it too.
         current.channel.close();
-        return view(current.disabled);
+        // The pipe's slot, window and id are freed only once the server confirmed the close. Waiting for that means an
+        // enable right after this one does not find the pipe limit reached (C# S23). Bounded by the progress timeout.
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        current.disabled.whenComplete((v, e) -> current.pipes.whenFreed(current.channel.pipe())
+            .whenComplete((freed, error) -> callbacks.execute(() -> result.complete(null))));
+        return result;
     }
 
     @Override

@@ -201,7 +201,7 @@ final class ChannelReaderImpl<T> implements NexusChannelReader<T> {
                 failed = true;
                 examined = new byte[0];
                 pipe.setPartialItem(0);
-                manager.recordReset(e instanceof NexusMessageTooLargeException);
+                manager.recordReset(pipe.id(), e instanceof NexusMessageTooLargeException);
                 pipe.reset();
                 op.fail(e);
                 return;

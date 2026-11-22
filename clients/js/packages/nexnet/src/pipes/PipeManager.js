@@ -23,6 +23,12 @@ import { PipeCore } from './PipeCore.js';
 import { MetricTags } from '../metrics/instruments.js';
 
 const REFUSED_LOCAL = Object.freeze({ [MetricTags.refusalSide]: 'local' });
+const RESET_TAGS = Object.freeze({
+  invalid_item: Object.freeze({ [MetricTags.resetReason]: 'invalid_item' }),
+  too_large: Object.freeze({ [MetricTags.resetReason]: 'too_large' }),
+});
+/** At most one reset warning per this many milliseconds (C# `NexusSession.ReportPipeReset`). */
+const RESET_WARNING_INTERVAL = 10_000;
 
 /** @type {WeakMap<object, PipeManager>} */
 const managers = new WeakMap();
@@ -93,6 +99,10 @@ export class PipeManager {
   #closed = false;
   /** Pipes registered for a dispatched invocation, released when it returns. @type {WeakMap<object, PipeCore[]>} */
   #byContext = new WeakMap();
+  /** Resets since the last reset warning. */
+  #resetsSinceWarning = 0;
+  /** Session clock time of the last reset warning; null before the first. @type {number | null} */
+  #lastResetWarning = null;
 
   /**
    * @param {import('../session/NexusSession.js').NexusSession} session
@@ -115,6 +125,7 @@ export class PipeManager {
       serializerOptions: options.serializerOptions,
       log: (/** @type {import('../contract/config.js').NexusLogLevel} */ level, /** @type {string} */ message, /** @type {unknown} */ error) => this.#log(level, message, error),
       metric: (/** @type {string} */ name, /** @type {number} */ value, /** @type {Readonly<Record<string, string>> | undefined} */ tags) => session.recordMetric(name, value, tags),
+      reset: (/** @type {number} */ pipeId, /** @type {import('./PipeCore.js').PipeResetReason} */ reason) => this.#reportReset(pipeId, reason),
     });
 
     session.setHandler(MessageType.DuplexPipeWrite, (frame) => this.#onData(frame.pipeId, frame.body));
@@ -294,7 +305,7 @@ export class PipeManager {
    */
   #tryFree(core) {
     if (core.freed || !core.isFullyClosed) return;
-    core.freed = true;
+    core.markFreed();
     const key = core.id !== 0 ? core.id : core.localId;
     if (this.#pipes.get(key) === core) this.#pipes.delete(key);
     this.#usedIds.delete(core.localId);
@@ -303,6 +314,50 @@ export class PipeManager {
     this.#budget.release(this.#options.pipeWindow + core.extraOutstanding);
     core.extraOutstanding = 0;
     core.dropInput();
+  }
+
+  /**
+   * Waits until a pipe is freed: both sides closed it and the application released it, so its slot, window and ID
+   * are available again (C# `NexusPipeManager.WaitFreedAsync`). Also resolves when the session ends, and after
+   * `progressTimeout` when the server never confirms the close (the session's stall detection reports that). Never
+   * rejects.
+   * @param {PipeCore} core
+   * @returns {Promise<void>}
+   */
+  whenFreed(core) {
+    if (core.freed || core.manager !== this) return Promise.resolve();
+    const clock = this.#options.clock;
+    return new Promise((resolve) => {
+      const timer = clock.setTimeout(() => {
+        this.#log('debug', `Pipe P${core.id} was not freed within the progress timeout.`);
+        resolve();
+      }, this.#options.progressTimeout);
+      void core.whenFreed.then(() => {
+        clock.clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * A channel item reset a pipe (C# `NexusSession.ReportPipeReset`): records `nexnet.pipe.resets` and logs a
+   * warning at most once per 10 s, with the number of resets since the last one, so a server that keeps sending
+   * broken items does not flood the log.
+   * @param {number} pipeId
+   * @param {import('./PipeCore.js').PipeResetReason} reason
+   */
+  #reportReset(pipeId, reason) {
+    this.#session.recordMetric('pipeResets', 1, RESET_TAGS[reason]);
+    this.#resetsSinceWarning++;
+    const now = this.#options.clock.now();
+    const last = this.#lastResetWarning;
+    if (last !== null && now - last < RESET_WARNING_INTERVAL) return;
+    this.#lastResetWarning = now;
+    const resets = this.#resetsSinceWarning;
+    this.#resetsSinceWarning = 0;
+    const cause = reason === 'too_large' ? 'a channel item exceeds MaxMessageSize' : 'a channel item breaks the framing';
+    this.#log('warning', `Reset pipe P${String(pipeId).padStart(5, '0')}: ${cause}`
+      + (resets > 1 ? ` (${resets} pipe resets since the last warning).` : '.'));
   }
 
   // ---------------------------------------------------------------- frames

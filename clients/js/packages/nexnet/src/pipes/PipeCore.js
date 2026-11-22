@@ -20,10 +20,6 @@ import { countPipes } from './diagnostics.js';
 import { MetricTags } from '../metrics/instruments.js';
 
 const REFUSED_REMOTE = Object.freeze({ [MetricTags.refusalSide]: 'remote' });
-const RESET_TAGS = Object.freeze({
-  invalid_item: Object.freeze({ [MetricTags.resetReason]: 'invalid_item' }),
-  too_large: Object.freeze({ [MetricTags.resetReason]: 'too_large' }),
-});
 
 /**
  * Why a pipe was reset (the `nexnet.reset.reason` tag): a channel item that breaks the framing or does not decode,
@@ -47,6 +43,8 @@ const RESET_TAGS = Object.freeze({
  * @property {(level: import('../contract/config.js').NexusLogLevel, message: string, error?: unknown) => void} log
  * @property {(name: string, value: number, tags?: Readonly<Record<string, string>>) => void} metric Reports an event
  *   instrument (`session.recordMetric`).
+ * @property {(pipeId: number, reason: PipeResetReason) => void} reset Reports a reset: records `nexnet.pipe.resets`
+ *   and logs the rate-limited warning.
  */
 
 /**
@@ -137,6 +135,10 @@ export class PipeCore {
   released = false;
   freed = false;
   closingSince = 0;
+  /** Resolves once the pipe is freed (slot, window and ID released) or the session ended. @type {Promise<void>} */
+  whenFreed;
+  /** @type {(() => void) | null} */
+  #settleFreed = null;
 
   // Control state drained by the session's control sender: one pending grant counter per pipe.
   #pendingGrant = 0;
@@ -161,9 +163,20 @@ export class PipeCore {
     this.completed = new Promise((resolve, reject) => {
       this.#settleCompleted = (error) => (error === null ? resolve() : reject(error));
     });
+    this.whenFreed = new Promise((resolve) => {
+      this.#settleFreed = resolve;
+    });
     // Nobody may be awaiting them; a rejection is still delivered to whoever does.
     this.ready.catch(noop);
     this.completed.catch(noop);
+  }
+
+  /** Marks the pipe freed and resolves {@link PipeCore#whenFreed}. */
+  markFreed() {
+    this.freed = true;
+    const settle = this.#settleFreed;
+    this.#settleFreed = null;
+    settle?.();
   }
 
   /** True once this side sent its Complete, received the peer's, and the application released the pipe. */
@@ -315,7 +328,7 @@ export class PipeCore {
   sessionEnded(reason) {
     if (this.#counted > 0) countPipes('bufferedBytes', -this.#counted);
     this.#counted = 0;
-    this.freed = true;
+    this.markFreed();
     this.failure ??= new NexusTransportError('The session ended.', { reason });
     if (this.state === PipeState.Unset) {
       if (this.phase !== 'failed') {
@@ -394,7 +407,7 @@ export class PipeCore {
    * @returns {void}
    */
   reset(why, reason = 'invalid_item') {
-    this.host.metric('pipeResets', 1, RESET_TAGS[reason]);
+    this.host.reset(this.id, reason);
     this.host.log('debug', `Pipe P${this.id} reset: ${why}`);
     this.dropInput();
     this.#completeInput();
