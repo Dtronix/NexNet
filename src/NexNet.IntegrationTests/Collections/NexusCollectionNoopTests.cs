@@ -101,27 +101,45 @@ internal class NexusCollectionNoopTests(LanguageHostPool hosts) : NexusCollectio
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task State_FollowsEnableAndDisable(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task State_FollowsEnableAndDisable(ClientTarget target)
     {
-        var (_, client, _) = await ConnectServerAndClient(type);
-        var list = client.Proxy.IntListBi;
+        var (spec, _) = await StartMatrixServerAsync(target);
+        await using var client = await ConnectMatrixClientAsync(target, spec);
+        var list = IntListBi(client);
 
-        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+        await Assert.That(await StateAsync(list)).IsEqualTo(NexusCollectionState.Disconnected);
 
-        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
-        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+        await Assert.That(await list.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await Assert.That(await StateAsync(list)).IsEqualTo(NexusCollectionState.Connected);
 
-        await list.DisableAsync().Timeout(1);
-        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+        await list.DisableAsync().AsTask().Timeout(T(1));
+        await Assert.That(await StateAsync(list)).IsEqualTo(NexusCollectionState.Disconnected);
 
-        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
-        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+        await Assert.That(await list.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await Assert.That(await StateAsync(list)).IsEqualTo(NexusCollectionState.Connected);
 
-        await client.DisconnectAsync().Timeout(1);
-        await list.DisabledTask.Timeout(1);
-        await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
+        // The session ends: the collection's disabled signal completes and it reports Disconnected.
+        await client.DisconnectAsync().Timeout(T(1));
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(T(1));
+        var state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        while (!state.IsDisabled && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+            state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        }
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(state.IsDisabled).IsTrue().Because("the disabled signal completes when the session ends");
+            await Assert.That(state.State).IsEqualTo(NexusCollectionState.Disconnected);
+        }
+
+        await MatrixTestBase.EndAsync(client);
     }
+
+    private static async Task<NexusCollectionState> StateAsync(IRemoteList<int> list)
+        => (await list.GetStateAsync().AsTask().Timeout(T(1))).State;
 
     [Test]
     [Transports(Type.Uds, Type.Tcp)]
