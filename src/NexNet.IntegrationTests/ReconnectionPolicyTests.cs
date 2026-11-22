@@ -131,7 +131,7 @@ internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
         // Restart on the same endpoint; the policy keeps retrying every 20 ms until it gets through. A connect
         // attempt to the stopped endpoint can wait for a TCP retransmit (about 500 ms on Windows).
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await connected.NextCallAsync().AsTask().Timeout(T(TestTimeouts.Connect));
+        await Assert.That((await connected.NextCallAsync().AsTask().Timeout(T(TestTimeouts.Connect))).IsReconnected).IsTrue();
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
     }
 
