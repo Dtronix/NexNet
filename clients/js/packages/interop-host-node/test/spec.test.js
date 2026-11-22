@@ -122,6 +122,13 @@ describe('ClientSpec', () => {
     expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: { other: 1 } }, node), 'NotSupported');
   });
 
+  it('records metrics only on request, and natively', () => {
+    expect(parseSpec({ transport: 'Tcp', address: 'tcp://h:1' }, node).metrics).toBe(false);
+    expect(parseSpec({ transport: 'Tcp', address: 'tcp://h:1', metrics: 'Native' }, node).metrics).toBe(true);
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', metrics: 'Micrometer' }, node), 'NotSupported');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', metrics: 'Other' }, node), 'BadRequest');
+  });
+
   it('validates pool options', () => {
     expect(parsePoolOptions({})).toEqual({ maxConnections: 10, maxIdleTime: 120000, minIdleConnections: 1 });
     expect(parsePoolOptions({ maxConnections: 2, maxIdleTimeMs: 0, minIdleConnections: 5 })).toEqual({ maxConnections: 2, maxIdleTime: 0, minIdleConnections: 5 });

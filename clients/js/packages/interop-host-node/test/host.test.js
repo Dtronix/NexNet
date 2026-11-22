@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Host, listChangedData, PROTOCOL_VERSION } from '../src/core/host.js';
+import { Host, listChangedData, PROTOCOL_VERSION, snapshotJson } from '../src/core/host.js';
 import { FrameDecoder } from '../src/core/framing.js';
 import { pumpItem } from '../src/core/scripts.js';
 import { nativeError, toWireError, HostError, ThrowingWatchError } from '../src/core/errors.js';
@@ -52,6 +52,25 @@ function createHost() {
   };
   return { host, sent, exits, request, isClosed: () => closed };
 }
+
+describe('snapshotJson', () => {
+  it('sends the session id as text and enums by name', () => {
+    expect(snapshotJson(null)).toBeNull();
+    const json = snapshotJson({
+      id: 12345678901234567n, isServer: false, transport: 'tcp', endpoint: null, isSecure: false, pingInterval: 10000, state: 2,
+      isEstablished: true, connected: 5, sinceLastReceived: 1, sinceLastSent: null, flushInProgress: null,
+      budget: { limit: 10, reserved: 1 }, invocations: { queued: 0 },
+      pipes: [{ id: 1, partialItem: { length: 3, received: 1 } }],
+      largeMessages: [{ direction: 'outbound', kind: 'argument', invocationId: 2 }],
+      framesSent: 3, bytesSent: 30, framesReceived: 2, bytesReceived: 20,
+    });
+    expect(json).toMatchObject({
+      id: '12345678901234567', state: 'Connected', pipes: [{ id: 1, partialItem: { length: 3, received: 1 } }],
+      largeMessages: [{ direction: 'Outbound', kind: 'Argument', invocationId: 2 }],
+    });
+    expect(() => JSON.stringify(json)).not.toThrow();
+  });
+});
 
 describe('Host', () => {
   it('says hello with the platform, the schema hash and the token', () => {

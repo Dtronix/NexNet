@@ -13,7 +13,7 @@ const SPEC_MEMBERS = new Set([
   'invocationCredits', 'maxConcurrentConnectionInvocations', 'remoteExceptionDetail', 'onInvocationException',
   'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'fakeTime', 'logLevel',
   'reconnectReasons', 'authenticate', 'queryToken', 'maxSeparatePoolInvocations', 'invocationQueueWarningThresholdMs',
-  'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs',
+  'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs', 'metrics',
 ]);
 
 const AUTHENTICATE_MEMBERS = new Set(['token', 'appendCallNumber', 'delayMs', 'hang', 'throwMessage']);
@@ -36,6 +36,7 @@ const POOL_MEMBERS = new Set(['maxConnections', 'maxIdleTimeMs', 'minIdleConnect
  * @property {string | null} logLevel The runtime level, or null for no client logging.
  * @property {{ code: number | null, message: string | null } | null} onInvocationException
  * @property {string} transport
+ * @property {boolean} metrics True to record the client's metrics (`ClientSpec.metrics` `Native`).
  */
 
 /**
@@ -352,7 +353,13 @@ export function parseSpec(spec, limits) {
     logLevel = level === 'none' ? null : level;
   }
 
-  return { config, fakeTime: s.fakeTime === true, logLevel, onInvocationException, transport };
+  const metrics = str(s.metrics, 'metrics');
+  if (metrics !== undefined && metrics !== 'Native') {
+    if (metrics === 'Micrometer') throw notSupported('Micrometer metrics are a Java module; the JavaScript client records Native metrics.');
+    throw badRequest('Unknown MetricsRecording \'' + metrics + '\'.');
+  }
+
+  return { config, fakeTime: s.fakeTime === true, logLevel, onInvocationException, transport, metrics: metrics !== undefined };
 }
 
 /**
