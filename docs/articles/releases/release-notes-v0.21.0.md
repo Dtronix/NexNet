@@ -193,7 +193,7 @@ runtime dependencies. Async results are `CompletableFuture`s; cancellation uses 
   with converters that need no `java.time`, checked against the golden vectors ([#205](https://github.com/Dtronix/NexNet/pull/205), [#243](https://github.com/Dtronix/NexNet/pull/243), [#256](https://github.com/Dtronix/NexNet/pull/256)); generated formatters,
   proxies and client nexus bases ([#216](https://github.com/Dtronix/NexNet/pull/216), [#244](https://github.com/Dtronix/NexNet/pull/244)).
 - **Optional modules:** `android` (main-thread executor, `android.util.Log` logger, a connection keeper that follows the app lifecycle and network changes), `kotlin` (coroutines: `nexusCall`,
-  `connectAwait`, a `Flow` of states), `okhttp` (a WebSocket connector over OkHttp) and `micrometer` (a binder that maps the NexNet metrics to Micrometer meters), emitted on
+  `connectAwait`, a `Flow` of states), `okhttp` (a WebSocket connector over OkHttp; it uses a connection pool of its own, not the given `OkHttpClient`'s, so it can report the remote endpoint ([#371](https://github.com/Dtronix/NexNet/pull/371))) and `micrometer` (a binder that maps the NexNet metrics to Micrometer meters), emitted on
   request ([#288](https://github.com/Dtronix/NexNet/pull/288), [#297](https://github.com/Dtronix/NexNet/pull/297), [#296](https://github.com/Dtronix/NexNet/pull/296)). See [Java Client: Optional modules](../java-client.md#optional-modules).
 - **JSpecify nullness** for Kotlin and NullAway users with `Nullness=jspecify` ([#242](https://github.com/Dtronix/NexNet/pull/242)).
 - C# parity details fixed while porting the tests: `connect()` on a connected client does nothing ([#277](https://github.com/Dtronix/NexNet/pull/277));
