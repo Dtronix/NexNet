@@ -42,7 +42,9 @@ public interface INexusList<T> : INexusCollection, IEnumerable<T>
     int Count { get; }
     
     /// <summary>
-    /// Gets whether the list is read-only. Always false for ServerToClient mode collections.
+    /// Gets whether the list is read-only. On a client list it is true when the client may not change the list
+    /// (ServerToClient and Relay modes, whose writes throw <see cref="System.InvalidOperationException"/>) and false
+    /// for BiDirectional. A server list is never read-only.
     /// </summary>
     bool IsReadOnly { get; }
     

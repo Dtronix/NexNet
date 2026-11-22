@@ -455,29 +455,64 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     public async Task IsReadOnly_IsFalseOnBidirectional(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
-        var list = s.List;
-        await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListBi));
+        await list.EnableAsync().AsTask().Timeout(T(1));
 
-        // The client may change a bidirectional list. Java and JavaScript have no read-only flag: their mode says it.
+        // The client may change a bidirectional list.
         var state = await list.GetStateAsync().AsTask().Timeout(T(1));
-        await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.BiDirectional);
-        await Assert.That(state.IsReadOnly ?? false).IsFalse();
+        using (Assert.Multiple())
+        {
+            await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.BiDirectional);
+            await Assert.That(ReadOnlyOf(state)).IsFalse();
+        }
+
         await s.EndAsync();
     }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
-    public async Task IsReadOnly_IsFalseOnServerToClient(ClientTarget target)
+    public async Task IsReadOnly_IsTrueOnServerToClient(ClientTarget target)
     {
         await using var s = await ConnectAsync(target);
-        var relay = s.Client.List<int>(nameof(IServerNexus.IntListRelay));
-        await relay.EnableAsync().AsTask().Timeout(T(1));
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListSC));
+        await list.EnableAsync().AsTask().Timeout(T(1));
 
-        var state = await relay.GetStateAsync().AsTask().Timeout(T(1));
-        await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.Relay);
-        await Assert.That(state.IsReadOnly ?? false).IsFalse();
+        // Only the server changes a server-to-client list.
+        var state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        using (Assert.Multiple())
+        {
+            await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.ServerToClient);
+            await Assert.That(ReadOnlyOf(state)).IsTrue();
+        }
+
         await s.EndAsync();
     }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task IsReadOnly_IsTrueOnRelay(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListRelay));
+        await list.EnableAsync().AsTask().Timeout(T(1));
+
+        // A relay list mirrors its parent: the client may not change it.
+        var state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        using (Assert.Multiple())
+        {
+            await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.Relay);
+            await Assert.That(ReadOnlyOf(state)).IsTrue();
+        }
+
+        await s.EndAsync();
+    }
+
+    /// <summary>
+    /// The runtime's read-only flag (C# <c>INexusList.IsReadOnly</c>). Java and JavaScript have none and report only the
+    /// mode, which decides whether the client may change the list, so their flag is derived from it.
+    /// </summary>
+    private static bool ReadOnlyOf(RemoteListState state)
+        => state.IsReadOnly ?? state.Mode != RemoteCollectionMode.BiDirectional;
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
