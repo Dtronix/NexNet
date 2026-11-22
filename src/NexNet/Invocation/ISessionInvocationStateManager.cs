@@ -33,9 +33,18 @@ internal interface ISessionInvocationStateManager
     bool IsOutstanding(ushort invocationId);
 
     /// <summary>
-    /// Calls waiting for their result. For snapshots: may take internal locks.
+    /// Calls waiting for their result: from the moment a call has invocation credit and its ID until it completes. A
+    /// call still waiting for credit is not counted, nor is a call canceled after send (it is completed, though its ID
+    /// stays reserved until the late reply, see <see cref="ReservedIdCount"/>). For snapshots: may take internal locks.
     /// </summary>
     int OutstandingCount => 0;
+
+    /// <summary>
+    /// Outbound invocation IDs this session holds: calls awaiting their result, calls canceled after send whose late
+    /// reply has not arrived yet, and streamed IgnoreReturn arguments still being sent. A call waiting for invocation
+    /// credit holds no ID. An ID is reusable only once it leaves this count. Takes the ID lock.
+    /// </summary>
+    int ReservedIdCount => 0;
 
     /// <summary>
     /// Fails a call that is waiting for its result, e.g. because the peer refused its large argument.

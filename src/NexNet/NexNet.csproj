@@ -13,6 +13,8 @@
     <InternalsVisibleTo Include="NexNetBenchmarks" />
     <InternalsVisibleTo Include="NexNet.Serialization.Tests" />
     <InternalsVisibleTo Include="NexNet.Fuzz" />
+    <!-- The in-process test driver reports the session's reserved invocation IDs (client.outstanding). -->
+    <InternalsVisibleTo Include="NexNet.Interop" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">

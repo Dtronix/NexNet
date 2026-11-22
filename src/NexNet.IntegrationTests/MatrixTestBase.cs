@@ -160,12 +160,13 @@ internal abstract partial class MatrixTestBase(LanguageHostPool hosts) : BaseTes
     }
 
     /// <summary>
-    /// Waits until invocation <paramref name="id"/> is no longer outstanding on the client, then asserts it. The
-    /// clients of other languages report how many invocations they still await a result for
-    /// (<see cref="IClientUnderTest.GetOutstandingInvocationsAsync"/>), which must reach 0: the callers check it when
-    /// no other invocation is in flight.
+    /// Waits until invocation <paramref name="id"/> is no longer reserved on the client, then asserts it. Every client,
+    /// the C# one included, reports how many invocation IDs its session still holds
+    /// (<see cref="IClientUnderTest.GetOutstandingInvocationsAsync"/>: calls awaiting their result, and calls canceled
+    /// after send until their late reply releases the ID), which must reach 0: the callers check it when no other
+    /// invocation is in flight.
     /// </summary>
-    /// <remarks>The C# client is checked by id, since its ID table is visible in process.</remarks>
+    /// <remarks>The C# client is also checked by id, since its ID table is visible in process.</remarks>
     protected static async Task AssertNotOutstanding(IClientUnderTest client, ushort id)
     {
         var invocations = (client as InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)?.Client.Session?.SessionInvocationStateManager;
@@ -184,6 +185,23 @@ internal abstract partial class MatrixTestBase(LanguageHostPool hosts) : BaseTes
         }
 
         await Assert.That(outstanding).IsEqualTo(0);
+    }
+
+    /// <summary>
+    /// Waits until the client holds <paramref name="expected"/> invocation IDs
+    /// (<see cref="IClientUnderTest.GetOutstandingInvocationsAsync"/>), for at most <c>T(1)</c>, then asserts it.
+    /// </summary>
+    protected static async Task AssertReservedIds(IClientUnderTest client, int expected)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(T(1));
+        var reserved = await client.GetOutstandingInvocationsAsync().Timeout(T(1));
+        while (reserved != expected && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+            reserved = await client.GetOutstandingInvocationsAsync().Timeout(T(1));
+        }
+
+        await Assert.That(reserved).IsEqualTo(expected);
     }
 
     /// <summary>Waits until the client is in <paramref name="state"/>, for at most <c>T(1)</c>.</summary>
