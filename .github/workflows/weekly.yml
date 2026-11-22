@@ -64,8 +64,10 @@ jobs:
 
   # Bucket-A interop rows on every transport: plaintext and TLS, TCP, TcpTls, HttpSocket, WebSocket, and UDS on Node
   # (Linux runners only; Node cannot use AF_UNIX on Windows). Browsers run their WebSocket rows; the rest are visible
-  # capability skips. Firefox and WebKit run only here (D29). java-okhttp is the JVM host with NEXNET_JAVA_WEBSOCKET=okhttp,
-  # as in clients.yml (Q08): its WebSocket and WebSocketTls rows run on the OkHttp connector and its other rows are skipped.
+  # capability skips. Firefox and WebKit run only here (D29). As in clients.yml, the matrix generates only the rows a
+  # language can run (H55), and the java job also runs every WebSocket and WebSocketTls row on the OkHttp connector of
+  # nexnet-client-okhttp (the java/WebSocket(okhttp) variant rows). Every job writes the coverage report
+  # (NEXNET_MATRIX_REPORT) and fails on a skipped row whose reason cites no card.
   interop:
     needs: changes
     if: needs.changes.outputs.run == 'true'
@@ -74,11 +76,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lang: [node, java, java-okhttp, browser-chromium, browser-firefox, browser-webkit]
+        lang: [node, java, browser-chromium, browser-firefox, browser-webkit]
     env:
-      NEXNET_TEST_LANGS: ${{ matrix.lang == 'java-okhttp' && 'java' || matrix.lang }}
-      NEXNET_JAVA_WEBSOCKET: ${{ matrix.lang == 'java-okhttp' && 'okhttp' || '' }}
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
       NEXNET_REQUIRE_SDKS: '1'
+      NEXNET_MATRIX_REPORT: ${{ github.workspace }}/artifacts/matrix-coverage
       # Every transport the language supports instead of the per-PR default (HttpSocketTls, WebSocketTls). ClientMatrix
       # applies it to every test that names no transports of its own; a test that names transports keeps them.
       NEXNET_TEST_TRANSPORTS: all
@@ -147,12 +149,40 @@ jobs:
         run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}, every transport)
+        id: tests
         env:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
           dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
           --treenode-filter "/*/*/*/*[Lang=${{ env.NEXNET_TEST_LANGS }}]"
           -- --report-trx
+
+      # H55/H56: the coverage report of the matrix (MatrixCoverage) as the step summary and an artifact, as in
+      # clients.yml. The test session already failed on an uncited skip; this step says so again in the summary, and
+      # fails when no report was written.
+      - name: Matrix coverage report
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        shell: bash
+        run: |
+          report="$NEXNET_MATRIX_REPORT"
+          if [ ! -f "$report/matrix-coverage.json" ]; then
+            echo "::error::The test session wrote no matrix coverage report to $report."
+            exit 1
+          fi
+          cat "$report/matrix-coverage.md" >> "$GITHUB_STEP_SUMMARY"
+          uncited=$(jq '.uncitedSkips' "$report/matrix-coverage.json")
+          if [ "$uncited" != "0" ]; then
+            echo "::error::$uncited matrix row(s) were skipped for a reason that cites no card; see the step summary."
+            exit 1
+          fi
+
+      - name: Upload the matrix coverage report
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: matrix-coverage-${{ matrix.lang }}
+          path: artifacts/matrix-coverage/
+          if-no-files-found: ignore
 
       - name: Upload interop results
         if: failure()
