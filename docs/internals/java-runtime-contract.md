@@ -257,6 +257,10 @@ server `INexusList<T>` (protocol specification section 12):
   refuses (limit or authorization) and with `IllegalStateException` when not connected. `disable()`, `ready()`
   (a new future per enable, failed if that enable ends before its reset), `disabled()` and `state()`
   (`NexusCollectionState`).
+- `disable()` completes once the collection's pipe is freed: the server confirmed the close and the pipe's slot,
+  window and id are released (`PipeManager.whenFreed`, C# `WaitFreedAsync`), so an `enable()` right after it is
+  not refused by a pipe limit of 1. It waits at most the session's progress timeout for the server's confirmation.
+  `disabled()` completes when the list is disabled, before the pipe is freed.
 - The `java.util.List` view is read-only. It reads an immutable snapshot (iterators keep theirs), and its mutators
   throw `UnsupportedOperationException`.
 - Mutations return `CompletableFuture<Boolean>`: `addAsync`, `insertAsync`, `removeAsync(item)` (first item
@@ -757,7 +761,9 @@ Reported this way:
 
 - `InvocationRuntime`: invocation queue waits and large-message aborts;
 - `PipeManager`: pipe refusals (`local` or `remote`), pipe resets (too large or invalid item) and pipe credit
-  waits.
+  waits. A reset also logs a `WARNING` (category `Pipes`), `Reset pipe P<id, 5 digits>: a channel item breaks the
+  framing.` or `... exceeds MaxMessageSize.`, at most once per 10 s (session clock), with ` (<n> pipe resets since
+  the last warning)` when more than one reset happened (C# `NexusSession.ReportPipeReset`).
 
 **Layer snapshots.** Each takes `nowNanos` from `NexusSession.nanoTime()` where it measures ages:
 

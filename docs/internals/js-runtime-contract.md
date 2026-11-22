@@ -423,6 +423,10 @@ session. Its options:
   `Promise<boolean>` mutations `add`, `insert`, `remove`, `removeAt`, `replace`, `move` and `clear`.
   - `mode` is the `NexusCollectionMode` passed to `_collection`. `version` is the list version the replica is at
     (protocol spec §12.3).
+  - `disable()` resolves once the collection's pipe is freed: the server confirmed the close and the pipe's slot,
+    window and ID are released (`PipeManager.whenFreed`, C# `WaitFreedAsync`), so an `enable()` right after it is
+    not refused by a `maxPipes` of 1. It waits at most `progressTimeout` (on the session clock) for the server's
+    confirmation. `disabled` resolves when the list is disabled, before the pipe is freed.
   - `length` is `count`. `get(index)` throws `RangeError` when out of range (C# indexer); `at(index)` follows
     `Array.prototype.at`: a negative index counts back from the end, and out of range returns `undefined`.
   - `changed` is a `CustomEvent` whose `detail` is a `NexusListChange<T>`: `{ action, index?, item?, oldItem?,
@@ -707,7 +711,7 @@ advised histogram `buckets`); `METER_NAME` is `NexNet`. `NexusMetrics.shared` is
 | `nexnet.session.duration`, `nexnet.session.disconnects` | When a tracked session ends, duration first; `nexnet.session.phase` is `handshake` for a session that ended before the handshake completed |
 | `nexnet.invocation.queue_wait` | When a server-to-client invocation takes an execution slot, tagged with its pool |
 | `nexnet.pipe.credit_wait` | When a pipe writer's wait for credit ends (granted, completed or aborted) |
-| `nexnet.pipe.resets` | When a channel item breaks the framing or does not decode (`invalid_item`) or exceeds `maxMessageSize` (`too_large`) |
+| `nexnet.pipe.resets` | When a channel item breaks the framing or does not decode (`invalid_item`) or exceeds `maxMessageSize` (`too_large`). A reset also logs a `warning`, `Reset pipe P<id, 5 digits>: a channel item breaks the framing.` or `... exceeds MaxMessageSize.`, at most once per 10 s (session clock), with ` (<n> pipe resets since the last warning)` when more than one reset happened (C# `NexusSession.ReportPipeReset`) |
 | `nexnet.pipe.refusals` | `local` when `createPipe()` or a server-opened pipe hits `maxPipes` or the budget; `remote` when the server refuses an open |
 | `nexnet.large_message.aborts` | Inbound `busy` (no budget) and `cancelled` (by the server); outbound `busy`/`too_large` (refused by the server) and `cancelled` (by the caller's signal) |
 | Observable: `session.active`/`handshaking`, `io.frames`/`bytes`, `budget.reserved`/`limit`, `pipe.open`/`window`, `invocation.queued`/`executing` (per pool), `invocation.credit_waits`, `large_message.in_flight` (per direction) | `collect` |
