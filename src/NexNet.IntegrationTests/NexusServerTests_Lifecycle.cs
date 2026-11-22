@@ -37,6 +37,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
         await Assert.That(exception.Message).Contains($"'{config.TransportName}'").Because("The exception should name the endpoint that failed to bind.");
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
 
+        // Raw stop and start, with no port hold (StopServerAsync): the hold belongs to the stopped server, so it would
+        // keep the port from the other one, and with nothing between the two calls a hold would close no window.
         await occupier.StopAsync().Timeout(TestTimeouts.Connect);
 
         await server.StartAsync().Timeout(TestTimeouts.Connect);
@@ -69,10 +71,12 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
-        await server.StopAsync().Timeout(TestTimeouts.Connect);
+
+        // The port is held while the server is stopped, so no server of another test process can take it.
+        await StopServerAsync(server).Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNull();
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await StartServerAsync(server).Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
 
         var (client1, _) = CreateClient(CreateClientConfig(type));
@@ -141,6 +145,10 @@ internal class NexusServerTests_Lifecycle : BaseTests
             nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42));
 
         await server.StartAsync().Timeout(TestTimeouts.Connect);
+
+        // Raw stop and start, with no port hold (StopServerAsync/StartServerAsync): nothing runs between the two calls,
+        // so a hold would close no window, and its binds would give the stopped run's accept loop time to fail before
+        // the next start, which is the race this test is for.
         for (var i = 0; i < cycles; i++)
         {
             await server.StopAsync().Timeout(TestTimeouts.Connect);
