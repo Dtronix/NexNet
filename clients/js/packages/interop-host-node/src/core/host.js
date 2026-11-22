@@ -369,6 +369,46 @@ class RentalEntry extends InvokerEntry {
   }
 }
 
+/**
+ * A collection connector of a pool (`pool.collection`, §6.11): the runtime's connector, created on first use.
+ * @typedef {object} ConnectorState
+ * @property {string} name The runner's connector name.
+ * @property {string} collection The collection name.
+ * @property {any} native The runtime's connector (`NexusClientPool.collectionConnector`).
+ * @property {any} selected The server proxy the connector's selector saw last: the rented client's.
+ * @property {boolean} rented Whether `getCollection()` rented a client.
+ * @property {boolean} released
+ * @property {Set<CollectionEntry>} entries The collection handles it returned.
+ */
+
+/** A collection returned by a pool's collection connector (`pool.collection`, §6.11): a handle for `list.*` ops. */
+class CollectionEntry extends InvokerEntry {
+  /**
+   * @param {string} h
+   * @param {Scope} scope
+   * @param {PoolEntry} pool
+   * @param {ConnectorState} connector
+   * @param {import('@dtronix/nexnet').NexusList<any>} list
+   */
+  constructor(h, scope, pool, connector, list) {
+    super('collection', h, scope, pool.exp);
+    this.pool = pool;
+    this.connector = connector;
+    this.list = list;
+    /** Collections enabled by `list.enable`. @type {Set<string>} */
+    this.enabled = new Set();
+    /** @type {Map<string, { list: EventTarget, listener: (e: Event) => void }>} */
+    this.watches = new Map();
+    /** `list.throttle` slow consumers, by collection name (§6.10). @type {Map<string, ListThrottle>} */
+    this.throttles = new Map();
+  }
+
+  /** @returns {any} */
+  get proxy() {
+    throw notSupported('A collection handle of a connector invokes nothing: its pool owns the client.');
+  }
+}
+
 /** A pool of `pool.create`. */
 class PoolEntry {
   /**
@@ -394,6 +434,8 @@ class PoolEntry {
     this.created = 0;
     /** @type {Map<string, RentalEntry>} */
     this.rentals = new Map();
+    /** Collection connectors by the runner's name (`pool.collection`). @type {Map<string, ConnectorState>} */
+    this.connectors = new Map();
     this.disposed = false;
   }
 }
@@ -525,7 +567,7 @@ class FutureEntry {
   }
 }
 
-/** @typedef {ClientEntry | RentalEntry | PoolEntry | PipeEntry | FutureEntry} Entry */
+/** @typedef {ClientEntry | RentalEntry | CollectionEntry | PoolEntry | PipeEntry | FutureEntry} Entry */
 
 /**
  * A measurement of `client.metrics` (§6.4).
@@ -956,6 +998,19 @@ export class Host {
   }
 
   /**
+   * The owner of the collections of `list.*` ops: a client, or a collection of a pool's connector.
+   * @param {Context} ctx
+   * @param {unknown} h
+   * @param {string} op
+   * @returns {ClientEntry | CollectionEntry}
+   */
+  #listOwner(ctx, h, op) {
+    const entry = this.#lookup(ctx, h);
+    if (entry instanceof CollectionEntry) return entry;
+    return this.#client(ctx, h, op);
+  }
+
+  /**
    * A client or rental handle.
    * @param {Context} ctx
    * @param {unknown} h
@@ -1157,6 +1212,17 @@ export class Host {
       report.timers++;
       report.details.push('the health check of pool ' + entry.h + ' runs: the pool is not disposed');
     }
+    for (const connector of entry.connectors.values()) {
+      if (connector.rented && !connector.released) {
+        report.openClients++;
+        report.details.push('the collection connector ' + connector.name + ' of ' + entry.h + ' is not released: it holds a rented client');
+      }
+      for (const collection of connector.entries) {
+        const subscriptions = collection.watches.size;
+        if (subscriptions > 0) report.details.push(subscriptions + ' collection watch(es) of ' + collection.h + ' not ended');
+        report.subscriptions += subscriptions;
+      }
+    }
     for (const rental of entry.rentals.values()) {
       if (rental.pending > 0 || rental.timers.size > 0) {
         report.pendingInvocations += rental.pending;
@@ -1261,6 +1327,7 @@ export class Host {
     // Rentals go back first, then the pools, then the clients.
     for (const entry of entries) {
       if (entry instanceof PoolEntry) {
+        for (const connector of entry.connectors.values()) this.#releaseConnector(connector);
         for (const rental of [...entry.rentals.values()]) this.#returnRental(entry, rental);
       }
     }
@@ -1284,6 +1351,29 @@ export class Host {
       // Released already.
     }
     this.#release(rental);
+  }
+
+  /**
+   * Releases a collection connector (`pool.collectionRelease`): the runtime's `release()`, then its collection handles.
+   * @param {ConnectorState} connector
+   */
+  #releaseConnector(connector) {
+    if (connector.released) return;
+    connector.released = true;
+    try {
+      connector.native.release();
+    } catch (error) {
+      this.#hostLog('warning', 'Releasing the collection connector ' + connector.name + ' failed: ' + messageOf(error));
+    }
+    for (const entry of connector.entries) {
+      entry.disposed = true;
+      for (const watch of entry.watches.values()) watch.list.removeEventListener('changed', watch.listener);
+      entry.watches.clear();
+      for (const throttle of entry.throttles.values()) throttle.stop();
+      entry.throttles.clear();
+      this.#release(entry);
+    }
+    connector.entries.clear();
   }
 
   /**
@@ -1915,7 +2005,7 @@ export class Host {
 
     // Synchronized collections (§6.10).
     op('list.enable', async (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.enable');
+      const entry = this.#listOwner(ctx, args.h, 'list.enable');
       const { list, name } = this.#list(entry, args.collection);
       const cancel = this.#cancel(ctx, entry, args.cancel);
       cancel.start();
@@ -1931,14 +2021,14 @@ export class Host {
       }
     });
     op('list.disable', async (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.disable');
+      const entry = this.#listOwner(ctx, args.h, 'list.disable');
       const { list, name } = this.#list(entry, args.collection);
       await list.disable();
       entry.enabled.delete(name);
       return {};
     });
     op('list.op', async (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.op');
+      const entry = this.#listOwner(ctx, args.h, 'list.op');
       const { list, codec } = this.#list(entry, args.collection);
       const item = () => codec.fromJson(args.item);
       /** @param {string} name @returns {number} */
@@ -1976,13 +2066,13 @@ export class Host {
       return { ok: (await result) === true };
     });
     op('list.snapshot', async (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.snapshot');
+      const entry = this.#listOwner(ctx, args.h, 'list.snapshot');
       const { list, codec } = this.#list(entry, args.collection);
       // toArray copies: the snapshot is the list at this moment, whatever changes while it converts.
       return { items: await mapYielding(list.toArray(), (item) => codec.toJson(item)) };
     });
     op('list.state', async (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.state');
+      const entry = this.#listOwner(ctx, args.h, 'list.state');
       const { list } = this.#list(entry, args.collection);
       // Whether the disabled promise has settled: a settled promise's reaction runs before the one queued after it.
       const pending = Symbol('pending');
@@ -1996,7 +2086,7 @@ export class Host {
       return { mode: collectionModeName(list.mode), state: collectionStateName(list.state), disabled };
     });
     op('list.watch', (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.watch');
+      const entry = this.#listOwner(ctx, args.h, 'list.watch');
       const watch = requireString(args.watch, 'watch');
       if (entry.watches.has(watch)) throw badRequest('The watch ' + watch + ' exists.');
       const { list, codec } = this.#list(entry, args.collection);
@@ -2011,7 +2101,7 @@ export class Host {
       return {};
     });
     op('list.unwatch', (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.unwatch');
+      const entry = this.#listOwner(ctx, args.h, 'list.unwatch');
       const watch = requireString(args.watch, 'watch');
       const found = entry.watches.get(watch);
       if (!found) throw unknownHandle('Unknown watch ' + watch + '.');
@@ -2021,7 +2111,7 @@ export class Host {
     });
 
     op('list.throttle', (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.throttle');
+      const entry = this.#listOwner(ctx, args.h, 'list.throttle');
       const { list, name } = this.#list(entry, args.collection);
       /** @param {string} key @param {number} min @param {number} fallback @returns {number} */
       const int = (key, min, fallback) => (args[key] === undefined || args[key] === null ? fallback : requireInt(args[key], key, min));
@@ -2040,7 +2130,7 @@ export class Host {
       return {};
     });
     op('list.throttleState', (args, ctx) => {
-      const entry = this.#client(ctx, args.h, 'list.throttleState');
+      const entry = this.#listOwner(ctx, args.h, 'list.throttleState');
       const { name } = this.#list(entry, args.collection);
       const throttle = entry.throttles.get(name);
       return { seen: throttle?.seen ?? 0, holding: throttle !== undefined && throttle.release !== null };
@@ -2073,6 +2163,13 @@ export class Host {
       await sleep(0);
       return {};
     });
+    op('pool.collection', (args, ctx) => this.#collection(args, ctx));
+    op('pool.collectionRelease', (args, ctx) => {
+      const pool = this.#poolEntry(ctx, args.pool);
+      const connector = pool.connectors.get(requireString(args.connector, 'connector'));
+      if (connector) this.#releaseConnector(connector);
+      return {};
+    });
     op('pool.dispose', async (args, ctx) => {
       const pool = this.#poolEntry(ctx, args.pool);
       await this.#disposePool(pool);
@@ -2092,7 +2189,7 @@ export class Host {
   }
 
   /**
-   * @param {ClientEntry} entry
+   * @param {ClientEntry | CollectionEntry} entry
    * @param {unknown} collection
    * @returns {{ list: import('@dtronix/nexnet').NexusList<any>, codec: import('./types.js').TypedCodec, name: string }}
    */
@@ -2101,6 +2198,11 @@ export class Host {
     const name = requireString(ref.name, 'collection.name');
     const description = entry.exp.collection(name);
     if (!description) throw badRequest('The server nexus has no collection ' + name + '.');
+    if (entry instanceof CollectionEntry) {
+      // A connector's collection handle names one collection: the one its connector returned.
+      if (name !== entry.connector.collection) throw badRequest(entry.h + ' is the collection ' + entry.connector.collection + ', not ' + name + '.');
+      return { list: entry.list, codec: description.item, name };
+    }
     return { list: entry.exp.list(entry.proxy, name), codec: description.item, name };
   }
 
@@ -2261,25 +2363,98 @@ export class Host {
     try {
       rental = await pool.pool.rent({ signal });
     } catch (error) {
-      if (error instanceof NexusClientPoolConnectionError) {
-        const result = /** @type {any} */ (error).result;
-        /** @type {Record<string, unknown>} */
-        const failed = {
-          state: resultStateName(result.state),
-          reason: reasonName(result.disconnectReason),
-          message: error.message,
-        };
-        if (result.error !== undefined && result.error !== null) failed.error = toWireError(result.error);
-        return { failed };
-      }
-      if (isCancellationError(error) && pool.created > created) {
-        // Canceled while the new client connected: a connection result (§6.11).
-        return { failed: { state: 'Canceled', reason: 'None', message: 'The connection attempt was canceled.' } };
-      }
-      if (error instanceof NexusError && !(error instanceof NexusClientPoolConnectionError)) throw invalidOperation(error.message);
-      throw error;
+      return this.#rentFailure(error, pool, created);
     }
-    const proxy = rental.proxy;
+    const { client, id } = this.#pooledClient(pool, rental.proxy);
+    const entry = new RentalEntry(this.#newHandle('c'), pool.scope, pool, rental, client);
+    pool.rentals.set(entry.h, entry);
+    this.#register(pool.scope, entry);
+    return { h: entry.h, client: id };
+  }
+
+  /**
+   * `pool.collection` (§6.11): the connector's `getCollection()` rents a client; its collection gets a handle.
+   * @param {Record<string, any>} args
+   * @param {Context} ctx
+   * @returns {Promise<unknown>}
+   */
+  async #collection(args, ctx) {
+    const pool = this.#poolEntry(ctx, args.pool);
+    if (pool.disposed) throw invalidOperation('The pool ' + pool.h + ' is disposed.');
+    const name = requireString(args.connector, 'connector');
+    const ref = /** @type {Record<string, unknown>} */ (args.collection ?? {});
+    const collection = requireString(ref.name, 'collection.name');
+    if (!pool.exp.collection(collection)) throw badRequest('The server nexus has no collection ' + collection + '.');
+    let connector = pool.connectors.get(name);
+    if (!connector) {
+      /** @type {ConnectorState} */
+      const created = { name, collection, native: null, selected: null, rented: false, released: false, entries: new Set() };
+      created.native = pool.pool.collectionConnector((/** @type {any} */ proxy) => {
+        created.selected = proxy;
+        return pool.exp.list(proxy, collection);
+      });
+      pool.connectors.set(name, created);
+      connector = created;
+    } else if (connector.collection !== collection) {
+      throw badRequest('The connector ' + name + ' is for the collection ' + connector.collection + ', not ' + collection + '.');
+    }
+    if (connector.released) throw invalidOperation('The collection connector ' + name + ' is released.');
+    const createdBefore = pool.created;
+    /** @type {any} */
+    let list;
+    try {
+      connector.selected = null;
+      list = await connector.native.getCollection();
+    } catch (error) {
+      return this.#rentFailure(error, pool, createdBefore);
+    }
+    connector.rented = true;
+    const { id } = this.#pooledClient(pool, connector.selected);
+    const entry = new CollectionEntry(this.#newHandle('c'), pool.scope, pool, connector, list);
+    connector.entries.add(entry);
+    this.#register(pool.scope, entry);
+    if (connector.released) {
+      // Released while it rented: the release gives back this client too, and its handle.
+      connector.released = false;
+      this.#releaseConnector(connector);
+    }
+    return { h: entry.h, client: id };
+  }
+
+  /**
+   * The result of a rent that failed (`pool.rent` and `pool.collection`, §6.11): a connection failure is a result.
+   * @param {unknown} error
+   * @param {PoolEntry} pool
+   * @param {number} created The clients the pool had created before the rent.
+   * @returns {unknown}
+   */
+  #rentFailure(error, pool, created) {
+    if (error instanceof NexusClientPoolConnectionError) {
+      const result = /** @type {any} */ (error).result;
+      /** @type {Record<string, unknown>} */
+      const failed = {
+        state: resultStateName(result.state),
+        reason: reasonName(result.disconnectReason),
+        message: error.message,
+      };
+      if (result.error !== undefined && result.error !== null) failed.error = toWireError(result.error);
+      return { failed };
+    }
+    if (isCancellationError(error) && pool.created > created) {
+      // Canceled while the new client connected: a connection result (§6.11).
+      return { failed: { state: 'Canceled', reason: 'None', message: 'The connection attempt was canceled.' } };
+    }
+    if (error instanceof NexusError && !(error instanceof NexusClientPoolConnectionError)) throw invalidOperation(error.message);
+    throw error;
+  }
+
+  /**
+   * The pooled client whose proxy is `proxy`, and its id (`client` of §6.11).
+   * @param {PoolEntry} pool
+   * @param {any} proxy
+   * @returns {{ client: any, id: string }}
+   */
+  #pooledClient(pool, proxy) {
     let client = null;
     for (const candidate of pool.clients) {
       try {
@@ -2294,9 +2469,6 @@ export class Host {
       id = 'pc' + this.#nextHandle++;
       pool.ids.set(key, id);
     }
-    const entry = new RentalEntry(this.#newHandle('c'), pool.scope, pool, rental, client);
-    pool.rentals.set(entry.h, entry);
-    this.#register(pool.scope, entry);
-    return { h: entry.h, client: id };
+    return { client, id };
   }
 }
