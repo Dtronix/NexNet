@@ -383,7 +383,6 @@ public final class PipeManager implements MessageHandler {
     }
 
     private void free(PipeImpl pipe) {
-        pipe.freedFuture.complete(null);
         synchronized (lock) {
             int key = pipe.id() != 0 ? pipe.id() : pipe.localId;
             if (pipes.get(key) == pipe) {
@@ -400,6 +399,9 @@ public final class PipeManager implements MessageHandler {
         if (extra > 0) {
             budget.release(extra);
         }
+        // Completed only once the slot, window and id are available again: whenFreed hands this to the application
+        // (a collection's disable), and an enable right after it must find the slot free.
+        pipe.freedFuture.complete(null);
         pumpBudget();
     }
 

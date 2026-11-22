@@ -207,6 +207,26 @@ class PipeManagerTest extends PipeTestBase {
         waitFor(() -> pipes.openPipes() == 0);
     }
 
+    /**
+     * K51: a pipe counts as freed only once its slot, window and id are available again. A collection's disable
+     * returns on {@code whenFreed}, and an enable right after it, with one pipe slot, must not find the limit reached.
+     */
+    @Test
+    void aFreedPipesSlotIsAvailableWhenItsFreedFutureCompletes() throws Exception {
+        connect(SMALL.withMaxPipes(1));
+        PipeImpl pipe = openPipe(100);
+        // Runs on the thread that frees the pipe, as part of completing it: the strictest observer.
+        CompletableFuture<Integer> openAtFreed = pipe.freedFuture.thenApply(v -> pipes.openPipes());
+        CompletableFuture<Void> freed = pipes.whenFreed(pipe);
+        pipe.close();
+        peer.expectState(pipe.id(), PipeWire.COMPLETE, 0);
+        peer.sendState(pipe.id(), PipeWire.COMPLETE, 0);
+        assertEquals(0, (int) await(openAtFreed), "slot released before the pipe counts as freed");
+        await(freed);
+        PipeImpl next = (PipeImpl) pipes.createPipe();
+        next.close();
+    }
+
     @Test
     void thePeersCompleteIsAnsweredAndBufferedDataStaysReadable() throws Exception {
         connect(SMALL);
