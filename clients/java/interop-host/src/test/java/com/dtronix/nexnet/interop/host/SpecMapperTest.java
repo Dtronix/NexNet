@@ -154,6 +154,23 @@ class SpecMapperTest {
     }
 
     @Test
+    void theAuthorizationHeaderReplacesAnAuthorizationUpgradeHeader() {
+        Map<String, Object> custom = new HashMap<>();
+        custom.put("authorization", "Bearer FromUpgradeHeaders");
+        custom.put("X-NexNet-Test", "custom");
+        Map<String, String> headers = SpecMapper.map(script("transport", "WebSocket", "address", "ws://localhost:1/ws",
+            "authorizationHeader", "Bearer Typed", "upgradeHeaders", custom), null, null).config.upgradeHeaders();
+        assertEquals("Bearer Typed", headers.get("Authorization"));
+        assertEquals("custom", headers.get("X-NexNet-Test"));
+        assertEquals(2, headers.size());
+
+        custom.put("Authorization", custom.remove("authorization"));
+        headers = SpecMapper.map(script("transport", "HttpSocket", "address", "http://localhost:1/h", "upgradeHeaders", custom),
+            null, null).config.upgradeHeaders();
+        assertEquals("Bearer FromUpgradeHeaders", headers.get("Authorization"));
+    }
+
+    @Test
     void reservedOrNonStringUpgradeHeadersAreBadRequests() {
         assertEquals("BadRequest", assertThrows(HostError.class, () -> SpecMapper.upgradeHeaders(
             ClientConfig.webSocket(URI.create("ws://localhost:1/ws")), script("Host", "x"), "WebSocket")).kind());

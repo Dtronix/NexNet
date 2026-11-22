@@ -36,6 +36,41 @@ internal partial class AspClientServerTests
     }
 
     /// <summary>
+    /// The typed <see cref="ClientSpec.AuthorizationHeader"/> wins over an <c>Authorization</c> entry of
+    /// <see cref="ClientSpec.UpgradeHeaders"/>, and the other entries are sent with it, on every language (H57): C#
+    /// <c>AuthenticationHeader</c>, Java <c>ClientConfig.Builder.authorization</c> and the Node header options. Not the
+    /// browser, which cannot send headers.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket],
+        Requires = ClientCapabilities.UpgradeHeaders | ClientCapabilities.AuthorizationHeader)]
+    public async Task AuthorizationHeaderWinsOverUpgradeHeaderAuthorization(ClientTarget target)
+    {
+        var seen = new ConcurrentQueue<(string Authorization, string Custom)>();
+        var type = MatrixTestBase.ToType(target.Transport);
+        var server = CreateServer(CreateServerConfig(type), null, null, app => app.Use(async (context, next) =>
+        {
+            seen.Enqueue((context.Request.Headers.Authorization.ToString(), context.Request.Headers["X-NexNet-Test"].ToString()));
+            await next(context).ConfigureAwait(false);
+        }));
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var spec = MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger);
+        spec.AuthorizationHeader = "Bearer Typed";
+        spec.UpgradeHeaders = new Dictionary<string, string>
+        {
+            ["Authorization"] = "Bearer FromUpgradeHeaders",
+            ["X-NexNet-Test"] = "custom",
+        };
+        await using var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
+
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(seen).Contains(("Bearer Typed", "custom"));
+        await Assert.That(seen.Any(s => s.Authorization.Contains("FromUpgradeHeaders", StringComparison.Ordinal))).IsFalse();
+        await MatrixTestBase.EndAsync(client);
+    }
+
+    /// <summary>
     /// C# <see cref="NexNet.Transports.HttpClientConfig.AuthenticationHeader"/>, when set, replaces an
     /// <c>Authorization</c> entry of <see cref="NexNet.Transports.HttpClientConfig.UpgradeHeaders"/>; the other entries
     /// are sent with it, and without it the entry is sent (S54).

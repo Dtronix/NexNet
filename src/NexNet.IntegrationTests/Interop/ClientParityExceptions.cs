@@ -143,6 +143,7 @@ internal static class ClientParityExceptions
         new("AspClientServerTests.ClientDoesNotConnectWhenServerSelectsBadAuthScheme", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspClientServerTests.AuthorizationHeaderWinsOverQueryStringToken", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspClientServerTests.CustomUpgradeHeaderReachesTheServer", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserUpgradeHeader),
+        new("AspClientServerTests.AuthorizationHeaderWinsOverUpgradeHeaderAuthorization", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserUpgradeHeader),
         new("AspSessionUserTests.OnAuthenticate_SeesAspPrincipalClaims", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("AspSessionUserTests.NexusAuthenticationStillDecides_WithAspPrincipal", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserAuthorizationHeader),
         new("TlsCertificateTests.TrustedTestCa_AcceptsServerCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),

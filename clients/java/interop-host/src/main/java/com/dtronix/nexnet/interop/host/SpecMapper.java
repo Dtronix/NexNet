@@ -127,6 +127,12 @@ final class SpecMapper {
             throw HostError.badRequest("TLS options need a TLS transport, not " + transport + ".");
         }
 
+        // The custom headers first: the typed Authorization header then replaces an Authorization entry among them,
+        // as C# AuthenticationHeader does (S54) and the Node host does.
+        Args headers = spec.optObj("upgradeHeaders");
+        if (headers != null) {
+            upgradeHeaders(builder, headers, transport);
+        }
         String authorization = spec.optStr("authorizationHeader");
         if (authorization != null) {
             try {
@@ -134,10 +140,6 @@ final class SpecMapper {
             } catch (IllegalStateException e) {
                 throw HostError.notSupported("An Authorization header needs an HTTP transport, not " + transport + ".");
             }
-        }
-        Args headers = spec.optObj("upgradeHeaders");
-        if (headers != null) {
-            upgradeHeaders(builder, headers, transport);
         }
         Args query = spec.optObj("queryToken");
         if (query != null) {

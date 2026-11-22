@@ -164,7 +164,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 **Configuration:**
 - `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`), `MeterFactory`, `TransportName` (metric tag, overridden per transport config)
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
-- `HttpClientConfig.cs` - Base of WebSocket/HttpSocket client configs: Url, AuthenticationHeader, SslClientAuthenticationOptions
+- `HttpClientConfig.cs` - Base of WebSocket/HttpSocket client configs: Url, AuthenticationHeader, UpgradeHeaders (custom upgrade-request headers; AuthenticationHeader, when set, replaces an `Authorization` entry), SslClientAuthenticationOptions
 
 **HTTP client transports:**
 - `HttpConnector.cs` - One connect attempt: `SocketsHttpHandler` + `HttpMessageInvoker` built from `HttpClientConfig`. Copies the TLS options (never mutates the config's), wraps certificate validation to keep a copy of the accepted server certificate (`TakeServerCertificate`), `IsTlsAuthenticationFailure`. When `SslClientAuthenticationOptions` gains properties, add them to `CreateSslOptions`
