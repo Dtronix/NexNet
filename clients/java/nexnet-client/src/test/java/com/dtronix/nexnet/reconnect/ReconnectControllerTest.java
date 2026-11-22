@@ -180,6 +180,39 @@ class ReconnectControllerTest {
     }
 
     @Test
+    void beforeStartRunsOnlyWhenALoopStartsAndBeforeItsFirstStep() {
+        ReconnectController c = controller(new DefaultReconnectionPolicy());
+        List<String> started = new ArrayList<>();
+        // A declined reason starts no loop and does not call back (K55).
+        assertFalse(c.onSessionLost(DisconnectReason.GRACEFUL, () -> started.add("declined")));
+        assertTrue(started.isEmpty());
+
+        // The callback runs before the loop's first step (the onReconnecting hook and listener).
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR,
+            () -> started.add("start:" + client.events + ":" + events.list)));
+        assertEquals(List.of("start:[]:[]"), started);
+        assertEquals(List.of("onReconnecting"), client.events);
+
+        // Neither a second loss while a loop runs nor a stopped controller calls back.
+        assertFalse(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("running")));
+        c.close();
+        assertFalse(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("stopped")));
+        assertEquals(1, started.size());
+    }
+
+    @Test
+    void aThrowingBeforeStartIsLoggedAndTheLoopStillStarts() {
+        ReconnectController c = controller(new DefaultReconnectionPolicy());
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> {
+            throw new IllegalStateException("start");
+        }));
+        assertTrue(c.isReconnecting());
+        assertEquals(List.of("onReconnecting"), client.events);
+        assertTrue(logger.lines().stream().anyMatch(l -> l.contains("[ERR]") && l.contains("start callback")));
+        c.close();
+    }
+
+    @Test
     void stopsWhenThePolicyReturnsStop() {
         ReconnectController c = controller(new DefaultReconnectionPolicy(new long[] {10, 20}, false));
         assertTrue(c.onSessionLost(DisconnectReason.TIMEOUT));

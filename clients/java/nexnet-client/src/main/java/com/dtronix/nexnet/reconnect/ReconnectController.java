@@ -177,6 +177,20 @@ public final class ReconnectController implements AutoCloseable {
      * @return true when a loop started
      */
     public boolean onSessionLost(DisconnectReason reason) {
+        return onSessionLost(reason, null);
+    }
+
+    /**
+     * Called by the client when an established session closed. Starts a loop unless one runs, the controller is
+     * stopped or the policy declines. {@code beforeStart} runs on the calling thread once the loop is decided and
+     * before its first step is scheduled, so the client can report {@code RECONNECTING} only when a loop starts and
+     * before an attempt can connect (K55). It does not run when no loop starts.
+     *
+     * @param reason why the session closed
+     * @param beforeStart runs when a loop starts, before any of its steps; null for none
+     * @return true when a loop started
+     */
+    public boolean onSessionLost(DisconnectReason reason, @Nullable Runnable beforeStart) {
         boolean should;
         try {
             should = policy.shouldReconnect(reason);
@@ -200,6 +214,13 @@ public final class ReconnectController implements AutoCloseable {
         }
         ReconnectCounters.RUNNING_LOOPS.incrementAndGet();
         log(NexusLogLevel.INFORMATION, "Connection lost. Reconnecting. " + reason, null);
+        if (beforeStart != null) {
+            try {
+                beforeStart.run();
+            } catch (RuntimeException e) {
+                log(NexusLogLevel.ERROR, "The reconnection start callback failed.", e);
+            }
+        }
         executor.execute(() -> {
             notify(l -> l.onReconnecting(reason));
             CompletableFuture<Void> hook;
