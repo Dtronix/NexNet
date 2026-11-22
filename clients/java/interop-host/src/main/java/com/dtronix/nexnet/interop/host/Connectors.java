@@ -15,9 +15,7 @@ import java.security.MessageDigest;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -32,44 +30,17 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 /**
- * The connector the host's clients use. By default every transport uses the built-in {@link NexusConnector}. With
- * {@code NEXNET_JAVA_WEBSOCKET=okhttp} in the host's environment (Q08), the WebSocket transports use the OkHttp connector
- * of {@code nexnet-client-okhttp} instead, with the spec's TLS options mapped onto the {@link OkHttpClient} (the OkHttp
- * connector does not read {@code ClientConfig.tls()}), and the host reports only WebSocket and WebSocketTls in its hello,
- * so the runner skips the rows of the other transports.
+ * The connector the host's clients use, per client: the spec's {@code webSocketConnector} (control protocol §6.4.1,
+ * H55). Absent, every transport uses the built-in {@link NexusConnector}. {@code okhttp} runs a WebSocket client on the
+ * OkHttp connector of {@code nexnet-client-okhttp} instead (the runner's {@code java/WebSocket(okhttp)} rows), with the
+ * spec's TLS options mapped onto the {@link OkHttpClient} (the OkHttp connector does not read
+ * {@code ClientConfig.tls()}).
  */
 final class Connectors {
-    /** The environment variable that selects the WebSocket connector: {@code okhttp}, or unset for the built-in one. */
-    static final String ENVIRONMENT_VARIABLE = "NEXNET_JAVA_WEBSOCKET";
-
-    /** The transports of the OkHttp mode. */
-    static final List<String> OKHTTP_TRANSPORTS = Arrays.asList("WebSocket", "WebSocketTls");
-
-    private static final boolean OKHTTP = parse(System.getenv(ENVIRONMENT_VARIABLE));
+    /** The {@code webSocketConnector} value of the OkHttp connector. */
+    static final String OKHTTP = "okhttp";
 
     private Connectors() {
-    }
-
-    /**
-     * Reads a {@code NEXNET_JAVA_WEBSOCKET} value.
-     *
-     * @param value the value, or null when unset
-     * @return true for the OkHttp connector
-     * @throws IllegalArgumentException for an unknown value
-     */
-    static boolean parse(String value) {
-        if (value == null || value.trim().isEmpty() || value.trim().equalsIgnoreCase("builtin")) {
-            return false;
-        }
-        if (value.trim().toLowerCase(Locale.ROOT).equals("okhttp")) {
-            return true;
-        }
-        throw new IllegalArgumentException(ENVIRONMENT_VARIABLE + " must be okhttp, builtin or unset, not '" + value + "'.");
-    }
-
-    /** Whether this host runs its WebSocket clients on OkHttp. */
-    static boolean okHttp() {
-        return OKHTTP;
     }
 
     /**
@@ -77,15 +48,18 @@ final class Connectors {
      *
      * @param transport the spec's transport name
      * @param tls the TLS options of a secure transport, or null
+     * @param webSocketConnector the spec's {@code webSocketConnector}, or null for the built-in connector
      * @return the connector
+     * @throws HostError NotSupported for an unknown connector, BadRequest for a connector on a transport other than
+     *     WebSocket
      */
-    static Transport.Connector select(String transport, TlsOptions tls) {
-        return select(transport, tls, OKHTTP);
-    }
-
-    static Transport.Connector select(String transport, TlsOptions tls, boolean okHttp) {
-        if (!okHttp) {
+    static Transport.Connector select(String transport, TlsOptions tls, String webSocketConnector) {
+        if (webSocketConnector == null) {
             return NexusConnector.defaults();
+        }
+        if (!webSocketConnector.equals(OKHTTP)) {
+            throw HostError.notSupported("The JVM host has no WebSocket connector '" + webSocketConnector
+                + "'; it has okhttp (or none, for the built-in one).");
         }
         switch (transport) {
             case "WebSocket":
@@ -93,8 +67,7 @@ final class Connectors {
             case "WebSocketTls":
                 return new OkHttpWebSocketConnector(secure(tls == null ? TlsOptions.defaults() : tls));
             default:
-                throw HostError.notSupported("The JVM host runs only WebSocket transports on OkHttp ("
-                    + ENVIRONMENT_VARIABLE + "=okhttp), not " + transport + ".");
+                throw HostError.badRequest("webSocketConnector needs a WebSocket transport, not " + transport + ".");
         }
     }
 
@@ -120,14 +93,11 @@ final class Connectors {
     }
 
     /**
-     * In the OkHttp mode, loads and initializes OkHttp and TLS before the host says hello: an upgrade request to a
-     * loopback socket that answers 404, and a TLS socket of the system trust. A cold OkHttp and TLS stack otherwise
-     * takes seconds to make the first connection, longer than the tests give a connect.
+     * Loads and initializes OkHttp and TLS before the host says hello: an upgrade request to a loopback socket that
+     * answers 404, and a TLS socket of the system trust. A cold OkHttp and TLS stack otherwise takes seconds to make the
+     * first connection of an OkHttp row, longer than the tests give a connect.
      */
     static void warmUp() {
-        if (!OKHTTP) {
-            return;
-        }
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             Thread responder = new Thread(() -> {
                 try (Socket socket = server.accept()) {

@@ -1,6 +1,6 @@
 package com.dtronix.nexnet.interop.host;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -32,33 +32,30 @@ class ConnectorsTest {
     };
 
     @Test
-    void unsetOrBuiltinIsTheBuiltInConnector() {
-        assertFalse(Connectors.parse(null));
-        assertFalse(Connectors.parse(""));
-        assertFalse(Connectors.parse("builtin"));
-        assertTrue(Connectors.parse("okhttp"));
-        assertTrue(Connectors.parse(" OkHttp "));
-        assertThrows(IllegalArgumentException.class, () -> Connectors.parse("netty"));
-    }
-
-    @Test
-    void builtInModeUsesTheDefaultConnectorForEveryTransport() {
+    void noConnectorIsTheDefaultConnectorForEveryTransport() {
         for (String transport : new String[] {"Tcp", "TcpTls", "HttpSocket", "WebSocket", "WebSocketTls"}) {
-            assertSame(NexusConnector.defaults(), Connectors.select(transport, null, false));
+            assertSame(NexusConnector.defaults(), Connectors.select(transport, null, null));
         }
     }
 
     @Test
-    void okHttpModeUsesOkHttpForWebSockets() {
-        assertInstanceOf(OkHttpWebSocketConnector.class, Connectors.select("WebSocket", null, true));
+    void okHttpConnectorRunsTheWebSocketTransports() {
+        assertInstanceOf(OkHttpWebSocketConnector.class, Connectors.select("WebSocket", null, "okhttp"));
         assertInstanceOf(OkHttpWebSocketConnector.class,
-            Connectors.select("WebSocketTls", TlsOptions.defaults(), true));
+            Connectors.select("WebSocketTls", TlsOptions.defaults(), "okhttp"));
     }
 
     @Test
-    void okHttpModeRejectsOtherTransports() {
-        assertThrows(HostError.class, () -> Connectors.select("Tcp", null, true));
-        assertThrows(HostError.class, () -> Connectors.select("HttpSocket", null, true));
+    void okHttpConnectorOnAnotherTransportIsABadRequest() {
+        HostError tcp = assertThrows(HostError.class, () -> Connectors.select("Tcp", null, "okhttp"));
+        assertEquals(HostError.BAD_REQUEST, tcp.kind());
+        assertThrows(HostError.class, () -> Connectors.select("HttpSocket", null, "okhttp"));
+    }
+
+    @Test
+    void unknownConnectorIsNotSupported() {
+        HostError error = assertThrows(HostError.class, () -> Connectors.select("WebSocket", null, "netty"));
+        assertEquals(HostError.NOT_SUPPORTED, error.kind());
     }
 
     @Test
