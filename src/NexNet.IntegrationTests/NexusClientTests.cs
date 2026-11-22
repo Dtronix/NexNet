@@ -85,17 +85,13 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     /// <summary>
-    /// A client of <paramref name="target"/> whose address has nothing listening: the endpoint of a server that was
-    /// started and then disposed with its host.
+    /// A client of <paramref name="target"/> whose address has nothing listening: an endpoint of
+    /// <see cref="BaseTests.NoServerEndpointsAsync"/>, whose port stays held until the test ends.
     /// </summary>
-    private static async Task<IClientUnderTest> CreateClientWithNoServer(ClientTarget target, Action<ClientSpec>? configure = null)
+    private async Task<IClientUnderTest> CreateClientWithNoServer(ClientTarget target, Action<ClientSpec>? configure = null)
     {
         target.SkipIfUnsupported();
-        InteropEndpoints endpoints;
-        await using (var server = await StartDedicatedServer())
-            endpoints = server.Endpoints;
-
-        var spec = ClientSpec.ForEndpoint(endpoints, target.Transport);
+        var spec = ClientSpec.ForEndpoint(await NoServerEndpointsAsync(), target.Transport);
         configure?.Invoke(spec);
         return await Harness.CreateClientAsync(target, spec);
     }
