@@ -443,6 +443,121 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
             .IsTrue().Because($"The default policy reconnects for this disconnect; the reason was {reason}.");
     }
 
+    /// <summary>
+    /// A lost session puts the client in the Reconnecting state until its reconnection loop connects again: the state
+    /// goes Connected, then Reconnecting, then Connected.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ReconnectRaisesReconnectingState(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+
+        // Retried every 200 ms while the server is down, so a client that reports Reconnecting only during an attempt
+        // reports it again and again.
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 200];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+        await client.WaitForStateAsync(ConnectionState.Connected, T(1));
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
+    }
+
+    /// <summary>
+    /// The C# client stays Reconnecting between failed attempts (it does not report each attempt's own disconnect) and
+    /// raises the sequence Connected, Disconnecting, Disconnected, Reconnecting, Connected.
+    /// </summary>
+    [Test]
+    [Transports(Type.Uds)]
+    public async Task ReconnectingStateLastsBetweenRetries(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy([TimeSpan.FromMilliseconds(20)]);
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+        var attempts = 0;
+        clientConfig.ReconnectionPolicy.Reconnection += (_, _) => Interlocked.Increment(ref attempts);
+        var states = new List<ConnectionState>();
+        client.StateChanged += (_, state) =>
+        {
+            lock (states)
+                states.Add(state);
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForState(client, ConnectionState.Reconnecting, seconds: T(TestTimeouts.Connect));
+
+        // Several attempts fail against the stopped server; the client stays Reconnecting throughout.
+        var deadline = DateTime.UtcNow.AddSeconds(T(TestTimeouts.Connect));
+        while (Volatile.Read(ref attempts) < 3 && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+        await Assert.That(Volatile.Read(ref attempts)).IsGreaterThanOrEqualTo(3);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Reconnecting);
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForState(client, ConnectionState.Connected, seconds: T(TestTimeouts.Connect));
+
+        ConnectionState[] recorded;
+        lock (states)
+            recorded = states.ToArray();
+        await Assert.That(recorded).IsEquivalentTo(
+            [ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Connected],
+            CollectionOrdering.Matching);
+    }
+
+    /// <summary>
+    /// When the C# client's reconnection policy gives up, the client goes from Reconnecting to Disconnected.
+    /// </summary>
+    [Test]
+    [Transports(Type.Uds)]
+    public async Task ReconnectingStateEndsDisconnectedWhenThePolicyGivesUp(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy([TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20)], continuousRetry: false);
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+        var states = new List<ConnectionState>();
+        var gaveUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StateChanged += (_, state) =>
+        {
+            lock (states)
+            {
+                states.Add(state);
+                if (state == ConnectionState.Disconnected && states.Contains(ConnectionState.Reconnecting))
+                    gaveUp.TrySetResult();
+            }
+        };
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+        await gaveUp.Task.Timeout(T(TestTimeouts.Connect));
+
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        ConnectionState[] recorded;
+        lock (states)
+            recorded = states.ToArray();
+        await Assert.That(recorded).IsEquivalentTo(
+            [ConnectionState.Connected, ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected],
+            CollectionOrdering.Matching);
+    }
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectsStopsAfterSpecifiedTimes(ClientTarget target)
@@ -460,10 +575,11 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
         await server.StopAsync();
 
-        // One reconnect attempt fails, then the client gives up. The attempt is refused quickly; it is bounded by the
-        // connection timeout at worst.
+        // One reconnect attempt fails, then the client gives up: the client is Reconnecting until then. The attempt is
+        // usually refused quickly; it is bounded by the connection timeout, but a QUIC attempt to the stopped server
+        // has been seen to take about 3 s longer.
         await Script(client).OnDisconnected.NextCallAsync().AsTask().Timeout(T(5));
-        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(1));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(TestTimeouts.Connect));
     }
 
     [Test]

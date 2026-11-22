@@ -32,6 +32,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
     private bool _isReconnecting = false;
+    private volatile bool _reconnectLoopActive;
     private readonly INexusLogger? _logger;
     private readonly MetricsTagSet _metricsTags;
     private int _plaintextWarningLogged;
@@ -45,9 +46,17 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public TClientNexus Nexus => _nexus;
 
     /// <summary>
-    /// Current state of the connection
+    /// Current state of the connection. While the reconnection loop runs (between the loss of a session and either a
+    /// new connected session or the end of the loop) it is <see cref="ConnectionState.Reconnecting"/>.
     /// </summary>
-    public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
+    public ConnectionState State
+    {
+        get
+        {
+            var state = _session?.State ?? ConnectionState.Disconnected;
+            return _reconnectLoopActive && state != ConnectionState.Connected ? ConnectionState.Reconnecting : state;
+        }
+    }
 
     /// <inheritdoc />
     public event EventHandler<ConnectionState>? StateChanged;
@@ -206,10 +215,26 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             MetricsTags = _metricsTags
         };
 
+        var sessionConnected = false;
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
-            OnStateChanged = state => StateChanged?.Invoke(this, state)
+            OnStateChanged = state =>
+            {
+                if (state == ConnectionState.Connected)
+                {
+                    sessionConnected = true;
+                    _reconnectLoopActive = false;
+                }
+                else if (!sessionConnected && _reconnectLoopActive)
+                {
+                    // A reconnection attempt that never connected: the client stays Reconnecting until the loop
+                    // connects or gives up, so the attempt's own Disconnecting/Disconnected are not reported.
+                    return;
+                }
+
+                StateChanged?.Invoke(this, state);
+            }
         };
 
         _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
@@ -270,37 +295,52 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         
         OnReconnectingStatusChange(false);
 
-        //await TryConnectAsyncCore(true).ConfigureAwait(false);
-
-        // Notify the hub.
-        await clientHub.Reconnecting().ConfigureAwait(false);
-        var count = 0;
-
-        while (true)
+        // The client is Reconnecting from here until an attempt connects or the policy gives up.
+        _reconnectLoopActive = true;
+        StateChanged?.Invoke(this, ConnectionState.Reconnecting);
+        var reconnected = false;
+        try
         {
-            // Get the next delay or cancellation.
-            var delay = _config.ReconnectionPolicy.ReconnectDelay(count++);
+            // Notify the hub.
+            await clientHub.Reconnecting().ConfigureAwait(false);
+            var count = 0;
 
-            if (delay == null)
-                return;
-
-            await Task.Delay(delay.Value, _config.Time).ConfigureAwait(false);
-            _config.ReconnectionPolicy.FireReconnection(this, count);
-
-            _config.Logger?.LogTrace($"Reconnection attempt {count}");
-
-            var result = await TryConnectAsyncCore(true).ConfigureAwait(false);
-
-            if (result.Success)
+            while (true)
             {
-                _isReconnecting = false;
-                _config.Logger?.LogInfo("Reconnected");
-                return;
+                // Get the next delay or cancellation.
+                var delay = _config.ReconnectionPolicy.ReconnectDelay(count++);
+
+                if (delay == null)
+                    return;
+
+                await Task.Delay(delay.Value, _config.Time).ConfigureAwait(false);
+                _config.ReconnectionPolicy.FireReconnection(this, count);
+
+                _config.Logger?.LogTrace($"Reconnection attempt {count}");
+
+                var result = await TryConnectAsyncCore(true).ConfigureAwait(false);
+
+                if (result.Success)
+                {
+                    reconnected = true;
+                    _isReconnecting = false;
+                    _config.Logger?.LogInfo("Reconnected");
+                    return;
+                }
+
+                if (result.Exception != null)
+                {
+                    _config.Logger?.LogError(result.Exception, $"Reconnection failed with exception. State: {result.State}");
+                }
             }
-
-            if (result.Exception != null)
+        }
+        finally
+        {
+            // The loop gave up (or failed): the client is Disconnected again.
+            if (!reconnected && _reconnectLoopActive)
             {
-                _config.Logger?.LogError(result.Exception, $"Reconnection failed with exception. State: {result.State}");
+                _reconnectLoopActive = false;
+                StateChanged?.Invoke(this, ConnectionState.Disconnected);
             }
         }
     }
