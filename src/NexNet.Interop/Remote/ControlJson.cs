@@ -33,6 +33,8 @@ public static class ControlJson
             json["reconnectDelaysMs"] = new JsonArray(spec.ReconnectDelaysMs.Select(d => (JsonNode?)d).ToArray());
         if (spec.ReconnectContinuously)
             json["reconnectContinuously"] = true;
+        if (spec.DefaultReconnection)
+            json["defaultReconnection"] = true;
         Add(json, "authToken", spec.AuthToken);
         Add(json, "authorizationHeader", spec.AuthorizationHeader);
         Add(json, "maxMessageSize", spec.MaxMessageSize);

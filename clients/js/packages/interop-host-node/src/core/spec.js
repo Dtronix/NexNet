@@ -11,7 +11,7 @@ const SPEC_MEMBERS = new Set([
   'transport', 'address', 'tlsServerName', 'caPem', 'clientCertificatePem', 'clientKeyPem', 'pinSha256',
   'insecureSkipVerify', 'connectionTimeoutMs', 'timeoutMs', 'handshakeTimeoutMs', 'pingIntervalMs', 'maxMessageSize',
   'invocationCredits', 'maxConcurrentConnectionInvocations', 'remoteExceptionDetail', 'onInvocationException',
-  'reconnectDelaysMs', 'reconnectContinuously', 'authToken', 'authorizationHeader', 'fakeTime', 'logLevel',
+  'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'fakeTime', 'logLevel',
 ]);
 
 const POOL_MEMBERS = new Set(['maxConnections', 'maxIdleTimeMs', 'minIdleConnections']);
@@ -207,8 +207,12 @@ export function parseSpec(spec, limits) {
     config.remoteExceptionDetail = value;
   }
 
-  // Null turns reconnection off (a browser client otherwise reconnects by default).
-  config.reconnectionPolicy = null;
+  // Null turns reconnection off (a browser client otherwise reconnects by default); defaultReconnection leaves the
+  // property unset, so the runtime's default applies (the default policy in a browser, none in Node).
+  if (s.defaultReconnection !== undefined && s.defaultReconnection !== null && typeof s.defaultReconnection !== 'boolean') {
+    throw badRequest('ClientSpec.defaultReconnection is not a boolean.');
+  }
+  if (s.defaultReconnection !== true) config.reconnectionPolicy = null;
   if (s.reconnectDelaysMs !== undefined && s.reconnectDelaysMs !== null) {
     if (!Array.isArray(s.reconnectDelaysMs)) throw badRequest('ClientSpec.reconnectDelaysMs is not an array.');
     const delays = s.reconnectDelaysMs.map((/** @type {unknown} */ d) => {

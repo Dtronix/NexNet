@@ -28,8 +28,8 @@ final class SpecMapper {
         "transport", "address", "tlsServerName", "caPem", "clientCertificatePem", "clientKeyPem", "pinSha256",
         "insecureSkipVerify", "connectionTimeoutMs", "timeoutMs", "handshakeTimeoutMs", "pingIntervalMs",
         "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
-        "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "authToken", "authorizationHeader",
-        "fakeTime", "logLevel"));
+        "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
+        "authorizationHeader", "fakeTime", "logLevel"));
 
     private SpecMapper() {
     }
@@ -161,6 +161,9 @@ final class SpecMapper {
             }
             builder.reconnectionPolicy(new DefaultReconnectionPolicy(millis, spec.bool("reconnectContinuously")));
         }
+        // Without delays the client has no reconnection policy, which is also the Java client's default: so
+        // defaultReconnection (keep the runtime's default) changes nothing here. It is only checked.
+        spec.bool("defaultReconnection");
         if (logger != null) {
             builder.logger(logger);
         }
