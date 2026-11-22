@@ -20,87 +20,13 @@ using NexNet.Transports.WebSocket;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// C# transports follow the bindings of protocol-specification.md §13: HttpSocket needs 101, origins compare
-/// case-insensitively, WebSocket carries binary messages only, and connect failures are TransportExceptions.
+/// C# transports follow the bindings of protocol-specification.md §13: origins compare case-insensitively, WebSocket
+/// carries binary messages only, and connect failures are TransportExceptions. The client side of the HTTP upgrade
+/// (101 only, redirects not followed, text messages close with 1003) runs on every client language in
+/// <see cref="ClientTransportConformanceTests"/>.
 /// </summary>
 internal class TransportConformanceTests : BaseTests
 {
-    [Test]
-    [Arguments(200)]
-    [Arguments(204)]
-    public async Task HttpSocket_SuccessStatusOtherThan101_FailsConnect(int status)
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-
-        // A plain HTTP server that answers the upgrade request without switching protocols.
-        var serverTask = Task.Run(async () =>
-        {
-            using var socket = await listener.AcceptSocketAsync().ConfigureAwait(false);
-            await ReadRequestHeaders(socket).ConfigureAwait(false);
-            var body = status == 204 ? "" : "not a nexnet stream";
-            var response = $"HTTP/1.1 {status} {(status == 204 ? "No Content" : "OK")}\r\n"
-                           + (status == 204 ? "" : $"Content-Length: {body.Length}\r\n")
-                           + $"Connection: close\r\n\r\n{body}";
-            await socket.SendAsync(Encoding.ASCII.GetBytes(response)).ConfigureAwait(false);
-            socket.Shutdown(SocketShutdown.Both);
-        });
-
-        var config = new HttpSocketClientConfig { Url = new Uri($"http://127.0.0.1:{port}/httpsocket-test") };
-
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(async () =>
-            await HttpSocketTransport.ConnectAsync(config, CancellationToken.None).AsTask().Timeout(TestTimeouts.Connect));
-        await Assert.That(exception!.Error).IsEqualTo(TransportError.ProtocolError);
-        await serverTask.Timeout(TestTimeouts.Connect);
-    }
-
-    [Test]
-    [Arguments(false, 301)]
-    [Arguments(false, 302)]
-    [Arguments(false, 307)]
-    [Arguments(true, 301)]
-    [Arguments(true, 302)]
-    [Arguments(true, 307)]
-    public async Task UpgradeRedirect_IsNotFollowed_FailsWithProtocolError(bool webSocket, int status)
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-
-        // Where the redirect points. A client that followed it would connect here.
-        using var redirectTarget = new TcpListener(IPAddress.Loopback, 0);
-        redirectTarget.Start();
-        var targetPort = ((IPEndPoint)redirectTarget.LocalEndpoint).Port;
-
-        // A plain HTTP server that answers the upgrade request with a redirect.
-        var serverTask = Task.Run(async () =>
-        {
-            using var socket = await listener.AcceptSocketAsync().ConfigureAwait(false);
-            await ReadRequestHeaders(socket).ConfigureAwait(false);
-            var response = $"HTTP/1.1 {status} Redirect\r\n"
-                           + $"Location: http://127.0.0.1:{targetPort}/redirected\r\n"
-                           + "Content-Length: 0\r\nConnection: close\r\n\r\n";
-            await socket.SendAsync(Encoding.ASCII.GetBytes(response)).ConfigureAwait(false);
-            socket.Shutdown(SocketShutdown.Both);
-        });
-
-        var url = new Uri($"{(webSocket ? "ws" : "http")}://127.0.0.1:{port}/upgrade-test");
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(async () =>
-        {
-            var transport = webSocket
-                ? WebSocketTransport.ConnectAsync(new WebSocketClientConfig { Url = url }, CancellationToken.None)
-                : HttpSocketTransport.ConnectAsync(new HttpSocketClientConfig { Url = url }, CancellationToken.None);
-            await transport.AsTask().Timeout(TestTimeouts.Connect);
-        });
-        await Assert.That(exception!.Error).IsEqualTo(TransportError.ProtocolError);
-        await serverTask.Timeout(TestTimeouts.Connect);
-
-        // The connect failed on the redirect itself: no second request went to the target or back to the server.
-        await Assert.That(redirectTarget.Pending()).IsFalse();
-        await Assert.That(listener.Pending()).IsFalse();
-    }
-
     [Test]
     [Arguments("https://allowed.example", true)]
     [Arguments("HTTPS://ALLOWED.EXAMPLE", true)]
@@ -206,21 +132,6 @@ internal class TransportConformanceTests : BaseTests
 
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(async () => await connectTask.Timeout(5));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.ConnectionTimeout);
-    }
-
-    private static async Task ReadRequestHeaders(Socket socket)
-    {
-        var received = new List<byte>();
-        var buffer = new byte[1024];
-        while (true)
-        {
-            var count = await socket.ReceiveAsync(buffer).ConfigureAwait(false);
-            if (count == 0)
-                return;
-            received.AddRange(buffer.AsSpan(0, count));
-            if (Encoding.ASCII.GetString(received.ToArray()).Contains("\r\n\r\n", StringComparison.Ordinal))
-                return;
-        }
     }
 
     /// <summary>
