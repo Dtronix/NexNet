@@ -1,5 +1,6 @@
 package com.dtronix.nexnet.pipes;
 
+import com.dtronix.nexnet.CancellationToken;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -95,25 +96,57 @@ public interface NexusDuplexPipe extends AutoCloseable {
     /**
      * Copies everything this pipe receives to {@code destination} until this pipe's input completes, then completes
      * the destination's output (half-close). This pipe is left as is. Each buffer is read only after the previous
-     * one is within the destination's credit, so a slow destination stalls this pipe instead of buffering.
+     * one is within the destination's credit, so a slow destination stalls this pipe instead of buffering. Do not
+     * read this pipe or write {@code destination} while it runs.
      *
      * @param destination the pipe to write to
      * @return a future that completes when this pipe's input completed or the destination's output was completed
      */
     default CompletableFuture<Void> forwardTo(NexusDuplexPipe destination) {
-        return PipeForwarding.forward(this, destination);
+        return forwardTo(destination, CancellationToken.NONE);
+    }
+
+    /**
+     * {@link #forwardTo(NexusDuplexPipe)} that can be canceled (C# {@code ForwardToAsync(destination,
+     * cancellationToken)}). A canceled forward stops and completes neither pipe: the bytes already forwarded stay
+     * delivered, and the bytes it has not sent stay in this pipe for its next read. Canceling the returned future
+     * stops the forward too.
+     *
+     * @param destination the pipe to write to
+     * @param cancellationToken stops the forward
+     * @return a future that completes when this pipe's input completed or the destination's output was completed,
+     *     and fails with a {@link java.util.concurrent.CancellationException} when the forward was canceled
+     */
+    default CompletableFuture<Void> forwardTo(NexusDuplexPipe destination, CancellationToken cancellationToken) {
+        return PipeForwarding.forward(this, destination, cancellationToken);
     }
 
     /**
      * Forwards {@code a} to {@code b} and {@code b} to {@code a} at once. Each direction half-closes its destination
-     * when its source completes. If a direction fails, both outputs are completed and the future fails.
+     * when its source completes. If a direction fails, both outputs are completed, the other direction stops and the
+     * future fails.
      *
      * @param a the first pipe
      * @param b the second pipe
      * @return a future that completes when both directions have ended
      */
     static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b) {
-        return PipeForwarding.bridge(a, b);
+        return bridge(a, b, CancellationToken.NONE);
+    }
+
+    /**
+     * {@link #bridge(NexusDuplexPipe, NexusDuplexPipe)} that can be canceled (C# {@code BridgeAsync(a, b,
+     * cancellationToken)}): a canceled bridge stops both directions and completes neither pipe. Canceling the returned
+     * future stops the bridge too.
+     *
+     * @param a the first pipe
+     * @param b the second pipe
+     * @param cancellationToken stops both directions
+     * @return a future that completes when both directions have ended, and fails with a
+     *     {@link java.util.concurrent.CancellationException} when the bridge was canceled
+     */
+    static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b, CancellationToken cancellationToken) {
+        return PipeForwarding.bridge(a, b, cancellationToken);
     }
 
     /**
