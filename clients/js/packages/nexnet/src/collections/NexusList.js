@@ -183,6 +183,8 @@ export class NexusList extends EventTarget {
   #state = NexusCollectionState.Disconnected;
   /** The last enable's `ready` outcome; resolved before the first enable. @type {Promise<void>} */
   #ready = Promise.resolve();
+  /** {@link NexusList#setProcessTestHook}. @type {(() => void | PromiseLike<void>) | null} */
+  #processTestHook = null;
 
   /**
    * Created by the runtime (`ProxyBase._collection`).
@@ -254,6 +256,20 @@ export class NexusList extends EventTarget {
   /** The list version the replica is at (protocol spec §12.3). @returns {number} */
   get version() {
     return this.#replica.version;
+  }
+
+  /**
+   * Test hook, not for applications (C# `NexusBroadcastClient.ProcessTestHook`): `hook` is called in the read loop
+   * before each received list message is processed. While the promise it returns is pending, the list neither
+   * processes nor reads anything more from its pipe, so it grants the server no pipe credit: a test makes a slow or
+   * stalled consumer with it. A hook that throws or rejects is logged and ignored. `null` removes it; a message
+   * already waiting for the removed hook still waits for its promise.
+   * @param {(() => void | PromiseLike<void>) | null} hook
+   * @returns {void}
+   */
+  setProcessTestHook(hook) {
+    if (hook !== null && typeof hook !== 'function') throw new TypeError('The process test hook must be a function or null.');
+    this.#processTestHook = hook;
   }
 
   /**
@@ -531,6 +547,16 @@ export class NexusList extends EventTarget {
         if (result.done) break;
         // The pipe closed: whatever it still buffered is dropped, never applied.
         if (run.stopped || (core.state & PipeState.Complete) === PipeState.Complete) break;
+        const hook = this.#processTestHook;
+        if (hook !== null) {
+          try {
+            const pending = hook();
+            if (pending) await pending;
+          } catch (error) {
+            this.#log('debug', `Collection ${this.#methodId}: the process test hook failed.`, error);
+          }
+          if (run.stopped || (core.state & PipeState.Complete) === PipeState.Complete) break;
+        }
         /** @type {string | null} */
         let error;
         try {

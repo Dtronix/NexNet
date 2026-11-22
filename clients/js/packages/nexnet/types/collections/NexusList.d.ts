@@ -111,6 +111,16 @@ export declare class NexusList<T> extends EventTarget {
     /** The list version the replica is at (protocol spec §12.3). @returns {number} */
     get version(): number;
     /**
+     * Test hook, not for applications (C# `NexusBroadcastClient.ProcessTestHook`): `hook` is called in the read loop
+     * before each received list message is processed. While the promise it returns is pending, the list neither
+     * processes nor reads anything more from its pipe, so it grants the server no pipe credit: a test makes a slow or
+     * stalled consumer with it. A hook that throws or rejects is logged and ignored. `null` removes it; a message
+     * already waiting for the removed hook still waits for its promise.
+     * @param {(() => void | PromiseLike<void>) | null} hook
+     * @returns {void}
+     */
+    setProcessTestHook(hook: (() => void | PromiseLike<void>) | null): void;
+    /**
      * The item at `index`. Throws `RangeError` when out of range (C# indexer).
      * @param {number} index
      * @returns {T}

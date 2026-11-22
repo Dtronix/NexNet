@@ -441,6 +441,12 @@ session. Its options:
     arrived, waits for that reset and is then built from the synchronized state and sent with its version; it
     resolves with false when the enable fails. Mutations reject with a `NexusError` in ServerToClient and Relay mode
     and when the list is not enabled, and with `RangeError` for an index that is not a non-negative int32.
+- `NexusList.setProcessTestHook(hook)` is a test hook, not for applications (C# `NexusBroadcastClient.ProcessTestHook`;
+  the interop host's `list.throttle` uses it). `hook` (`() => void | PromiseLike<void>`, or `null` to remove it) is
+  called in the list's read loop before each received list message is processed. While the promise it returns is
+  pending, the list neither processes nor reads anything more from its pipe, so it grants the server no pipe credit: a
+  slow or stalled consumer. A hook that throws or rejects is logged at `debug` and ignored; a message already waiting
+  for a removed hook still waits for its promise. A non-function other than `null` throws `TypeError`.
 - Pipe details:
   - `writable` has a `highWaterMark` of **1** chunk, not 0: with 0, `ReadableStream.pipeTo` never writes (it waits for
     a positive `desiredSize`). The sink still takes one chunk at a time and sends only what the credit allows.

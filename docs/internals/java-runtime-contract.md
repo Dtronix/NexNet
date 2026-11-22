@@ -273,6 +273,13 @@ server `INexusList<T>` (protocol specification section 12):
   - RESET then READY after a reset;
   - RESET when the pipe closes.
 - After a reconnect, collections are not resumed: the application calls `enable()` again and receives a full reset.
+- `NexusListClient.setProcessTestHook(Supplier<? extends @Nullable CompletionStage<?>>)` is a test hook, not for
+  applications (C# `NexusBroadcastClient.ProcessTestHook`; the JVM interop host's `list.throttle` uses it). The hook is
+  called on the list's processing lane before each received list message is processed, and must not block. While the
+  stage it returns is incomplete, the list neither processes nor reads anything more from its pipe (the lane is free
+  for other work), so it grants the server no pipe credit: a slow or stalled consumer. Null, or a completed stage, goes
+  on at once. A hook that throws, or a stage that fails, is logged at `DEBUG` and ignored. `null` removes the hook; a
+  message already waiting for a removed hook still waits for its stage.
 - Generated item formatters run with the session's payload codec. `ResetValues` arrays (array, `bin`, ext 78) are
   split by the runtime, which hands each element to the item formatter as one value.
 
@@ -834,7 +841,8 @@ default method returning null), which a host overrides to honor `ClientSpec.onIn
 of `-Pnexnet.testRuntime=11|21` directly with the installed class path). The host uses only public runtime API and
 has no classes in the runtime's packages: fake time, `maxMessageSize` and `invocationCredits` go through the
 public `NexusClient.create` overload with `SessionTimers` and `SessionOptions`, and a pipe of `pipe.create` that is
-later used as a channel (`channel.writer`/`channel.reader`) goes through `NexusDuplexChannel.over` (section 4).
+later used as a channel (`channel.writer`/`channel.reader`) goes through `NexusDuplexChannel.over` (section 4). A
+`list.throttle` slow consumer goes through `NexusListClient.setProcessTestHook` (section 3.6).
 
 ## 8. Optional modules
 

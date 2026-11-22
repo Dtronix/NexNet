@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -112,6 +113,7 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
     private @Nullable Run run;
     private CompletableFuture<Void> ready = CompletableFuture.completedFuture(null);
     private CompletableFuture<?> operations = CompletableFuture.completedFuture(null);
+    private volatile @Nullable Supplier<? extends @Nullable CompletionStage<?>> processTestHook;
 
     /**
      * Creates the list of one collection of a client's server nexus.
@@ -166,6 +168,20 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
      */
     public int version() {
         return snapshot.version;
+    }
+
+    /**
+     * Test hook, not for applications (C# {@code NexusBroadcastClient.ProcessTestHook}): {@code hook} is called on the
+     * list's processing lane before each received list message is processed. While the stage it returns is incomplete,
+     * the list neither processes nor reads anything more from its pipe, so it grants the server no pipe credit: a test
+     * makes a slow or stalled consumer with it. The hook must not block; it returns null to go on at once. A hook that
+     * throws, or a stage that fails, is logged and ignored. Null removes it; a message already waiting for the removed
+     * hook still waits for its stage.
+     *
+     * @param hook the hook, or null
+     */
+    public void setProcessTestHook(@Nullable Supplier<? extends @Nullable CompletionStage<?>> hook) {
+        processTestHook = hook;
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -315,19 +331,67 @@ public final class NexusListClient<T> extends AbstractList<T> implements NexusLi
                 closeRun(reading);
                 return;
             }
-            for (byte[] item : items) {
-                if (!process(reading, item)) {
-                    log(NexusLogLevel.INFORMATION, "Protocol error on collection " + collectionId + "; closing its pipe.",
-                        null);
-                    closeRun(reading);
-                    return;
-                }
-                if (reading.stopped) {
-                    return;
+            processItems(reading, reader, items, 0);
+        }));
+    }
+
+    /**
+     * Lane: processes {@code items} from {@code start}, then reads the next batch. Suspends (freeing the lane) while
+     * the {@link #setProcessTestHook process test hook} holds an item, and resumes on the lane.
+     */
+    private void processItems(Run reading, NexusChannelReader<byte[]> reader, List<byte[]> items, int start) {
+        for (int i = start; i < items.size(); i++) {
+            Supplier<? extends @Nullable CompletionStage<?>> hook = processTestHook;
+            if (hook != null) {
+                CompletionStage<?> held = callHook(hook);
+                if (held != null) {
+                    CompletableFuture<?> wait = held.toCompletableFuture();
+                    if (!wait.isDone()) {
+                        int resume = i;
+                        wait.whenComplete((v, e) -> lane.execute(() -> {
+                            if (e != null) {
+                                log(NexusLogLevel.DEBUG, "The process test hook of collection " + collectionId + " failed.",
+                                    unwrap(e));
+                            }
+                            if (!reading.stopped) {
+                                processItem(reading, reader, items, resume);
+                            }
+                        }));
+                        return;
+                    }
                 }
             }
-            readNext(reading, reader);
-        }));
+            if (!processOne(reading, items.get(i))) {
+                return;
+            }
+        }
+        readNext(reading, reader);
+    }
+
+    /** Lane: processes the held item {@code index} (its hook already ran), then the rest of the batch. */
+    private void processItem(Run reading, NexusChannelReader<byte[]> reader, List<byte[]> items, int index) {
+        if (processOne(reading, items.get(index))) {
+            processItems(reading, reader, items, index + 1);
+        }
+    }
+
+    /** Lane: processes one item; false when the run stopped or the item closed the pipe. */
+    private boolean processOne(Run reading, byte[] item) {
+        if (!process(reading, item)) {
+            log(NexusLogLevel.INFORMATION, "Protocol error on collection " + collectionId + "; closing its pipe.", null);
+            closeRun(reading);
+            return false;
+        }
+        return !reading.stopped;
+    }
+
+    private @Nullable CompletionStage<?> callHook(Supplier<? extends @Nullable CompletionStage<?>> hook) {
+        try {
+            return hook.get();
+        } catch (RuntimeException e) {
+            log(NexusLogLevel.DEBUG, "The process test hook of collection " + collectionId + " failed.", e);
+            return null;
+        }
     }
 
     /** Lane: stops processing the run's items and closes its pipe; the pipe's completion runs the disconnect. */
