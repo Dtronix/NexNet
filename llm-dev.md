@@ -587,10 +587,15 @@ Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is se
 - **Golden vectors.** `NexNet.GoldenVectors` writes `tests/golden/*.jsonl`; Serialization.Tests, the JS Vitest suite
   and the Java JUnit suite all check them. Regenerate after a serializer or message change.
 - **Parity audit.** `IntegrationTests/Interop/ClientParityTests.cs` fails when a matrix test has no runnable row on a
-  language (transport, capability, `Languages`, `RequireInProc`) or checks part of its behavior on C# only (`InProc`,
-  a branch on `ClientLanguages.CSharp`), unless `Interop/ClientParityExceptions.cs` lists it with a reason (platform
-  limit, by design, or the card that closes it); it also fails on an entry no longer needed. A new client-matrix gap
-  must be listed there with its reason; keep `docs/articles/multi-language-clients.md` "Parity exceptions" in step.
+  language (transport, capability, `Languages`, `RequireInProc`), checks part of its behavior on C# only (`InProc`,
+  a branch on `ClientLanguages.CSharp`, or a check or cast to an in-process driver type such as
+  `client as InProcClientDriver<,>`), or branches on any other language (a `ClientLanguages` name or the `"browser-"`
+  family, an `IsBrowser(target)` helper, `client is RemoteClientDriver`) and checks something else there. It scans the
+  IL of the test and of the helpers it calls. Each gap needs an entry in `Interop/ClientParityExceptions.cs` with its
+  reason (platform limit, by design, or the card that closes it); a helper whose driver-type check only adds a C# check
+  on top of an all-language one is exempt in `ClientParityExceptions.DriverTypeChecks` (`AssertNotOutstanding`). The
+  audit also fails on an entry no longer needed. Keep `docs/articles/multi-language-clients.md` "Parity exceptions" in
+  step.
 - `src/NexNet.Interop.Tests` tests the harness itself (framing, hello, host launch and crash handling, drivers).
 
 ---

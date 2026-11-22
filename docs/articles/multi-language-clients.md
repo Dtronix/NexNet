@@ -259,9 +259,12 @@ exception.
 
 The matrix tests in this list are also listed, with the same reasons, in
 `src/NexNet.IntegrationTests/Interop/ClientParityExceptions.cs`. The parity audit (`ClientParityTests`) fails when a
-matrix test has no runnable row on a language, checks part of its behavior on the C# client only, or branches on any
-other language name (`target.Language == ClientLanguages.Java`, an `IsBrowser(target)` helper) and checks something
-else on it, without an entry there, and when an entry is no longer needed. That file also lists, with the card that closes it, any gap that is
+matrix test has no runnable row on a language, checks part of its behavior on the C# client only (a branch on
+`ClientLanguages.CSharp` or on the driver type, such as `client as InProcClientDriver<,>`), or branches on any other
+language name (`target.Language == ClientLanguages.Java`, an `IsBrowser(target)` helper) and checks something else on
+it, without an entry there, and when an entry is no longer needed. One helper's driver-type check is exempt there,
+with its reason: `MatrixTestBase.AssertNotOutstanding` asserts on every language that the client holds no invocation
+ID, and only adds a by-ID check of the C# client's ID table, so it narrows no language. That file also lists, with the card that closes it, any gap that is
 still being fixed; those are not exceptions and are not listed here. The transport rows below (UDS, QUIC, the browser
 transports) are not audit entries: a test that also runs on another transport has a runnable row. The C#-only and
 language-idiomatic APIs are not matrix tests.
