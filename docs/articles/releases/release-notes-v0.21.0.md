@@ -329,6 +329,11 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   `QuicConnection.ConnectAsync` only completes once msquic has shut the half-open connection down. The client now
   stops waiting when the timeout fires and reports `TransportException(ConnectionTimeout)` instead of
   `ConnectionRefused` ([#388](https://github.com/Dtronix/NexNet/pull/388)).
+- **A stopped QUIC server frees its UDP port at once.** The QUIC transport closed its connections without disposing
+  them, and msquic keeps a UDP binding alive while any connection on it has an open handle, so a stopped server's port
+  stayed bound (exclusively) until the finalizers ran: seconds to more than a minute. A restart on the same port, or
+  another server binding it, failed meanwhile. Connections are now disposed when they close. A client connecting to a
+  stopped server's port may therefore be refused at once instead of timing out ([#406](https://github.com/Dtronix/NexNet/pull/406)).
 - **HttpSocket `TargetHost`.** The `SslClientAuthenticationOptions` remarks now say that `TargetHost` is ignored for
   HttpSocket and WebSocket clients: the URL host is always used for SNI and certificate validation ([#120](https://github.com/Dtronix/NexNet/pull/120)).
 - **A connect fails at once when the transport closes during it.** When a send found the transport already closed (for
