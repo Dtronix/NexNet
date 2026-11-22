@@ -51,6 +51,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     // The last state change raised, so the client ends Disconnected exactly once when a loop stops.
     private ConnectionState _lastRaisedState = ConnectionState.Disconnected;
+
+    // Application connect attempts that have not opened a session yet (acquiring the token or connecting the
+    // transport): while any runs and no session exists, the client is Connecting.
+    private int _pendingConnects;
     private readonly INexusLogger? _logger;
     private readonly MetricsTagSet _metricsTags;
     private int _plaintextWarningLogged;
@@ -77,18 +81,27 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     /// <summary>
     /// Current state of the connection. While the reconnection loop runs (between the loss of a session and either a
-    /// new connected session or the end of the loop) it is <see cref="ConnectionState.Reconnecting"/>.
+    /// new connected session or the end of the loop) it is <see cref="ConnectionState.Reconnecting"/>. From the start of
+    /// a connect until its handshake completes it is <see cref="ConnectionState.Connecting"/>.
     /// </summary>
     public ConnectionState State
     {
         get
         {
-            var state = _session?.State ?? ConnectionState.Disconnected;
+            var state = _session?.State
+                        ?? (Volatile.Read(ref _pendingConnects) > 0 ? ConnectionState.Connecting : ConnectionState.Disconnected);
             return _reconnectLoopActive && state != ConnectionState.Connected ? ConnectionState.Reconnecting : state;
         }
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A connect raises <see cref="ConnectionState.Connecting"/> when it starts (before the authentication token is
+    /// acquired), then <see cref="ConnectionState.Connected"/> once the transport is up, or
+    /// <see cref="ConnectionState.Disconnected"/> when it fails. An attempt of the reconnection loop raises no
+    /// Connecting: the client stays <see cref="ConnectionState.Reconnecting"/> until an attempt connects, as the Java
+    /// and JavaScript clients do.
+    /// </remarks>
     public event EventHandler<ConnectionState>? StateChanged;
 
 
@@ -191,6 +204,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         LogPlaintextWarningOnce();
 
+        if (!isReconnecting)
+            BeginConnecting();
+
         // The token is acquired before the transport connects, so a slow provider does not run down the server's
         // handshake timeout and a failing one opens no connection.
         Memory<byte> authenticationToken;
@@ -200,11 +216,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (OperationCanceledException e) when (cancellationToken.IsCancellationRequested)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None, e);
         }
         catch (Exception e)
         {
             _logger?.LogError(e, "Could not acquire the authentication token.");
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.Authentication, e);
         }
 
@@ -216,6 +234,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (TransportException e)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected,
                 e.Error == TransportError.AuthenticationError
                     ? DisconnectReason.Authentication
@@ -223,6 +242,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (Exception e)
         {
+            EndConnecting(isReconnecting);
             return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.SocketError, e);
         }
 
@@ -255,6 +275,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var stopped = false;
         lock (_connectionLock)
         {
+            // From here the session (or the one another connect opened first) carries the state of this connect.
+            if (!isReconnecting)
+                _pendingConnects--;
+
             // Checked and assigned together: a reconnection attempt and an application ConnectAsync that both passed
             // the check at the top must not both open a session, and an attempt must not open one after a
             // DisconnectAsync stopped its loop.
@@ -360,6 +384,50 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _pingTimer.Change(TimeSpan.FromMilliseconds(pingInterval), TimeSpan.FromMilliseconds(pingInterval));
 
         return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
+    }
+
+    /// <summary>
+    /// Starts an application connect: the client is Connecting, raised once, until the attempt opens a session or
+    /// fails. Inside a running reconnection loop the client stays Reconnecting instead.
+    /// </summary>
+    private void BeginConnecting()
+    {
+        bool raise;
+        lock (_connectionLock)
+        {
+            _pendingConnects++;
+            raise = _session == null && !_reconnectLoopActive && _lastRaisedState != ConnectionState.Connecting;
+            if (raise)
+                _lastRaisedState = ConnectionState.Connecting;
+        }
+
+        if (raise)
+            StateChanged?.Invoke(this, ConnectionState.Connecting);
+    }
+
+    /// <summary>
+    /// Ends an application connect that failed before it opened a session: the client is Disconnected again (raised once
+    /// the last such attempt ends, unless a session or a reconnection loop now owns the state).
+    /// </summary>
+    private void EndConnecting(bool isReconnecting)
+    {
+        if (isReconnecting)
+            return;
+
+        bool raise;
+        lock (_connectionLock)
+        {
+            _pendingConnects--;
+            raise = _pendingConnects == 0
+                    && _session == null
+                    && !_reconnectLoopActive
+                    && _lastRaisedState == ConnectionState.Connecting;
+            if (raise)
+                _lastRaisedState = ConnectionState.Disconnected;
+        }
+
+        if (raise)
+            StateChanged?.Invoke(this, ConnectionState.Disconnected);
     }
 
     /// <param name="task">The disconnected task of the session that ended.</param>
