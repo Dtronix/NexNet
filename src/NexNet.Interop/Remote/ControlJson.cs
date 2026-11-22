@@ -77,6 +77,8 @@ public static class ControlJson
             json["fakeTime"] = true;
         if (spec.LogLevel is { } level)
             json["logLevel"] = level.ToString();
+        if (spec.Metrics is { } metrics)
+            json["metrics"] = metrics.ToString();
         return json;
     }
 

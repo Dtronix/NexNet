@@ -3,7 +3,7 @@
  * @module
  */
 
-export { Host, PROTOCOL_VERSION, listChangedData } from './host.js';
+export { Host, PROTOCOL_VERSION, listChangedData, snapshotJson } from './host.js';
 export { FrameDecoder, encodeFrame, ControlProtocolError, MAX_FRAME_LENGTH } from './framing.js';
 export { HostError, ThrowingWatchError, toWireError, nativeError } from './errors.js';
 export { parseSpec, parsePoolOptions } from './spec.js';

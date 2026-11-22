@@ -15,6 +15,7 @@ import {
   cancellationError,
   diagnostics,
   isCancellationError,
+  NexusMetrics,
 } from '@dtronix/nexnet';
 import { encodeFrame, ControlProtocolError } from './framing.js';
 import { HostError, ThrowingWatchError, badRequest, notSupported, unknownHandle, invalidOperation, toWireError, nativeError, messageOf, NOT_CONNECTED } from './errors.js';
@@ -227,6 +228,11 @@ class ClientEntry extends InvokerEntry {
     this.watches = new Map();
     /** @type {number | null} */
     this.lastReason = null;
+    /**
+     * The client's metrics (`ClientSpec.metrics`), and the event instruments they reported (§6.4 `client.metrics`).
+     * @type {{ metrics: NexusMetrics, events: Measurement[] } | null}
+     */
+    this.metrics = null;
   }
 
   get proxy() {
@@ -420,6 +426,38 @@ class FutureEntry {
 }
 
 /** @typedef {ClientEntry | RentalEntry | PoolEntry | PipeEntry | FutureEntry} Entry */
+
+/**
+ * A measurement of `client.metrics` (§6.4).
+ * @typedef {object} Measurement
+ * @property {string} instrument
+ * @property {number} value
+ * @property {Readonly<Record<string, string>>} tags
+ */
+
+/**
+ * The session snapshot of a client in the form of `client.snapshot` (§6.4): the field names of
+ * `tests/golden/snapshot-fields.json`, durations in milliseconds, the session id as decimal text and enums by name.
+ * @param {any} snapshot The runtime's `getSnapshot()`.
+ * @returns {Record<string, unknown> | null}
+ */
+export function snapshotJson(snapshot) {
+  if (snapshot === null || snapshot === undefined) return null;
+  const pascal = (/** @type {string} */ name) => name.charAt(0).toUpperCase() + name.slice(1);
+  return {
+    ...snapshot,
+    id: snapshot.id === null ? null : String(snapshot.id),
+    state: stateName(snapshot.state),
+    budget: { ...snapshot.budget },
+    invocations: { ...snapshot.invocations },
+    pipes: snapshot.pipes.map((/** @type {any} */ pipe) => ({ ...pipe, partialItem: pipe.partialItem ? { ...pipe.partialItem } : null })),
+    largeMessages: snapshot.largeMessages.map((/** @type {any} */ message) => ({
+      ...message,
+      direction: pascal(message.direction),
+      kind: pascal(message.kind),
+    })),
+  };
+}
 
 /**
  * The part of a client's session snapshot (`NexusClient.getSnapshot()`) that `client.budget` reads (§6.4).
@@ -1083,6 +1121,7 @@ export class Host {
     } catch (error) {
       this.#hostLog('warning', 'Disposing client ' + entry.h + ' failed: ' + messageOf(error));
     }
+    entry.metrics?.metrics.dispose();
     this.#release(entry);
   }
 
@@ -1322,6 +1361,18 @@ export class Host {
       }, { invocationError: parsed.onInvocationException });
       const client = exp.createClient(entry.config, entry.scripts);
       entry.client = client;
+      if (parsed.metrics) {
+        // Tracked from creation, so every session of the client is counted.
+        const metrics = new NexusMetrics();
+        /** @type {Measurement[]} */
+        const events = [];
+        const record = (/** @type {{ name: string }} */ instrument, /** @type {number} */ value, /** @type {Readonly<Record<string, string>>} */ tags) => {
+          events.push({ instrument: instrument.name, value, tags: { ...tags } });
+        };
+        metrics.addListener({ add: record, record });
+        metrics.track(client);
+        entry.metrics = { metrics, events };
+      }
       client.addEventListener('statechange', (/** @type {Event} */ event) => {
         const detail = /** @type {CustomEvent} */ (event).detail;
         this.#event(entry, 'client.state', { state: stateName(detail?.state ?? client.state) });
@@ -1387,6 +1438,21 @@ export class Host {
       const entry = this.#client(ctx, args.h, 'client.budget');
       const budget = snapshotOf(entry.client)?.budget ?? null;
       return { budget: budget ? { limit: budget.limit, reserved: budget.reserved } : null };
+    });
+    op('client.snapshot', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.snapshot');
+      return { snapshot: snapshotJson(entry.client.getSnapshot()) };
+    });
+    op('client.metrics', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'client.metrics');
+      const recorded = entry.metrics;
+      if (recorded === null) throw invalidOperation('Create the client with ClientSpec.metrics to read its metrics.');
+      /** @type {Measurement[]} */
+      const observed = [];
+      recorded.metrics.collect((instrument, value, tags) => {
+        observed.push({ instrument: instrument.name, value, tags: { ...tags } });
+      });
+      return { events: [...recorded.events], observed };
     });
     op('client.outstanding', (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.outstanding');
@@ -1961,6 +2027,7 @@ export class Host {
     const options = parsePoolOptions(args.options);
     const parsed = parseSpec(args.spec, { transports: this.#platform.transports, browser: this.#platform.browser });
     if (parsed.onInvocationException) throw notSupported('The client nexus of pooled clients is not scripted: onInvocationException needs a client.');
+    if (parsed.metrics) throw notSupported('ClientSpec.metrics needs a client: the metrics of pooled clients are not recorded.');
     const fake = parsed.fakeTime ? new FakeClock() : null;
     const entry = new PoolEntry(this.#newHandle('pl'), scope, exp, fake);
     const host = this;

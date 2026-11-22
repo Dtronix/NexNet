@@ -79,6 +79,9 @@ final class PoolEntry {
             throw HostError.notSupported("The client nexus of pooled clients is not scripted: ClientSpec.onInvocationException "
                 + "needs a client.");
         }
+        if (spec.has("metrics")) {
+            throw HostError.notSupported("ClientSpec.metrics needs a client: the metrics of pooled clients are not recorded.");
+        }
         SpecMapper.Setup setup = SpecMapper.map(spec, logger, null);
         this.fakeTime = setup.fakeTime;
 

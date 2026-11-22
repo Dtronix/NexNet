@@ -27,6 +27,8 @@ public static class InProcClientConfig
     public static ClientConfig Create(ClientSpec spec, ClientTransport transport, out FakeTimeProvider? fakeTime)
     {
         ArgumentNullException.ThrowIfNull(spec);
+        if (spec.Metrics == MetricsRecording.Micrometer)
+            throw new NotSupportedException("Micrometer metrics are a Java module; the C# client records Native metrics.");
         var address = spec.Address;
         if (spec.QueryToken is { } queryToken)
         {

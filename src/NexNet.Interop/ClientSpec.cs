@@ -153,6 +153,12 @@ public sealed class ClientSpec
     public bool FakeTime { get; set; }
 
     /// <summary>
+    /// Records the client's metrics for <see cref="IClientUnderTest.GetMetricsAsync"/>; null records none (and
+    /// <c>GetMetricsAsync</c> fails). A pool refuses it.
+    /// </summary>
+    public MetricsRecording? Metrics { get; set; }
+
+    /// <summary>
     /// Client log level. A language host sends the client's lines at or above it as <c>log</c> events, which the
     /// remote driver gives to <see cref="Logger"/>; the C# client logs to <see cref="Logger"/> at or above it. Null
     /// disables client logging in language hosts and leaves the in-process logger unfiltered.

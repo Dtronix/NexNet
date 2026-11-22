@@ -1,56 +1,67 @@
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+
+#pragma warning disable VSTHRD200
+
 namespace NexNet.IntegrationTests.Collections;
 
 /// <summary>
 /// DisableAsync returns once the collection's pipe is freed (S23): with a single pipe slot, an enable right after a
-/// disable always finds the slot available.
+/// disable always finds the slot available. On every row of the client matrix: the client's pipe limit is
+/// <see cref="ClientSpec.MaxPipes"/>, and its open pipes are those of its session snapshot.
 /// </summary>
-internal class NexusCollectionDisableFreesPipeTests : BaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionDisableFreesPipeTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     private const int Cycles = 1000;
 
+    /// <summary>
+    /// Why the Java and JavaScript rows are skipped: a runtime gap with a follow-up card (Q05 report), listed in
+    /// <c>ClientParityExceptions</c>.
+    /// </summary>
+    internal const string DisableReturnsEarly =
+        "the Java and JavaScript clients return from DisableAsync before the collection's pipe is freed, so with one pipe slot "
+        + "an enable right after it is refused (Busy) and the snapshot still shows the pipe (S23 parity, follow-up card)";
+
+    /// <summary>The pipes open on the client's session.</summary>
+    private static async Task<int> OpenPipesAsync(IClientUnderTest client)
+        => (await client.GetSnapshotAsync().Timeout(T(1)))!.Pipes.Count;
+
     [Test]
-    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
-    public async Task DisableAsync_FreesThePipeBeforeReturning(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisableAsync_FreesThePipeBeforeReturning(ClientTarget target)
     {
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        RequireInProc(target, DisableReturnsEarly);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
+        var list = client.List<int>(IntListBi);
 
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.MaxPipes = 1;
-        var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await Assert.That(await list.EnableAsync().AsTask().Timeout(T(5))).IsTrue();
+        await Assert.That(await OpenPipesAsync(client)).IsEqualTo(1);
+        await list.DisableAsync().AsTask().Timeout(T(5));
 
-        var list = client.Proxy.IntListBi;
-        var pipes = client.Session!.PipeManager;
-
-        await Assert.That(await list.EnableAsync().Timeout(5)).IsTrue();
-        await list.DisableAsync().Timeout(5);
-
-        await Assert.That(pipes.OpenPipes).IsZero();
+        await Assert.That(await OpenPipesAsync(client)).IsZero();
+        await EndAsync(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task EnableDisableCycles_WithOnePipeSlot_AllSucceed(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task EnableDisableCycles_WithOnePipeSlot_AllSucceed(ClientTarget target)
     {
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.MaxPipes = 1;
-        var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        var list = client.Proxy.IntListBi;
+        RequireInProc(target, DisableReturnsEarly);
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
+        var list = client.List<int>(IntListBi);
 
         for (var i = 0; i < Cycles; i++)
         {
-            await Assert.That(await list.EnableAsync().Timeout(5)).IsTrue();
-            await list.DisableAsync().Timeout(5);
+            await Assert.That(await list.EnableAsync().AsTask().Timeout(T(5))).IsTrue();
+            await list.DisableAsync().AsTask().Timeout(T(5));
         }
 
-        await Assert.That(client.Session!.PipeManager.OpenPipes).IsZero();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await OpenPipesAsync(client)).IsZero();
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Connected);
+        await EndAsync(client);
     }
 
     /// <summary>
@@ -59,28 +70,22 @@ internal class NexusCollectionDisableFreesPipeTests : BaseTests
     /// refused for that.
     /// </summary>
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task EnableDisableCycles_WithOnePipeSlotOnBothSides_AllSucceed(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task EnableDisableCycles_WithOnePipeSlotOnBothSides_AllSucceed(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.MaxPipes = 1;
-        var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.MaxPipes = 1;
-        var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        var list = client.Proxy.IntListBi;
+        RequireInProc(target, DisableReturnsEarly);
+        await using var server = await StartServerAsync(configure: config => config.MaxPipes = 1);
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.MaxPipes = 1);
+        var list = client.List<int>(IntListBi);
 
         for (var i = 0; i < Cycles; i++)
         {
-            await Assert.That(await list.EnableAsync().Timeout(5)).IsTrue();
-            await list.DisableAsync().Timeout(5);
+            await Assert.That(await list.EnableAsync().AsTask().Timeout(T(5))).IsTrue();
+            await list.DisableAsync().AsTask().Timeout(T(5));
         }
 
-        await Assert.That(client.Session!.PipeManager.OpenPipes).IsZero();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await OpenPipesAsync(client)).IsZero();
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Connected);
+        await EndAsync(client);
     }
 }
