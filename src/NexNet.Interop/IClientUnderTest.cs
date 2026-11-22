@@ -120,9 +120,9 @@ public interface IClientUnderTest : IAsyncDisposable
     /// every ID was released.
     /// </summary>
     /// <remarks>
-    /// The language hosts report the runtime's reserved-ID count. The in-process C# driver cannot read the C# ID table
-    /// (it is internal to NexNet) and reports <see cref="NexusInvocationSnapshot.AwaitingResults"/>, which leaves out a
-    /// call canceled after send; the integration tests check the C# ID table directly, by ID.
+    /// Every driver reports the runtime's reserved-ID count: the language hosts through the runtime's diagnostics, and
+    /// the in-process C# driver from the session's ID table (S42). Unlike
+    /// <see cref="NexusInvocationSnapshot.AwaitingResults"/>, it includes a call canceled after send.
     /// </remarks>
     /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
     Task<int> GetOutstandingInvocationsAsync()

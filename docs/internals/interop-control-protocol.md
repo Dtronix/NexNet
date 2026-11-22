@@ -258,7 +258,7 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `connectionTimeoutMs`, `timeoutMs`, `handshakeTimeoutMs`, `pingIntervalMs`, `maxMessageSize`, `invocationCredits` | int | |
 | `maxConcurrentConnectionInvocations` | int | How many invocations from the server the client runs at once (1 – 1000); further ones queue. |
 | `maxSeparatePoolInvocations` | int | How many invocations of the client nexus's `SeparatePool` methods the client runs at once (1 – 1000). |
-| `invocationQueueWarningThresholdMs` | int | An invocation from the server that waits longer than this for an execution slot logs a warning (0 – 600000; 0 disables it). The Java client has no such warning and refuses the member with `NotSupported`. |
+| `invocationQueueWarningThresholdMs` | int | An invocation from the server that waits longer than this for an execution slot logs a warning (0 – 600000; 0 disables it). |
 | `sessionBudget` | int | The client's receive memory per session, in bytes (64 KiB – 1 GiB). |
 | `maxPipes` | int | Most pipes open on the client's session at once (1 – 255); one more is refused locally (kind `Busy`). |
 | `pipeWindow` | int | The receive window of each pipe the client opens or accepts, in bytes, reserved from `sessionBudget` while the pipe is open. |
