@@ -39,7 +39,7 @@ public class ClientMatrixTests
     {
         var rows = new ClientMatrixAttribute { Languages = ["csharp", "browser-chromium", "java"] }.GetTargets("ALL");
 
-        ClientTransport[] Of(string language) => rows.Where(r => r.Language == language).Select(r => r.Transport).ToArray();
+        ClientTransport[] Of(string language) => rows.Where(r => r.Language == language && r.Variant == null).Select(r => r.Transport).ToArray();
 
         await Assert.That(Of("csharp")).IsEquivalentTo(ClientTransports.All, TUnit.Assertions.Enums.CollectionOrdering.Matching);
         await Assert.That(Of("browser-chromium")).IsEquivalentTo(
@@ -53,12 +53,15 @@ public class ClientMatrixTests
     [Test]
     public async Task TransportOverride_List_IsUsedForEveryLanguage()
     {
-        var rows = new ClientMatrixAttribute { Languages = ["csharp", "browser-chromium"] }.GetTargets(" tcp, WebSocket ,Tcp");
+        var plan = new ClientMatrixAttribute { Languages = ["csharp", "browser-chromium"] }.Plan(" tcp, WebSocket ,Tcp");
 
-        await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
-            new[] { "csharp/Tcp", "csharp/WebSocket", "browser-chromium/Tcp", "browser-chromium/WebSocket" },
+        await Assert.That(plan.Rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[] { "csharp/Tcp", "csharp/WebSocket", "browser-chromium/WebSocket" },
             TUnit.Assertions.Enums.CollectionOrdering.Matching);
-        await Assert.That(rows.Single(r => r.ToString() == "browser-chromium/Tcp").SkipReason).Contains("no Tcp transport");
+        await Assert.That(plan.NotApplicable).IsEquivalentTo(new[]
+        {
+            new NotApplicableRow("browser-chromium", ClientTransport.Tcp, "The browser-chromium client has no Tcp transport."),
+        });
     }
 
     [Test]
@@ -96,25 +99,91 @@ public class ClientMatrixTests
     }
 
     [Test]
-    public async Task MissingTransportOrCapability_IsAVisibleSkip()
+    public async Task MissingTransportOrCapability_GetsNoRow_AndIsRecordedWithItsReason()
     {
-        var rows = new ClientMatrixAttribute
+        var plan = new ClientMatrixAttribute
         {
             Languages = ["csharp", "browser-chromium", "java"],
             Transports = [ClientTransport.Uds, ClientTransport.WebSocketTls],
             Requires = ClientCapabilities.Pinning,
-        }.GetTargets();
+        }.Plan(transportOverride: null, ClientLanguages.GetBuiltIn);
 
-        string? Reason(string language, ClientTransport transport)
-            => rows.Single(r => r.Language == language && r.Transport == transport).SkipReason;
+        await Assert.That(plan.Rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[] { "csharp/Uds", "csharp/WebSocketTls", "java/WebSocketTls", "java/WebSocketTls(okhttp)" },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(plan.Rows.All(r => r.SkipReason == null)).IsTrue();
+        await Assert.That(plan.NotApplicable).IsEquivalentTo(
+            new[]
+            {
+                new NotApplicableRow("browser-chromium", ClientTransport.Uds, "The browser-chromium client has no Uds transport."),
+                new NotApplicableRow("browser-chromium", ClientTransport.WebSocketTls, "The browser-chromium client lacks: Pinning."),
+                new NotApplicableRow("java", ClientTransport.Uds, "The java client has no Uds transport."),
+            },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+    }
 
-        await Assert.That(rows.Count).IsEqualTo(6);
-        await Assert.That(Reason("csharp", ClientTransport.Uds)).IsNull();
-        await Assert.That(Reason("csharp", ClientTransport.WebSocketTls)).IsNull();
-        await Assert.That(Reason("browser-chromium", ClientTransport.Uds)).Contains("no Uds transport");
-        await Assert.That(Reason("browser-chromium", ClientTransport.WebSocketTls)).Contains("Pinning");
-        await Assert.That(Reason("java", ClientTransport.Uds)).Contains("no Uds transport");
-        await Assert.That(Reason("java", ClientTransport.WebSocketTls)).IsNull();
+    [Test]
+    public async Task JavaWebSocketRows_HaveAnOkHttpVariant()
+    {
+        var rows = new ClientMatrixAttribute
+        {
+            Languages = ["java", "node"],
+            Transports = [ClientTransport.Tcp, ClientTransport.WebSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls],
+        }.Plan(transportOverride: null, ClientLanguages.GetBuiltIn).Rows;
+
+        await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[]
+            {
+                "java/Tcp", "java/WebSocket", "java/WebSocket(okhttp)", "java/HttpSocketTls", "java/WebSocketTls", "java/WebSocketTls(okhttp)",
+                "node/Tcp", "node/WebSocket", "node/HttpSocketTls", "node/WebSocketTls",
+            },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(rows.Where(r => r.Variant != null).All(r => r.Variant == ClientVariant.OkHttp)).IsTrue();
+        await Assert.That(ClientLanguages.GetBuiltIn("java").Variants.Single().Transports)
+            .IsEquivalentTo(new[] { ClientTransport.WebSocket, ClientTransport.WebSocketTls });
+    }
+
+    [Test]
+    public async Task Variant_IsPassedToTheDriverAsWebSocketConnector()
+    {
+        const string language = "variant-probe";
+        var drivers = new SpecCapturingDriverFactory();
+        ClientLanguages.Register(new ClientLanguageInfo(language, [ClientTransport.Tcp, ClientTransport.WebSocket], ClientCapabilities.Tcp)
+        {
+            Variants = [new ClientVariant("fast", [ClientTransport.WebSocket])],
+        });
+        Harness.RegisterDriver(language, drivers);
+
+        var rows = new ClientMatrixAttribute { Languages = [language], Transports = [ClientTransport.Tcp, ClientTransport.WebSocket] }.GetTargets(transportOverride: null);
+        await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[] { language + "/Tcp", language + "/WebSocket", language + "/WebSocket(fast)" },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+        foreach (var row in rows)
+        {
+            var spec = new ClientSpec();
+            await Assert.That(async () => await Harness.CreateClientAsync(row, spec)).ThrowsExactly<NotSupportedException>();
+            await Assert.That(spec.WebSocketConnector).IsNull();
+        }
+
+        await Assert.That(drivers.Specs.Select(s => (s.Transport, s.WebSocketConnector))).IsEquivalentTo(
+            new (ClientTransport?, string?)[] { (ClientTransport.Tcp, null), (ClientTransport.WebSocket, null), (ClientTransport.WebSocket, "fast") },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+    }
+
+    /// <summary>A driver that records the spec it is given and creates nothing.</summary>
+    private sealed class SpecCapturingDriverFactory : IClientDriverFactory
+    {
+        public List<ClientSpec> Specs { get; } = [];
+
+        public Task<IClientUnderTest> CreateAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec)
+            where TClientNexus : NexNet.Invocation.ClientNexusBase<TServerProxy>, NexNet.Invocation.IInvocationMethodHash, NexNet.Collections.ICollectionConfigurer, new()
+            where TServerProxy : NexNet.Invocation.ProxyInvocationBase, NexNet.Invocation.IInvocationMethodHash, new()
+        {
+            lock (Specs)
+                Specs.Add(spec);
+            return Task.FromException<IClientUnderTest>(new NotSupportedException("Records the spec only."));
+        }
     }
 
     private static readonly int[] Sizes = [1, 2];
@@ -131,11 +200,10 @@ public class ClientMatrixTests
             new[]
             {
                 "csharp/Tcp:1", "csharp/Tcp:2", "csharp/WebSocket:1", "csharp/WebSocket:2",
-                "browser-chromium/Tcp:1", "browser-chromium/Tcp:2", "browser-chromium/WebSocket:1", "browser-chromium/WebSocket:2",
+                "browser-chromium/WebSocket:1", "browser-chromium/WebSocket:2",
             },
             TUnit.Assertions.Enums.CollectionOrdering.Matching);
-        await Assert.That(rows.Single(r => r.Target.ToString() == "browser-chromium/Tcp" && r.Value == 1).Target.SkipReason).Contains("no Tcp transport");
-        await Assert.That(rows.Single(r => r.Target.ToString() == "csharp/Tcp" && r.Value == 2).Target.SkipReason).IsNull();
+        await Assert.That(rows.All(r => r.Target.SkipReason == null)).IsTrue();
     }
 
     [Test]
@@ -188,7 +256,7 @@ public class ClientMatrixTests
         }.GetTargets();
 
         await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
-            new[] { "csharp/Tcp", "csharp/WebSocketTls", "csharp/Quic", "node/Tcp", "node/WebSocketTls", "java/Tcp", "java/WebSocketTls" },
+            new[] { "csharp/Tcp", "csharp/WebSocketTls", "csharp/Quic", "node/Tcp", "node/WebSocketTls", "java/Tcp", "java/WebSocketTls", "java/WebSocketTls(okhttp)" },
             TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
@@ -204,21 +272,21 @@ public class ClientMatrixTests
     [Test]
     public async Task Quic_IsCSharpOnly_AndSkippedWithoutMsQuic()
     {
-        var rows = new ClientMatrixAttribute
+        var plan = new ClientMatrixAttribute
         {
             Languages = ["csharp", "node", "java", "browser-chromium"],
             Transports = [ClientTransport.Quic],
-        }.GetTargets();
+        }.Plan(transportOverride: null, ClientLanguages.GetBuiltIn);
 
-        string? Reason(string language) => rows.Single(r => r.Language == language).SkipReason;
-
+        var csharp = plan.Rows.Single();
+        await Assert.That(csharp.Language).IsEqualTo("csharp");
         if (NexNet.InteropServer.InteropEndpointKinds.IsQuicSupported)
-            await Assert.That(Reason("csharp")).IsNull();
+            await Assert.That(csharp.SkipReason).IsNull();
         else
-            await Assert.That(Reason("csharp")).Contains("msquic");
-        await Assert.That(Reason("node")).Contains("no Quic transport");
-        await Assert.That(Reason("java")).Contains("no Quic transport");
-        await Assert.That(Reason("browser-chromium")).Contains("no Quic transport");
+            await Assert.That(csharp.SkipReason).Contains("msquic");
+        await Assert.That(plan.NotApplicable.Select(n => n.Language)).IsEquivalentTo(
+            new[] { "node", "java", "browser-chromium" }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(plan.NotApplicable.All(n => n.Reason.Contains("no Quic transport", StringComparison.Ordinal))).IsTrue();
         await Assert.That(ClientTransport.Quic.IsSecure()).IsTrue();
         await Assert.That(ClientTransport.Quic.RequiredCapability()).IsEqualTo(ClientCapabilities.Quic);
     }
@@ -232,10 +300,14 @@ public class ClientMatrixTests
     }
 
     [Test]
-    [ClientMatrix(Languages = ["browser-chromium"], Transports = [ClientTransport.Uds])]
-    public async Task UnsupportedRow_IsSkipped(ClientTarget target)
+    [ClientMatrix(Languages = ["java"], Transports = [ClientTransport.WebSocket])]
+    public async Task VariantRows_CarryTheVariantProperty(ClientTarget target)
     {
-        await Harness.CreateClientAsync(target, new ClientSpec());
-        throw new InvalidOperationException("Not reached: the row is skipped.");
+        var properties = TestContext.Current!.Metadata.TestDetails.CustomProperties;
+        await Assert.That(properties[ClientMatrixAttribute.LanguageProperty]).IsEquivalentTo(new[] { "java" });
+        if (target.Variant == null)
+            await Assert.That(properties.ContainsKey(ClientMatrixAttribute.VariantProperty)).IsFalse();
+        else
+            await Assert.That(properties[ClientMatrixAttribute.VariantProperty]).IsEquivalentTo(new[] { ClientVariant.OkHttp });
     }
 }

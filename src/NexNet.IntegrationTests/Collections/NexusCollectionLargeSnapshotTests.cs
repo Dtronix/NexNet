@@ -16,7 +16,7 @@ namespace NexNet.IntegrationTests.Collections;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusCollectionLargeSnapshotTests(LanguageHostPool hosts) : NexusCollectionBaseTests
 {
-    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    /// <summary>The language hosts of the session; their hello decides which rows are generated.</summary>
     public LanguageHostPool Hosts { get; } = hosts;
 
     [Test]

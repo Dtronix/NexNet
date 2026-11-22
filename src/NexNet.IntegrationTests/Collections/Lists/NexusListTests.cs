@@ -638,10 +638,9 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Languages = [ClientLanguages.CSharp], Transports = [ClientTransport.Uds])]
     public async Task CopyTo_CopiesAllElements(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
@@ -658,10 +657,9 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Languages = [ClientLanguages.CSharp], Transports = [ClientTransport.Uds])]
     public async Task CopyTo_NullArray_ThrowsArgumentNullException(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();
@@ -672,10 +670,9 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds])]
+    [ClientMatrix(Languages = [ClientLanguages.CSharp], Transports = [ClientTransport.Uds])]
     public async Task CopyTo_SmallArray_ThrowsArgumentException(ClientTarget target)
     {
-        RequireInProc(target, CSharpListApi);
         await using var s = await ConnectAsync(target);
         var list = s.List;
         await Assert.That(await list.EnableAsync().Timeout(T(1))).IsTrue();

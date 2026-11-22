@@ -217,8 +217,8 @@ internal partial class CrossLanguageSmokeTests(LanguageHostPool hosts) : BaseTes
 
         // The language under test on the row's endpoint and, when it supports it, on the other secure HTTP endpoint;
         // a C# client on plain TCP.
-        var sameLanguageOther = new ClientMatrixAttribute { Languages = [target.Language], Transports = [otherTransport] }.GetTargets()[0];
-        var otherTarget = sameLanguageOther.SkipReason == null ? sameLanguageOther : ClientTarget.CSharp(otherTransport);
+        var otherTarget = new ClientMatrixAttribute { Languages = [target.Language], Transports = [otherTransport] }.GetTargets()
+            .FirstOrDefault(r => r.Variant == null && r.SkipReason == null) ?? ClientTarget.CSharp(otherTransport);
 
         await using var row = await server.ConnectAsync(target, "row");
         await using var other = await server.ConnectAsync(otherTarget, "other");

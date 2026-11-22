@@ -21,7 +21,7 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 /// <remarks>
 /// The QUIC rows are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>): no other client language has
-/// QUIC. Browsers control none of these TLS settings: their rows are skipped with the capability they lack.
+/// QUIC. Browsers control none of these TLS settings: they get no rows (the capability they lack rules them out).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class TlsCertificateTests(LanguageHostPool hosts) : MatrixTestBase(hosts)

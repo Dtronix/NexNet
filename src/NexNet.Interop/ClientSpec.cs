@@ -109,6 +109,14 @@ public sealed class ClientSpec
     /// </summary>
     public QueryToken? QueryToken { get; set; }
 
+    /// <summary>
+    /// The connector of a WebSocket transport, for a language whose client has more than one
+    /// (<see cref="ClientVariant"/>): <see cref="ClientVariant.OkHttp"/> runs a Java client on the OkHttp connector of
+    /// <c>nexnet-client-okhttp</c>. Null is the client's built-in connector. <see cref="Harness"/> sets it from
+    /// <see cref="ClientTarget.Variant"/>; every other client refuses it.
+    /// </summary>
+    public string? WebSocketConnector { get; set; }
+
     /// <summary>Largest message the client accepts, in bytes.</summary>
     public int? MaxMessageSize { get; set; }
 

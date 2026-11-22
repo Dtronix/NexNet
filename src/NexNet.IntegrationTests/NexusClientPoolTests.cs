@@ -31,7 +31,7 @@ namespace NexNet.IntegrationTests;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusClientPoolTests(LanguageHostPool hosts) : BaseTests
 {
-    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    /// <summary>The language hosts of the session; their hello decides which rows are generated.</summary>
     public LanguageHostPool Hosts { get; } = hosts;
 
     /// <summary>A server with its own host.</summary>

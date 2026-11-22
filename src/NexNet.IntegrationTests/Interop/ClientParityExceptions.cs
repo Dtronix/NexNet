@@ -24,8 +24,8 @@ internal enum ParityLanguages
 internal enum ParityGap
 {
     /// <summary>
-    /// No row of the language runs: its transports or capabilities rule out every row, the attribute's
-    /// <c>Languages</c> leaves it out, or the test skips it at run time (<c>MatrixTestBase.RequireInProc</c>).
+    /// The matrix generates no row of the language: its transports or capabilities rule out every row (by the built-in
+    /// table, <c>ClientLanguages.GetBuiltIn</c>), or the attribute's <c>Languages</c> leaves it out (C#-only API by design).
     /// </summary>
     NoRunnableRow,
 

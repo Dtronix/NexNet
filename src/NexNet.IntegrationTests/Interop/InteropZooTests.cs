@@ -33,7 +33,7 @@ namespace NexNet.IntegrationTests.Interop;
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class InteropZooTests(LanguageHostPool hosts) : BaseTests
 {
-    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    /// <summary>The language hosts of the session; their hello decides which rows are generated.</summary>
     public LanguageHostPool Hosts { get; } = hosts;
 
     /// <summary>

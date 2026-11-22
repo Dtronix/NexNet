@@ -30,7 +30,7 @@ public enum ClientTransport
     /// <summary>
     /// QUIC (NexNet.Quic). C#-only: no other client language implements it, so ported tests usually add it through
     /// <see cref="ClientMatrixAttribute.CSharpTransports"/>. Needs msquic in the test process; rows are skipped visibly
-    /// without it.
+    /// without it (an environment skip, <see cref="ClientTarget.SkipReason"/>).
     /// </summary>
     Quic,
 }
@@ -62,7 +62,7 @@ public static class ClientTransports
     /// Unset or blank: <see cref="Default"/>. <c>all</c>: every transport the language supports
     /// (<see cref="ClientLanguageInfo.Transports"/>), in declaration order. Otherwise a comma-separated list of
     /// <see cref="ClientTransport"/> names (case-insensitive), used for every language; a transport a language lacks is
-    /// a visible skip on its row.
+    /// not applicable to it, and it gets no row for it.
     /// </param>
     /// <exception cref="ArgumentException">The list names an unknown transport.</exception>
     public static IReadOnlyList<ClientTransport> Select(ClientLanguageInfo language, string? value)
@@ -131,7 +131,8 @@ public static class ClientTransports
 
 /// <summary>
 /// Optional features of a client implementation. A test declares what it needs
-/// (<see cref="ClientMatrixAttribute.Requires"/>); rows of languages that lack it are visible skips.
+/// (<see cref="ClientMatrixAttribute.Requires"/>); languages that lack it get no row for the test (the coverage report
+/// counts them as not applicable, <see cref="MatrixCoverage"/>).
 /// </summary>
 [Flags]
 public enum ClientCapabilities
@@ -187,7 +188,7 @@ public enum ClientCapabilities
 }
 
 /// <summary>
-/// One row of the client matrix: which client implementation (language) connects over which transport.
+/// One row of the client matrix: which client implementation (language, and variant) connects over which transport.
 /// </summary>
 /// <param name="Language">The language name (<see cref="ClientLanguages"/>).</param>
 /// <param name="Transport">The transport.</param>
@@ -197,8 +198,15 @@ public sealed record ClientTarget(string Language, ClientTransport Transport)
     public static ClientTarget CSharp(ClientTransport transport) => new(ClientLanguages.CSharp, transport);
 
     /// <summary>
-    /// Why this row cannot run (the language lacks the transport or a required capability); null when it can.
-    /// <see cref="Harness"/> skips the test visibly when it is set.
+    /// The variant of the language's client (<see cref="ClientVariant"/>, e.g. <see cref="ClientVariant.OkHttp"/>), or
+    /// null for its default implementation. <see cref="Harness"/> passes it as <see cref="ClientSpec.WebSocketConnector"/>.
+    /// </summary>
+    public string? Variant { get; init; }
+
+    /// <summary>
+    /// Why this row cannot run in this environment (QUIC without msquic in the test process); null when it can.
+    /// <see cref="Harness"/> skips the test visibly when it is set. A language that lacks the transport or a required
+    /// capability gets no row at all (<see cref="ClientMatrixAttribute"/>).
     /// </summary>
     public string? SkipReason { get; init; }
 
@@ -210,5 +218,5 @@ public sealed record ClientTarget(string Language, ClientTransport Transport)
     }
 
     /// <inheritdoc />
-    public override string ToString() => Language + "/" + Transport;
+    public override string ToString() => Language + "/" + Transport + (Variant == null ? "" : "(" + Variant + ")");
 }

@@ -241,16 +241,10 @@ internal abstract partial class MatrixTestBase(LanguageHostPool hosts) : BaseTes
     }
 
     /// <summary>
-    /// Skips a row of another language: the test drives the C# client directly, through <see cref="InProc"/>, because
-    /// the harness cannot yet express what it checks (<paramref name="reason"/>).
+    /// The C# client of an in-process row. A test that only the C# client can run by design sets
+    /// <c>Languages = [ClientLanguages.CSharp]</c> on its matrix (no row of another language is generated) and is a parity
+    /// exception; a test that runs on every language and also checks the C# client through it is one too.
     /// </summary>
-    protected static void RequireInProc(ClientTarget target, string reason)
-    {
-        if (target.Language != ClientLanguages.CSharp)
-            Skip.Test("C# client only: " + reason);
-    }
-
-    /// <summary>The C# client of an in-process row (<see cref="RequireInProc"/>).</summary>
     protected static InProcClientDriver<ClientNexus, ClientNexus.ServerProxy> InProc(IClientUnderTest client)
         => (InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)client;
 
