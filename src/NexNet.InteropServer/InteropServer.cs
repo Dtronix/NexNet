@@ -1,9 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
@@ -41,6 +44,7 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     private readonly string _udsDirectory;
     private readonly IReadOnlyDictionary<InteropEndpointKind, ServerConfig> _configs;
     private readonly IList<string> _allowedOrigins;
+    private readonly ConcurrentQueue<string> _requestOrigins = new();
     private bool _portsAssigned;
     private int _disposed;
 
@@ -63,6 +67,13 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
     /// Where each endpoint listens. Set once the server has started the first time.
     /// </summary>
     public InteropEndpoints Endpoints { get; private set; } = null!;
+
+    /// <summary>
+    /// The <c>Origin</c> header of every HttpSocket and WebSocket request this server received with one, in arrival
+    /// order, allowed or not. A browser always sends the origin of its page and other clients send none, so a test
+    /// learns a browser client's page origin here.
+    /// </summary>
+    public IReadOnlyCollection<string> RequestOrigins => _requestOrigins.ToArray();
 
     /// <summary>
     /// Server configuration of each endpoint.
@@ -187,6 +198,14 @@ public sealed class InteropServer<TServerNexus, TClientProxy> : IAsyncDisposable
 
         return new RoutePipeline(app =>
         {
+            app.Use((context, next) =>
+            {
+                var origin = context.Request.Headers.Origin;
+                if (!StringValues.IsNullOrEmpty(origin))
+                    _requestOrigins.Enqueue(origin.ToString());
+                return next(context);
+            });
+
             var httpSocketOptions = new HttpSocketOptions();
             httpSocketOptions.AllowedOrigins.AddRange(_allowedOrigins);
             app.UseHttpSockets(httpSocketOptions);

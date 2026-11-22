@@ -257,8 +257,9 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `maxConcurrentConnectionInvocations` | int | How many invocations from the server the client runs at once (1 – 1000); further ones queue. |
 | `remoteExceptionDetail` | string | `RemoteExceptionDetail` name (`None`, `TypeAndMessage`): what the client sends the server when a client nexus method fails. |
 | `onInvocationException` | object | `{code?, message?}`: the client nexus's `OnInvocationException` hook returns this application error (code int, message string; an absent member is null) for every failed client nexus method, whatever `remoteExceptionDetail` says. Absent: no hook. A pool (§6.11) refuses it with `NotSupported`. |
-| `reconnectDelaysMs` | int[] | Null: no reconnection. |
+| `reconnectDelaysMs` | int[] | Null: no reconnection (unless `defaultReconnection`). |
 | `reconnectContinuously` | bool | |
+| `defaultReconnection` | bool | With no `reconnectDelaysMs`: keep the runtime's default reconnection policy instead of turning reconnection off (none in C#, Java and Node; the default policy in a browser). |
 | `authToken` | string | Greeting token, UTF-8 text. |
 | `authorizationHeader` | string | |
 | `fakeTime` | bool | |

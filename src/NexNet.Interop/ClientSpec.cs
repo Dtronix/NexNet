@@ -65,6 +65,13 @@ public sealed class ClientSpec
     /// <summary>Keeps retrying with the last delay once <see cref="ReconnectDelaysMs"/> is used up.</summary>
     public bool ReconnectContinuously { get; set; }
 
+    /// <summary>
+    /// With no <see cref="ReconnectDelaysMs"/>, leaves the client's reconnection policy at its runtime's default instead
+    /// of turning reconnection off: none in C#, Java and Node, the default policy (0, 2, 10 and 30 s) in a browser
+    /// (<c>@dtronix/nexnet</c> <c>reconnect/environment.js</c>). Ignored when <see cref="ReconnectDelaysMs"/> is set.
+    /// </summary>
+    public bool DefaultReconnection { get; set; }
+
     /// <summary>The NexNet greeting token (<c>Authenticate</c>), as UTF-8 text.</summary>
     public string? AuthToken { get; set; }
 

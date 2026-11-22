@@ -32,7 +32,7 @@ namespace NexNet.IntegrationTests.Interop;
 /// (<see cref="SmokeServer.SessionAsync"/>) to group it, address it or inject frames into it.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class CrossLanguageSmokeTests(LanguageHostPool hosts) : BaseTests
+internal partial class CrossLanguageSmokeTests(LanguageHostPool hosts) : BaseTests
 {
     /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
     protected LanguageHostPool Hosts { get; } = hosts;
@@ -629,7 +629,9 @@ internal class CrossLanguageSmokeTests(LanguageHostPool hosts) : BaseTests
 
         public InteropServer<InteropServerNexus, InteropServerNexus.ClientProxy> Server { get; }
 
-        public static async Task<SmokeServer> StartAsync(Action<InteropEndpointKind, ServerConfig>? configure = null)
+        public static async Task<SmokeServer> StartAsync(
+            Action<InteropEndpointKind, ServerConfig>? configure = null,
+            Action<InteropServerOptions>? setOptions = null)
         {
             var nexuses = new ConcurrentQueue<InteropServerNexus>();
             var options = new InteropServerOptions
@@ -640,6 +642,7 @@ internal class CrossLanguageSmokeTests(LanguageHostPool hosts) : BaseTests
                 }),
                 ConfigureEndpoint = configure,
             };
+            setOptions?.Invoke(options);
             var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(() =>
             {
                 var nexus = new InteropServerNexus();

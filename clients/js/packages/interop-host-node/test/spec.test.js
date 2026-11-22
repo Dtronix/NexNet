@@ -60,6 +60,15 @@ describe('ClientSpec', () => {
     expect(parsed.config.reconnectionPolicy.reconnectDelay(5)).toBe(2);
   });
 
+  it('turns reconnection off unless defaultReconnection keeps the runtime default', () => {
+    expect(parseSpec({ transport: 'WebSocket', address: 'ws://h/ws' }, browser).config.reconnectionPolicy).toBeNull();
+    const kept = parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', defaultReconnection: true }, browser).config;
+    expect('reconnectionPolicy' in kept).toBe(false);
+    const delays = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', defaultReconnection: true, reconnectDelaysMs: [3] }, node).config;
+    expect(delays.reconnectionPolicy.reconnectDelay(0)).toBe(3);
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', defaultReconnection: 1 }, node), 'BadRequest');
+  });
+
   it('validates pool options', () => {
     expect(parsePoolOptions({})).toEqual({ maxConnections: 10, maxIdleTime: 120000, minIdleConnections: 1 });
     expect(parsePoolOptions({ maxConnections: 2, maxIdleTimeMs: 0, minIdleConnections: 5 })).toEqual({ maxConnections: 2, maxIdleTime: 0, minIdleConnections: 5 });
