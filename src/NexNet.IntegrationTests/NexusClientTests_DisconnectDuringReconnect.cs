@@ -1,5 +1,6 @@
 using System.Security.Principal;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
 using NexNet.Messages;
 using NexNet.Transports;
 #pragma warning disable VSTHRD200
@@ -146,6 +147,97 @@ internal partial class NexusClientTests
 
         await disconnectedFromOnConnected.Task.Timeout(T(TestTimeouts.Connect));
         await AssertStaysDisconnected(client, states, () => Volatile.Read(ref attempts), 1);
+    }
+
+    /// <summary>
+    /// A DisconnectAsync while the client is Reconnecting between attempts stops the loop on every language: the
+    /// client ends Disconnected and does not reconnect once the server is back.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task DisconnectWhileReconnecting_StopsReconnecting(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 200];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+
+        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
+
+        // A loop that still ran would reconnect now: it retries every 200 ms.
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await AssertNotReconnectedWithin(client, 1000, "DisconnectAsync stopped the reconnection loop.");
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected);
+    }
+
+    /// <summary>
+    /// OnDisconnected runs once for the lost session: not again when the reconnection policy then gives up (the client
+    /// goes from Reconnecting to Disconnected without a session of its own).
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnDisconnected_RunsOnceWhenReconnectionGivesUp(ClientTarget target)
+    {
+        var connectionTimeoutSeconds = T(TestTimeouts.Connect);
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ConnectionTimeoutMs = (int)(connectionTimeoutSeconds * 1000);
+            spec.ReconnectDelaysMs = [20];
+            spec.ReconnectContinuously = false;
+        });
+        await WaitForFirstConnected(client);
+
+        await server.StopAsync();
+        await Script(client).OnDisconnected.NextCallAsync().AsTask().Timeout(T(5));
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(TestTimeouts.Connect));
+
+        using var window = new CancellationTokenSource(500);
+        var again = false;
+        try
+        {
+            await Script(client).OnDisconnected.NextCallAsync(window.Token);
+            again = true;
+        }
+        catch (OperationCanceledException) when (window.IsCancellationRequested)
+        {
+            // No second call.
+        }
+
+        await Assert.That(again).IsFalse().Because("OnDisconnected runs once per session; the policy giving up ends no session.");
+    }
+
+    /// <summary>
+    /// OnConnected runs once the handshake is complete, on every language: when it is delivered the server has
+    /// already registered the session (it does so before it sends the ServerGreeting that completes the handshake).
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task OnConnected_IsDeliveredAfterTheHandshake(ClientTarget target)
+    {
+        await using var server = await StartServer();
+        await using var client = await CreateClient(target, server);
+        var sessionsAtOnConnected = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Script(client).OnConnected.Forward(_ =>
+        {
+            sessionsAtOnConnected.TrySetResult(server.Server.GetSnapshot().Sessions.Count);
+            return ValueTask.FromResult(NoResult.Value);
+        });
+
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        await Assert.That(await sessionsAtOnConnected.Task.Timeout(T(1))).IsEqualTo(1)
+            .Because("The server registers the session before the greeting that completes the client's handshake.");
     }
 
     /// <summary>Records the client's state changes.</summary>
