@@ -304,6 +304,12 @@ server `INexusList<T>` (protocol specification section 12):
   never reported (C# parity, K55): the client sets `RECONNECTING` through
   `ReconnectController.onSessionLost(reason, beforeStart)`, whose callback runs only once a loop is decided and
   before its first step.
+- **A session lost while the loop ends (K56, C# parity, S49).** An attempt's session can be lost after the attempt
+  connected and before the loop has ended (its `onReconnected` listeners run first). `onSessionLost` then finds the
+  loop running: it remembers the loss and returns true, and when that loop ends after connecting, with the client no
+  longer `CONNECTED`, the controller starts a new loop for it (its `beforeStart` runs then, on the controller's
+  executor) before the old loop's `idle()` completes. A loop that ends otherwise (the policy gave up, `cancel()`,
+  `close()`) forgets the loss. The client keeps the lost session's `disconnected()` pending until no loop runs.
 - **Clock and session options ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
   timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
   by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and
