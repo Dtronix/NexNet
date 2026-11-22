@@ -187,4 +187,55 @@ internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
         await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected)
             .Because("The default policy must not start reconnecting after ServerShutdown.");
     }
+
+    /// <summary>
+    /// With no reconnection settings (<see cref="ClientSpec.DefaultReconnection"/>), only a browser client reconnects: the
+    /// JS runtime's default policy is on in a browser and off in Node (<c>reconnect/environment.js</c>), and the C# and
+    /// Java clients have none. The session times out, a reason the default policy reconnects for, and the policy's first
+    /// delay is 0, so a browser client reconnects at once.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    public async Task DefaultReconnection_OnlyABrowserClientReconnects(ClientTarget target)
+    {
+        await using var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(() => new InteropServerNexus());
+
+        // The session times out before the first ping.
+        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+        spec.DefaultReconnection = true;
+        spec.PingIntervalMs = 75;
+        spec.TimeoutMs = 50;
+        await using var client = await Harness.CreateClientAsync(target, spec);
+        var connected = client.Callbacks<InteropClientNexusScript>().OnConnected;
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That((await connected.NextCallAsync().AsTask().Timeout(T(1))).IsReconnected).IsFalse();
+
+        if (target.Language.StartsWith("browser-", StringComparison.Ordinal))
+        {
+            await connected.NextCallAsync().AsTask().Timeout(T(2));
+            return;
+        }
+
+        await Assert.That(await client.WhenDisconnectedAsync(T(1))).IsEqualTo(DisconnectReason.Timeout);
+
+        // The default policy would reconnect at once; nothing may start.
+        var reconnected = false;
+        using (var window = new CancellationTokenSource(300))
+        {
+            try
+            {
+                await connected.NextCallAsync(window.Token);
+                reconnected = true;
+            }
+            catch (OperationCanceledException) when (window.IsCancellationRequested)
+            {
+                // No reconnection within the window.
+            }
+        }
+
+        await Assert.That(reconnected).IsFalse().Because("Only a browser client reconnects by default.");
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected);
+        var report = await client.EndTestAuditAsync().Timeout(T(5));
+        await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
+    }
 }
