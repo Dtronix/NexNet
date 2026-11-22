@@ -33,6 +33,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly CancellationTokenSource _lifetime = new();
     private readonly InProcMetricsRecorder? _metrics;
     private ConnectionState _lastState = ConnectionState.Disconnected;
+    private volatile bool _sessionIsReconnection;
     private int _disposed;
 
     /// <summary>Creates the driver; the client is not connected.</summary>
@@ -65,6 +66,15 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
             var unbound = binder.Bind(_facade, Nexus);
             if (unbound.Count > 0)
             {
+                // OnConnected(isReconnected) as the C# client computes it: true for a session the client's reconnection
+                // loop opened (created in the Reconnecting state, NexusSession's ReconnectingInProgress), false for a
+                // connect the test asked for. The session is created before it reports Connected.
+                var onSessionSetup = config.InternalOnSessionSetup;
+                config.InternalOnSessionSetup = session =>
+                {
+                    onSessionSetup?.Invoke(session);
+                    _sessionIsReconnection = session.State == ConnectionState.Reconnecting;
+                };
                 _client.StateChanged += (_, state) =>
                 {
                     var previous = _lastState;
@@ -72,7 +82,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
                     foreach (var slot in unbound)
                     {
                         if (state == ConnectionState.Connected && slot == _facade.OnConnected)
-                            binder.RunDetached(slot, new JsonArray(JsonValue.Create(previous == ConnectionState.Reconnecting)));
+                            binder.RunDetached(slot, new JsonArray(JsonValue.Create(_sessionIsReconnection)));
                         else if (state == ConnectionState.Disconnected && previous != ConnectionState.Disconnected && slot == _facade.OnDisconnected)
                             binder.RunDetached(slot, new JsonArray());
                     }
