@@ -30,9 +30,6 @@ internal class ClientTransportConformanceTests(LanguageHostPool hosts) : MatrixT
     [ClientMatrix<int>(nameof(SuccessStatuses), Transports = [ClientTransport.HttpSocket])]
     public async Task HttpSocket_SuccessStatusOtherThan101_FailsConnect(ClientTarget target, int status)
     {
-        if (target.Language == ClientLanguages.Node)
-            Skip.Test("The Node HttpSocket transport reports a 2xx answer as InternalError, not ProtocolError (protocol spec §13.6); follow-up card.");
-
         await using var endpoint = MisbehavingEndpoint.AnswerUpgradeWith(status);
 
         var exception = await ConnectFailsAsync(target, endpoint.GetAddress(InteropEndpointKind.HttpSocket));
