@@ -145,9 +145,6 @@ internal class ClientSpecOptionsTests(LanguageHostPool hosts) : MatrixTestBase(h
     [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
     public async Task InvocationQueueWarningThreshold_WarnsWhenAnInvocationWaitsLonger(ClientTarget target)
     {
-        if (target.Language == ClientLanguages.Java)
-            Skip.Test("The Java client has no invocation queue warning (invocationQueueWarningThreshold); follow-up card.");
-
         var logger = new CapturingLogger();
         await using var server = await StartServerAsync();
         await using var client = await ConnectAsync(target, server,
