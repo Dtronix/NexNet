@@ -137,6 +137,25 @@ final class PipeEntry {
         return pipe.completeInput().thenApply(v -> Protocol.empty());
     }
 
+    /**
+     * {@code pipe.forward}: the runtime's {@link NexusDuplexPipe#forwardTo}. Bytes an earlier {@code pipe.read} left in
+     * this entry's buffer are written to {@code to} first (in C# they are still in the pipe's reader).
+     */
+    CompletableFuture<Map<String, Object>> forwardTo(PipeEntry to) {
+        if (to == this) {
+            throw new HostError(HostError.INVALID_OPERATION, "A pipe cannot be forwarded to itself.");
+        }
+        byte[] rest;
+        synchronized (lock) {
+            rest = buffered;
+            buffered = new byte[0];
+        }
+        CompletableFuture<Void> first = rest.length == 0
+            ? CompletableFuture.completedFuture(null)
+            : to.pipe.write(ByteBuffer.wrap(rest));
+        return first.thenCompose(v -> pipe.forwardTo(to.pipe)).thenApply(v -> Protocol.empty());
+    }
+
     /** Appends the next chunk of input to the buffer; false at the end of input. */
     private CompletableFuture<Boolean> fill() {
         return pipe.read().thenApply(chunk -> {

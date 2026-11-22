@@ -1745,6 +1745,15 @@ export class Host {
         return { ok: false };
       }
     });
+    op('pipe.forward', async (args, ctx) => {
+      const pe = this.#pipe(ctx, args.pipe);
+      const to = this.#pipe(ctx, args.to);
+      if (to === pe) throw invalidOperation('A pipe cannot be forwarded to itself.');
+      // Bytes an earlier pipe.read left unread go first: in C# they are still in the pipe's reader.
+      if (pe.bufferedLength > 0) await to.writer().write(pe.take(pe.bufferedLength));
+      await pe.pipe.forwardTo(to.pipe);
+      return {};
+    });
     op('pipe.completeInput', async (args, ctx) => {
       const pe = this.#pipe(ctx, args.pipe);
       pe.inputDone = true;
