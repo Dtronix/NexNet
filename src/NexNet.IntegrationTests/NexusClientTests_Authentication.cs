@@ -219,6 +219,38 @@ internal partial class NexusClientTests
         await Assert.That(result.Exception).IsAssignableTo<OperationCanceledException>();
     }
 
+    /// <summary>
+    /// A connect canceled while its authenticate callback hangs ends canceled on every language, well before the
+    /// handshake timeout: ConnectAsync fails with kind Canceled (C# <see cref="TaskCanceledException"/>, Java
+    /// <c>CancellationException</c>, JS <c>AbortError</c>), TryConnectAsync returns false, and the client is Disconnected.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task Connect_CanceledDuringAuthenticate_EndsCanceled(ClientTarget target)
+    {
+        await using var server = await StartServer();
+        await using var client = await CreateClient(target, server, spec =>
+            spec.Authenticate = new AuthenticateScript { Hang = true });
+
+        // Canceled by the test's token once the connect is running.
+        using (var cts = new CancellationTokenSource())
+        {
+            var connect = client.ConnectAsync(cts.Token);
+            await client.WaitForStateAsync(ConnectionState.Connecting, T(1));
+            await cts.CancelAsync();
+            await Assert.That(async () => await connect.Timeout(T(1))).ThrowsExactly<TaskCanceledException>();
+        }
+
+        await AssertClientState(client, ConnectionState.Disconnected);
+
+        // Canceled by a host-side timer. The default handshake timeout is 15 s: failing well before it shows the
+        // cancellation ended the attempt.
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await Assert.That(await client.TryConnectAsync(RemoteCancel.After(200)).Timeout(T(TestTimeouts.Connect))).IsFalse();
+        await Assert.That(watch.Elapsed).IsLessThan(TimeSpan.FromSeconds(10));
+        await AssertClientState(client, ConnectionState.Disconnected);
+    }
+
     [Test]
     [Arguments(Type.Uds, true)]
     [Arguments(Type.Tcp, false)]
