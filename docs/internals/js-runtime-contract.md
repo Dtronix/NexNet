@@ -678,6 +678,15 @@ active. The main entries expose them only through the `diagnostics` namespace.
 `closing`, `sinceLastData`, `partialItem` and `waitingForCredit` when what they time has not started. `creditDrops` is
 always 0 on a client: only a server's multi-session invocations drop calls for lack of credit.
 
+**Awaiting results and reserved IDs.** `invocations.awaitingResults` counts the sent result calls that are not
+completed yet, as in C# and Java. A call canceled after send completes at once, so it leaves that count, but its
+invocation ID stays reserved until the peer's late reply arrives and is consumed (§4.5 of the protocol
+specification). `diagnostics.getReservedInvocationIds(client)` (`getReservedInvocationIds` in
+`src/diagnostics/snapshot.js`; `InvocationManager.reservedIdCount`) counts the IDs the client's current session
+holds: result calls awaiting their result, calls canceled after send still awaiting their reply, and streamed
+IgnoreReturn arguments still being sent. It is 0 when the client has no session. The interop host reports it as
+`client.outstanding`, so a runtime that never releases a canceled call's ID fails the release checks.
+
 ### 3.10 Metrics
 
 `NexusMetrics` (`src/metrics/`) reports the C# instruments of `docs/articles/metrics.md` with identical names, units,
