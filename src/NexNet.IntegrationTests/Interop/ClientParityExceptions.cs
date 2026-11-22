@@ -65,6 +65,9 @@ internal static class ClientParityExceptions
     private const string BrowserAuthorizationHeader =
         "Platform limit: the browser WebSocket API cannot set an Authorization header. The query-string token tests in AspClientServerTests cover the replacement on the browser.";
 
+    private const string BrowserHttpSocket =
+        "Platform limit: a browser has no HttpSocket transport (page JS cannot take over an HTTP connection). The WebSocket rows of ClientTransportConformanceTests.UpgradeRedirect_IsNotFollowed_FailsWithProtocolError cover the browser's upgrade handling.";
+
     private const string BrowserTls =
         "Platform limit: page JS has no custom CA, client certificate, pinning or server-certificate access; the browser's TLS stack does it. The browser WSS rows prove the default-trust path.";
 
@@ -101,6 +104,7 @@ internal static class ClientParityExceptions
         new("TlsCertificateTests.PinnedFingerprint_AcceptsServerCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
         new("TlsCertificateTests.PinnedFingerprint_RejectsWrongCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
         new("ClientSpecOptionsTests.InsecureSkipVerify_AcceptsACertificateTheClientDoesNotTrust", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
+        new("ClientTransportConformanceTests.HttpSocket_SuccessStatusOtherThan101_FailsConnect", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserHttpSocket),
 
         // C# API by design (D).
         new("NexusListTests.CopyTo_CopiesAllElements", ParityGap.NoRunnableRow, ParityLanguages.All, CopyTo),

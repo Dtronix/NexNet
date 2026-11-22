@@ -65,39 +65,44 @@ internal class NexusCollectionNoopTests(LanguageHostPool hosts) : NexusCollectio
         await MatrixTestBase.EndAsync(client2);
     }
 
-    [Test]
-    [Arguments(Type.Tcp, 5)]
-    [Arguments(Type.Tcp, 1)]
-    [Arguments(Type.Uds, 5)]
-    [Arguments(Type.Uds, 1)]
-    public async Task MalformedResetValueCount_ClosesPipe(Type type, int announcedValues)
-    {
-        var (server, client, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
+    /// <summary>The value counts a malformed reset announces for a list of three items.</summary>
+    private static readonly int[] AnnouncedValueCounts = [5, 1];
 
-        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
-        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await serverNexus.IntListBi.AddAsync(3).Timeout(1);
+    [Test]
+    [ClientMatrix<int>(nameof(AnnouncedValueCounts), Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task MalformedResetValueCount_ClosesPipe(ClientTarget target, int announcedValues)
+    {
+        var (spec, nexuses) = await StartMatrixServerAsync(target);
+        await using var client = await ConnectMatrixClientAsync(target, spec);
+        var serverList = nexuses.First().IntListBi;
+
+        await serverList.AddAsync(1).Timeout(T(1));
+        await serverList.AddAsync(2).Timeout(T(1));
+        await serverList.AddAsync(3).Timeout(T(1));
 
         // The server announces a value count that does not match the values it sends.
-        ((NexusListServer<int>)serverNexus.IntListBi).TestResetTotalValuesOverride = announcedValues;
+        ((NexusListServer<int>)serverList).TestResetTotalValuesOverride = announcedValues;
 
-        var list = client.Proxy.IntListBi;
-        var enabled = await list.EnableAsync().Timeout(1);
-        await list.DisabledTask.Timeout(1);
+        var list = IntListBi(client);
+        var enabled = await list.EnableAsync().AsTask().Timeout(T(1));
+        var state = await WaitForDisabledAsync(list);
 
         using (Assert.Multiple())
         {
             await Assert.That(enabled).IsFalse();
-            await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
-            await Assert.That(list.Count).IsEqualTo(0);
-
+            await Assert.That(state.IsDisabled).IsTrue();
+            await Assert.That(state.State).IsEqualTo(NexusCollectionState.Disconnected);
+            await Assert.That(await list.SnapshotAsync().AsTask().Timeout(T(1))).IsEmpty();
         }
 
         // The session stays up, and a correct reset succeeds.
-        ((NexusListServer<int>)serverNexus.IntListBi).TestResetTotalValuesOverride = null;
-        await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
-        await Assert.That(list).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
+        ((NexusListServer<int>)serverList).TestResetTotalValuesOverride = null;
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await list.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await WaitForItemsAsync(list, [1, 2, 3], "after the correct reset");
+
+        await list.DisableAsync().AsTask().Timeout(T(1));
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -159,5 +164,19 @@ internal class NexusCollectionNoopTests(LanguageHostPool hosts) : NexusCollectio
 
         await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+    }
+
+    /// <summary>Waits until the client's list reports its disabled signal, for at most <c>T(1)</c>; returns the last state.</summary>
+    private static async Task<RemoteListState> WaitForDisabledAsync(IRemoteList<int> list)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(T(1));
+        var state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        while (!state.IsDisabled && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+            state = await list.GetStateAsync().AsTask().Timeout(T(1));
+        }
+
+        return state;
     }
 }
