@@ -322,7 +322,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 3.2 NexNet.Asp (src/NexNet.Asp/)
 
-`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection and ApplyAuthentication() (promotes the opt-in `AccessTokenQueryParameter` query value to `Authorization: Bearer` when no header is sent, strips it from the query, never logs it).
+`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection, AuthenticateRequest() and ApplyAuthentication() (AuthenticateRequest plus a `401` answer on failure; used by HttpSocket). AuthenticateRequest promotes the opt-in `AccessTokenQueryParameter` query value to `Authorization: Bearer` when no header is sent, strips it from the query and never logs it.
 
 **Multi-endpoint and hosting:**
 - `AddNexusServer<>(o => ...)` takes `NexusServerOptions.cs` (`Configure(primary)`, `AddListener(config, name)`; the app's `ILogger`/`IMeterFactory` fill a primary that has none) and registers `NexusServerHostedService.cs`: starts the server on `ApplicationStarted` (after Kestrel binds; a start failure logs critical and stops the app) and stops it on `ApplicationStopping`
@@ -330,7 +330,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `MapWebSocketNexus`/`MapHttpSocketNexus(config, server)`: the primary config behaves as before; another config on a configured server becomes its own endpoint
 - `UseWebSocketNexusServerAsync`/`UseHttpSocketNexusServerAsync` configure the server, or attach to one already configured instead of throwing
 
-**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config: `AllowedOrigins` (empty or `*` = any; checked per request by `MapWebSocketNexus`, 403 otherwise; `UseWebSocketNexusServerAsync` also passes it to `WebSocketOptions.AllowedOrigins`), `AccessTokenQueryParameter`.
+**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config: `AllowedOrigins` (empty or `*` = any; checked per request by `MapWebSocketNexus`, 403 otherwise; `UseWebSocketNexusServerAsync` also passes it to `WebSocketOptions.AllowedOrigins`), `AccessTokenQueryParameter`. `WebSocket/WebSocketAuthenticationRefusal.cs`: a WebSocket request that fails ASP.NET authentication is not answered `401` (browsers cannot see it); `MapWebSocketNexus` accepts it, sends the preamble, reads the client greeting and answers with the disconnect byte `DisconnectReason.Authentication`, then closes (no session; spec §13.7).
 
 **HttpSocket (HttpSocket/):**
 - `HttpSocketMiddleware.cs` - ASP.NET middleware for dynamic HTTP/WebSocket upgrade

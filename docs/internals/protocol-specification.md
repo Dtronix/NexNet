@@ -402,6 +402,7 @@ closes the transport. Nothing is sent after the disconnect byte.
 | Server stopping | `ServerShutdown` | yes |
 | Protocol violation detected while reading, including a bad preamble | `ProtocolError` or the specific reason | yes |
 | Greeting rejected (§5.2) | as listed there | yes |
+| NexNet.Asp WebSocket request failed ASP.NET authentication (§13.7) | `Authentication` | yes |
 | Idle timeout (§5.5) | `Timeout` | yes |
 | Progress timeout (§9) | `Stalled` | yes |
 | Authorization returns Disconnect (§7.6) | `Unauthorized` | yes |
@@ -1451,7 +1452,7 @@ The server checks, in order:
 | Status | Cause | C# `TransportError` |
 |---|---|---|
 | `403` | `Origin` present and not in `WebSocketServerConfig.AllowedOrigins` | `AuthenticationError` |
-| `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
+| `101`, then the disconnect byte `29` | `AspEnableAuthentication` is on and ASP.NET authentication failed: refused inside the NexNet protocol (below), never with `401` | `AuthenticationError` |
 | `500` | Server error | `InternalError` |
 | other, typically `404` | Path not mapped, not a WebSocket request, or the NexNet server is not running | `ProtocolError` or another error from the WebSocket stack |
 | a `3xx` | A redirect. The client does not follow it | `ProtocolError` |
@@ -1461,7 +1462,29 @@ made. Browsers already fail a WebSocket handshake that answers with a redirect (
 redirect mode `error`).
 
 A browser cannot read the status of a failed handshake: it reports a generic error and close code 1006, so it cannot
-tell an authentication failure from any other.
+tell a refused upgrade (the `403` above) from any other connect failure. This is why a failed ASP.NET authentication
+is not refused at the upgrade.
+
+#### Authentication refusal
+
+When `AspEnableAuthentication` is on and ASP.NET authentication fails (the `Authorization` header, a cookie or the
+query-string token), the server refuses the session inside the NexNet protocol, so every client, browsers included,
+sees the same refusal as for a greeting token that `OnAuthenticate` refuses (§5.4):
+
+1. It answers the upgrade `101` and sends its preamble (§1) in a binary message, as a session does.
+2. It reads the client's preamble and first frame, within `HandshakeTimeout`. A `ClientGreeting` or
+   `ClientGreetingReconnection` is read to its end. Any other frame type, or a greeting body longer than 16 KiB (§2),
+   is not read further and is refused the same way.
+3. It answers with the disconnect byte `29` (`DisconnectReason.Authentication`, §5.6) in a binary message, waits
+   `DisconnectDelay`, then closes the WebSocket normally (close code **1000**, as under Closing below).
+
+No session is created, and the nexus and `OnAuthenticate` are never involved. If the client closes the WebSocket,
+sends a text message or a disconnect byte of its own first, or the handshake timeout passes, the server aborts the
+WebSocket without sending the disconnect byte.
+
+A client handles the refusal as any disconnect received before the connection completes (§5.1, §5.6): `connect` fails with
+`AuthenticationError` in every language. HttpSocket (§13.6) still refuses the same failure with `401`, and an
+`Origin` outside `AllowedOrigins` is still answered `403` before authentication runs.
 
 #### Data
 
@@ -1498,7 +1521,8 @@ Set it whenever the server uses cookie authentication, to prevent cross-site Web
 #### Query-string token
 
 `WebSocketServerConfig.AccessTokenQueryParameter` works exactly as in §13.6. A browser connects to
-`wss://example.com/nexus?access_token=<token>`.
+`wss://example.com/nexus?access_token=<token>`. A token that fails authentication is refused in-protocol, as
+under Authentication refusal above.
 
 #### HTTP/2
 
@@ -1508,5 +1532,6 @@ HTTP/1.1.
 Source: `src/NexNet/Transports/WebSocket/WebSocketTransport.cs` (`ConnectAsync`, `CloseAsync`, `MapException`),
 `src/NexNet/Transports/WebSocket/WebSocketPipe.cs` (`ReadInputAsync`, `CloseAsync`, `WebSocketStream`),
 `src/NexNet.Asp/NexNetMiddlewareExtensions.WebSocket.cs` (`MapWebSocketNexus`),
-`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`IsOriginAllowed`, `PromoteQueryAccessToken`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`IsOriginAllowed`, `AuthenticateRequest`, `PromoteQueryAccessToken`),
+`src/NexNet.Asp/WebSocket/WebSocketAuthenticationRefusal.cs` (`RefuseAsync`),
 `src/NexNet.Asp/WebSocket/WebSocketServerConfig.cs`.
