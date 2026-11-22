@@ -90,13 +90,19 @@ internal class NexusCollectionSnapshotOrderTests(LanguageHostPool hosts) : Nexus
             for (var i = 0; i < clients.Count; i++)
                 await WaitForItemsAsync(IntListBi(clients[i]), expected, $"list {i} contents");
 
-            // The C# client also counts the changes it received before its snapshot.
+            for (var i = 0; i < clients.Count; i++)
+            {
+                var state = await IntListBi(clients[i]).GetStateAsync().AsTask().Timeout(T(1));
+                await Assert.That(state.State).IsEqualTo(NexusCollectionState.Connected).Because($"list {i} state");
+            }
+
+            // The C# client also counts the changes it received before its snapshot (a runtime test field; see
+            // ClientParityExceptions.ListTestCounter). The other languages are checked by their contents above.
             if (target.Language == ClientLanguages.CSharp)
             {
                 for (var i = 0; i < clients.Count; i++)
                 {
                     var list = (NexusListClient<int>)((InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)clients[i]).Client.Proxy.IntListBi;
-                    await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected).Because($"list {i} state");
                     await Assert.That(list.TestChangesReceivedBeforeSnapshot).IsEqualTo(0)
                         .Because($"list {i} must not receive changes before its snapshot");
                 }

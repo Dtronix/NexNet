@@ -81,7 +81,7 @@ internal static class ClientParityExceptions
         "By design: exception type names are language-specific; the other languages check the error kind and message.";
 
     private const string ListTestCounter =
-        "Runtime internal: the count of changes a list received before its snapshot is a C# test counter that no harness operation exposes; the other languages are checked by their final contents, which such a change would corrupt.";
+        "Runtime internal: only the count of changes a list received before its snapshot is checked on C# alone. It is a C# runtime test field (NexusListClient.TestChangesReceivedBeforeSnapshot) that no harness operation exposes. The list state is asserted on every language, and the other languages are checked by their final contents, which a change applied before the snapshot would corrupt.";
 
     /// <summary>The exceptions.</summary>
     internal static readonly ParityException[] All =
