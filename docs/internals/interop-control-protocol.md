@@ -238,6 +238,8 @@ before a response is sent arrives before that response.
 | `client.remoteEndpoint` | `{h}` | `{address, port}`: the server's address (text form of the IP address, or the socket path for UDS) and port as the client's current connection reports them; each is `null` when the transport does not report it, and both are `null` when the client is not `Connected`. The Java and Node clients report the peer of the underlying socket on every transport (no port for UDS); the browser cannot see it and always answers `null`s. Client handles only. |
 | `client.budget` | `{h}` | `{budget}`: the receive budget of the client's current session, `{limit, reserved}` in bytes (the `budget` of the runtime's session snapshot: reserved counts pipe windows, the invocation queue and large values), or `null` when the client has no session. Client handles only. |
 | `client.outstanding` | `{h}` | `{invocations}`: how many outbound invocation IDs the client's current session still holds (JS `diagnostics.getReservedInvocationIds(client)`, Java `Diagnostics.reservedInvocationIds(client)`, the C# in-process driver the session's ID table): calls awaiting their result, and calls canceled after send whose late reply has not arrived yet, which keep their ID until that reply releases it (the snapshot's `invocations.awaitingResults` leaves those out, in every language). A call waiting for invocation credit holds no ID yet: every client takes the ID once the call has credit. 0 when the client has no session, and 0 once every ID was released. Client handles only. |
+| `client.snapshot` | `{h}` | `{snapshot}`: the snapshot of the client's current session (C# `NexusClient.GetSnapshot()`, Java `Diagnostics.snapshot(client)`, JS `client.getSnapshot()`), or `null` when the client has no session that completed the handshake. The members are the field names of `tests/golden/snapshot-fields.json` (`NexusSessionSnapshot` with its `budget`, `invocations`, `pipes[]` (`partialItem`) and `largeMessages[]`). Durations (C# `TimeSpan`) are milliseconds, fractional where the runtime measures finer; `id` is the session id as decimal text; `state` is a `ConnectionState` name; `direction` (`Inbound`, `Outbound`) and `kind` (`Argument`, `Result`) are names. A field the runtime does not report is `null`. Client handles only. |
+| `client.metrics` | `{h}` | `{events, observed}`, two lists of measurements `{instrument, value, tags, count?}` (instrument names and tags of the C# meter, docs/articles/metrics.md; tag values are text). `events`: every counter increment and histogram value the client recorded since it was created, in order. `observed`: one collection of the observable instruments now (one measurement per instrument and tag set; a counter's cumulative value, an up-down counter's level). Needs `spec.metrics` (`InvalidOperation` otherwise). With `spec.metrics` `Micrometer`, the values are read back from the Micrometer registry: `events` holds one entry per counter (its total, `count` the same) and per distribution summary (its sum, `count` the number of values), `observed` the function counters and gauges. `count` is absent (1) otherwise. Client handles only. |
 | `client.awaitState` | `{h, state}` | `{}` once the state is reached (at once if it is current). Bounded by `timeoutMs`. |
 | `client.awaitReady` | `{h}` | `{}` once connected and ready for invocations. Bounded by `timeoutMs`. |
 | `client.awaitDisconnected` | `{h}` | `{reason}`: a `DisconnectReason` name, once the current session is disconnected (at once if it already is). Bounded by `timeoutMs`. |
@@ -272,6 +274,7 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `authorizationHeader` | string | |
 | `queryToken` | object | `{name, value}`: the client's query-token option (C# runner: appended to the URL, Java `queryToken`, JS `queryToken` of the WebSocket/HttpSocket config) adds `name=value` to the upgrade request's query. HTTP transports only (`NotSupported` otherwise); browsers support it. |
 | `fakeTime` | bool | |
+| `metrics` | string | Records the client's metrics for `client.metrics` (§6.4), from the client's creation: `Native` (C# `ClientConfig.MeterFactory` with a meter private to the client; Java and JS `NexusMetrics` tracking the client, with a listener for the event instruments) or `Micrometer` (Java only: `NexusMicrometerBinder` on a `SimpleMeterRegistry`; the other hosts refuse it with `NotSupported`). Absent: no metrics. A pool (§6.11) refuses it with `NotSupported`. |
 | `logLevel` | string | `NexusLogLevel` name; null disables client logging. Client logs travel as `log` events. |
 
 Unknown members MUST be refused with `NotSupported` (a newer runner asks for something the host cannot do).
@@ -493,7 +496,10 @@ replies, and the host ignores the reply).
 
 `{level, category?, message}` with `h` set when the line comes from a client, null for the host itself. Kept in the
 test's transcript. The C# runner also gives a client's lines to the `ClientSpec.Logger` of the client (so a test can
-assert on them, as on the in-process client's log).
+assert on them, as on the in-process client's log). This is the harness's log capture: a client's line arrives before
+the response to any request sent after the client logged it (§6.1), so once a round trip to the host completes, the
+logger holds every line logged before it. The client's warnings (plaintext transport, ping interval, invocation queue,
+stalled session, pipe reset) carry the same text on every language, except where a test says otherwise.
 
 ### 7.5 host.error
 

@@ -132,6 +132,16 @@ public sealed class RemoteClientDriver : IClientUnderTest
         => (await CallAsync("client.outstanding", null, DefaultOpMs).ConfigureAwait(false))["invocations"]!.GetValue<int>();
 
     /// <inheritdoc />
+    public async Task<NexusSessionSnapshot?> GetSnapshotAsync()
+        => (await CallAsync("client.snapshot", null, DefaultOpMs).ConfigureAwait(false))["snapshot"] is JsonObject snapshot
+            ? ControlDiagnosticsJson.ReadSnapshot(snapshot)
+            : null;
+
+    /// <inheritdoc />
+    public async Task<ClientMetrics> GetMetricsAsync()
+        => ControlDiagnosticsJson.ReadMetrics(await CallAsync("client.metrics", null, DefaultOpMs).ConfigureAwait(false));
+
+    /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
     {
         try

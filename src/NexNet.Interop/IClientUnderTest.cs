@@ -128,6 +128,26 @@ public interface IClientUnderTest : IAsyncDisposable
     Task<int> GetOutstandingInvocationsAsync()
         => throw new NotSupportedException($"{Target}: the invocations of a pooled client are not available.");
 
+    /// <summary>
+    /// A snapshot of the client's current session (C# <c>NexusClient.GetSnapshot()</c>, Java
+    /// <c>Diagnostics.snapshot(client)</c>, JS <c>client.getSnapshot()</c>; control protocol §6.4 <c>client.snapshot</c>):
+    /// null when the client has no session that completed the handshake. A language host's snapshot carries the same
+    /// fields, read back into the C# records; what a runtime does not report (Java leaves some fields null) keeps the
+    /// record's default.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<NexusSessionSnapshot?> GetSnapshotAsync()
+        => throw new NotSupportedException($"{Target}: the snapshot of a pooled client is not available.");
+
+    /// <summary>
+    /// The metrics the client recorded (control protocol §6.4 <c>client.metrics</c>): the event instruments since it was
+    /// created and the observable instruments now. Needs <see cref="ClientSpec.Metrics"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The client was created without <see cref="ClientSpec.Metrics"/>.</exception>
+    /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
+    Task<ClientMetrics> GetMetricsAsync()
+        => throw new NotSupportedException($"{Target}: the metrics of a pooled client are not available.");
+
     /// <summary>Moves the client's test clock (<see cref="ClientSpec.FakeTime"/>) forward.</summary>
     /// <exception cref="InvalidOperationException">The client was not created with <see cref="ClientSpec.FakeTime"/>.</exception>
     Task AdvanceTimeAsync(TimeSpan by);

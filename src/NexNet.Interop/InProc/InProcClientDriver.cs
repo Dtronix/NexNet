@@ -31,6 +31,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly ConcurrentBag<InProcRemotePipe> _pipes = new();
     private readonly ConcurrentDictionary<string, System.Threading.Channels.Channel<InProcRemotePipe>> _held = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly InProcMetricsRecorder? _metrics;
     private ConnectionState _lastState = ConnectionState.Disconnected;
     private int _disposed;
 
@@ -45,6 +46,8 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         if (spec.OnInvocationException is { } invocationError)
             InProcScriptBinder.SetInvocationExceptionHook(Nexus, invocationError);
         var config = InProcClientConfig.Create(spec, spec.Transport ?? target.Transport, out _fakeTime);
+        if (spec.Metrics == MetricsRecording.Native)
+            config.MeterFactory = _metrics = new InProcMetricsRecorder();
         _client = new NexusClient<TClientNexus, TServerProxy>(config, Nexus);
         _invoker = new InProcInvoker(() => _client.Proxy);
 
@@ -126,6 +129,15 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     /// </remarks>
     public Task<int> GetOutstandingInvocationsAsync()
         => Task.FromResult(_client.Session?.SessionInvocationStateManager.ReservedIdCount ?? 0);
+
+    /// <inheritdoc />
+    public Task<NexusSessionSnapshot?> GetSnapshotAsync() => Task.FromResult(_client.GetSnapshot());
+
+    /// <inheritdoc />
+    public Task<ClientMetrics> GetMetricsAsync()
+        => _metrics == null
+            ? throw new InvalidOperationException($"{Target}: create the client with ClientSpec.Metrics to read its metrics.")
+            : Task.FromResult(_metrics.Read());
 
     /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
@@ -326,6 +338,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         // Nothing waits for the disconnect message at the end of a test.
         _client.Config.DisconnectDelay = 0;
         await _client.DisposeAsync().ConfigureAwait(false);
+        _metrics?.Dispose();
         _lifetime.Dispose();
     }
 }
