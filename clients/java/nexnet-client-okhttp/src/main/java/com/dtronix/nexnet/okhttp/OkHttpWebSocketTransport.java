@@ -151,9 +151,11 @@ final class OkHttpWebSocketTransport implements Transport {
         WebSocket ws = webSocket;
         if (ws != null) {
             int code = reason == DisconnectReason.PROTOCOL_ERROR ? CLOSE_PROTOCOL_ERROR : CLOSE_NORMAL;
-            if (!ws.close(code, null)) {
-                ws.cancel();
-            }
+            // False when a close is already queued (the 1003 of a text message, or the answer to the server's Close)
+            // or the socket already failed. Never cancel then: a cancel can drop the queued Close frame before
+            // OkHttp writes it, and the server sees the connection end without a close code. OkHttp ends the
+            // connection itself once the server answers the Close (or after its close timeout).
+            ws.close(code, null);
         }
     }
 
@@ -255,8 +257,10 @@ final class OkHttpWebSocketTransport implements Transport {
 
         @Override
         public void onMessage(WebSocket ws, String text) {
-            end(new IOException("The server sent a WebSocket text message; NexNet is binary only."));
+            // Queue the 1003 Close before the input ends: the end wakes the reader, whose session then closes the
+            // transport, and the first close queued is the one OkHttp sends.
             ws.close(CLOSE_UNSUPPORTED, null);
+            end(new IOException("The server sent a WebSocket text message; NexNet is binary only."));
         }
 
         @Override
