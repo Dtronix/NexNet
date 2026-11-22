@@ -10,10 +10,13 @@ import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectController;
+import com.dtronix.nexnet.reconnect.ReconnectListener;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -226,6 +229,61 @@ class NexusClientReconnectTest {
             Thread.sleep(100);
             assertEquals(List.of(ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
                 ConnectionState.RECONNECTING, ConnectionState.DISCONNECTED), states);
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
+    void aReconnectedSessionLostBeforeTheLoopEndsIsReconnected() throws Exception {
+        // K56 (C# S49): the attempt connected and its session is lost before the loop has finished (here from the
+        // onReconnected listener, which runs before the loop ends). Before, the loss found the loop still running,
+        // started nothing, and the client stayed DISCONNECTED.
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(config(), server);
+        try {
+            ReconnectController controller = client.reconnection();
+            assertNotNull(controller);
+            client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
+            CompletableFuture<Void> disconnected = client.disconnected();
+
+            CountDownLatch handedOver = new CountDownLatch(1);
+            AtomicBoolean once = new AtomicBoolean();
+            controller.addListener(new ReconnectListener() {
+                @Override
+                public void onReconnected(int attempts) {
+                    if (!once.compareAndSet(false, true)) {
+                        return;
+                    }
+                    client.afterSessionLost = handedOver::countDown;
+                    server.disconnect(1, 30);
+                    try {
+                        // Hold the loop open until the client has reported the loss to the controller.
+                        assertTrue(handedOver.await(5, TimeUnit.SECONDS));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+
+            server.disconnect(0, 30);
+            TestClients.waitFor(() -> server.transports.size() == 3 && client.state() == ConnectionState.CONNECTED);
+            controller.idle().get(5, TimeUnit.SECONDS);
+            assertFalse(disconnected.isDone());
+            TestClients.waitFor(() -> states.size() >= 8);
+            Thread.sleep(100);
+            assertEquals(List.of(ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
+                ConnectionState.RECONNECTING, ConnectionState.CONNECTED,
+                ConnectionState.DISCONNECTING, ConnectionState.DISCONNECTED,
+                ConnectionState.RECONNECTING, ConnectionState.CONNECTED), states);
+
+            client.disconnect().get(5, TimeUnit.SECONDS);
+            disconnected.get(5, TimeUnit.SECONDS);
+            assertEquals(ConnectionState.DISCONNECTED, client.state());
         } finally {
             client.close();
         }

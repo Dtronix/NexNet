@@ -39,6 +39,8 @@ public final class ReconnectController implements AutoCloseable {
     private int loop;
     private @Nullable Object delayToken;
     private @Nullable Registration pendingDelay;
+    /** A session lost while a loop ran (K56): reconnected when that loop ends after its attempt connected. */
+    private @Nullable LostSession lostWhileRunning;
     private CompletableFuture<Void> idle = CompletableFuture.completedFuture(null);
 
     /**
@@ -170,25 +172,31 @@ public final class ReconnectController implements AutoCloseable {
     }
 
     /**
-     * Called by the client when an established session closed. Starts a loop unless one runs, the controller is
-     * stopped or the policy declines.
+     * Called by the client when an established session closed: {@link #onSessionLost(DisconnectReason, Runnable)}
+     * without a callback.
      *
      * @param reason why the session closed
-     * @return true when a loop started
+     * @return true when a loop started, or a running loop will start one for this loss
      */
     public boolean onSessionLost(DisconnectReason reason) {
         return onSessionLost(reason, null);
     }
 
     /**
-     * Called by the client when an established session closed. Starts a loop unless one runs, the controller is
-     * stopped or the policy declines. {@code beforeStart} runs on the calling thread once the loop is decided and
-     * before its first step is scheduled, so the client can report {@code RECONNECTING} only when a loop starts and
-     * before an attempt can connect (K55). It does not run when no loop starts.
+     * Called by the client when an established session closed. Starts a loop unless the controller is stopped or the
+     * policy declines. {@code beforeStart} runs once the loop is decided and before its first step is scheduled, so
+     * the client can report {@code RECONNECTING} only when a loop starts and before an attempt can connect (K55). It
+     * does not run when no loop starts.
+     *
+     * &lt;p&gt;When a loop already runs (for example its attempt has just connected and it has not ended yet), the loss is
+     * remembered instead (K56, C# parity): if that loop ends because its attempt connected and the client is not
+     * {@code CONNECTED} by then, a new loop starts for this loss as the old one ends, before its {@link #idle()}
+     * completes, and {@code beforeStart} runs then, on the executor. A loop that ends otherwise (the policy gave up,
+     * {@link #cancel()}, {@link #close()}) forgets it. Only the latest such loss is kept.
      *
      * @param reason why the session closed
      * @param beforeStart runs when a loop starts, before any of its steps; null for none
-     * @return true when a loop started
+     * @return true when a loop started, or a running loop will start one for this loss when it ends after connecting
      */
     public boolean onSessionLost(DisconnectReason reason, @Nullable Runnable beforeStart) {
         boolean should;
@@ -202,16 +210,37 @@ public final class ReconnectController implements AutoCloseable {
             log(NexusLogLevel.INFORMATION, "Can't reconnect with " + reason + " disconnection reason.", null);
             return false;
         }
-        int gen;
+        int gen = 0;
+        boolean deferred;
         synchronized (lock) {
-            if (stopped || running) {
+            if (stopped) {
                 return false;
             }
-            running = true;
-            attempts = 0;
-            gen = ++loop;
-            idle = new CompletableFuture<>();
+            deferred = running;
+            if (deferred) {
+                lostWhileRunning = new LostSession(reason, beforeStart);
+            } else {
+                gen = begin();
+            }
         }
+        if (deferred) {
+            log(NexusLogLevel.INFORMATION, "Connection lost while a reconnection loop runs. " + reason, null);
+            return true;
+        }
+        start(reason, gen, beforeStart);
+        return true;
+    }
+
+    /** Marks a new loop as running. Call under the lock. */
+    private int begin() {
+        running = true;
+        attempts = 0;
+        idle = new CompletableFuture<>();
+        return ++loop;
+    }
+
+    /** Starts the steps of a loop {@link #begin()} marked. */
+    private void start(DisconnectReason reason, int gen, @Nullable Runnable beforeStart) {
         ReconnectCounters.RUNNING_LOOPS.incrementAndGet();
         log(NexusLogLevel.INFORMATION, "Connection lost. Reconnecting. " + reason, null);
         if (beforeStart != null) {
@@ -236,7 +265,6 @@ public final class ReconnectController implements AutoCloseable {
                 executor.execute(() -> next(reason, gen));
             });
         });
-        return true;
     }
 
     /**
@@ -288,7 +316,7 @@ public final class ReconnectController implements AutoCloseable {
         if (waiting) {
             ReconnectCounters.PENDING_DELAYS.decrementAndGet();
         }
-        finish();
+        finish(false);
         return true;
     }
 
@@ -325,7 +353,7 @@ public final class ReconnectController implements AutoCloseable {
             attempt = attempts;
         }
         if (client.state() == ConnectionState.CONNECTED) {
-            finish();
+            finish(false);
             return;
         }
         long delay;
@@ -343,7 +371,7 @@ public final class ReconnectController implements AutoCloseable {
                 log(NexusLogLevel.ERROR, "Reconnection policy returned an invalid delay: " + delay + ".", null);
             }
             notify(l -> l.onReconnectFailed(reason, attempt));
-            finish();
+            finish(false);
             return;
         }
         Object token = new Object();
@@ -384,7 +412,7 @@ public final class ReconnectController implements AutoCloseable {
             attempt = ++attempts;
         }
         if (client.state() == ConnectionState.CONNECTED) {
-            finish();
+            finish(false);
             return;
         }
         notify(l -> l.onAttempt(attempt));
@@ -404,7 +432,7 @@ public final class ReconnectController implements AutoCloseable {
             if (r != null && r.isSuccess()) {
                 log(NexusLogLevel.INFORMATION, "Reconnected", null);
                 notify(l -> l.onReconnected(attempt));
-                finish();
+                finish(true);
                 return;
             }
             Throwable error = e != null ? e : r == null ? null : r.exception();
@@ -416,17 +444,50 @@ public final class ReconnectController implements AutoCloseable {
         }));
     }
 
-    private void finish() {
+    /**
+     * Ends the current loop. When its attempt connected ({@code reconnected}) and a session was lost while it ran and
+     * the client is no longer connected, a new loop starts for that loss before the old loop's {@link #idle()}
+     * completes (K56).
+     */
+    private void finish(boolean reconnected) {
         CompletableFuture<Void> done;
+        @Nullable LostSession lost;
+        int gen = 0;
+        // Read outside the lock: the client's state has its own lock.
+        boolean connected = reconnected && client.state() == ConnectionState.CONNECTED;
         synchronized (lock) {
             if (!running) {
                 return;
             }
             running = false;
             done = idle;
+            lost = lostWhileRunning;
+            lostWhileRunning = null;
+            if (lost != null && (!reconnected || stopped || connected)) {
+                lost = null;
+            }
+            if (lost != null) {
+                gen = begin();
+            }
         }
         ReconnectCounters.RUNNING_LOOPS.decrementAndGet();
+        if (lost != null) {
+            log(NexusLogLevel.INFORMATION, "The reconnected session was lost before the loop ended. Reconnecting. "
+                + lost.reason, null);
+            start(lost.reason, gen, lost.beforeStart);
+        }
         done.complete(null);
+    }
+
+    /** A session lost while a loop ran. */
+    private static final class LostSession {
+        final DisconnectReason reason;
+        final @Nullable Runnable beforeStart;
+
+        LostSession(DisconnectReason reason, @Nullable Runnable beforeStart) {
+            this.reason = reason;
+            this.beforeStart = beforeStart;
+        }
     }
 
     private void notify(Consumer<ReconnectListener> event) {
