@@ -62,9 +62,7 @@ internal class ClientTransportConformanceTests(LanguageHostPool hosts) : MatrixT
         var spec = new ClientSpec { Transport = target.Transport, Address = endpoint.GetAddress(InteropEndpointKind.WebSocket), Logger = Logger };
         await using var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
 
-        // T(10): the C# client takes about 5 s to fail here. The close interrupts the send of its greeting, and its
-        // disconnect then waits out the 5 s write-lock timeout of NexusSession.DisconnectCore (follow-up card).
-        await Assert.That(await client.TryConnectAsync().Timeout(T(10))).IsFalse();
+        await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
         await AssertState(client, ConnectionState.Disconnected);
 
         var closeStatus = await endpoint.ClientCloseStatus.Timeout(T(TestTimeouts.Connect));

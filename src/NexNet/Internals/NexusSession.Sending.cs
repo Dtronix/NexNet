@@ -57,6 +57,7 @@ internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
         // Released by hand: a large message gives the mutex up to stream its frames (see SendLargeMessage).
         var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
         var mutexHeld = true;
+        var transportClosed = false;
         try
         {
             if (mutexResult.Success != true)
@@ -125,15 +126,17 @@ internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
             }
 
             OnSent?.Invoke();
-
-            if (result.IsCompleted)
-                await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
+            transportClosed = result.IsCompleted;
         }
         finally
         {
             if (mutexHeld)
                 mutexResult.Dispose();
         }
+
+        // After the mutex is released: DisconnectCore takes it to complete the output.
+        if (transportClosed)
+            await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -585,102 +588,112 @@ internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
         if (State != ConnectionState.Connected)
             return;
 
-        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
-
-        if (mutexResult.Success != true)
-            throw new InvalidOperationException("Could not acquire write lock");
-
-        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
-        var output = _pipeOutput;
-        if (output == null || State != ConnectionState.Connected)
-            return;
-
-        // A pipe's writer completes before its Complete is sent, and the Complete is sent under this lock, so a chunk
-        // that gets the lock after the Complete always sees the writer completed.
-        if (pipeWriter?.IsCompleted == true)
-            return;
-
-        if (body.Length > ushort.MaxValue)
-            throw new NexusMessageTooLargeException(body.Length, ushort.MaxValue);
-
-        var length = (int)body.Length;
-        var contentLength = (ushort)length;
-
-        var headerLength = 3 + (messageHeader?.Length ?? 0);
-
+        var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
+        var transportClosed = false;
         try
         {
-            // The whole frame is written to one span and committed at once, so a body that cannot be read leaves the
-            // output untouched instead of committing a header without its body.
-            var frame = output.GetSpan(headerLength + length);
-            frame[0] = (byte)type;
-            BinaryPrimitives.WriteUInt16LittleEndian(frame.Slice(1, 2), contentLength);
+            if (mutexResult.Success != true)
+                throw new InvalidOperationException("Could not acquire write lock");
 
-            // Copy the message header
-            messageHeader?.Span.CopyTo(frame.Slice(3));
-
-            body.CopyTo(frame.Slice(headerLength));
-            output.Advance(headerLength + length);
-            CountSent(1, headerLength + length);
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
-        }
-
-        if (!flush)
-        {
-            _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
-            return;
-        }
-
-        // Register a cancellation token to cancel the flush operation.
-        CancellationTokenRegistration? ctRegistration = null;
-        if (cancellationToken.CanBeCanceled)
-        {
-            ctRegistration = cancellationToken.Register(static obj =>
-            {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, output, false);
-        }
-
-        if (_config.InternalOnSend != null)
-            _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
-
-        Logger?.LogTrace($"Sending {type} header and {length} total bytes.");
-        FlushResult result = default;
-        try
-        {
-            // ReSharper disable once MethodSupportsCancellation
-            result = await FlushOutput(output).ConfigureAwait(false);
-
-            // Return if the operation was canceled.
-            if (result.IsCanceled)
+            // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+            var output = _pipeOutput;
+            if (output == null || State != ConnectionState.Connected)
                 return;
-        }
-        catch (ObjectDisposedException)
-        {
-            // noop
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
-        }
-        catch (Exception e)
-        {
-            Logger?.LogCritical(e, "Error while flushing");
+
+            // A pipe's writer completes before its Complete is sent, and the Complete is sent under this lock, so a chunk
+            // that gets the lock after the Complete always sees the writer completed.
+            if (pipeWriter?.IsCompleted == true)
+                return;
+
+            if (body.Length > ushort.MaxValue)
+                throw new NexusMessageTooLargeException(body.Length, ushort.MaxValue);
+
+            var length = (int)body.Length;
+            var contentLength = (ushort)length;
+
+            var headerLength = 3 + (messageHeader?.Length ?? 0);
+
+            try
+            {
+                // The whole frame is written to one span and committed at once, so a body that cannot be read leaves the
+                // output untouched instead of committing a header without its body.
+                var frame = output.GetSpan(headerLength + length);
+                frame[0] = (byte)type;
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.Slice(1, 2), contentLength);
+
+                // Copy the message header
+                messageHeader?.Span.CopyTo(frame.Slice(3));
+
+                body.CopyTo(frame.Slice(headerLength));
+                output.Advance(headerLength + length);
+                CountSent(1, headerLength + length);
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+
+            if (!flush)
+            {
+                _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
+                return;
+            }
+
+            // Register a cancellation token to cancel the flush operation.
+            CancellationTokenRegistration? ctRegistration = null;
+            if (cancellationToken.CanBeCanceled)
+            {
+                ctRegistration = cancellationToken.Register(static obj =>
+                {
+                    Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+                }, output, false);
+            }
+
+            if (_config.InternalOnSend != null)
+                _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
+
+            Logger?.LogTrace($"Sending {type} header and {length} total bytes.");
+            FlushResult result = default;
+            try
+            {
+                // ReSharper disable once MethodSupportsCancellation
+                result = await FlushOutput(output).ConfigureAwait(false);
+
+                // Return if the operation was canceled.
+                if (result.IsCanceled)
+                    return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // noop
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+            catch (Exception e)
+            {
+                Logger?.LogCritical(e, "Error while flushing");
+            }
+            finally
+            {
+                if (ctRegistration != null)
+                    await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            }
+
+            OnSent?.Invoke();
+
+            transportClosed = result.IsCompleted;
         }
         finally
         {
-            if (ctRegistration != null)
-                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            mutexResult.Dispose();
         }
 
-        OnSent?.Invoke();
-
-        if (result.IsCompleted)
+        // After the mutex is released: DisconnectCore takes it to complete the output.
+        if (transportClosed)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
     
@@ -801,86 +814,96 @@ internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
         if (State != ConnectionState.Connected && !force)
             return;
         
-        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
-
-        if (mutexResult.Success != true)
-            throw new InvalidOperationException("Could not acquire write lock");
-
-        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
-        var output = _pipeOutput;
-        if (output == null)
-            return;
-
+        var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
+        var transportClosed = false;
         try
         {
-            if (type != MessageType.Unset)
-            {
-                output.GetSpan(1)[0] = (byte)type;
-                output.Advance(1);
-                CountSent(1, 1);
-                _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
-                Logger?.LogTrace($"Sending {type} header.");
-            }
-            else
-            {
-                Logger?.LogTrace("Sending raw data.");
-            }
+            if (mutexResult.Success != true)
+                throw new InvalidOperationException("Could not acquire write lock");
 
-            // Check the post header data.
-            if (postHeaderData != null)
-            {
-                var data = postHeaderData.Value;
-                var length = data.Length;
-                data.Span.CopyTo(output.GetSpan(length));
-                output.Advance(length);
-                CountSent(0, length);
-                _config.InternalOnSend?.Invoke(this, data.ToArray());
-            }
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
-        }
-
-        // Register a cancellation token to cancel the flush operation.
-        CancellationTokenRegistration? ctRegistration = null;
-        if (cancellationToken.CanBeCanceled)
-        {
-            ctRegistration = cancellationToken.Register(static obj =>
-            {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, output, false);
-        }
-
-        FlushResult result = default;
-        try
-        {
-            // ReSharper disable once MethodSupportsCancellation
-            result = await FlushOutput(output).ConfigureAwait(false);
-
-            // Return if the operation was canceled.
-            if (result.IsCanceled)
+            // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+            var output = _pipeOutput;
+            if (output == null)
                 return;
-        }
-        catch (ObjectDisposedException)
-        {
-            // noop
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
+
+            try
+            {
+                if (type != MessageType.Unset)
+                {
+                    output.GetSpan(1)[0] = (byte)type;
+                    output.Advance(1);
+                    CountSent(1, 1);
+                    _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+                    Logger?.LogTrace($"Sending {type} header.");
+                }
+                else
+                {
+                    Logger?.LogTrace("Sending raw data.");
+                }
+
+                // Check the post header data.
+                if (postHeaderData != null)
+                {
+                    var data = postHeaderData.Value;
+                    var length = data.Length;
+                    data.Span.CopyTo(output.GetSpan(length));
+                    output.Advance(length);
+                    CountSent(0, length);
+                    _config.InternalOnSend?.Invoke(this, data.ToArray());
+                }
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+
+            // Register a cancellation token to cancel the flush operation.
+            CancellationTokenRegistration? ctRegistration = null;
+            if (cancellationToken.CanBeCanceled)
+            {
+                ctRegistration = cancellationToken.Register(static obj =>
+                {
+                    Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+                }, output, false);
+            }
+
+            FlushResult result = default;
+            try
+            {
+                // ReSharper disable once MethodSupportsCancellation
+                result = await FlushOutput(output).ConfigureAwait(false);
+
+                // Return if the operation was canceled.
+                if (result.IsCanceled)
+                    return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // noop
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+            finally
+            {
+                if (ctRegistration != null)
+                    await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            }
+
+            OnSent?.Invoke();
+
+            transportClosed = result.IsCompleted;
         }
         finally
         {
-            if (ctRegistration != null)
-                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            mutexResult.Dispose();
         }
 
-        OnSent?.Invoke();
-
-        if (result.IsCompleted)
+        // After the mutex is released: DisconnectCore takes it to complete the output.
+        if (transportClosed)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 }
