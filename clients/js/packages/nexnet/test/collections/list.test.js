@@ -632,3 +632,161 @@ describe('closing', () => {
     await finish(h);
   });
 });
+
+describe('process test hook', () => {
+  /** A promise and its resolve/reject. */
+  function deferred() {
+    /** @type {(value?: void) => void} */
+    let resolve = () => {};
+    /** @type {(reason?: unknown) => void} */
+    let reject = () => {};
+    /** @type {Promise<void>} */
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('rejects a hook that is not a function or null', async () => {
+    const { h, list } = await readyList();
+    expect(() => list.setProcessTestHook(/** @type {any} */ (42))).toThrow(TypeError);
+    expect(() => list.setProcessTestHook(/** @type {any} */ (undefined))).toThrow(TypeError);
+    list.setProcessTestHook(() => {});
+    list.setProcessTestHook(null);
+    await finish(h);
+  });
+
+  it('is called before each received message; a hook that returns nothing lets it through at once', async () => {
+    const { h, list, server } = await readyList({ mode: ServerToClient });
+    /** @type {number[]} */
+    const seen = [];
+    list.setProcessTestHook(() => {
+      seen.push(list.count);
+    });
+    server.send(insert(4, 3, 4), insert(5, 4, 5));
+    await until(() => list.count === 5);
+    // Each call sees the list before its own message is applied.
+    expect(seen).toEqual([3, 4]);
+    expect(list.toArray()).toEqual([1, 2, 3, 4, 5]);
+    await finish(h);
+  });
+
+  it('a hook that delays delays processing', async () => {
+    const { h, list, server } = await readyList({ mode: ServerToClient });
+    let calls = 0;
+    list.setProcessTestHook(() => {
+      calls++;
+      return new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    const started = performance.now();
+    server.send(insert(4, 3, 4));
+    await until(() => calls === 1);
+    expect(list.count).toBe(3);
+    await until(() => list.count === 4, 2000);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(30);
+    expect(list.toArray()).toEqual([1, 2, 3, 4]);
+    await finish(h);
+  });
+
+  it('a pending promise holds the message and everything after it until it resolves', async () => {
+    const { h, list, server, changes } = await readyList({ mode: ServerToClient });
+    /** @type {ReturnType<typeof deferred>[]} */
+    const gates = [];
+    list.setProcessTestHook(() => {
+      const gate = deferred();
+      gates.push(gate);
+      return gate.promise;
+    });
+    server.send(insert(4, 3, 4), insert(5, 4, 5));
+    await until(() => gates.length === 1);
+    for (let i = 0; i < 10; i++) await tick();
+    // Held: the first message is not applied and the second is not read.
+    expect(gates).toHaveLength(1);
+    expect(list.toArray()).toEqual([1, 2, 3]);
+    expect(changes).toEqual([]);
+
+    gates[0].resolve();
+    await until(() => gates.length === 2);
+    expect(list.toArray()).toEqual([1, 2, 3, 4]);
+    for (let i = 0; i < 10; i++) await tick();
+    expect(list.count).toBe(4);
+
+    gates[1].resolve();
+    await until(() => list.count === 5);
+    expect(changes).toEqual([{ action: 'add', index: 3, item: 4 }, { action: 'add', index: 4, item: 5 }]);
+    await finish(h);
+  });
+
+  it('a hook that throws or rejects is ignored and the message is processed', async () => {
+    const { h, list, server } = await readyList({ mode: ServerToClient });
+    list.setProcessTestHook(() => {
+      throw new Error('hook failure');
+    });
+    server.send(insert(4, 3, 4));
+    await until(() => list.count === 4);
+
+    list.setProcessTestHook(() => Promise.reject(new Error('hook rejection')));
+    server.send(insert(5, 4, 5));
+    await until(() => list.count === 5);
+
+    const gate = deferred();
+    list.setProcessTestHook(() => gate.promise);
+    server.send(insert(6, 5, 6));
+    for (let i = 0; i < 10; i++) await tick();
+    expect(list.count).toBe(5);
+    gate.reject(new Error('late rejection'));
+    await until(() => list.count === 6);
+    expect(list.toArray()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(list.isEnabled).toBe(true);
+    expect(h.client.state).toBe(2);
+    await finish(h);
+  });
+
+  it('clearing the hook stops calling it; a message already held still waits for its promise', async () => {
+    const { h, list, server } = await readyList({ mode: ServerToClient });
+    let calls = 0;
+    const gate = deferred();
+    list.setProcessTestHook(() => {
+      calls++;
+      return gate.promise;
+    });
+    server.send(insert(4, 3, 4));
+    await until(() => calls === 1);
+    list.setProcessTestHook(null);
+    server.send(insert(5, 4, 5));
+    for (let i = 0; i < 10; i++) await tick();
+    expect(list.count).toBe(3);
+
+    gate.resolve();
+    await until(() => list.count === 5);
+    server.send(insert(6, 5, 6));
+    await until(() => list.count === 6);
+    expect(calls).toBe(1);
+    await finish(h);
+  });
+
+  it('disable while a message is held closes the pipe; the held message is never applied', async () => {
+    const { h, list, server, changes } = await readyList({ mode: ServerToClient });
+    const gate = deferred();
+    let calls = 0;
+    list.setProcessTestHook(() => {
+      calls++;
+      return gate.promise;
+    });
+    server.send(insert(4, 3, 4));
+    await until(() => calls === 1);
+    const disabling = list.disable();
+    await until(() => server.clientClosed());
+    // disable() waits until the server confirmed the close (Q14).
+    server.close();
+    await disabling;
+    expect(list.isEnabled).toBe(false);
+    gate.resolve();
+    for (let i = 0; i < 10; i++) await tick();
+    expect(list.count).toBe(0);
+    expect(changes).toEqual([{ action: 'reset' }]);
+    expect(calls).toBe(1);
+    await finish(h);
+  });
+});
