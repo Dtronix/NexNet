@@ -354,6 +354,42 @@ describe('connect', () => {
     expect(h.client.remoteCertificate).toBeNull();
   });
 
+  it('remoteAddress and remotePort are the transport peer while connected and null otherwise', async () => {
+    const h = harness();
+    h.setFactory(async () => {
+      const t = new LoopbackTransport({ name: 'tcp' });
+      Object.assign(t, { remoteAddress: '127.0.0.1', remotePort: 4321 });
+      h.transports.push(t);
+      return t;
+    });
+    expect(h.client.remoteAddress).toBeNull();
+    expect(h.client.remotePort).toBeNull();
+    expect(h.nexus.context.remoteAddress).toBeNull();
+    await connected(h);
+    expect(h.client.remoteAddress).toBe('127.0.0.1');
+    expect(h.client.remotePort).toBe(4321);
+    expect(h.nexus.context.remoteAddress).toBe('127.0.0.1');
+    expect(h.nexus.context.remotePort).toBe(4321);
+    const done = h.client.disconnect();
+    h.clock.advance(60_000);
+    await done;
+    expect(h.client.remoteAddress).toBeNull();
+    expect(h.client.remotePort).toBeNull();
+    expect(h.nexus.context.remotePort).toBeNull();
+  });
+
+  it('remoteAddress and remotePort are null on a transport that reports none (the browser WebSocket)', async () => {
+    const h = harness();
+    await connected(h);
+    expect(h.client.remoteAddress).toBeNull();
+    expect(h.client.remotePort).toBeNull();
+  });
+
+  it('the nexus context reports isSecure', () => {
+    expect(harness({ kind: 'tcp' }).nexus.context.isSecure).toBe(false);
+    expect(harness({ kind: 'uds' }).nexus.context.isSecure).toBe(true);
+  });
+
   it('remoteCertificate is null on a transport without one', async () => {
     const h = harness();
     await connected(h);

@@ -29,6 +29,8 @@ describe('TCP transport', () => {
     expect(t.isSecure).toBe(false);
     expect(t.name).toBe('tcp');
     expect(t.remoteCertificate).toBeNull();
+    expect(t.remoteAddress).toBe('127.0.0.1');
+    expect(t.remotePort).toBe(s.port);
 
     await t.write([Uint8Array.of(1), Uint8Array.of(2, 3)]);
     expect(await /** @type {ReturnType<typeof received>} */ (fromClient).waitFor(3)).toEqual([1, 2, 3]);
@@ -203,6 +205,8 @@ describe('UDS transport', () => {
     expect(await /** @type {ReturnType<typeof received>} */ (fromClient).waitFor(1)).toEqual([5]);
     expect(t.isSecure).toBe(true);
     expect(t.name).toBe('uds');
+    expect(t.remoteAddress).toBe(s.path);
+    expect(t.remotePort).toBeNull();
   });
 
   it('a missing socket is SocketError', async () => {

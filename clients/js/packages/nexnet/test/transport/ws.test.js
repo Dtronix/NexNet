@@ -124,6 +124,8 @@ describe('Node WebSocket transport', () => {
     expect(t.isSecure).toBe(false);
     expect(t.remoteCertificate).toBeNull();
     expect(t.name).toBe('ws://');
+    expect(t.remoteAddress).toMatch(/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/);
+    expect(t.remotePort).toBe(Number(new URL(url).port));
   });
 
   it('appends queryToken URL-encoded to the request target, after the URL query; errors do not show it', async () => {
