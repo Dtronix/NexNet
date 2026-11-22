@@ -589,8 +589,9 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await AssertConnectHistory(connect);
 
         var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        // The stopped server holds its ports (InteropServer.StopAsync), so no server of another test process can take
+        // one and accept an attempt.
         await server.StopAsync();
-        var held = new HeldPorts(server.Endpoints);
         await disconnected;
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
 
@@ -602,7 +603,6 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await Assert.That(attempts).IsGreaterThanOrEqualTo(3);
         await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Reconnecting);
 
-        held.Dispose();
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         // An attempt that started before the server did may last its connection timeout before the next one connects.
         await WaitForReconnected(client, T(TestTimeouts.Connect) * 2);
@@ -635,8 +635,9 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await AssertConnectHistory(connect);
 
         var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        // The stopped server holds its ports (InteropServer.StopAsync), so no server of another test process can take
+        // one and accept an attempt.
         await server.StopAsync();
-        using var held = new HeldPorts(server.Endpoints);
         await disconnected;
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
         // A QUIC attempt to the stopped server lasts the connection timeout: two of them.
@@ -659,50 +660,6 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await Assert.That(connect.States).IsEquivalentTo([ConnectionState.Connecting, ConnectionState.Connected], CollectionOrdering.Matching)
             .Because($"the states of the first connect were {string.Join(", ", connect.States)}");
         await Assert.That(connect.ReconnectAttempts).IsEqualTo(0);
-    }
-
-    /// <summary>
-    /// Holds the TCP, TLS and QUIC ports of a stopped server (bound, not listening) until disposed, so no other server
-    /// can listen on them meanwhile: a reconnection attempt is refused instead of reaching a server of another test
-    /// process (the port allocator only keeps ports unique within a process), which the client would report as
-    /// Connected. The ports are taken right after the server stops and released right before it restarts. A port that
-    /// cannot be bound (still in TIME_WAIT, which keeps it from other listeners anyway) is skipped.
-    /// </summary>
-    private sealed class HeldPorts : IDisposable
-    {
-        private readonly List<Socket> _sockets = [];
-
-        public HeldPorts(InteropEndpoints endpoints)
-        {
-            Hold(endpoints.Tcp, SocketType.Stream, ProtocolType.Tcp);
-            Hold(endpoints.TcpTls, SocketType.Stream, ProtocolType.Tcp);
-            if (endpoints.Quic is { } quic)
-                Hold(quic, SocketType.Dgram, ProtocolType.Udp);
-        }
-
-        private void Hold(IPEndPoint endPoint, SocketType socketType, ProtocolType protocolType)
-        {
-            var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
-            try
-            {
-                // As the port allocators do: on Windows only an exclusive binding keeps other sockets off the port.
-                if (OperatingSystem.IsWindows())
-                    socket.ExclusiveAddressUse = true;
-                socket.Bind(endPoint);
-                _sockets.Add(socket);
-            }
-            catch (SocketException)
-            {
-                socket.Dispose();
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (var socket in _sockets)
-                socket.Dispose();
-            _sockets.Clear();
-        }
     }
 
     /// <summary>
