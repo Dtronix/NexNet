@@ -211,7 +211,7 @@ runtime dependencies. Async results are `CompletableFuture`s; cancellation uses 
   the C# `BridgeAsync` and the JS `bridge`: when a pipe completes while the direction writing to it is still open (a
   reset, its session ending, or its peer completing it), the bridge completes the other pipe in both directions and
   returns. Before, it only half-closed the other pipe and could wait forever; a failed direction now completes both
-  pipes, not only their outputs (PRLINK).
+  pipes, not only their outputs ([#387](https://github.com/Dtronix/NexNet/pull/387)).
 - **JSpecify nullness** for Kotlin and NullAway users with `Nullness=jspecify` ([#242](https://github.com/Dtronix/NexNet/pull/242)).
 - C# parity details fixed while porting the tests: `connect()` on a connected client does nothing ([#277](https://github.com/Dtronix/NexNet/pull/277));
   `NexusRemoteError.code` is nullable ([#289](https://github.com/Dtronix/NexNet/pull/289)); collections created through the proxy use the client's logger
