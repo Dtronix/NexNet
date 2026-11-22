@@ -123,7 +123,7 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   `Disconnecting` and `Disconnected`), and `State` reads `Reconnecting` until an attempt connects (`Connected`) or the
   policy gives up (`Disconnected`, raised once). Failed attempts no longer report their own `Disconnecting`/`Disconnected`.
   Before, the client never raised `Reconnecting` and `State` read `Disconnected` between attempts. The Java and
-  JavaScript clients already reported `Reconnecting`. (S45)
+  JavaScript clients already reported `Reconnecting`. ([#385](https://github.com/Dtronix/NexNet/pull/385))
   - **Migration:** code that waited for `Disconnected` to notice a lost session while a reconnection policy is set
     should also handle `Reconnecting`; `DisconnectedTask` is unchanged.
 
