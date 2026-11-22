@@ -229,6 +229,11 @@ harness (`src/NexNet.Interop/ClientLanguages.cs`).
 | Server certificate (`RemoteCertificate`) | Yes | Yes | Yes | **No** |
 | `AsyncLocal` flow into nexus methods | Yes | No | No | No |
 
+The client pool's collection connector (C# `GetCollectionConnector`, Java and JavaScript `collectionConnector`), which
+a relay server uses, runs on the test matrix too (`NexusCollectionPoolConnectorTests`). It behaves the same in every
+language: each request for the collection returns the client the connector holds to the pool and then rents one, so a
+connector holds at most one pooled client, and a request again (after a reconnection) never waits on its own rental.
+
 ### Documented exceptions and workarounds
 
 | Exception | Workaround |

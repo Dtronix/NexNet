@@ -476,8 +476,8 @@ JavaScript `NexusClientPool.collectionConnector`), as a relay server uses it.
   `collection` (a collection reference, §6.10), whose selector picks that collection from the rented client's proxy; a
   later one with another collection fails with `BadRequest`.
 - Each `pool.collection` asks the connector for its collection (C# `GetCollection`, Java `collection()`, JavaScript
-  `getCollection()`), which rents a client from the pool. What happens to the rental of an earlier call is the
-  runtime's own (Java returns it, JavaScript keeps it until the release, C# stops referencing it). A connection failure
+  `getCollection()`), which returns the client of an earlier call to the pool and then rents one, so a connector
+  holds at most one rental. A connection failure
   is a result, `{failed}`, as in `pool.rent`; a disposed pool or a released connector fails with `InvalidOperation`.
 - The **collection handle** `h` accepts the `list.*` ops (§6.10) for that collection only (another collection fails with
   `BadRequest`); every other op fails with `NotSupported` or `UnknownHandle`. Its `list.changed` events carry `h`.
