@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
@@ -201,6 +202,62 @@ internal class ClientSpecOptionsTests(LanguageHostPool hosts) : MatrixTestBase(h
 
         await client.SignalAsync("release").Timeout(T(1));
         await Assert.That((await second.Timeout(T(1))).data).IsEqualTo(2);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_KeepsTheTransportOpenAfterTheDisconnectMessage(ClientTarget target)
+    {
+        const int delay = 1500;
+        var clock = new Stopwatch();
+        var serverDisconnected = Signal<long>();
+        await using var server = await StartServerAsync(nexus => nexus.OnDisconnectedEvent = _ =>
+        {
+            serverDisconnected.TrySetResult(clock.ElapsedMilliseconds);
+            return ValueTask.CompletedTask;
+        });
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.DisconnectDelayMs = delay);
+
+        clock.Start();
+        var disconnect = client.DisconnectAsync();
+
+        // The disconnect message goes out first: the server ends its session while the client still waits.
+        var serverAt = await serverDisconnected.Task.Timeout(T(TestTimeouts.Connect));
+        await disconnect.Timeout(T(TestTimeouts.Connect) + delay / 1000.0);
+        var clientAt = clock.ElapsedMilliseconds;
+
+        await Assert.That(serverAt).IsLessThan(delay - 500);
+        // Timers may fire a tick early.
+        await Assert.That(clientAt).IsGreaterThanOrEqualTo(delay - 50);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_Default_IsTheRuntimesDefault(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server);
+
+        // Every runtime defaults to 200 ms.
+        var clock = Stopwatch.StartNew();
+        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(clock.ElapsedMilliseconds).IsGreaterThanOrEqualTo(150);
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task DisconnectDelay_Zero_ClosesWithoutWaiting(ClientTarget target)
+    {
+        await using var server = await StartServerAsync();
+        await using var client = await ConnectAsync(target, server, configure: spec => spec.DisconnectDelayMs = 0);
+
+        var clock = Stopwatch.StartNew();
+        await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+        // Far below the delay of the test above; loose, since a remote driver adds a control round trip.
+        await Assert.That(clock.ElapsedMilliseconds).IsLessThan(500);
         await EndAsync(client);
     }
 

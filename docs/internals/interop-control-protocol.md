@@ -263,6 +263,7 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `maxPipes` | int | Most pipes open on the client's session at once (1 – 255); one more is refused locally (kind `Busy`). |
 | `pipeWindow` | int | The receive window of each pipe the client opens or accepts, in bytes, reserved from `sessionBudget` while the pipe is open. |
 | `progressTimeoutMs` | int | Longest time without progress before the session disconnects as `Stalled` (50 – 600000). |
+| `disconnectDelayMs` | int | How long a graceful disconnect keeps the transport open after writing the disconnect message (C# `DisconnectDelay`, Java `SessionOptions.disconnectDelayMillis`, JS `disconnectDelay`; 0 – 10000, 0 closes at once). `client.disconnect` answers once the client is `Disconnected`, so after the delay. Absent: the runtime's default (200 ms). Hosts MAY still close without the delay when disposing a client (`client.dispose`, scope end). |
 | `remoteExceptionDetail` | string | `RemoteExceptionDetail` name (`None`, `TypeAndMessage`): what the client sends the server when a client nexus method fails. |
 | `onInvocationException` | object | `{code?, message?}`: the client nexus's `OnInvocationException` hook returns this application error (code int, message string; an absent member is null) for every failed client nexus method, whatever `remoteExceptionDetail` says. Absent: no hook. A pool (§6.11) refuses it with `NotSupported`. |
 | `reconnectDelaysMs` | int[] | Null: no reconnection (unless `defaultReconnection`). |

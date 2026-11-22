@@ -345,7 +345,7 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
             }
         }
 
-        // Nothing waits for the disconnect message at the end of a test.
+        // Nothing waits for the disconnect message at the end of a test, whatever ClientSpec.DisconnectDelayMs says.
         _client.Config.DisconnectDelay = 0;
         await _client.DisposeAsync().ConfigureAwait(false);
         _metrics?.Dispose();

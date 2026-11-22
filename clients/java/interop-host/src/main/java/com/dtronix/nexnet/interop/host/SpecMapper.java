@@ -38,7 +38,8 @@ final class SpecMapper {
         "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
         "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
         "authorizationHeader", "upgradeHeaders", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
-        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "metrics"));
+        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs", "disconnectDelayMs",
+        "metrics"));
 
     private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
         "token", "appendCallNumber", "delayMs", "hang", "throwMessage"));
@@ -250,6 +251,13 @@ final class SpecMapper {
         Long credits = spec.optInteger("invocationCredits");
         if (credits != null) {
             options = options.withInvocationCredits(credits.intValue());
+        }
+        Long disconnectDelay = spec.optInteger("disconnectDelayMs");
+        if (disconnectDelay != null) {
+            if (disconnectDelay < 0 || disconnectDelay > 10_000) {
+                throw HostError.badRequest("disconnectDelayMs must be 0 to 10000, not " + disconnectDelay + ".");
+            }
+            options = options.withDisconnectDelayMillis(disconnectDelay.intValue());
         }
 
         FakeTimers fake = null;

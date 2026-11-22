@@ -13,7 +13,7 @@ const SPEC_MEMBERS = new Set([
   'invocationCredits', 'maxConcurrentConnectionInvocations', 'remoteExceptionDetail', 'onInvocationException',
   'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'upgradeHeaders', 'fakeTime', 'logLevel',
   'reconnectReasons', 'authenticate', 'queryToken', 'maxSeparatePoolInvocations', 'invocationQueueWarningThresholdMs',
-  'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs', 'metrics',
+  'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs', 'disconnectDelayMs', 'metrics',
 ]);
 
 const AUTHENTICATE_MEMBERS = new Set(['token', 'appendCallNumber', 'delayMs', 'hang', 'throwMessage']);
@@ -324,7 +324,12 @@ export function parseSpec(spec, limits) {
     ['maxPipes', 'maxPipes'],
     ['pipeWindow', 'pipeWindow'],
     ['progressTimeoutMs', 'progressTimeout'],
+    ['disconnectDelayMs', 'disconnectDelay'],
   ];
+  const disconnectDelay = int(s.disconnectDelayMs, 'disconnectDelayMs');
+  if (disconnectDelay !== undefined && (disconnectDelay < 0 || disconnectDelay > 10_000)) {
+    throw badRequest('ClientSpec.disconnectDelayMs must be 0 to 10000.');
+  }
   for (const [from, to] of numbers) {
     const value = int(s[from], from);
     if (value !== undefined) config[to] = value;

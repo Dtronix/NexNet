@@ -88,10 +88,17 @@ describe('ClientSpec', () => {
   it('maps the pipe, budget and pool limits', () => {
     const parsed = parseSpec({
       transport: 'Tcp', address: 'tcp://h:1', sessionBudget: 1, maxPipes: 2, pipeWindow: 3, progressTimeoutMs: 4,
-      maxSeparatePoolInvocations: 5, invocationQueueWarningThresholdMs: 6,
+      maxSeparatePoolInvocations: 5, invocationQueueWarningThresholdMs: 6, disconnectDelayMs: 7,
     }, node);
     expect(parsed.config).toMatchObject({ sessionBudget: 1, maxPipes: 2, pipeWindow: 3, progressTimeout: 4, maxSeparatePoolInvocations: 5,
-      invocationQueueWarningThreshold: 6 });
+      invocationQueueWarningThreshold: 6, disconnectDelay: 7 });
+  });
+
+  it('leaves disconnectDelay to the runtime when the spec has none', () => {
+    expect(parseSpec({ transport: 'Tcp', address: 'tcp://h:1' }, node).config).not.toHaveProperty('disconnectDelay');
+    expect(parseSpec({ transport: 'Tcp', address: 'tcp://h:1', disconnectDelayMs: 0 }, node).config.disconnectDelay).toBe(0);
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', disconnectDelayMs: -1 }, node), 'BadRequest');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', disconnectDelayMs: 10_001 }, node), 'BadRequest');
   });
 
   it('puts the query token on the upgrade transport', () => {
