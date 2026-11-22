@@ -118,6 +118,12 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   connected", and any other write threw "Can't send when writer is not set." Argument checks (a negative index) still
   come first. ([#355](https://github.com/Dtronix/NexNet/pull/355))
   - **Migration:** code that relied on `RemoveAsync` returning false on a read-only list must not call it there.
+- **Behavior change: a C# client list's `IsReadOnly` reflects its mode.** `INexusList<T>.IsReadOnly` on a client list
+  is now `true` for `ServerToClient` and `Relay` lists (the ones whose writes throw) and `false` for `BiDirectional`,
+  as `ICollection<T>.IsReadOnly` does. Before, it was always `false`. Server lists are unchanged (`false`). Java and
+  JavaScript have no such flag: their list's `mode` tells the same thing.
+  - **Migration:** code that read `IsReadOnly` on a client list and expected `false` on a `ServerToClient` or `Relay`
+    list should check the mode instead, or treat `true` as "do not write".
 - **Behavior change: the C# client reports `Reconnecting` while it reconnects.** When a lost session starts the
   reconnection loop, `NexusClient.StateChanged` now raises `ConnectionState.Reconnecting` (after the lost session's
   `Disconnecting` and `Disconnected`), and `State` reads `Reconnecting` until an attempt connects (`Connected`) or the
