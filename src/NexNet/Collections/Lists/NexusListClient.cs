@@ -255,6 +255,18 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         return await _operationCompletionSource.Task.ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Refuses a change on a list the client may not change (any mode but BiDirectional) before anything else is
+    /// checked, so the refusal is the same whether or not the list is enabled or the item exists. Java and JavaScript
+    /// refuse the same way.
+    /// </summary>
+    private void ThrowIfReadOnly()
+    {
+        if (Mode != NexusCollectionMode.BiDirectional)
+            throw new InvalidOperationException(
+                $"The collection is read-only (mode {Mode}): only a BiDirectional collection accepts changes from a client.");
+    }
+
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
@@ -262,6 +274,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
     public async Task<bool> RemoveAsync(T item)
     {
+        ThrowIfReadOnly();
         var index = _itemList.IndexOf(item, out var version);
 
         if (index == -1)
@@ -280,6 +293,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
     public async Task<bool> ClearAsync()
     {
+        ThrowIfReadOnly();
         var message = NexusCollectionListClearMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
@@ -290,6 +304,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     public async Task<bool> InsertAsync(int index, T item)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ThrowIfReadOnly();
 
         var message = NexusCollectionListInsertMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
@@ -305,6 +320,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     {
         ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
         ArgumentOutOfRangeException.ThrowIfNegative(toIndex);
+        ThrowIfReadOnly();
 
         var message = NexusCollectionListMoveMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
@@ -318,6 +334,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     public async Task<bool> ReplaceAsync(int index, T value)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ThrowIfReadOnly();
 
         var message = NexusCollectionListReplaceMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
@@ -332,6 +349,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     public async Task<bool> RemoveAtAsync(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ThrowIfReadOnly();
 
         var message = NexusCollectionListRemoveMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
@@ -343,6 +361,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
     public async Task<bool> AddAsync(T item)
     {
+        ThrowIfReadOnly();
         var message = NexusCollectionListInsertMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
         var state = _itemList.State;
