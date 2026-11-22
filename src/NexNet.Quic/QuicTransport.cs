@@ -72,8 +72,18 @@ internal class QuicTransport : ITransport
             _sendPipe.Abort();
         }
 
-        await _quicConnection.CloseAsync(0).ConfigureAwait(false);
-        await _quicStream.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            await _quicConnection.CloseAsync(0).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Dispose, not only close: msquic keeps the UDP binding (a server's listening port) alive while any
+            // connection on it still has an open handle, and an undisposed connection's handle is only released by
+            // its finalizer. A stopped server then held its port for seconds to minutes (S51).
+            await _quicStream.DisposeAsync().ConfigureAwait(false);
+            await _quicConnection.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -104,12 +114,6 @@ internal class QuicTransport : ITransport
         // Observe a failure (the peer aborted its reads, or the connection closed) so it is not unobserved.
         if (writesClosed.IsFaulted)
             _ = writesClosed.Exception;
-    }
-
-    public void Dispose()
-    {
-        _quicStream.DisposeAsync();
-        _quicConnection.DisposeAsync();
     }
 
     /// <summary>
