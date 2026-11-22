@@ -1,6 +1,8 @@
 // The platform-WebSocket transport (the browser entry's), run in Node against its global WebSocket.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DisconnectReason } from '../../src/contract/enums.js';
+import { ConnectionResultState, DisconnectReason } from '../../src/contract/enums.js';
+import { ClientNexusBase } from '../../src/contract/nexus.js';
+import { ProxyBase } from '../../src/contract/proxy.js';
 import { NexusClient } from '../../src/client/NexusClient.js';
 import { webSocketTransport } from '../../src/transport/WebSocketTransport.js';
 import { Opcode } from '../../src/transport/node/ws.js';
@@ -109,6 +111,28 @@ describe.skipIf(typeof globalThis.WebSocket !== 'function')('platform WebSocket 
     }
     vi.stubGlobal('WebSocket', ErrorOnlyWebSocket);
     await expect(connect('ws://127.0.0.1:1/nexus')).rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.SocketError });
+  });
+
+  it('a connect the socket does not settle within connectionTimeout fails with ConnectionTimeout (WebKit no-server)', async () => {
+    // WebKit can take longer than a short connectionTimeout to report a refused connect; the connect then ends by the
+    // timeout, which must still be a transport error with a kind (C# TransportException(ConnectionTimeout)).
+    class PendingWebSocket extends EventTarget {
+      readyState = 0;
+      binaryType = 'blob';
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', PendingWebSocket);
+    class Proxy extends ProxyBase {}
+    class Nexus extends ClientNexusBase {}
+    const create = () => NexusClient.create({ webSocket: { url: 'ws://127.0.0.1:1/nexus' }, connectionTimeout: 20 }, new Nexus(), {
+      handshake: { version: null, serverNexusHash: 1, clientNexusHash: 2, acceptedIds: new Set([0]) },
+      proxy: Proxy,
+    });
+    const expected = { name: 'NexusTransportError', transportError: 'ConnectionTimeout', reason: DisconnectReason.Timeout };
+    await expect(create().connect()).rejects.toMatchObject(expected);
+    expect(await create().tryConnect()).toMatchObject({
+      success: false, state: ConnectionResultState.Disconnected, disconnectReason: DisconnectReason.Timeout, error: expected,
+    });
   });
 
   it('close() sends Close 1000', async () => {
