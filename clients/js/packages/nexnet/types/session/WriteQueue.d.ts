@@ -9,7 +9,7 @@ export declare class WriteQueue {
     flushStartedAt: number;
     /** Clock time the last transport write completed; null until one has. @type {number | null} */
     lastSentAt: number | null;
-    /** Frames and bytes handed to the transport. */
+    /** Frames and bytes handed to the transport. The preamble counts as bytes only, as on the C# and Java clients. */
     framesSent: number;
     bytesSent: number;
     /**
@@ -34,9 +34,11 @@ export declare class WriteQueue {
      * Queues a frame. Resolves true once the transport accepted the write that carried it, false when the queue
      * closed first (the session ended) or the write failed.
      * @param {Uint8Array} frame
+     * @param {boolean} [isFrame] False for bytes that are not a frame (the preamble): they are counted in
+     *   {@link WriteQueue#bytesSent} but not in {@link WriteQueue#framesSent}.
      * @returns {Promise<boolean>}
      */
-    enqueue(frame: Uint8Array): Promise<boolean>;
+    enqueue(frame: Uint8Array, isFrame?: boolean): Promise<boolean>;
     /** Requests a flush (for control frames, which are pulled through `beforeFlush`). @returns {void} */
     schedule(): void;
     /**

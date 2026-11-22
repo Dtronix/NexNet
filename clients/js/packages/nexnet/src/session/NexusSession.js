@@ -371,7 +371,7 @@ export class NexusSession {
     this.#transport.onData((chunk) => this.#onData(chunk));
 
     if (this.#disconnectStarted) return;
-    void this.#writer.enqueue(encodePreamble());
+    void this.#writer.enqueue(encodePreamble(), false);
     void this.#writer.enqueue(encodeFrame(type, greeting));
   }
 
