@@ -49,6 +49,8 @@ internal abstract class BaseTests
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
     private readonly List<WebApplication> AspServers = new List<WebApplication>();
+    private readonly List<StoppedPortHold> _portHolds = [];
+    private readonly Dictionary<INexusServer, StoppedPortHold> _stoppedServerHolds = [];
     
     
     public RollingLogger Logger => _logger;
@@ -166,6 +168,9 @@ internal abstract class BaseTests
     /// </summary>
     protected virtual async Task TearDown()
     {
+        // The test is over: the ports held for its stopped servers and its no-server endpoints go back.
+        ReleasePortHolds();
+
         CurrentUdsPath = null;
         AspListenOptions = null;
         _aspHttps = false;
@@ -244,6 +249,101 @@ internal abstract class BaseTests
         }
 
         DeleteTestSocketDirectory();
+    }
+
+    private void ReleasePortHolds()
+    {
+        foreach (var factory in ServerFactories)
+            factory.ReleaseStoppedPorts();
+
+        lock (_portHolds)
+        {
+            foreach (var hold in _portHolds.Concat(_stoppedServerHolds.Values))
+                hold.Dispose();
+            _portHolds.Clear();
+            _stoppedServerHolds.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Stops <paramref name="server"/> and holds its TCP or QUIC port (<see cref="StoppedPortHold"/>) until
+    /// <see cref="StartServerAsync"/> starts it again or the test ends, so no server of another test process can listen
+    /// on the port meanwhile (<see cref="TestPorts"/> keeps ports unique within a process only) and a client's attempt
+    /// is refused. Use it, with <see cref="StartServerAsync"/>, for a TCP, TLS or QUIC server a test stops and restarts
+    /// or keeps stopped; the server factories of <see cref="CreateServerClient(ServerConfig, ClientConfig, bool)"/>
+    /// do the same in their own <c>StopAsync</c>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The port could not be held: another process has it.</exception>
+    protected async Task StopServerAsync(INexusServer server)
+    {
+        await server.StopAsync();
+        ReleaseStoppedServerPorts(server);
+        var hold = await HoldStoppedServerPortsAsync(server);
+        if (hold == null)
+            return;
+
+        lock (_portHolds)
+            _stoppedServerHolds[server] = hold;
+    }
+
+    /// <summary>
+    /// Starts <paramref name="server"/> on the port <see cref="StopServerAsync"/> held until now.
+    /// </summary>
+    protected Task StartServerAsync(INexusServer server, CancellationToken cancellationToken = default)
+    {
+        ReleaseStoppedServerPorts(server);
+        return server.StartAsync(cancellationToken);
+    }
+
+    private void ReleaseStoppedServerPorts(INexusServer server)
+    {
+        lock (_portHolds)
+        {
+            if (_stoppedServerHolds.Remove(server, out var hold))
+                hold.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Holds the TCP or QUIC port of <paramref name="server"/>'s primary endpoint, which has stopped; null for an
+    /// endpoint without one (UDS, whose socket path is the test's own, or ASP.NET, whose app keeps its port).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The port could not be held: another process has it.</exception>
+    internal static async Task<StoppedPortHold?> HoldStoppedServerPortsAsync(INexusServer server) => server.Config switch
+    {
+        TcpServerConfig { EndPoint: IPEndPoint tcp } => await StoppedPortHold.TakeAsync([tcp], []),
+        QuicServerConfig quic => await StoppedPortHold.TakeAsync([], [quic.EndPoint]),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Endpoints with no server: free TCP, TLS, HTTP, HTTPS and QUIC ports, held (<see cref="StoppedPortHold"/>) until
+    /// the test ends so no server of another test process can take one meanwhile, and a UDS path with no socket file.
+    /// A connection attempt is refused: the TCP ports are bound without listening, and the QUIC port's UDP port is left
+    /// unbound (port unreachable) while its TCP port of the same number keeps the allocators off it.
+    /// </summary>
+    protected async Task<InteropEndpoints> NoServerEndpointsAsync()
+    {
+        static IPEndPoint FreeEndPoint() => new(IPAddress.Loopback, TestPorts.Next());
+        var tcp = FreeEndPoint();
+        var tls = FreeEndPoint();
+        var http = FreeEndPoint();
+        var https = FreeEndPoint();
+        var quic = FreeEndPoint();
+
+        var hold = await StoppedPortHold.TakeAsync([tcp, tls, http, https], [], refusedQuicEndPoints: [quic]);
+        lock (_portHolds)
+            _portHolds.Add(hold);
+
+        return new InteropEndpoints(
+            tcp,
+            tls,
+            NewUdsEndPoint().ToString(),
+            new Uri($"http://{http}/httpsocket"),
+            new Uri($"https://{https}/httpsocket"),
+            new Uri($"ws://{http}/websocket"),
+            new Uri($"wss://{https}/websocket"),
+            quic);
     }
 
     /// <summary>
