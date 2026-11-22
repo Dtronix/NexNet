@@ -520,7 +520,8 @@ A handshake the server ends for any other reason rejects with a `NexusTransportE
 | `EADDRNOTAVAIL`, `EINVAL` | `InvalidAddress` | `SocketError` |
 | Any error after the TCP connect and before the TLS handshake completes, or a TLS/certificate error code | `AuthenticationError` | `Authentication` |
 | Upgrade refused with `401` or `403` (HttpSocket, Node WebSocket) | `AuthenticationError`, `status` set | `Authentication` |
-| HttpSocket upgrade refused with any other status, `2xx` included | `InternalError`, `status` set | `SocketError` |
+| HttpSocket upgrade answered with `2xx` (or a `3xx` redirect, never followed) | `ProtocolError`, `status` set | `SocketError` |
+| HttpSocket upgrade refused with any other status | `InternalError`, `status` set | `SocketError` |
 | Node WebSocket upgrade refused with `5xx` | `InternalError`, `status` set | `SocketError` |
 | Node WebSocket upgrade refused with any other status | `ProtocolError`, `status` set | `SocketError` |
 | `101` with a wrong `Upgrade`/`Connection`/`Sec-WebSocket-Accept`, or a subprotocol or extension selected | `ProtocolError` | `SocketError` |
