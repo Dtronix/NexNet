@@ -5,6 +5,8 @@ import com.dtronix.nexnet.client.TlsOptions;
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
+import com.dtronix.nexnet.DisconnectReason;
+import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.session.SessionOptions;
@@ -17,9 +19,14 @@ import java.security.GeneralSecurityException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import javax.net.ssl.X509TrustManager;
 
 /** Maps a {@code ClientSpec} (control protocol §6.4.1) to the Java client's configuration. */
@@ -29,7 +36,11 @@ final class SpecMapper {
         "insecureSkipVerify", "connectionTimeoutMs", "timeoutMs", "handshakeTimeoutMs", "pingIntervalMs",
         "maxMessageSize", "invocationCredits", "maxConcurrentConnectionInvocations", "remoteExceptionDetail",
         "onInvocationException", "reconnectDelaysMs", "reconnectContinuously", "defaultReconnection", "authToken",
-        "authorizationHeader", "fakeTime", "logLevel"));
+        "authorizationHeader", "fakeTime", "logLevel", "reconnectReasons", "authenticate", "queryToken", "maxSeparatePoolInvocations",
+        "invocationQueueWarningThresholdMs", "sessionBudget", "maxPipes", "pipeWindow", "progressTimeoutMs"));
+
+    private static final Set<String> AUTHENTICATE_MEMBERS = new HashSet<>(Arrays.asList(
+        "token", "appendCallNumber", "delayMs", "hang", "throwMessage"));
 
     private SpecMapper() {
     }
@@ -120,10 +131,35 @@ final class SpecMapper {
                 throw HostError.notSupported("An Authorization header needs an HTTP transport, not " + transport + ".");
             }
         }
+        Args query = spec.optObj("queryToken");
+        if (query != null) {
+            for (String member : query.raw().keySet()) {
+                if (!member.equals("name") && !member.equals("value")) {
+                    throw HostError.notSupported("The JVM host does not know the queryToken member '" + member + "'.");
+                }
+            }
+            String name = query.optStr("name");
+            if (name == null || name.isEmpty()) {
+                throw HostError.badRequest("queryToken.name is required.");
+            }
+            String value = query.optStr("value");
+            try {
+                builder.queryToken(name, value == null ? "" : value);
+            } catch (IllegalStateException e) {
+                throw HostError.notSupported("A query-string token needs an HTTP transport, not " + transport + ".");
+            }
+        }
         String token = spec.optStr("authToken");
         if (token != null) {
             byte[] bytes = token.getBytes(StandardCharsets.UTF_8);
             builder.authenticate(() -> bytes.clone());
+        }
+        Args authenticate = spec.optObj("authenticate");
+        if (authenticate != null) {
+            if (token != null) {
+                throw HostError.badRequest("authToken and authenticate are exclusive.");
+            }
+            builder.authenticateAsync(authenticateScript(authenticate));
         }
         Long connectionTimeout = spec.optInteger("connectionTimeoutMs");
         if (connectionTimeout != null) {
@@ -141,11 +177,36 @@ final class SpecMapper {
         if (pingInterval != null) {
             builder.pingIntervalMillis(pingInterval.intValue());
         }
+        Long progressTimeout = spec.optInteger("progressTimeoutMs");
+        if (progressTimeout != null) {
+            builder.progressTimeoutMillis(progressTimeout.intValue());
+        }
+        if (spec.has("invocationQueueWarningThresholdMs")) {
+            throw HostError.notSupported("The Java client has no invocation queue warning (invocationQueueWarningThreshold).");
+        }
+        PipeOptions pipes = PipeOptions.defaults();
+        Long maxPipes = spec.optInteger("maxPipes");
+        if (maxPipes != null) {
+            pipes = pipes.withMaxPipes(maxPipes.intValue());
+        }
+        Long pipeWindow = spec.optInteger("pipeWindow");
+        if (pipeWindow != null) {
+            pipes = pipes.withPipeWindow(pipeWindow.intValue());
+        }
+        builder.pipeOptions(pipes);
 
         InvocationOptions invocations = InvocationOptions.defaults();
         Long maxConcurrent = spec.optInteger("maxConcurrentConnectionInvocations");
         if (maxConcurrent != null) {
             invocations = invocations.withMaxConcurrentInvocations(maxConcurrent.intValue());
+        }
+        Long maxSeparate = spec.optInteger("maxSeparatePoolInvocations");
+        if (maxSeparate != null) {
+            invocations = invocations.withMaxSeparatePoolInvocations(maxSeparate.intValue());
+        }
+        Long sessionBudget = spec.optInteger("sessionBudget");
+        if (sessionBudget != null) {
+            invocations = invocations.withSessionBudget(sessionBudget);
         }
         String detail = spec.optStr("remoteExceptionDetail");
         if (detail != null) {
@@ -159,7 +220,12 @@ final class SpecMapper {
             for (int i = 0; i < millis.length; i++) {
                 millis[i] = Args.toLong("reconnectDelaysMs", delays.get(i));
             }
-            builder.reconnectionPolicy(new DefaultReconnectionPolicy(millis, spec.bool("reconnectContinuously")));
+            boolean continuously = spec.bool("reconnectContinuously");
+            builder.reconnectionPolicy(spec.has("reconnectReasons")
+                ? new DefaultReconnectionPolicy(millis, continuously, reconnectReasons(spec.list("reconnectReasons")))
+                : new DefaultReconnectionPolicy(millis, continuously));
+        } else if (spec.has("reconnectReasons")) {
+            throw HostError.badRequest("reconnectReasons needs reconnectDelaysMs.");
         }
         // Without delays the client has no reconnection policy, which is also the Java client's default: so
         // defaultReconnection (keep the runtime's default) changes nothing here. It is only checked.
@@ -186,6 +252,57 @@ final class SpecMapper {
         }
         return new Setup(builder.build(), options, timers, fake, invocationError,
             Connectors.select(transport, tlsOptions));
+    }
+
+    /** The {@code DisconnectReason} names of {@code reconnectReasons}. */
+    static Set<DisconnectReason> reconnectReasons(List<Object> names) {
+        Set<DisconnectReason> reasons = EnumSet.noneOf(DisconnectReason.class);
+        for (Object name : names) {
+            if (!(name instanceof String)) {
+                throw HostError.badRequest("reconnectReasons holds a non-string.");
+            }
+            reasons.add(Names.parse(DisconnectReason.class, (String) name));
+        }
+        return reasons;
+    }
+
+    /**
+     * The scripted authenticate callback of {@code authenticate} ({@code {token?, appendCallNumber?, delayMs?, hang?,
+     * throwMessage?}}): each call counts, waits {@code delayMs} (real time), then hangs (the client cancels the future
+     * at its handshake timeout), fails with {@code throwMessage}, or returns the token (with the call number appended
+     * when {@code appendCallNumber}; null for no token).
+     */
+    static Supplier<CompletableFuture<byte[]>> authenticateScript(Args script) {
+        for (String member : script.raw().keySet()) {
+            if (!AUTHENTICATE_MEMBERS.contains(member)) {
+                throw HostError.notSupported("The JVM host does not know the authenticate member '" + member + "'.");
+            }
+        }
+        String token = script.optStr("token");
+        boolean appendCallNumber = script.bool("appendCallNumber");
+        Long delay = script.optInteger("delayMs");
+        long delayMs = delay == null ? 0 : delay;
+        boolean hang = script.bool("hang");
+        String throwMessage = script.optStr("throwMessage");
+        AtomicInteger calls = new AtomicInteger();
+        return () -> {
+            int call = calls.incrementAndGet();
+            CompletableFuture<Void> waited = delayMs > 0
+                ? CompletableFuture.runAsync(() -> { }, CompletableFuture.delayedExecutor(delayMs, TimeUnit.MILLISECONDS))
+                : CompletableFuture.completedFuture(null);
+            if (hang) {
+                return waited.thenCompose(ignored -> new CompletableFuture<byte[]>());
+            }
+            return waited.thenApply(ignored -> {
+                if (throwMessage != null) {
+                    throw new IllegalStateException(throwMessage);
+                }
+                if (token == null) {
+                    return null;
+                }
+                return (appendCallNumber ? token + call : token).getBytes(StandardCharsets.UTF_8);
+            });
+        };
     }
 
     /** The error of {@code onInvocationException} ({@code {code?, message?}}), or null when the spec has no hook. */
