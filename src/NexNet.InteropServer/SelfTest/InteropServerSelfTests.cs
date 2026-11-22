@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using NexNet.InteropServer.Probe;
@@ -99,7 +101,7 @@ public class InteropServerSelfTests
     [Test]
     public async Task Endpoints_WithoutQuic_LeaveItOut()
     {
-        var any = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 1);
+        var any = new IPEndPoint(System.Net.IPAddress.Loopback, 1);
         var uri = new Uri("ws://127.0.0.1:1/ws");
         var endpoints = new InteropEndpoints(any, any, "/tmp/s", uri, uri, uri, uri);
 
@@ -306,6 +308,75 @@ public class InteropServerSelfTests
             var client = await Connect(server.CreateClientConfig(kind));
             await Assert.That(await client.Proxy.Echo("again").AsTask().WaitAsync(Wait)).IsEqualTo("again");
             await client.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task StoppedServer_HoldsItsPortsUntilRestartedOrDisposed()
+    {
+        await using var server = await StartDedicated();
+        var endpoints = server.Endpoints;
+        var held = new List<(IPEndPoint EndPoint, ProtocolType Protocol)>
+        {
+            (endpoints.Tcp, ProtocolType.Tcp),
+            (endpoints.TcpTls, ProtocolType.Tcp),
+        };
+        if (endpoints.Quic is { } quic)
+            held.Add((quic, ProtocolType.Udp));
+
+        // Stop with live sessions on the held endpoints: their connections close as part of the stop.
+        var kinds = Available.Where(k => k is InteropEndpointKind.Tcp or InteropEndpointKind.TcpTls or InteropEndpointKind.Quic).ToArray();
+        var clients = new List<NexusClient<InteropProbeClientNexus, InteropProbeClientNexus.ServerProxy>>();
+        foreach (var kind in kinds)
+            clients.Add(await Connect(server.CreateClientConfig(kind)));
+
+        await server.StopAsync();
+        foreach (var client in clients)
+            await client.DisposeAsync();
+
+        // No other socket can bind a port, as another server would to listen on it, and a connection is refused. The
+        // QUIC port is held by msquic at first, then by the hold.
+        foreach (var (endPoint, protocol) in held)
+            await Assert.That(TryBind(endPoint, protocol)).IsNotEqualTo(SocketError.Success)
+                .Because($"{protocol} {endPoint} must be held while the server is stopped");
+
+        using (var probe = new Socket(SocketType.Stream, ProtocolType.Tcp))
+        {
+            var refused = await Assert.ThrowsAsync<SocketException>(
+                async () => await probe.ConnectAsync(endpoints.Tcp).WaitAsync(Wait));
+            await Assert.That(refused!.SocketErrorCode).IsEqualTo(SocketError.ConnectionRefused);
+        }
+
+        // A restart takes the ports back.
+        await server.StartAsync();
+        foreach (var kind in kinds)
+        {
+            var client = await Connect(server.CreateClientConfig(kind));
+            await Assert.That(await client.Proxy.Echo("again").AsTask().WaitAsync(Wait)).IsEqualTo("again");
+            await client.DisposeAsync();
+        }
+
+        // Disposing a stopped server releases its TCP ports (msquic may keep the UDP one for a while).
+        await server.StopAsync();
+        await server.DisposeAsync();
+        foreach (var (endPoint, protocol) in held.Where(h => h.Protocol == ProtocolType.Tcp))
+            await Assert.That(TryBind(endPoint, protocol)).IsEqualTo(SocketError.Success)
+                .Because($"{protocol} {endPoint} must be released when the server is disposed");
+    }
+
+    private static SocketError TryBind(IPEndPoint endPoint, ProtocolType protocol)
+    {
+        using var socket = new Socket(endPoint.AddressFamily,
+            protocol == ProtocolType.Udp ? SocketType.Dgram : SocketType.Stream,
+            protocol);
+        try
+        {
+            socket.Bind(endPoint);
+            return SocketError.Success;
+        }
+        catch (SocketException e)
+        {
+            return e.SocketErrorCode;
         }
     }
 }
