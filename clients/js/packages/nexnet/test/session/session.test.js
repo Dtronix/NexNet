@@ -666,4 +666,19 @@ describe('ping interval rule (C# ClientConfig.GetEffectivePingInterval, J15)', (
     expect(resolve(undefined).pingInterval).toBeNull();
     expect(resolve(null).pingInterval).toBeNull();
   });
+
+  it('queryToken on webSocket and httpSocket needs a non-empty string name and a string value', () => {
+    const supported = { webSocket: () => null, httpSocket: () => null };
+    for (const [kind, url] of [['webSocket', 'ws://localhost/'], ['httpSocket', 'http://localhost/']]) {
+      const resolve = (/** @type {unknown} */ queryToken) => resolveClientOptions(
+        /** @type {any} */ ({ [kind]: { url, queryToken } }), supported);
+      expect(resolve(undefined).kind).toBe(kind);
+      expect(resolve(null).kind).toBe(kind);
+      expect(resolve({ name: 'access_token', value: '' }).kind).toBe(kind);
+      expect(() => resolve({ name: '', value: 'x' })).toThrow(TypeError);
+      expect(() => resolve({ name: 'access_token' })).toThrow(TypeError);
+      expect(() => resolve({ name: 1, value: 'x' })).toThrow(TypeError);
+      expect(() => resolve('access_token=x')).toThrow(TypeError);
+    }
+  });
 });

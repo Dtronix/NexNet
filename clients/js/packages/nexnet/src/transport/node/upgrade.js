@@ -6,7 +6,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
-import { transportError, upgradeRefused } from '../TransportBase.js';
+import { appendQueryToken, transportError, upgradeRefused } from '../TransportBase.js';
 import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins, urlHost } from './common.js';
 
 /**
@@ -29,11 +29,13 @@ import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins, 
  * @param {URL} init.url `http:`/`https:` (`ws:`/`wss:` are mapped by the caller).
  * @param {boolean} init.secure
  * @param {Record<string, string>} init.headers Upgrade headers (`Upgrade`, `Connection`, …) and the user's headers.
+ * @param {import('../../contract/config.js').QueryToken | null} [init.queryToken] Appended to the request target only;
+ *   messages show `url` without it.
  * @param {import('../../contract/config.js').TlsOptions} [init.tls]
  * @param {AbortSignal} init.signal
  * @returns {Promise<UpgradeResult>}
  */
-export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
+export function httpUpgrade({ transport, url, secure, headers, queryToken, tls, signal }) {
   const host = urlHost(url);
   const what = `${transport} connect to ${url.href}`;
   return abortableConnect(signal, (resolve, reject) => {
@@ -42,7 +44,7 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
       method: 'GET',
       host,
       port: url.port === '' ? (secure ? 443 : 80) : Number(url.port),
-      path: `${url.pathname}${url.search}`,
+      path: `${url.pathname}${appendQueryToken(url.search, queryToken)}`,
       headers,
       agent: false,
     };

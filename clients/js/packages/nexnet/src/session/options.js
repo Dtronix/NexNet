@@ -117,6 +117,21 @@ function parseUrl(url, kind) {
 }
 
 /**
+ * Checks a `queryToken` option (Java `ClientConfig.Builder.queryToken`): absent, null, or a non-empty string name and
+ * a string value.
+ * @param {unknown} token
+ * @param {string} kind
+ */
+function checkQueryToken(token, kind) {
+  if (token === undefined || token === null) return;
+  const t = /** @type {{ name?: unknown, value?: unknown }} */ (token);
+  if (typeof token !== 'object' || typeof t.name !== 'string' || typeof t.value !== 'string') {
+    throw new TypeError(`ClientConfig.${kind}.queryToken must be { name: string, value: string }`);
+  }
+  if (t.name.length === 0) throw new TypeError(`ClientConfig.${kind}.queryToken.name must not be empty`);
+}
+
+/**
  * Name and security of the configured transport, known before it connects (as C# `TransportName`/`IsSecureTransport`).
  * @param {import('../contract/config.js').TransportKind} kind
  * @param {any} transportConfig
@@ -129,6 +144,7 @@ export function describeTransport(kind, transportConfig) {
       if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
         throw new TypeError(`ClientConfig.webSocket.url must be ws: or wss:; got ${url.protocol}`);
       }
+      checkQueryToken(transportConfig?.queryToken, kind);
       return { name: `${url.protocol}//`, isSecure: url.protocol === 'wss:' };
     }
     case 'httpSocket': {
@@ -136,6 +152,7 @@ export function describeTransport(kind, transportConfig) {
       if (url.protocol !== 'http:' && url.protocol !== 'https:') {
         throw new TypeError(`ClientConfig.httpSocket.url must be http: or https:; got ${url.protocol}`);
       }
+      checkQueryToken(transportConfig?.queryToken, kind);
       return { name: `${url.protocol}//`, isSecure: url.protocol === 'https:' };
     }
     case 'tcp':

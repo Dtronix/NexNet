@@ -107,3 +107,13 @@ export declare function concatChunks(chunks: Uint8Array[]): Uint8Array;
  * @returns {URL}
  */
 export declare function toUrl(url: string | URL): URL;
+/**
+ * Appends a query-string token (`WebSocketTransportConfig.queryToken`, `HttpSocketTransportConfig.queryToken`) to a
+ * URL search part, as `name=value`, each URL-encoded (Java `ClientConfig.Builder.queryToken` parity). The rest of the
+ * search part is kept as it is.
+ *
+ * @param {string} search A `URL.search` value: empty, or `?` followed by the query.
+ * @param {import('../contract/config.js').QueryToken | null | undefined} token
+ * @returns {string} The search part to request; `search` itself when there is no token.
+ */
+export declare function appendQueryToken(search: string, token: import('../contract/config.js').QueryToken | null | undefined): string;

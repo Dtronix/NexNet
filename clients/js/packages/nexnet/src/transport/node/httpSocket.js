@@ -27,6 +27,7 @@ export async function httpSocketTransport(config, { signal }) {
     url,
     secure,
     headers: { ...options.headers, Connection: 'Upgrade', Upgrade: HTTP_SOCKET_UPGRADE },
+    queryToken: options.queryToken,
     tls: options.tls,
     signal,
   });

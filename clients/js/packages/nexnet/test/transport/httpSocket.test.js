@@ -32,6 +32,27 @@ function connect(url, extra = {}) {
 }
 
 describe('HttpSocket transport', () => {
+  it('appends queryToken URL-encoded to the request target; errors do not show it', async () => {
+    /** @type {string[]} */
+    const seen = [];
+    const url = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.write(httpSocket101());
+    });
+    const t = await connect(url, { queryToken: { name: 'access_token', value: 't o&k' } });
+    cleanup.push(() => t.close());
+    expect(seen[0]).toMatch(/\?access_token=t%20o%26k$/);
+
+    const refused = await server(({ req, socket }) => {
+      seen.push(String(req.url));
+      socket.end(httpStatus(403));
+    });
+    const error = await connect(refused, { queryToken: { name: 'token', value: 'secret' } }).catch((e) => e);
+    expect(seen[1]).toMatch(/\?token=secret$/);
+    expect(error).toMatchObject({ transportError: 'AuthenticationError', status: 403 });
+    expect(String(error.message)).not.toContain('secret');
+  });
+
   it('upgrades to nexnet-httpsockets and feeds the bytes that came with the 101 to the session first', async () => {
     /** @type {import('node:http').IncomingMessage | undefined} */
     let seen;

@@ -199,3 +199,18 @@ export function concatChunks(chunks) {
 export function toUrl(url) {
   return url instanceof URL ? url : new URL(url);
 }
+
+/**
+ * Appends a query-string token (`WebSocketTransportConfig.queryToken`, `HttpSocketTransportConfig.queryToken`) to a
+ * URL search part, as `name=value`, each URL-encoded (Java `ClientConfig.Builder.queryToken` parity). The rest of the
+ * search part is kept as it is.
+ *
+ * @param {string} search A `URL.search` value: empty, or `?` followed by the query.
+ * @param {import('../contract/config.js').QueryToken | null | undefined} token
+ * @returns {string} The search part to request; `search` itself when there is no token.
+ */
+export function appendQueryToken(search, token) {
+  if (token === undefined || token === null) return search;
+  const pair = `${encodeURIComponent(token.name)}=${encodeURIComponent(token.value)}`;
+  return search.length > 1 ? `${search}&${pair}` : `?${pair}`;
+}

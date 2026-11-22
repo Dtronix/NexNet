@@ -35,15 +35,18 @@ export type UpgradeResult = {
  * @param {URL} init.url `http:`/`https:` (`ws:`/`wss:` are mapped by the caller).
  * @param {boolean} init.secure
  * @param {Record<string, string>} init.headers Upgrade headers (`Upgrade`, `Connection`, …) and the user's headers.
+ * @param {import('../../contract/config.js').QueryToken | null} [init.queryToken] Appended to the request target only;
+ *   messages show `url` without it.
  * @param {import('../../contract/config.js').TlsOptions} [init.tls]
  * @param {AbortSignal} init.signal
  * @returns {Promise<UpgradeResult>}
  */
-export declare function httpUpgrade({ transport, url, secure, headers, tls, signal }: {
+export declare function httpUpgrade({ transport, url, secure, headers, queryToken, tls, signal }: {
     transport: 'HttpSocket' | 'WebSocket';
     url: URL;
     secure: boolean;
     headers: Record<string, string>;
+    queryToken?: import('../../contract/config.js').QueryToken | null;
     tls?: import('../../contract/config.js').TlsOptions;
     signal: AbortSignal;
 }): Promise<UpgradeResult>;

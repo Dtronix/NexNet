@@ -233,7 +233,7 @@ harness (`src/NexNet.Interop/ClientLanguages.cs`).
 | Exception | Workaround |
 |---|---|
 | **Browsers: WebSocket only.** No HttpSocket, TCP or UDS (platform limit) | Expose a WebSocket endpoint (NexNet.Asp `MapNexusWebSocket`); one server can serve every transport (see [Multiple endpoints](#serving-several-languages-from-one-server)) |
-| **Browsers: no upgrade headers.** A browser WebSocket cannot send `Authorization` or other headers | Use the NexNet greeting token (`authenticate`), the canonical mechanism for every client. For ASP.NET authentication, cookies or the opt-in `AccessTokenQueryParameter` ([ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients)); restrict `AllowedOrigins` when cookies are used |
+| **Browsers: no upgrade headers.** A browser WebSocket cannot send `Authorization` or other headers | Use the NexNet greeting token (`authenticate`), the canonical mechanism for every client. For ASP.NET authentication, cookies or the opt-in `AccessTokenQueryParameter` (send the token with `webSocket.queryToken`; [ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients)); restrict `AllowedOrigins` when cookies are used |
 | **Browsers: TLS is the platform's.** No client certificate, custom CA, pinning or access to the server certificate | Use a certificate the browser trusts; authenticate with the greeting token. These rows are skipped (never silently passed) in the browser test matrix |
 | **Browsers: background tabs** throttle timers | The runtime runs its keepalive in a Web Worker (needs `worker-src blob:` under a Content-Security-Policy) and reconnects on `visibilitychange`/`online`. See the [JavaScript guide](javascript-client.md#browser-notes) |
 | **Java has no Unix domain sockets** (Android and Java 11 portability) | Use TCP on loopback, or TLS |
@@ -248,6 +248,41 @@ harness (`src/NexNet.Interop/ClientLanguages.cs`).
 | **Default values of members an older peer did not send.** C# runs the member initializer. Java and JavaScript apply initializers that are simple constants; any other initializer gives `null`/`0`/`undefined` | Use constant initializers on members added in a later version |
 | **JS `Map`/`Set` keys compare by identity** | Use primitive keys (`string`, `number`, `bigint`); object keys are flagged by NEXNET046 |
 | **Queued frames at disconnect.** Under backpressure, Java and JavaScript send frames already queued when `disconnect()` is called; C# may drop them | None needed |
+
+### Parity exceptions
+
+The cross-language test matrix runs every client-facing test on every language and transport, and a skipped row
+always names its reason. The list below is every intentional exception: a test row, or a test assertion, that does
+not run on some language, with the reason. Anything else that does not run on a language is a gap to fix, not an
+exception. Keep this list in sync with the exception list of the interop matrix self-test, which fails when a matrix
+test has no runnable row for a language that is not covered here.
+
+**Platform limits** (the language or platform cannot do it):
+
+| Exception | Languages | Reason |
+|---|---|---|
+| No Unix domain socket rows | Java | No portable UDS client API down to Android API 24 and Java 11 (`UnixDomainSocketAddress` is Java 16+). Java runs the same tests on TCP |
+| No QUIC rows | Java, JavaScript | QUIC uses msquic, which is .NET-only |
+| No TCP, TCP + TLS, UDS or HttpSocket (`http://`, `https://`) rows | Browser | Page JavaScript has no raw sockets, and HttpSocket is an HTTP/1.1 upgrade to `nexnet-httpsockets` that neither `fetch` nor `WebSocket` can make. Browsers run the same tests on WebSocket and WebSocket over TLS |
+| Tests that need an `Authorization` (or other) upgrade header | Browser | The browser `WebSocket` API cannot set request headers. The query-string token tests (`webSocket.queryToken`) and the greeting token cover browser authentication |
+| Tests that need a client certificate, a custom CA, certificate pinning or the server certificate | Browser | The browser does the TLS and exposes none of it to page JavaScript. The WSS rows prove the default-trust path |
+| `NonAspTransport_SessionUserIsNull` | Browser | It tests the TCP, TLS and UDS transports, which browsers do not have |
+| The remote exception type name is asserted on C# only | Java, JavaScript | Exception type names are language-specific by design; the error code and message are asserted on every language |
+| The server-side pipe branch of the "pipe from the wrong nexus" client test | Java, JavaScript | Only an in-process C# test can hold the server's pipe object and pass it to a client proxy |
+
+**By design** (the C# API has no counterpart, or the counterpart is idiomatic and unit-tested in its own language):
+
+| Exception | Languages | Reason |
+|---|---|---|
+| `INexusList.CopyTo` tests (three) | Java, JavaScript | `CopyTo` is `ICollection<T>` API. JavaScript has `toArray()` and Java a read-only `java.util.List` snapshot |
+| `Server_ThrowsWhenPassingPipeFromWrongNexus` | Java, JavaScript | It tests the C# server proxy; the client plays no part |
+| C# API semantics: `ValueTask` consumption, `AsyncLocal` and execution-context flow, the C# pool's nexus factory, a custom transport's `IsSecureTransport` override, setting both `Authenticate` and `AuthenticateAsync` | Java, JavaScript | C#-only API. These are C# tests, not matrix tests |
+| Java executors (`callbackExecutor`, `invocationExecutor`), pipe `InputStream`/`OutputStream` adapters, Kotlin coroutine and flow wrappers | Java only | Java-idiomatic API; unit-tested in the Java suite |
+| JavaScript `EventTarget` events, `AbortSignal` cancellation, Web Streams pipes | JavaScript only | JavaScript-idiomatic API; the matrix tests the behavior behind them through the harness |
+| Query-string token: `queryToken` option in Java (`ClientConfig.Builder.queryToken`) and JavaScript (`webSocket.queryToken`, `httpSocket.queryToken`) | C# | The C# client takes the token in the URL (`wss://host/nexus?access_token=…`); the server sees the same request |
+| Android module (`NexusConnectionKeeper`, `AndroidNexusLogger`, `NexusJavaTime`) | Java (Android) | Runs as a device smoke test on an emulator (connect, invoke, pipe echo), not on the matrix; the lifecycle logic is unit-tested |
+
+Firefox and WebKit run the browser rows weekly; every pull request runs them in Chromium.
 
 ## Type mapping
 
