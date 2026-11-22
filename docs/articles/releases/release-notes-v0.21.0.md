@@ -126,6 +126,15 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   JavaScript clients already reported `Reconnecting`. ([#385](https://github.com/Dtronix/NexNet/pull/385))
   - **Migration:** code that waited for `Disconnected` to notice a lost session while a reconnection policy is set
     should also handle `Reconnecting`; `DisconnectedTask` is unchanged.
+- **Behavior change: the C# client reports `Connecting` when a connect starts.** `ConnectAsync`/`TryConnectAsync` now
+  raise `ConnectionState.Connecting` through `NexusClient.StateChanged` before the authentication token is acquired, and
+  `State` reads `Connecting` until the session reports `Connected`. A connect that fails before it opens a session
+  (token provider, transport connect) then raises `Disconnected`. Attempts of the reconnection loop raise no
+  `Connecting`: the client stays `Reconnecting`. Before, the first state change of a connect was `Connected` and a
+  connect that failed before the transport was up raised nothing. The Java and JavaScript clients already reported
+  `Connecting`; every client language now reports `Connecting`, `Connected` for a first connect.
+  - **Migration:** a `StateChanged` handler that treated every state other than `Connected` as a lost connection
+    should ignore `Connecting`.
 - **Behavior change: the Java and JavaScript clients stay `Reconnecting` between attempts.** As the C# client does
   now, they read `Reconnecting` from the start of the reconnection loop until an attempt connects, and `Disconnected`
   only once the loop ends (the policy gave up, or `disconnect()`/`close()` stopped it). Before, each failed attempt
