@@ -140,6 +140,58 @@ describe('NexusClient reconnection', () => {
     expect(d.client.state).toBe(ConnectionState.Disconnected);
   });
 
+  it('disconnect() during an attempt\'s handshake aborts the attempt: no session, no onConnected (J42)', async () => {
+    const h = await connected(harness({ config: { reconnectionPolicy: new DefaultReconnectionPolicy({ delays: [0], continuousRetry: true }) } }));
+    const reconnection = /** @type {NonNullable<typeof h.client.reconnection>} */ (h.client.reconnection);
+    h.transport.serverClose();
+    await tick();
+    h.clock.advance(0);
+    await tick();
+    // The attempt sent its reconnection greeting; the server has not answered.
+    expect(h.transports.length).toBe(2);
+    expect(h.transport.sent[8]).toBe(101);
+    h.nexus.calls.length = 0;
+    h.events.length = 0;
+
+    // disconnect() returns without the server answering the attempt.
+    await h.client.disconnect();
+    expect(reconnection.stopped).toBe(true);
+    expect(reconnection.isReconnecting).toBe(false);
+    expect(h.client._session).toBeNull();
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+    // A late greeting opens nothing.
+    h.transport.serverSend(serverHello());
+    h.clock.advance(60_000);
+    await tick();
+    expect(h.transports.length).toBe(2);
+    expect(h.nexus.calls).toEqual([]);
+    expect(h.events.filter((e) => e.type === 'disconnected')).toEqual([]);
+    expect(h.logs.filter(([level]) => level === 'error')).toEqual([]);
+  });
+
+  it('disconnect() right after an attempt\'s greeting arrives still aborts the attempt (J42)', async () => {
+    const h = await connected(harness({ config: { reconnectionPolicy: new DefaultReconnectionPolicy({ delays: [0], continuousRetry: true }) } }));
+    h.transport.serverClose();
+    await tick();
+    h.clock.advance(0);
+    await tick();
+    h.nexus.calls.length = 0;
+    h.events.length = 0;
+
+    // The greeting completes the handshake; disconnect() runs before the attempt's continuation.
+    h.transport.serverSend(serverHello());
+    const done = h.client.disconnect();
+    h.clock.advance(1000);
+    await done;
+    h.clock.advance(60_000);
+    await tick();
+    expect(h.client._session).toBeNull();
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+    expect(h.transports.length).toBe(2);
+    expect(h.nexus.calls).toEqual([]);
+    expect(h.events.filter((e) => e.type === 'disconnected')).toEqual([]);
+  });
+
   it('getSnapshot has the C# field names', async () => {
     const h = await connected(harness());
     expect(Object.keys(/** @type {object} */ (h.client.getSnapshot()))).toContain('isEstablished');
