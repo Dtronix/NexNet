@@ -146,6 +146,14 @@ public sealed class ClientSpec
     public int? ProgressTimeoutMs { get; set; }
 
     /// <summary>
+    /// How long a graceful disconnect keeps the transport open after writing the disconnect message, in milliseconds
+    /// (C# <c>DisconnectDelay</c>, Java <c>SessionOptions.disconnectDelayMillis</c>, JS <c>disconnectDelay</c>; 0 – 10000,
+    /// 0 closes at once). Null keeps the runtime's default (200 ms in every language). Whatever it is, the drivers
+    /// close with no delay when they dispose a client at the end of a test.
+    /// </summary>
+    public int? DisconnectDelayMs { get; set; }
+
+    /// <summary>
     /// What the client sends the server when a client nexus method it runs fails (<c>RemoteExceptionDetail</c>); null is
     /// the client's default (<see cref="NexNet.Transports.RemoteExceptionDetail.None"/>).
     /// </summary>

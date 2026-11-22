@@ -71,6 +71,7 @@ public static class ControlJson
         Add(json, "maxPipes", spec.MaxPipes);
         Add(json, "pipeWindow", spec.PipeWindow);
         Add(json, "progressTimeoutMs", spec.ProgressTimeoutMs);
+        Add(json, "disconnectDelayMs", spec.DisconnectDelayMs);
         if (spec.RemoteExceptionDetail is { } detail)
             json["remoteExceptionDetail"] = detail.ToString();
         if (spec.OnInvocationException is { } error)

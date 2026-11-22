@@ -113,6 +113,12 @@ public static class InProcClientConfig
             config.PipeWindow = pipeWindow;
         if (spec.ProgressTimeoutMs is { } progressTimeout)
             config.ProgressTimeout = progressTimeout;
+        if (spec.DisconnectDelayMs is { } disconnectDelay)
+        {
+            // ConfigBase takes any value below 1 as "no delay"; the spec's range matches the Java and JS clients'.
+            ArgumentOutOfRangeException.ThrowIfNegative(disconnectDelay, nameof(spec.DisconnectDelayMs));
+            config.DisconnectDelay = disconnectDelay;
+        }
         if (spec.RemoteExceptionDetail is { } remoteExceptionDetail)
             config.RemoteExceptionDetail = remoteExceptionDetail;
         if (spec.ReconnectDelaysMs is { } delays)
