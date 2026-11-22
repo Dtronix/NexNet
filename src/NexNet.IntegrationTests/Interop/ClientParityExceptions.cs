@@ -100,6 +100,7 @@ internal static class ClientParityExceptions
         new("TlsCertificateTests.ClientSession_SeesServerCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
         new("TlsCertificateTests.PinnedFingerprint_AcceptsServerCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
         new("TlsCertificateTests.PinnedFingerprint_RejectsWrongCertificate", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
+        new("ClientSpecOptionsTests.InsecureSkipVerify_AcceptsACertificateTheClientDoesNotTrust", ParityGap.NoRunnableRow, ParityLanguages.Browser, BrowserTls),
 
         // C# API by design (D).
         new("NexusListTests.CopyTo_CopiesAllElements", ParityGap.NoRunnableRow, ParityLanguages.All, CopyTo),

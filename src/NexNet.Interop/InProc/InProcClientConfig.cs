@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
@@ -27,6 +28,13 @@ public static class InProcClientConfig
     {
         ArgumentNullException.ThrowIfNull(spec);
         var address = spec.Address;
+        if (spec.QueryToken is { } queryToken)
+        {
+            if (transport is not (ClientTransport.HttpSocket or ClientTransport.HttpSocketTls or ClientTransport.WebSocket or ClientTransport.WebSocketTls))
+                throw new NotSupportedException($"A query-string token needs an HTTP transport, not {transport}.");
+            address = WithQueryToken(address, queryToken);
+        }
+
         ClientConfig config = transport switch
         {
             ClientTransport.Tcp => new TcpClientConfig { EndPoint = ParseEndPoint(address, "tcp://") },
@@ -67,6 +75,13 @@ public static class InProcClientConfig
 
         if (spec.AuthToken is { } authToken)
             config.Authenticate = () => Encoding.UTF8.GetBytes(authToken);
+        if (spec.Authenticate is { } authenticate)
+        {
+            if (spec.AuthToken != null)
+                throw new ArgumentException("AuthToken and Authenticate are exclusive.", nameof(spec));
+            config.AuthenticateAsync = CreateAuthenticate(authenticate);
+        }
+
         if (spec.ConnectionTimeoutMs is { } connectionTimeout)
             config.ConnectionTimeout = connectionTimeout;
         if (spec.TimeoutMs is { } timeout)
@@ -81,15 +96,35 @@ public static class InProcClientConfig
             config.InvocationCredits = invocationCredits;
         if (spec.MaxConcurrentConnectionInvocations is { } maxConcurrent)
             config.MaxConcurrentConnectionInvocations = maxConcurrent;
+        if (spec.MaxSeparatePoolInvocations is { } maxSeparate)
+            config.MaxSeparatePoolInvocations = maxSeparate;
+        if (spec.InvocationQueueWarningThresholdMs is { } queueWarning)
+            config.InvocationQueueWarningThreshold = queueWarning;
+        if (spec.SessionBudget is { } sessionBudget)
+            config.SessionBudget = sessionBudget;
+        if (spec.MaxPipes is { } maxPipes)
+            config.MaxPipes = maxPipes;
+        if (spec.PipeWindow is { } pipeWindow)
+            config.PipeWindow = pipeWindow;
+        if (spec.ProgressTimeoutMs is { } progressTimeout)
+            config.ProgressTimeout = progressTimeout;
         if (spec.RemoteExceptionDetail is { } remoteExceptionDetail)
             config.RemoteExceptionDetail = remoteExceptionDetail;
         if (spec.ReconnectDelaysMs is { } delays)
-            config.ReconnectionPolicy = new DefaultReconnectionPolicy(
-                delays.Select(d => TimeSpan.FromMilliseconds(d)).ToArray(), spec.ReconnectContinuously);
+        {
+            var timeSpans = delays.Select(d => TimeSpan.FromMilliseconds(d)).ToArray();
+            config.ReconnectionPolicy = spec.ReconnectReasons is { } reasons
+                ? new DefaultReconnectionPolicy(timeSpans, spec.ReconnectContinuously) { ReconnectReasons = reasons.ToHashSet() }
+                : new DefaultReconnectionPolicy(timeSpans, spec.ReconnectContinuously);
+        }
+        else if (spec.ReconnectReasons != null)
+        {
+            throw new ArgumentException("ReconnectReasons needs ReconnectDelaysMs.", nameof(spec));
+        }
 
-        // LogLevel is for language hosts; the in-process logger filters itself.
-        if (spec.Logger is { } logger)
-            config.Logger = logger;
+        // Without a LogLevel the in-process logger gets every line; with one, the lines at or above it.
+        if (spec.Logger is { } logger && spec.LogLevel != NexNet.Logging.NexusLogLevel.None)
+            config.Logger = spec.LogLevel is { } level ? new LevelFilterLogger(logger, level) : logger;
 
         fakeTime = null;
         if (spec.FakeTime)
@@ -99,6 +134,36 @@ public static class InProcClientConfig
         }
 
         return config;
+    }
+
+    /// <summary>The scripted authenticate callback (<see cref="AuthenticateScript"/>).</summary>
+    private static Func<CancellationToken, ValueTask<Memory<byte>>> CreateAuthenticate(AuthenticateScript script)
+    {
+        var calls = 0;
+        return async cancellationToken =>
+        {
+            var call = Interlocked.Increment(ref calls);
+            if (script.DelayMs > 0)
+                await Task.Delay(script.DelayMs, cancellationToken).ConfigureAwait(false);
+            if (script.Hang)
+                await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            if (script.ThrowMessage is { } message)
+                throw new InvalidOperationException(message);
+            if (script.Token is not { } token)
+                return Memory<byte>.Empty;
+            return Encoding.UTF8.GetBytes(script.AppendCallNumber ? token + call.ToString(CultureInfo.InvariantCulture) : token);
+        };
+    }
+
+    /// <summary>Appends <c>name=value</c>, each URL-encoded, to the query of <paramref name="address"/>.</summary>
+    private static string WithQueryToken(string address, QueryToken token)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(token.Name);
+        var builder = new UriBuilder(address);
+        var pair = Uri.EscapeDataString(token.Name) + "=" + Uri.EscapeDataString(token.Value ?? "");
+        var query = builder.Query.TrimStart('?');
+        builder.Query = query.Length == 0 ? pair : query + "&" + pair;
+        return builder.Uri.ToString();
     }
 
     private static IPEndPoint ParseEndPoint(string address, string scheme)

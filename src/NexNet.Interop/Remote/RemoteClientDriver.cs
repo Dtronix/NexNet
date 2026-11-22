@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using NexNet.Diagnostics;
 using NexNet.Interop.Reflection;
+using NexNet.Logging;
 using NexNet.Messages;
 
 namespace NexNet.Interop.Remote;
@@ -66,6 +67,12 @@ public sealed class RemoteClientDriver : IClientUnderTest
 
     /// <summary>The host's control connection.</summary>
     public ControlConnection Connection { get; }
+
+    /// <summary>
+    /// Receives the client's <c>log</c> events (control protocol §7.4), which the host sends at or above the spec's
+    /// <see cref="ClientSpec.LogLevel"/>; null drops them (they stay in the transcript).
+    /// </summary>
+    public INexusLogger? ClientLogger { get; init; }
 
     /// <summary>The test scope.</summary>
     public string Test { get; }
@@ -436,6 +443,11 @@ public sealed class RemoteClientDriver : IClientUnderTest
                 break;
             case "script.forward":
                 Forward(evt);
+                break;
+            case "log":
+                if (ClientLogger is { } logger
+                    && Enum.TryParse<NexusLogLevel>(evt.Data["level"]?.GetValue<string>(), ignoreCase: false, out var level))
+                    logger.Log(level, evt.Data["category"]?.GetValue<string>(), null, evt.Data["message"]?.GetValue<string>() ?? "");
                 break;
             case "list.changed":
                 if (evt.Data["watch"]?.GetValue<string>() is { } watch && _listWatches.TryGetValue(watch, out var onChanged))

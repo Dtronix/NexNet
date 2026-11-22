@@ -69,6 +69,59 @@ describe('ClientSpec', () => {
     expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', defaultReconnection: 1 }, node), 'BadRequest');
   });
 
+  it('reconnects only for the reasons of reconnectReasons', () => {
+    const parsed = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', reconnectDelaysMs: [1], reconnectReasons: ['ServerShutdown', 'SocketError'] }, node);
+    expect(parsed.config.reconnectionPolicy.shouldReconnect(28)).toBe(true);
+    expect(parsed.config.reconnectionPolicy.shouldReconnect(20)).toBe(true);
+    expect(parsed.config.reconnectionPolicy.shouldReconnect(23)).toBe(false);
+    expect(parseSpec({ transport: 'Tcp', address: 'tcp://h:1', reconnectDelaysMs: [1] }, node).config.reconnectionPolicy.shouldReconnect).toBeUndefined();
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', reconnectReasons: ['SocketError'] }, node), 'BadRequest');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', reconnectDelaysMs: [1], reconnectReasons: ['Nope'] }, node), 'BadRequest');
+  });
+
+  it('maps the pipe, budget and pool limits', () => {
+    const parsed = parseSpec({
+      transport: 'Tcp', address: 'tcp://h:1', sessionBudget: 1, maxPipes: 2, pipeWindow: 3, progressTimeoutMs: 4,
+      maxSeparatePoolInvocations: 5, invocationQueueWarningThresholdMs: 6,
+    }, node);
+    expect(parsed.config).toMatchObject({ sessionBudget: 1, maxPipes: 2, pipeWindow: 3, progressTimeout: 4, maxSeparatePoolInvocations: 5,
+      invocationQueueWarningThreshold: 6 });
+  });
+
+  it('puts the query token on the upgrade transport', () => {
+    const ws = parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', queryToken: { name: 'access_token', value: 't' } }, browser);
+    expect(ws.config.webSocket.queryToken).toEqual({ name: 'access_token', value: 't' });
+    const http = parseSpec({ transport: 'HttpSocket', address: 'http://h/h', queryToken: { name: 'a', value: 'b' } }, node);
+    expect(http.config.httpSocket.queryToken).toEqual({ name: 'a', value: 'b' });
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', queryToken: { name: 'a', value: 'b' } }, node), 'NotSupported');
+    expectKind(() => parseSpec({ transport: 'WebSocket', address: 'ws://h/ws', queryToken: { value: 'b' } }, node), 'BadRequest');
+  });
+
+  it('refuses insecureSkipVerify in a browser', () => {
+    expectKind(() => parseSpec({ transport: 'WebSocketTls', address: 'wss://h/ws', insecureSkipVerify: true }, browser), 'NotSupported');
+    expect(parseSpec({ transport: 'WebSocketTls', address: 'wss://h/ws', insecureSkipVerify: true }, node).config.webSocket.tls)
+      .toEqual({ rejectUnauthorized: false });
+  });
+
+  it('scripts the authenticate callback', async () => {
+    const signal = new AbortController().signal;
+    const numbered = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: { token: 't', appendCallNumber: true, delayMs: 1 } }, node);
+    const decode = (/** @type {Uint8Array | null} */ bytes) => new TextDecoder().decode(/** @type {Uint8Array} */ (bytes));
+    expect(decode(await numbered.config.authenticate({ signal }))).toBe('t1');
+    expect(decode(await numbered.config.authenticate({ signal }))).toBe('t2');
+    const none = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: {} }, node);
+    expect(await none.config.authenticate({ signal })).toBeNull();
+    const throws = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: { throwMessage: 'no' } }, node);
+    await expect(throws.config.authenticate({ signal })).rejects.toThrow('no');
+    const hang = parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: { hang: true } }, node);
+    const controller = new AbortController();
+    const pending = hang.config.authenticate({ signal: controller.signal });
+    controller.abort(new Error('timed out'));
+    await expect(pending).rejects.toThrow('timed out');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authToken: 'x', authenticate: {} }, node), 'BadRequest');
+    expectKind(() => parseSpec({ transport: 'Tcp', address: 'tcp://h:1', authenticate: { other: 1 } }, node), 'NotSupported');
+  });
+
   it('validates pool options', () => {
     expect(parsePoolOptions({})).toEqual({ maxConnections: 10, maxIdleTime: 120000, minIdleConnections: 1 });
     expect(parsePoolOptions({ maxConnections: 2, maxIdleTimeMs: 0, minIdleConnections: 5 })).toEqual({ maxConnections: 2, maxIdleTime: 0, minIdleConnections: 5 });

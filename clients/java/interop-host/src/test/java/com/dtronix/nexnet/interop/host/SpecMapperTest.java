@@ -4,9 +4,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class SpecMapperTest {
@@ -50,5 +61,53 @@ class SpecMapperTest {
     @Test
     void codeOutsideInt32IsABadRequest() {
         assertThrows(HostError.class, () -> SpecMapper.invocationError(hook(1L << 40, null)));
+    }
+
+    private static Args script(Object... pairs) {
+        Map<String, Object> map = new HashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put((String) pairs[i], pairs[i + 1]);
+        }
+        return new Args(map);
+    }
+
+    @Test
+    void authenticateScriptNumbersItsCalls() throws Exception {
+        Supplier<CompletableFuture<byte[]>> supplier =
+            SpecMapper.authenticateScript(script("token", "t", "appendCallNumber", true, "delayMs", 1L));
+        assertArrayEquals("t1".getBytes(StandardCharsets.UTF_8), supplier.get().get(5, TimeUnit.SECONDS));
+        assertArrayEquals("t2".getBytes(StandardCharsets.UTF_8), supplier.get().get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void authenticateScriptWithoutATokenReturnsNull() throws Exception {
+        assertNull(SpecMapper.authenticateScript(script()).get().get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void authenticateScriptThrows() {
+        CompletableFuture<byte[]> future = SpecMapper.authenticateScript(script("throwMessage", "no")).get();
+        ExecutionException e = assertThrows(ExecutionException.class, () -> future.get(5, TimeUnit.SECONDS));
+        assertEquals("no", e.getCause().getMessage());
+    }
+
+    @Test
+    void authenticateScriptHangs() throws Exception {
+        CompletableFuture<byte[]> future = SpecMapper.authenticateScript(script("hang", true)).get();
+        Thread.sleep(20);
+        assertTrue(!future.isDone());
+        future.cancel(true);
+    }
+
+    @Test
+    void authenticateScriptRefusesUnknownMembers() {
+        assertThrows(HostError.class, () -> SpecMapper.authenticateScript(script("other", 1L)));
+    }
+
+    @Test
+    void reconnectReasonsByName() {
+        assertEquals(EnumSet.of(DisconnectReason.SERVER_SHUTDOWN, DisconnectReason.SOCKET_ERROR),
+            SpecMapper.reconnectReasons(Arrays.asList("ServerShutdown", "SocketError")));
+        assertThrows(HostError.class, () -> SpecMapper.reconnectReasons(Arrays.asList("Nope")));
     }
 }

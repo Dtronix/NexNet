@@ -161,6 +161,37 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await MatrixTestBase.EndAsync(client);
     }
 
+    // The client's query-token option (ClientSpec.QueryToken), not a hand-built URL.
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryTokenOptionAuthenticatesWhenEnabled(ClientTarget target)
+        => QueryTokenOptionWhenEnabled(target, "Token123", succeeds: true);
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public Task QueryTokenOptionRejectedWhenInvalid(ClientTarget target)
+        => QueryTokenOptionWhenEnabled(target, "BadToken", succeeds: false);
+
+    private async Task QueryTokenOptionWhenEnabled(ClientTarget target, string token, bool succeeds)
+    {
+        var (_, created) = await CreateAsync(
+            target,
+            config =>
+            {
+                EnableBearerAuthentication(config);
+                SetAccessTokenQueryParameter(config, "access_token");
+            },
+            spec => spec.QueryToken = new QueryToken("access_token", token));
+        await using var client = created;
+
+        if (succeeds)
+            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        else
+            await AssertConnectFails(client, TransportError.AuthenticationError);
+
+        await MatrixTestBase.EndAsync(client);
+    }
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket])]
     public async Task QueryStringTokenIsDisabledByDefault(ClientTarget target)

@@ -35,11 +35,35 @@ public static class ControlJson
             json["reconnectContinuously"] = true;
         if (spec.DefaultReconnection)
             json["defaultReconnection"] = true;
+        if (spec.ReconnectReasons != null)
+            json["reconnectReasons"] = new JsonArray(spec.ReconnectReasons.Select(r => (JsonNode?)r.ToString()).ToArray());
         Add(json, "authToken", spec.AuthToken);
+        if (spec.Authenticate is { } authenticate)
+        {
+            var script = new JsonObject();
+            Add(script, "token", authenticate.Token);
+            if (authenticate.AppendCallNumber)
+                script["appendCallNumber"] = true;
+            if (authenticate.DelayMs != 0)
+                script["delayMs"] = authenticate.DelayMs;
+            if (authenticate.Hang)
+                script["hang"] = true;
+            Add(script, "throwMessage", authenticate.ThrowMessage);
+            json["authenticate"] = script;
+        }
+
         Add(json, "authorizationHeader", spec.AuthorizationHeader);
+        if (spec.QueryToken is { } queryToken)
+            json["queryToken"] = new JsonObject { ["name"] = queryToken.Name, ["value"] = queryToken.Value };
         Add(json, "maxMessageSize", spec.MaxMessageSize);
         Add(json, "invocationCredits", spec.InvocationCredits);
         Add(json, "maxConcurrentConnectionInvocations", spec.MaxConcurrentConnectionInvocations);
+        Add(json, "maxSeparatePoolInvocations", spec.MaxSeparatePoolInvocations);
+        Add(json, "invocationQueueWarningThresholdMs", spec.InvocationQueueWarningThresholdMs);
+        Add(json, "sessionBudget", spec.SessionBudget);
+        Add(json, "maxPipes", spec.MaxPipes);
+        Add(json, "pipeWindow", spec.PipeWindow);
+        Add(json, "progressTimeoutMs", spec.ProgressTimeoutMs);
         if (spec.RemoteExceptionDetail is { } detail)
             json["remoteExceptionDetail"] = detail.ToString();
         if (spec.OnInvocationException is { } error)
