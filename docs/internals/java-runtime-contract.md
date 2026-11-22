@@ -294,6 +294,10 @@ server `INexusList<T>` (protocol specification section 12):
   `config()`, `session()` (the current `NexusSession`, or null), `createPipe()`, `createChannel(formatter)`,
   `close()`. `connect()`/`tryConnect()` on a connected client succeed and do nothing (C# parity); during an attempt
   they fail with `IllegalStateException` (`tryConnect()`: an `EXCEPTION` result).
+- **State while reconnecting.** With a `reconnectionPolicy`, a lost session sets `RECONNECTING`, and `state()` stays
+  `RECONNECTING` until an attempt connects (`CONNECTED`) or the loop ends: the policy gave up, or `disconnect()` or
+  `close()` stopped it (`DISCONNECTED`, raised once). A failed attempt does not report `DISCONNECTED` (C# parity,
+  Q17).
 - **Clock and session options ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
   timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
   by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and

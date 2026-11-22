@@ -126,6 +126,11 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   JavaScript clients already reported `Reconnecting`. ([#385](https://github.com/Dtronix/NexNet/pull/385))
   - **Migration:** code that waited for `Disconnected` to notice a lost session while a reconnection policy is set
     should also handle `Reconnecting`; `DisconnectedTask` is unchanged.
+- **Behavior change: the Java and JavaScript clients stay `Reconnecting` between attempts.** As the C# client does
+  now, they read `Reconnecting` from the start of the reconnection loop until an attempt connects, and `Disconnected`
+  only once the loop ends (the policy gave up, or `disconnect()`/`close()` stopped it). Before, each failed attempt
+  went back to `Disconnected` until the next one, and the JavaScript client read `Disconnected` during the first delay.
+  Tested on every client language and transport.
 
 ## New features
 
