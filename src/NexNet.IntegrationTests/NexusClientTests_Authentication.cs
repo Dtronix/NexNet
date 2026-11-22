@@ -1,6 +1,9 @@
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Logging;
 using NexNet.Messages;
+using NexNet.TestNexus.Interop;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
@@ -257,40 +260,57 @@ internal partial class NexusClientTests
         await Assert.That(client.IsSecure).IsEqualTo(expected);
     }
 
+    /// <summary>The transport text of the plaintext warning: C# <c>ConfigBase.TransportName</c>, or the URL scheme.</summary>
+    private static string PlaintextName(ClientTransport transport) => transport switch
+    {
+        ClientTransport.Tcp => "tcp",
+        ClientTransport.WebSocket => "ws://",
+        ClientTransport.HttpSocket => "http://",
+        _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
+    };
+
+    /// <summary>Logs the client's warnings to <paramref name="logger"/> (control protocol §7.4 on language hosts).</summary>
+    private static Action<ClientSpec> LogWarnings(CapturingLogger logger) => spec =>
+    {
+        spec.Logger = logger;
+        spec.LogLevel = NexusLogLevel.Warning;
+    };
+
     [Test]
-    [Arguments(Type.Tcp, "(tcp)")]
-    [Arguments(Type.WebSocket, "(ws://)")]
-    [Arguments(Type.HttpSocket, "(http://)")]
-    public async Task PlaintextTransport_LogsWarningOncePerClient(Type type, string transport)
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    public async Task PlaintextTransport_LogsWarningOncePerClient(ClientTarget target)
     {
         var logger = new CapturingLogger();
-        var clientConfig = CreateClientConfigWithLog(type, logger);
-        var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var client = await Connect(target, server, LogWarnings(logger));
 
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         await client.DisconnectAsync().Timeout(T(1));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await client.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
 
         var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
         await Assert.That(warnings).Count().IsEqualTo(1);
-        await Assert.That(warnings[0]).IsEqualTo($"NexNet: unencrypted transport {transport}; credentials and data are visible on the network.");
+        await Assert.That(warnings[0]).IsEqualTo(
+            $"NexNet: unencrypted transport ({PlaintextName(target.Transport)}); credentials and data are visible on the network.");
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
-    [Transports(Type.Tcp)]
-    public async Task PlaintextTransport_LogsWarningPerClientInstance(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task PlaintextTransport_LogsWarningPerClientInstance(ClientTarget target)
     {
         var logger = new CapturingLogger();
-        var (server, client1, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfigWithLog(type, logger));
-        var client2 = ClientNexus.CreateClient(CreateClientConfigWithLog(type, logger), new ClientNexus());
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var client1 = await Connect(target, server, LogWarnings(logger));
+        await using (var client2 = await Connect(target, server, LogWarnings(logger)))
+        {
+            await client2.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
+            await MatrixTestBase.EndAsync(client2);
+        }
 
-        await client1.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await client2.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await client2.DisposeAsync();
-
+        await client1.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
         await Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport"))).IsEqualTo(2);
+        await MatrixTestBase.EndAsync(client1);
     }
 
     [Test]
@@ -337,15 +357,15 @@ internal partial class NexusClientTests
     }
 
     [Test]
-    [Transports(Type.Uds, Type.TcpTls, Type.Quic)]
-    public async Task SecureTransport_DoesNotLogPlaintextWarning(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.TcpTls, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task SecureTransport_DoesNotLogPlaintextWarning(ClientTarget target)
     {
         var logger = new CapturingLogger();
-        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfigWithLog(type, logger));
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var client = await Connect(target, server, LogWarnings(logger));
+        await client.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
 
         await Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport"))).IsFalse();
+        await MatrixTestBase.EndAsync(client);
     }
 }

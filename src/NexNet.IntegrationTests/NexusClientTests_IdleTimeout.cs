@@ -1,5 +1,6 @@
 using NexNet.IntegrationTests.Metrics;
 using NexNet.Interop;
+using NexNet.Logging;
 using NexNet.InteropServer;
 using NexNet.Messages;
 using NexNet.TestNexus.Interop;
@@ -25,7 +26,8 @@ internal partial class NexusClientTests
         ClientTarget target,
         int serverTimeoutMs,
         PingCounter pings,
-        int? pingIntervalMs = null)
+        int? pingIntervalMs = null,
+        CapturingLogger? logger = null)
     {
         var server = await StartServer(new InteropServerOptions
         {
@@ -42,6 +44,11 @@ internal partial class NexusClientTests
             {
                 spec.FakeTime = true;
                 spec.PingIntervalMs = pingIntervalMs;
+                if (logger != null)
+                {
+                    spec.Logger = logger;
+                    spec.LogLevel = NexusLogLevel.Warning;
+                }
             });
             return (server, client);
         }
@@ -144,34 +151,43 @@ internal partial class NexusClientTests
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime)]
     public async Task PingInterval_ExplicitIntervalIsRespected(ClientTarget target)
     {
-        // An explicit interval below the server's idle timeout wins over the derived one (2000 ms).
+        // An explicit interval below the server's idle timeout wins over the derived one (2000 ms), with no warning.
         var pings = new PingCounter();
-        var (server, client) = await ConnectForPingAsync(target, 6000, pings, pingIntervalMs: 500);
+        var logger = new CapturingLogger();
+        var (server, client) = await ConnectForPingAsync(target, 6000, pings, pingIntervalMs: 500, logger: logger);
         await using (server)
         await using (client)
         {
             await AssertFirstPingAfter(client, pings, 500);
+            await Assert.That(logger.Warnings.Any(w => w.Contains(IdleTimeoutWarning, StringComparison.Ordinal))).IsFalse();
             await MatrixTestBase.EndAsync(client);
         }
     }
 
+    /// <summary>
+    /// The part of the PingInterval warning every language logs alike (C# and JS say "PingInterval", Java "The ping
+    /// interval").
+    /// </summary>
+    private const string IdleTimeoutWarning = "is not below the server's idle timeout";
+
     [Test]
-    [Transports(Type.Uds)]
-    public async Task PingInterval_ExplicitIntervalNotBelowServerIdleTimeout_LogsWarning(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task PingInterval_ExplicitIntervalNotBelowServerIdleTimeout_LogsWarning(ClientTarget target)
     {
         var logger = new CapturingLogger();
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Timeout = 6000;
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.Logger = logger;
-        clientConfig.PingInterval = 6000;
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+        await using var server = await StartServer(new InteropServerOptions { Timeout = 6000 });
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.PingIntervalMs = 6000;
+            spec.Logger = logger;
+            spec.LogLevel = NexusLogLevel.Warning;
+        });
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(6000));
-        await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval (6000 ms)") && w.Contains("(6000 ms)"))).IsTrue();
+        await Assert.That((await client.GetSnapshotAsync().Timeout(T(1)))!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(6000));
+        await WaitUntil(() => logger.Warnings.Any(w => w.Contains(IdleTimeoutWarning, StringComparison.Ordinal)));
+        var warning = logger.Warnings.Single(w => w.Contains(IdleTimeoutWarning, StringComparison.Ordinal));
+        await Assert.That(warning).Contains("(6000 ms) is not below the server's idle timeout (6000 ms)");
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
