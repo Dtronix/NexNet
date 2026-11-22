@@ -43,6 +43,14 @@ export function stateValue(name) {
 }
 
 /**
+ * @param {string} name A `DisconnectReason` name.
+ * @returns {number | undefined}
+ */
+export function reasonValue(name) {
+  return Object.prototype.hasOwnProperty.call(DisconnectReason, name) ? /** @type {any} */ (DisconnectReason)[name] : undefined;
+}
+
+/**
  * @param {string} name
  * @returns {number | undefined}
  */

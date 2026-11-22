@@ -4,7 +4,7 @@
  */
 
 import { badRequest, notSupported } from './errors.js';
-import { remoteExceptionDetailValue, runtimeLevel } from './names.js';
+import { reasonValue, remoteExceptionDetailValue, runtimeLevel } from './names.js';
 
 /** The members of `ClientSpec` this host knows; any other member is refused (§6.4.1). */
 const SPEC_MEMBERS = new Set([
@@ -12,7 +12,11 @@ const SPEC_MEMBERS = new Set([
   'insecureSkipVerify', 'connectionTimeoutMs', 'timeoutMs', 'handshakeTimeoutMs', 'pingIntervalMs', 'maxMessageSize',
   'invocationCredits', 'maxConcurrentConnectionInvocations', 'remoteExceptionDetail', 'onInvocationException',
   'reconnectDelaysMs', 'reconnectContinuously', 'defaultReconnection', 'authToken', 'authorizationHeader', 'fakeTime', 'logLevel',
+  'reconnectReasons', 'authenticate', 'queryToken', 'maxSeparatePoolInvocations', 'invocationQueueWarningThresholdMs',
+  'sessionBudget', 'maxPipes', 'pipeWindow', 'progressTimeoutMs',
 ]);
+
+const AUTHENTICATE_MEMBERS = new Set(['token', 'appendCallNumber', 'delayMs', 'hang', 'throwMessage']);
 
 const POOL_MEMBERS = new Set(['maxConnections', 'maxIdleTimeMs', 'minIdleConnections']);
 
@@ -79,19 +83,99 @@ function endpoint(address, scheme) {
 
 /**
  * The C# `DefaultReconnectionPolicy(delays, continuously)`: delay `attempt` while there is one, then the last one
- * forever when continuous, else stop.
+ * forever when continuous, else stop. With `reasons`, it reconnects only for those disconnect reasons
+ * (`ReconnectReasons`); without, the runtime's default reasons apply.
  * @param {readonly number[]} delays
  * @param {boolean} continuously
- * @returns {{ reconnectDelay: (attempt: number) => number | null }}
+ * @param {ReadonlySet<number>} [reasons] `DisconnectReason` values.
+ * @returns {{ reconnectDelay: (attempt: number) => number | null, shouldReconnect?: (reason: number) => boolean }}
  */
-export function reconnectionPolicy(delays, continuously) {
+export function reconnectionPolicy(delays, continuously, reasons) {
   const copy = [...delays];
-  return {
+  /** @type {{ reconnectDelay: (attempt: number) => number | null, shouldReconnect?: (reason: number) => boolean }} */
+  const policy = {
     reconnectDelay(attempt) {
       if (attempt < copy.length) return copy[attempt];
       return continuously && copy.length > 0 ? copy[copy.length - 1] : null;
     },
   };
+  if (reasons !== undefined) {
+    const set = new Set(reasons);
+    policy.shouldReconnect = (reason) => set.has(reason);
+  }
+  return policy;
+}
+
+/**
+ * `ClientSpec.reconnectReasons` (`DisconnectReason` names) as values; undefined when absent.
+ * @param {unknown} value
+ * @returns {Set<number> | undefined}
+ */
+function reconnectReasons(value) {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) throw badRequest('ClientSpec.reconnectReasons is not an array.');
+  return new Set(value.map((/** @type {unknown} */ name) => {
+    const reason = typeof name === 'string' ? reasonValue(name) : undefined;
+    if (reason === undefined) throw badRequest('Unknown DisconnectReason \'' + String(name) + '\'.');
+    return reason;
+  }));
+}
+
+/**
+ * The scripted authenticate callback of `ClientSpec.authenticate`: each call counts, waits `delayMs` (real time),
+ * then hangs until the client aborts it, throws `throwMessage`, or returns `token` (with the call number appended
+ * when `appendCallNumber`; null for no token).
+ * @param {unknown} value
+ * @returns {(options: { signal: AbortSignal }) => Promise<Uint8Array | null>}
+ */
+export function authenticateScript(value) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw badRequest('ClientSpec.authenticate is not an object.');
+  const a = /** @type {Record<string, any>} */ (value);
+  for (const name of Object.keys(a)) {
+    if (!AUTHENTICATE_MEMBERS.has(name)) throw notSupported('Unknown authenticate member \'' + name + '\'.');
+  }
+  const token = str(a.token, 'authenticate.token');
+  const delayMs = int(a.delayMs, 'authenticate.delayMs') ?? 0;
+  const throwMessage = str(a.throwMessage, 'authenticate.throwMessage');
+  const hang = a.hang === true;
+  const appendCallNumber = a.appendCallNumber === true;
+  let calls = 0;
+  return async ({ signal }) => {
+    const call = ++calls;
+    if (delayMs > 0) await wait(delayMs, signal);
+    if (hang) await wait(null, signal);
+    if (throwMessage !== undefined) throw new Error(throwMessage);
+    if (token === undefined) return null;
+    return new TextEncoder().encode(appendCallNumber ? token + String(call) : token);
+  };
+}
+
+/**
+ * Waits `ms` milliseconds (forever when null), rejecting with the signal's reason when it aborts.
+ * @param {number | null} ms
+ * @param {AbortSignal} signal
+ * @returns {Promise<void>}
+ */
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    const onAbort = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (ms !== null) {
+      timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+    }
+  });
 }
 
 /**
@@ -119,6 +203,7 @@ export function parseSpec(spec, limits) {
   const pin = str(s.pinSha256, 'pinSha256');
   const authorization = str(s.authorizationHeader, 'authorizationHeader');
   if (limits.browser) {
+    if (s.insecureSkipVerify === true) throw notSupported('A browser cannot skip certificate verification; its TLS stack decides trust.');
     if (clientCertificate !== undefined) throw notSupported('A browser cannot present a client certificate.');
     if (pin !== undefined) throw notSupported('A browser cannot pin certificates.');
     if (authorization !== undefined) throw notSupported('A browser cannot send an Authorization header on a WebSocket.');
@@ -178,11 +263,28 @@ export function parseSpec(spec, limits) {
   if (headers && !config.httpSocket && !config.webSocket) {
     throw notSupported('An Authorization header needs an HTTP transport, not ' + transport + '.');
   }
+  if (s.queryToken !== undefined && s.queryToken !== null) {
+    const queryToken = s.queryToken;
+    if (typeof queryToken !== 'object' || Array.isArray(queryToken)) throw badRequest('ClientSpec.queryToken is not an object.');
+    for (const name of Object.keys(queryToken)) {
+      if (name !== 'name' && name !== 'value') throw notSupported('Unknown queryToken member \'' + name + '\'.');
+    }
+    const name = str(queryToken.name, 'queryToken.name');
+    if (!name) throw badRequest('ClientSpec.queryToken.name is required.');
+    const option = { name, value: str(queryToken.value, 'queryToken.value') ?? '' };
+    const upgrade = config.webSocket ?? config.httpSocket;
+    if (!upgrade) throw notSupported('A query-string token needs an HTTP transport, not ' + transport + '.');
+    upgrade.queryToken = option;
+  }
 
   const token = str(s.authToken, 'authToken');
   if (token !== undefined) {
     const bytes = new TextEncoder().encode(token);
     config.authenticate = () => bytes;
+  }
+  if (s.authenticate !== undefined && s.authenticate !== null) {
+    if (token !== undefined) throw badRequest('ClientSpec.authToken and authenticate are exclusive.');
+    config.authenticate = authenticateScript(s.authenticate);
   }
 
   /** @type {Array<[string, string]>} */
@@ -194,6 +296,12 @@ export function parseSpec(spec, limits) {
     ['maxMessageSize', 'maxMessageSize'],
     ['invocationCredits', 'invocationCredits'],
     ['maxConcurrentConnectionInvocations', 'maxConcurrentConnectionInvocations'],
+    ['maxSeparatePoolInvocations', 'maxSeparatePoolInvocations'],
+    ['invocationQueueWarningThresholdMs', 'invocationQueueWarningThreshold'],
+    ['sessionBudget', 'sessionBudget'],
+    ['maxPipes', 'maxPipes'],
+    ['pipeWindow', 'pipeWindow'],
+    ['progressTimeoutMs', 'progressTimeout'],
   ];
   for (const [from, to] of numbers) {
     const value = int(s[from], from);
@@ -220,7 +328,9 @@ export function parseSpec(spec, limits) {
       if (value === undefined || value < 0) throw badRequest('ClientSpec.reconnectDelaysMs holds a bad delay.');
       return value;
     });
-    config.reconnectionPolicy = reconnectionPolicy(delays, s.reconnectContinuously === true);
+    config.reconnectionPolicy = reconnectionPolicy(delays, s.reconnectContinuously === true, reconnectReasons(s.reconnectReasons));
+  } else if (s.reconnectReasons !== undefined && s.reconnectReasons !== null) {
+    throw badRequest('ClientSpec.reconnectReasons needs reconnectDelaysMs.');
   }
 
   /** @type {{ code: number | null, message: string | null } | null} */
