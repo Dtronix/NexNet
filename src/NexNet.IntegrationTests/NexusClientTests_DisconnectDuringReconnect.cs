@@ -225,6 +225,61 @@ internal partial class NexusClientTests
     }
 
     /// <summary>
+    /// A DisconnectAsync made from OnConnected of a reconnection stops the loop on every language: the scripted
+    /// OnConnected of the reconnected session disconnects the client, which then ends Disconnected and opens no other
+    /// session although the server stays up. (The C# test above also holds the attempt from returning to the loop.)
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task DisconnectFromOnConnectedOfAReconnection_StopsReconnecting(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 200];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+
+        // OnConnected of the reconnected session disconnects the client before it returns.
+        var disconnectedFromOnConnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Script(client).OnConnected.Forward(async call =>
+        {
+            if (!call.IsReconnected)
+                return NoResult.Value;
+
+            try
+            {
+                await client.DisconnectAsync().Timeout(T(TestTimeouts.Connect));
+                disconnectedFromOnConnected.TrySetResult();
+            }
+            catch (Exception e)
+            {
+                disconnectedFromOnConnected.TrySetException(e);
+            }
+
+            return NoResult.Value;
+        });
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var reconnection = await Script(client).OnConnected.NextCallAsync().AsTask().Timeout(T(TestTimeouts.Connect) * 2);
+        await Assert.That(reconnection.IsReconnected).IsTrue();
+        await disconnectedFromOnConnected.Task.Timeout(T(TestTimeouts.Connect) * 2);
+        await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
+        var attempts = (await client.GetStateHistoryAsync()).ReconnectAttempts;
+
+        // A loop that still ran would reconnect now: the server is up and it retries every 200 ms.
+        await AssertNotReconnectedWithin(client, 1000, "DisconnectAsync from OnConnected of the reconnection stopped the loop.");
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected);
+        await Assert.That((await client.GetStateHistoryAsync()).ReconnectAttempts).IsEqualTo(attempts)
+            .Because("The stopped loop made no further attempt.");
+    }
+
+    /// <summary>
     /// OnDisconnected runs once for the lost session: not again when the reconnection policy then gives up (the client
     /// goes from Reconnecting to Disconnected without a session of its own).
     /// </summary>
