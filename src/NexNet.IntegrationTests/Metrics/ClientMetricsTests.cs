@@ -38,15 +38,14 @@ internal class ClientMetricsTests(LanguageHostPool hosts) : MatrixTestBase(hosts
             => m.Observe(instrument, (Role, "client"), ("nexnet.direction", direction));
 
         // Everything one side wrote, the other read: equal once nothing is in flight.
-        var preamble = PreambleFrames(target);
         var metrics = await MetricsUntil(client, m =>
             Client(m, "nexnet.io.bytes", "sent") == Server("nexnet.io.bytes", "received")
             && Client(m, "nexnet.io.bytes", "received") == Server("nexnet.io.bytes", "sent")
-            && Client(m, "nexnet.io.frames", "sent") == Server("nexnet.io.frames", "received") + preamble
+            && Client(m, "nexnet.io.frames", "sent") == Server("nexnet.io.frames", "received")
             && Client(m, "nexnet.io.frames", "received") == Server("nexnet.io.frames", "sent"), T(3));
         await Assert.That(Client(metrics, "nexnet.io.bytes", "sent")).IsEqualTo(Server("nexnet.io.bytes", "received"));
         await Assert.That(Client(metrics, "nexnet.io.bytes", "received")).IsEqualTo(Server("nexnet.io.bytes", "sent"));
-        await Assert.That(Client(metrics, "nexnet.io.frames", "sent")).IsEqualTo(Server("nexnet.io.frames", "received") + preamble);
+        await Assert.That(Client(metrics, "nexnet.io.frames", "sent")).IsEqualTo(Server("nexnet.io.frames", "received"));
         await Assert.That(Client(metrics, "nexnet.io.frames", "received")).IsEqualTo(Server("nexnet.io.frames", "sent"));
 
         var framesSent = Client(metrics, "nexnet.io.frames", "sent");
@@ -309,12 +308,11 @@ internal class ClientMetricsTests(LanguageHostPool hosts) : MatrixTestBase(hosts
         for (var i = 0; i < 10; i++)
             await Proxy(client).ServerTaskValueWithParam(i).Timeout(T(1));
 
-        var preamble = PreambleFrames(target);
         var metrics = await MetricsUntil(client, m =>
             m.Observe("nexnet.io.frames", (Role, "client"), ("nexnet.direction", "sent"))
-            == recorder.ObserveSum("nexnet.io.frames", (Role, "server"), ("nexnet.direction", "received")) + preamble, T(3));
+            == recorder.ObserveSum("nexnet.io.frames", (Role, "server"), ("nexnet.direction", "received")), T(3));
         await Assert.That(metrics.Observe("nexnet.io.frames", (Role, "client"), ("nexnet.direction", "sent")))
-            .IsEqualTo(recorder.ObserveSum("nexnet.io.frames", (Role, "server"), ("nexnet.direction", "received")) + preamble);
+            .IsEqualTo(recorder.ObserveSum("nexnet.io.frames", (Role, "server"), ("nexnet.direction", "received")));
         await Assert.That(metrics.Observe("nexnet.io.frames", (Role, "client"), ("nexnet.direction", "sent"))).IsGreaterThanOrEqualTo(11);
         await Assert.That(metrics.Observe("nexnet.session.active", (Role, "client"))).IsEqualTo(1);
         await Assert.That(metrics.Observe("nexnet.budget.limit", (Role, "client"))).IsEqualTo((await client.GetBudgetAsync())!.Limit);

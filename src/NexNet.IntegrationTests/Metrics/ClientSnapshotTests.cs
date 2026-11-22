@@ -54,6 +54,18 @@ internal class ClientSnapshotTests(LanguageHostPool hosts) : MatrixTestBase(host
         // The same session as the server's.
         var session = server.Server.GetSnapshot().Sessions.Single();
         await Assert.That(session.Id).IsEqualTo(snapshot.Id);
+
+        // Exact counts: everything one side wrote, the other read, once nothing is in flight. The preamble counts as
+        // bytes, never as a frame, on every language.
+        var (ours, theirs) = await Until(async () =>
+                ((await client.GetSnapshotAsync())!, server.Server.GetSnapshot().Sessions.Single()),
+            pair => pair.Item1.FramesSent == pair.Item2.FramesReceived && pair.Item1.BytesSent == pair.Item2.BytesReceived
+                    && pair.Item1.FramesReceived == pair.Item2.FramesSent && pair.Item1.BytesReceived == pair.Item2.BytesSent,
+            T(3));
+        await Assert.That(ours.FramesSent).IsEqualTo(theirs.FramesReceived);
+        await Assert.That(ours.BytesSent).IsEqualTo(theirs.BytesReceived);
+        await Assert.That(ours.FramesReceived).IsEqualTo(theirs.FramesSent);
+        await Assert.That(ours.BytesReceived).IsEqualTo(theirs.BytesSent);
         await EndAsync(client);
     }
 
