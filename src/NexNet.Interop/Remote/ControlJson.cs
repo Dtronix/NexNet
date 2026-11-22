@@ -53,6 +53,13 @@ public static class ControlJson
         }
 
         Add(json, "authorizationHeader", spec.AuthorizationHeader);
+        if (spec.UpgradeHeaders != null)
+        {
+            var headers = new JsonObject();
+            foreach (var (name, value) in spec.UpgradeHeaders)
+                headers[name] = value;
+            json["upgradeHeaders"] = headers;
+        }
         if (spec.QueryToken is { } queryToken)
             json["queryToken"] = new JsonObject { ["name"] = queryToken.Name, ["value"] = queryToken.Value };
         Add(json, "maxMessageSize", spec.MaxMessageSize);

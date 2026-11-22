@@ -75,6 +75,9 @@ public static class InProcClientConfig
             http.AuthenticationHeader = AuthenticationHeaderValue.Parse(spec.AuthorizationHeader);
         }
 
+        if (spec.UpgradeHeaders is { Count: > 0 })
+            throw new NotSupportedException("The C# client has no custom upgrade headers, only an Authorization header (ClientSpec.AuthorizationHeader).");
+
         if (spec.AuthToken is { } authToken)
             config.Authenticate = () => Encoding.UTF8.GetBytes(authToken);
         if (spec.Authenticate is { } authenticate)

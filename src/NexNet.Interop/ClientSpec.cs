@@ -96,6 +96,14 @@ public sealed class ClientSpec
     public string? AuthorizationHeader { get; set; }
 
     /// <summary>
+    /// Custom headers of the WebSocket or HttpSocket upgrade request, name to value (Java
+    /// <c>ClientConfig.Builder.header</c>, JS <c>webSocket.headers</c>/<c>httpSocket.headers</c>); HTTP transports only
+    /// (<see cref="ClientCapabilities.UpgradeHeaders"/>). The C# client has no such option, and a browser cannot send
+    /// headers.
+    /// </summary>
+    public Dictionary<string, string>? UpgradeHeaders { get; set; }
+
+    /// <summary>
     /// A token the client sends in the query string of the WebSocket or HttpSocket upgrade request (the client's
     /// query-token option, not a hand-built URL). HTTP transports only.
     /// </summary>
@@ -190,6 +198,7 @@ public sealed class ClientSpec
         copy.ReconnectDelaysMs = ReconnectDelaysMs?.ToArray();
         copy.ReconnectReasons = ReconnectReasons?.ToArray();
         copy.Authenticate = Authenticate?.Clone();
+        copy.UpgradeHeaders = UpgradeHeaders == null ? null : new Dictionary<string, string>(UpgradeHeaders, UpgradeHeaders.Comparer);
         return copy;
     }
 }
