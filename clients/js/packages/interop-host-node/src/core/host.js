@@ -13,6 +13,7 @@ import {
   NexusDuplexChannel,
   NexusError,
   cancellationError,
+  diagnostics,
   isCancellationError,
 } from '@dtronix/nexnet';
 import { encodeFrame, ControlProtocolError } from './framing.js';
@@ -421,11 +422,9 @@ class FutureEntry {
 /** @typedef {ClientEntry | RentalEntry | PoolEntry | PipeEntry | FutureEntry} Entry */
 
 /**
- * The parts of a client's session snapshot (`NexusClient.getSnapshot()`) that `client.budget` and
- * `client.outstanding` read (§6.4).
+ * The part of a client's session snapshot (`NexusClient.getSnapshot()`) that `client.budget` reads (§6.4).
  * @typedef {object} SnapshotPart
  * @property {{ limit: number, reserved: number }} budget
- * @property {{ awaitingResults: number }} invocations
  */
 
 /**
@@ -1391,7 +1390,8 @@ export class Host {
     });
     op('client.outstanding', (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'client.outstanding');
-      return { invocations: snapshotOf(entry.client)?.invocations.awaitingResults ?? 0 };
+      // The reserved invocation IDs, so a call canceled after send counts until its reply releases the ID.
+      return { invocations: diagnostics.getReservedInvocationIds(entry.client) };
     });
     op('client.awaitState', async (args, ctx) => {
       const entry = this.#invoker(ctx, args.h);
