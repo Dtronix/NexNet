@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.invocation.NexusRemoteError;
+import com.dtronix.nexnet.session.SessionOptions;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -112,6 +113,20 @@ class SpecMapperTest {
         MetricsRecorder.validate("Native");
         MetricsRecorder.validate("Micrometer");
         assertThrows(HostError.class, () -> MetricsRecorder.validate("Other"));
+    }
+
+    @Test
+    void disconnectDelayMapsToTheSessionOptions() {
+        assertEquals(SessionOptions.defaults().disconnectDelayMillis(),
+            SpecMapper.map(script("transport", "Tcp", "address", "tcp://h:1"), null, null).sessionOptions.disconnectDelayMillis());
+        assertEquals(0, SpecMapper.map(script("transport", "Tcp", "address", "tcp://h:1", "disconnectDelayMs", 0L), null, null)
+            .sessionOptions.disconnectDelayMillis());
+        assertEquals(750, SpecMapper.map(script("transport", "Tcp", "address", "tcp://h:1", "disconnectDelayMs", 750L), null, null)
+            .sessionOptions.disconnectDelayMillis());
+        assertThrows(HostError.class,
+            () -> SpecMapper.map(script("transport", "Tcp", "address", "tcp://h:1", "disconnectDelayMs", -1L), null, null));
+        assertThrows(HostError.class,
+            () -> SpecMapper.map(script("transport", "Tcp", "address", "tcp://h:1", "disconnectDelayMs", 10_001L), null, null));
     }
 
     @Test
