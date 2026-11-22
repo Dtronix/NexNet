@@ -289,6 +289,12 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         return future;
     }
 
+    /** Whether the reconnection controller runs a loop. */
+    private boolean reconnectLoopRunning() {
+        ReconnectController controller = reconnection;
+        return controller != null && controller.isReconnecting();
+    }
+
     /** True while a session is established and the client is open: connecting again is then a no-op. */
     private boolean isConnected() {
         synchronized (lock) {
@@ -483,12 +489,17 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             }
             return;
         }
+        boolean loopRunning = a.reconnecting && !a.userDisconnect && reconnectLoopRunning();
         ConnectionState next;
         synchronized (lock) {
             if (attempt == a) {
                 attempt = null;
             }
-            next = result.isSuccess() ? ConnectionState.CONNECTED : ConnectionState.DISCONNECTED;
+            // C#: a failed reconnection attempt leaves the client Reconnecting while its loop goes on; the loop's end
+            // (the policy gave up, or the user disconnected) sets Disconnected.
+            next = result.isSuccess() ? ConnectionState.CONNECTED
+                : loopRunning && !closed ? ConnectionState.RECONNECTING
+                : ConnectionState.DISCONNECTED;
             if (!result.isSuccess() && session == a.session) {
                 session = null;
             }
@@ -668,7 +679,8 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     }
 
     /**
-     * The connection state.
+     * The connection state. While the reconnection loop runs (from the loss of a session until an attempt connects or
+     * the loop ends) it is {@link ConnectionState#RECONNECTING}, also between failed attempts, as in C#.
      *
      * @return the state
      */
