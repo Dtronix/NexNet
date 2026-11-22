@@ -312,6 +312,21 @@ name and its wire id (the host MAY use either the name or the id; they always ag
 Every method of the client nexus and the two lifecycle events `OnConnected` / `OnDisconnected` is a **slot**,
 identified by its name. The host decides what the client does when the server calls a slot from the slot's script.
 
+The lifecycle slots run where the runtime runs its nexus callbacks. `OnConnected` runs once per session, **after the
+handshake**: the client has processed the ServerGreeting, so the session is established. It never runs for a session that ends during the handshake. Its `isReconnected` is true only
+for a session that the client's reconnection policy opened. How it is ordered against the client's own state differs by
+runtime:
+
+- C# reports `Connected` once the transport is up, before the handshake.
+- JavaScript reports `Connected` when the handshake completes, and runs `onConnected` after the connect has returned.
+- Java runs `onConnected` first and reports `CONNECTED` after it.
+
+So a test that acts on a reconnected client waits for the `OnConnected` call and then for state `Connected`
+(`NexusClientTests.WaitForReconnected`). The C# in-process driver runs these slots from the nexus's
+`OnConnectedEvent`/`OnDisconnectedEvent` hooks when the nexus has them. Otherwise it runs `OnConnected` when the
+session's handshake completes (the point where the client starts `nexus.Connected`), and `OnDisconnected` on the
+client's `Disconnected` state change, queued behind that session's `OnConnected`.
+
 | Op | Args | Result |
 |---|---|---|
 | `script.set` | `{h, slot, steps, times?}` | `{}`. Replaces the slot's script; `times` (int ≥ 1, or null for every call) is how many calls the steps apply to. |
