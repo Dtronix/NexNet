@@ -110,6 +110,14 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   HttpSocket still answers `401`, and an `Origin` outside `AllowedOrigins` is still answered `403`.
   - **Migration:** a C#, Java or Node client already reported `AuthenticationError`. Code that inspected the HTTP status
     of a refused WebSocket upgrade (a proxy, or a raw WebSocket client) sees a `101` followed by the refusal instead.
+- **Behavior change: the C# client refuses a change to a read-only list up front.** A write (`AddAsync`,
+  `InsertAsync`, `RemoveAsync`, `RemoveAtAsync`, `ReplaceAsync`, `MoveAsync`, `ClearAsync`) to a client list whose
+  mode is not `BiDirectional` (`ServerToClient` or `Relay`) now throws `InvalidOperationException` ("The collection is
+  read-only …") before anything else is checked, as the Java and JavaScript clients do. Before, the refusal depended on
+  the list's state: `RemoveAsync` of a missing item returned false, a write before `EnableAsync` threw "Client not
+  connected", and any other write threw "Can't send when writer is not set." Argument checks (a negative index) still
+  come first. ([#355](https://github.com/Dtronix/NexNet/pull/355))
+  - **Migration:** code that relied on `RemoveAsync` returning false on a read-only list must not call it there.
 
 ## New features
 
