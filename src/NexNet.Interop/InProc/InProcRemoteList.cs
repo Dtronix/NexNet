@@ -1,5 +1,6 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Interop.InProc;
 
@@ -52,6 +53,26 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
     public async ValueTask<bool> MoveAsync(int fromIndex, int toIndex) => await list.MoveAsync(fromIndex, toIndex).ConfigureAwait(false);
 
     public async ValueTask<bool> ClearAsync() => await list.ClearAsync().ConfigureAwait(false);
+
+    private InProcListThrottle? _throttle;
+
+    /// <summary>
+    /// Installs, replaces or removes the list's slow consumer through its <c>ProcessTestHook</c>
+    /// (<see cref="RemoteListExtensions.ThrottleAsync{T}"/>).
+    /// </summary>
+    public ValueTask ThrottleAsync(RemoteListThrottle? throttle)
+    {
+        var broadcaster = (NexusBroadcastClient<INexusCollectionListMessage>)(object)list;
+        var next = throttle is { IsActive: true } ? new InProcListThrottle(throttle) : null;
+        // A new throttle replaces the last one, and releases the message it holds.
+        Interlocked.Exchange(ref _throttle, next)?.Stop();
+        broadcaster.ProcessTestHook = next == null ? null : _ => next.Hook();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>What the list's slow consumer has seen (<see cref="RemoteListExtensions.GetThrottleStateAsync{T}"/>).</summary>
+    public RemoteListThrottleState GetThrottleState()
+        => Volatile.Read(ref _throttle) is { } throttle ? throttle.State : default;
 
     public ValueTask<IReadOnlyList<T>> SnapshotAsync() => new(list.ToArray());
 

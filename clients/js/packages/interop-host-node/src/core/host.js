@@ -139,6 +139,55 @@ function requireInt(value, name, min) {
   return value;
 }
 
+/** The longest a `list.throttle` with `pause` holds a message (§6.10), so a failed test never leaves a reader stalled. */
+const THROTTLE_MAX_HOLD_MS = 60_000;
+
+/**
+ * A slow consumer installed by `list.throttle` (§6.10): the process test hook of one list
+ * (`NexusList.setProcessTestHook`), counting the messages it sees from its installation.
+ */
+class ListThrottle {
+  /** @param {{ every: number, delayMs: number, firstDelayMs: number, pause: boolean }} options */
+  constructor(options) {
+    this.options = options;
+    /** The messages the hook was called for. */
+    this.seen = 0;
+    /** Releases the message the hook holds (`pause`); null when it holds none. @type {(() => void) | null} */
+    this.release = null;
+    /** Set by {@link ListThrottle#stop}: nothing is held or delayed after it. */
+    this.stopped = false;
+  }
+
+  /** @returns {Promise<void> | undefined} */
+  hook() {
+    const n = ++this.seen;
+    if (this.stopped) return undefined;
+    const { every, delayMs, firstDelayMs, pause } = this.options;
+    if (n === 1 && pause) {
+      return new Promise((resolve) => {
+        /** @type {ReturnType<typeof globalThis.setTimeout> | undefined} */
+        let timer;
+        const release = () => {
+          globalThis.clearTimeout(timer);
+          if (this.release === release) this.release = null;
+          resolve();
+        };
+        timer = globalThis.setTimeout(release, THROTTLE_MAX_HOLD_MS);
+        this.release = release;
+      });
+    }
+    if (n === 1 && firstDelayMs > 0) return sleep(firstDelayMs);
+    if (delayMs > 0 && n % every === 0) return sleep(delayMs);
+    return undefined;
+  }
+
+  /** Releases a held message; later messages are neither held nor delayed. */
+  stop() {
+    this.stopped = true;
+    this.release?.();
+  }
+}
+
 /** A test scope (§5). */
 class Scope {
   /** @param {string} id */
@@ -226,6 +275,8 @@ class ClientEntry extends InvokerEntry {
     this.enabled = new Set();
     /** @type {Map<string, { list: EventTarget, listener: (e: Event) => void }>} */
     this.watches = new Map();
+    /** `list.throttle` slow consumers, by collection name (§6.10). @type {Map<string, ListThrottle>} */
+    this.throttles = new Map();
     /** @type {number | null} */
     this.lastReason = null;
     /**
@@ -1104,6 +1155,8 @@ export class Host {
     entry.lifetime.abort(cancellationError());
     for (const watch of entry.watches.values()) watch.list.removeEventListener('changed', watch.listener);
     entry.watches.clear();
+    for (const throttle of entry.throttles.values()) throttle.stop();
+    entry.throttles.clear();
     for (const pipe of [...entry.pipes]) await this.#disposePipe(pipe);
     for (const forward of [...this.#forwards]) {
       if (forward[1].entry === entry) {
@@ -1871,6 +1924,32 @@ export class Host {
       found.list.removeEventListener('changed', found.listener);
       entry.watches.delete(watch);
       return {};
+    });
+
+    op('list.throttle', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'list.throttle');
+      const { list, name } = this.#list(entry, args.collection);
+      /** @param {string} key @param {number} min @param {number} fallback @returns {number} */
+      const int = (key, min, fallback) => (args[key] === undefined || args[key] === null ? fallback : requireInt(args[key], key, min));
+      if (args.pause !== undefined && args.pause !== null && typeof args.pause !== 'boolean') throw badRequest('pause must be a boolean.');
+      const options = { every: int('every', 1, 1), delayMs: int('delayMs', 0, 0), firstDelayMs: int('firstDelayMs', 0, 0), pause: args.pause === true };
+      // A new throttle replaces the last one, and releases the message it holds.
+      entry.throttles.get(name)?.stop();
+      entry.throttles.delete(name);
+      if (options.delayMs === 0 && options.firstDelayMs === 0 && !options.pause) {
+        list.setProcessTestHook(null);
+        return {};
+      }
+      const throttle = new ListThrottle(options);
+      entry.throttles.set(name, throttle);
+      list.setProcessTestHook(() => throttle.hook());
+      return {};
+    });
+    op('list.throttleState', (args, ctx) => {
+      const entry = this.#client(ctx, args.h, 'list.throttleState');
+      const { name } = this.#list(entry, args.collection);
+      const throttle = entry.throttles.get(name);
+      return { seen: throttle?.seen ?? 0, holding: throttle?.release != null };
     });
 
     // Client pools (§6.11).

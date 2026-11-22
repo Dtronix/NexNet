@@ -52,6 +52,8 @@ final class ClientEntry extends Driven implements ScriptHost {
     private final Map<String, Slot> slots = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<Void>> signals = new ConcurrentHashMap<>();
     private final Map<String, Registration> watches = new ConcurrentHashMap<>();
+    /** {@code list.throttle} slow consumers, by collection name (§6.10). */
+    private final Map<String, ListThrottle> throttles = new ConcurrentHashMap<>();
     final List<PipeEntry> pipes = new CopyOnWriteArrayList<>();
     /** Pipes {@code pipe.hold} steps published, by name, and the {@code pipe.accept} requests waiting for one. */
     private final Map<String, HeldBox> held = new ConcurrentHashMap<>();
@@ -205,6 +207,10 @@ final class ClientEntry extends Driven implements ScriptHost {
             watch.close();
         }
         watches.clear();
+        for (ListThrottle throttle : throttles.values()) {
+            throttle.stop();
+        }
+        throttles.clear();
         for (PipeEntry pipe : pipes) {
             pipe.dispose();
         }
@@ -581,6 +587,57 @@ final class ClientEntry extends Driven implements ScriptHost {
             "mode", Names.pascal(((NexusListClient<?>) list).mode()),
             "state", Names.pascal(list.state()),
             "disabled", list.disabled().isDone());
+    }
+
+    /** {@code list.throttle} (§6.10): installs, replaces or removes the list's slow consumer. */
+    Map<String, Object> listThrottle(Args args) {
+        NexusListClient<?> list = runtimeList(args);
+        String name = args.obj("collection").str("name");
+        int every = optInt(args, "every", 1, 1);
+        int delayMs = optInt(args, "delayMs", 0, 0);
+        int firstDelayMs = optInt(args, "firstDelayMs", 0, 0);
+        boolean pause = args.bool("pause");
+        // A new throttle replaces the last one, and releases the message it holds.
+        ListThrottle previous = throttles.remove(name);
+        if (previous != null) {
+            previous.stop();
+        }
+        if (!ListThrottle.isActive(delayMs, firstDelayMs, pause)) {
+            list.setProcessTestHook(null);
+            return Protocol.empty();
+        }
+        ListThrottle throttle = new ListThrottle(host.timer, every, delayMs, firstDelayMs, pause);
+        throttles.put(name, throttle);
+        list.setProcessTestHook(throttle);
+        return Protocol.empty();
+    }
+
+    /** {@code list.throttleState} (§6.10): what the list's slow consumer has seen, and whether it holds a message. */
+    Map<String, Object> listThrottleState(Args args) {
+        runtimeList(args);
+        ListThrottle throttle = throttles.get(args.obj("collection").str("name"));
+        return Protocol.map(
+            "seen", throttle == null ? 0L : (long) throttle.seen(),
+            "holding", throttle != null && throttle.holding());
+    }
+
+    private NexusListClient<?> runtimeList(Args args) {
+        NexusList<Object> list = list(args);
+        if (!(list instanceof NexusListClient)) {
+            throw new HostError(HostError.INVALID_OPERATION, "The collection is not a runtime list; it has no process test hook.");
+        }
+        return (NexusListClient<?>) list;
+    }
+
+    private static int optInt(Args args, String name, int min, int fallback) {
+        Long value = args.optInteger(name);
+        if (value == null) {
+            return fallback;
+        }
+        if (value < min || value > Integer.MAX_VALUE) {
+            throw HostError.badRequest("The argument '" + name + "' is out of range.");
+        }
+        return value.intValue();
     }
 
     Map<String, Object> listWatch(Args args) {
