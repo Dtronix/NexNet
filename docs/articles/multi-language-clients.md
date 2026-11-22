@@ -259,8 +259,9 @@ exception.
 
 The matrix tests in this list are also listed, with the same reasons, in
 `src/NexNet.IntegrationTests/Interop/ClientParityExceptions.cs`. The parity audit (`ClientParityTests`) fails when a
-matrix test has no runnable row on a language, or checks part of its behavior on the C# client only, without an entry
-there, and when an entry is no longer needed. That file also lists, with the card that closes it, any gap that is
+matrix test has no runnable row on a language, checks part of its behavior on the C# client only, or branches on any
+other language name (`target.Language == ClientLanguages.Java`, an `IsBrowser(target)` helper) and checks something
+else on it, without an entry there, and when an entry is no longer needed. That file also lists, with the card that closes it, any gap that is
 still being fixed; those are not exceptions and are not listed here. The transport rows below (UDS, QUIC, the browser
 transports) are not audit entries: a test that also runs on another transport has a runnable row. The C#-only and
 language-idiomatic APIs are not matrix tests.
@@ -273,8 +274,11 @@ language-idiomatic APIs are not matrix tests.
 | No QUIC rows | Java, JavaScript | QUIC uses msquic, which is .NET-only |
 | No TCP, TCP + TLS, UDS or HttpSocket (`http://`, `https://`) rows | Browser | Page JavaScript has no raw sockets, and HttpSocket is an HTTP/1.1 upgrade to `nexnet-httpsockets` that neither `fetch` nor `WebSocket` can make. Browsers run the same tests on WebSocket and WebSocket over TLS |
 | Tests that need an `Authorization` (or other) upgrade header | Browser | The browser `WebSocket` API cannot set request headers. The query-string token tests (`webSocket.queryToken`) and the greeting token cover browser authentication |
-| Tests that need a client certificate, a custom CA, certificate pinning or the server certificate | Browser | The browser does the TLS and exposes none of it to page JavaScript. The WSS rows prove the default-trust path |
+| Tests that need a client certificate, a custom CA, certificate pinning, the server certificate, or turning certificate verification off (`InsecureSkipVerify`) | Browser | The browser does the TLS and exposes none of it to page JavaScript. The WSS rows prove the default-trust path |
 | `NonAspTransport_SessionUserIsNull` | Browser | It tests the TCP, TLS and UDS transports, which browsers do not have |
+| A refused WebSocket upgrade (redirect) is `InternalError`, not `ProtocolError` (`UpgradeRedirect_IsNotFollowed_FailsWithProtocolError`) | Browser | The browser `WebSocket` API reports a failed upgrade only as a generic error, with no status. That the redirect is not followed is asserted on every language |
+| A text message closes the WebSocket with 1000, not 1003 (`WebSocket_TextMessage_ClientClosesWith1003`) | Browser | Page JavaScript may only send close code 1000 or 3000–4999. That the client refuses the session is asserted on every language |
+| The remote endpoint is empty while connected (`RemoteEndpoint_IsTheServerEndpointWhileConnected`) | Browser | The browser does not expose the peer address of a WebSocket |
 
 **By design** (C#-only behavior or API, or a counterpart that is idiomatic and unit-tested in its own language):
 
@@ -285,6 +289,9 @@ language-idiomatic APIs are not matrix tests.
 | The server-side pipe branch of `Client_ThrowsWhenPassingPipeFromWrongNexus` | Java, JavaScript | Only an in-process C# test can hold the server's pipe object and pass it to a client proxy |
 | The remote exception type name is asserted on C# only (`TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage`) | Java, JavaScript | Exception type names are language-specific; the error code and message are asserted on every language |
 | The count of changes a list received before its snapshot is asserted on C# only (`ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges`) | Java, JavaScript | It is a C# runtime test field that no harness operation exposes. Java and JavaScript buffer such changes the same way, and the test asserts every language's list state and final contents, which a change applied before the snapshot would corrupt |
+| A browser client reconnects with no reconnection settings; the others do not (`DefaultReconnection_OnlyABrowserClientReconnects`) | Browser | The JavaScript client turns its default reconnection policy on in a browser only; C#, Node and Java have none by default |
+| Only the browser rows exercise the WebSocket origin allow-list (`Origin_NotInTheAllowList_RefusesOnlyABrowser`, `Origin_InTheAllowList_Connects`) | Browser | Only a browser sends an `Origin` header; the other clients send none and are always allowed |
+| The Java rows record metrics through the Micrometer module (`SessionLifecycle_Measured_AlsoThroughMicrometer`) | Java | Covers the `-micrometer` module; the assertions are the same as for the native recorder |
 | C# API semantics: `ValueTask` consumption, `AsyncLocal` and execution-context flow, the C# pool's nexus factory, a custom transport's `IsSecureTransport` override, setting both `Authenticate` and `AuthenticateAsync` | Java, JavaScript | C#-only API. These are C# tests, not matrix tests |
 | Java executors (`callbackExecutor`, `invocationExecutor`), pipe `InputStream`/`OutputStream` adapters, Kotlin coroutine and flow wrappers | Java only | Java-idiomatic API; unit-tested in the Java suite |
 | JavaScript `EventTarget` events, `AbortSignal` cancellation, Web Streams pipes | JavaScript only | JavaScript-idiomatic API; the matrix tests the behavior behind them through the harness |
