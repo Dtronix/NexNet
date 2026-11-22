@@ -1,5 +1,6 @@
 // Checks that the committed declarations of @dtronix/nexnet (packages/nexnet/types, J27) are current: rebuilds them
-// with tsc into a temporary folder and compares file by file (line endings ignored). Run by `npm run typecheck`;
+// with tsc into a temporary folder and compares file by file (line endings ignored), then compiles the consumer fixture
+// in scripts/types-consumer against them with skipLibCheck off (J39). Run by `npm run typecheck`;
 // `npm run build:types` rewrites them.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
@@ -61,6 +62,13 @@ try {
     process.exit(1);
   }
   console.log('check-types: ' + expected.length + ' declaration files are current');
+
+  const consumer = spawnSync(process.execPath, [path.join(typescript, bin), '-p', path.join('scripts', 'types-consumer', 'tsconfig.json')], { cwd: workspace, stdio: 'inherit' });
+  if (consumer.status !== 0) {
+    console.error('check-types: the declarations do not type-check as a TypeScript consumer sees them (scripts/types-consumer)');
+    process.exit(1);
+  }
+  console.log('check-types: the consumer fixture type-checks against the declarations');
 } finally {
   rmSync(fresh, { recursive: true, force: true });
 }
