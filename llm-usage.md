@@ -824,12 +824,14 @@ client.addEventListener('statechange', e => e.detail.state);   // also 'disconne
 await client.disconnect();                             // client.disconnected: promise; client.isSecure; client.getSnapshot()
 ```
 
-- Config: C# `ClientConfig` names in camelCase, durations in ms. Transports: `webSocket: { url, headers?, tls? }`
-  (browser + Node), `httpSocket: { url, headers?, tls? }`, `tcp: { host, port }`, `tcpTls: { host, port, tls? }`,
+- Config: C# `ClientConfig` names in camelCase, durations in ms. Transports: `webSocket: { url, headers?, queryToken?, tls? }`
+  (browser + Node), `httpSocket: { url, headers?, queryToken?, tls? }`, `tcp: { host, port }`, `tcpTls: { host, port, tls? }`,
   `uds: { path }` (Node only). `tls` (Node): `ca`, `cert`/`key`, `pfx`/`passphrase`, `servername`,
   `rejectUnauthorized`, `pins` (base64 SHA-256 of cert DER or SPKI). Browser: WebSocket only; no headers, client
   certs, CA or pins; keepalive in a `blob:` Web Worker (CSP `worker-src blob:`); reconnects on
   `visibilitychange`/`online`.
+- `queryToken: { name, value }` appends `name=value` (URL-encoded) to the upgrade URL for ASP `AccessTokenQueryParameter`;
+  the browser's way to send an ASP.NET token (Java: `ClientConfig.Builder.queryToken(n, v)`).
 - Errors: `NexusTransportError` (`reason`), `NexusRemoteInvocationError` (`code`, `remoteType`,
   `remoteMessage`), `NexusUnauthorizedError`, `NexusBusyError`, `NexusMessageTooLargeError` (all `NexusError`).
   Canceled, or pending when the session ends: `AbortError` (`cause` = `NexusTransportError`).
