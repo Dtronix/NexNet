@@ -49,10 +49,13 @@ internal class QuicConnectTimeoutTests : BaseTests
         await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Quic));
         await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-        await server.StopAsync().Timeout(TestTimeouts.Connect);
+        // The port is held while the server is stopped (StopServerAsync), so no QUIC server of another test process can
+        // take it and answer the connect.
+        await StopServerAsync(server).Timeout(TestTimeouts.Connect);
 
-        // The case seen in ReconnectsStopsAfterSpecifiedTimes. A stopped server frees its UDP port at once (S51), so
-        // the connect may be refused (ICMP port unreachable) before the timeout; it must never take longer.
+        // The case seen in ReconnectsStopsAfterSpecifiedTimes. The held UDP port never answers, so the connect times
+        // out; were the port unbound, it could be refused (ICMP port unreachable) before the timeout. It must never
+        // take longer.
         var clientConfig = (QuicClientConfig)CreateClientConfig(Type.Quic);
         clientConfig.ConnectionTimeout = ConnectionTimeoutMs;
 
