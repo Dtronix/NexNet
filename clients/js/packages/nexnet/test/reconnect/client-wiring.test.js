@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConnectionState, DisconnectReason } from '../../src/contract/enums.js';
 import { counters, isIdle } from '../../src/diagnostics/counters.js';
+import { NexusTransportError } from '../../src/contract/errors.js';
 import { DefaultReconnectionPolicy } from '../../src/reconnect/index.js';
 import { connected, createHarness, serverHello, tick } from '../session/support/harness.js';
 
@@ -82,6 +83,61 @@ describe('NexusClient reconnection', () => {
     g.transport.serverSend(Uint8Array.of(DisconnectReason.Graceful));
     await g.client.disconnected;
     expect(g.transports.length).toBe(1);
+  });
+
+  it('stays Reconnecting between failed attempts, then Connected (C# parity)', async () => {
+    const h = await connected(harness({ config: { reconnectionPolicy: new DefaultReconnectionPolicy({ delays: [0, 100], continuousRetry: true }) } }));
+    const refused = new NexusTransportError('refused', { reason: DisconnectReason.SocketError });
+    h.setFactory(async () => { throw refused; });
+    h.events.length = 0;
+
+    h.transport.serverClose();
+    await tick();
+    expect(h.client.state).toBe(ConnectionState.Reconnecting);
+    // Three refused attempts; the client reads Reconnecting during each delay.
+    for (let i = 0; i < 3; i++) {
+      h.clock.advance(100);
+      await tick();
+      expect(h.client.state).toBe(ConnectionState.Reconnecting);
+    }
+    expect(h.factoryCalls.length).toBeGreaterThanOrEqual(4);
+
+    h.setFactory(/** @type {any} */ (null));
+    h.clock.advance(100);
+    await tick();
+    h.transport.serverSend(serverHello());
+    await tick();
+    expect(h.client.state).toBe(ConnectionState.Connected);
+    expect(h.events.filter((e) => e.type === 'statechange').map((e) => e.detail.state)).toEqual([
+      ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Connected,
+    ]);
+  });
+
+  it('ends Disconnected when the policy gives up, and when disconnect() stops the loop', async () => {
+    const h = await connected(harness({ config: { reconnectionPolicy: new DefaultReconnectionPolicy({ delays: [0, 50], continuousRetry: false }) } }));
+    h.setFactory(async () => { throw new NexusTransportError('refused', { reason: DisconnectReason.SocketError }); });
+    h.events.length = 0;
+    h.transport.serverClose();
+    await tick();
+    for (let i = 0; i < 3; i++) {
+      h.clock.advance(50);
+      await tick();
+    }
+    await h.client.disconnected;
+    // Disconnected before `disconnected` resolves.
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+    expect(h.factoryCalls.length).toBe(3);
+    await tick();
+    expect(h.events.filter((e) => e.type === 'statechange').map((e) => e.detail.state)).toEqual([
+      ConnectionState.Disconnecting, ConnectionState.Disconnected, ConnectionState.Reconnecting, ConnectionState.Disconnected,
+    ]);
+
+    const d = await connected(harness({ config: { reconnectionPolicy: new DefaultReconnectionPolicy({ delays: [1000], continuousRetry: true }) } }));
+    d.transport.serverClose();
+    await tick();
+    expect(d.client.state).toBe(ConnectionState.Reconnecting);
+    await d.client.disconnect();
+    expect(d.client.state).toBe(ConnectionState.Disconnected);
   });
 
   it('getSnapshot has the C# field names', async () => {

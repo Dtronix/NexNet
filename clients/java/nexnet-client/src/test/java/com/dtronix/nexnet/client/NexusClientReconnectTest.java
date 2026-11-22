@@ -83,12 +83,64 @@ class NexusClientReconnectTest {
     }
 
     @Test
+    void staysReconnectingBetweenFailedAttempts() throws Exception {
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(config(), server);
+        try {
+            ReconnectController controller = client.reconnection();
+            assertNotNull(controller);
+            client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
+
+            // C#: Reconnecting from the loss of the session until an attempt connects, also between failed attempts.
+            server.refuse = true;
+            server.disconnect(0, 30);
+            TestClients.waitFor(() -> controller.attempts() >= 3);
+            assertEquals(ConnectionState.RECONNECTING, client.state());
+            server.refuse = false;
+            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
+            TestClients.waitFor(() -> states.contains(ConnectionState.CONNECTED));
+            assertEquals(List.of(ConnectionState.RECONNECTING, ConnectionState.CONNECTED), states);
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
+    void endsDisconnectedWhenTheUserDisconnectsDuringTheLoop() throws Exception {
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(ClientConfig.tcp("h", 1)
+            .reconnectionPolicy(new DefaultReconnectionPolicy(new long[] {0, 60_000}, true)).build(), server);
+        try {
+            ReconnectController controller = client.reconnection();
+            assertNotNull(controller);
+            client.connect().get(5, TimeUnit.SECONDS);
+            server.refuse = true;
+            server.disconnect(0, 30);
+            TestClients.waitFor(() -> controller.attempts() >= 1 && controller.isWaiting());
+            assertEquals(ConnectionState.RECONNECTING, client.state());
+            client.disconnect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.DISCONNECTED);
+            assertFalse(controller.isReconnecting());
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
     void givesUpWhenThePolicyStops() throws Exception {
         TestClients.Server server = new TestClients.Server();
         NexusClient<TestProxy> client = TestClients.client(ClientConfig.tcp("h", 1)
             .reconnectionPolicy(new DefaultReconnectionPolicy(new long[] {0, 10}, false)).build(), server);
         try {
             client.connect().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
+            List<ConnectionState> states = new CopyOnWriteArrayList<>();
+            client.addStateListener(states::add);
             CompletableFuture<Void> disconnected = client.disconnected();
             server.refuse = true;
             server.disconnect(0, 20);
@@ -98,6 +150,9 @@ class NexusClientReconnectTest {
             assertEquals(2, controller.attempts());
             assertTrue(controller.idle().isDone());
             TestClients.waitFor(() -> client.state() == ConnectionState.DISCONNECTED);
+            // Reconnecting through both failed attempts, then Disconnected once (C# parity).
+            TestClients.waitFor(() -> states.contains(ConnectionState.DISCONNECTED));
+            assertEquals(List.of(ConnectionState.RECONNECTING, ConnectionState.DISCONNECTED), states);
         } finally {
             client.close();
         }

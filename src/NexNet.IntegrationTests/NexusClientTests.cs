@@ -474,12 +474,102 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     /// <summary>
-    /// The C# client stays Reconnecting between failed attempts (it does not report each attempt's own disconnect) and
-    /// raises the sequence Connected, Disconnecting, Disconnected, Reconnecting, Connected.
+    /// The client stays Reconnecting between failed reconnection attempts: from the loss of the session until an attempt
+    /// connects it never reads Disconnected (each attempt's own disconnect is not reported).
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ReconnectingStateLastsBetweenRetries(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+
+        // 100 ms between attempts: a client that went back to Disconnected after each failed attempt would read
+        // Disconnected for most of that time.
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 100];
+            spec.ReconnectContinuously = true;
+        });
+        await WaitForFirstConnected(client);
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+
+        // Samples the state for 1.5 s, over several failed attempts (the server is down).
+        var observed = await SampleStatesAsync(client, 1.5);
+        await Assert.That(observed.Distinct()).IsEquivalentTo([ConnectionState.Reconnecting])
+            .Because($"the states sampled between attempts were {string.Join(", ", observed)}");
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
+    }
+
+    /// <summary>
+    /// When the reconnection policy gives up, the client goes from Reconnecting to Disconnected once, after its last
+    /// attempt, and stays there. Not on QUIC: an attempt to the stopped server can outlast the connection timeout by
+    /// seconds (S47).
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    public async Task ReconnectingStateEndsDisconnectedWhenThePolicyGivesUp(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+
+        // Two attempts, 100 ms apart, then the policy gives up.
+        await using var client = await Connect(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 100];
+            spec.ReconnectContinuously = false;
+        });
+        await WaitForFirstConnected(client);
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
+
+        var whileReconnecting = await SampleStatesAsync(client, T(TestTimeouts.Connect * 3), until: ConnectionState.Disconnected);
+        await Assert.That(whileReconnecting[^1]).IsEqualTo(ConnectionState.Disconnected)
+            .Because("the policy gives up after two attempts");
+        await Assert.That(whileReconnecting[..^1].Distinct()).IsEquivalentTo([ConnectionState.Reconnecting])
+            .Because($"the states sampled before the policy gave up were {string.Join(", ", whileReconnecting)}");
+
+        // It stays Disconnected: no further attempt.
+        var after = await SampleStatesAsync(client, 0.3);
+        await Assert.That(after.Distinct()).IsEquivalentTo([ConnectionState.Disconnected])
+            .Because($"the states sampled after the policy gave up were {string.Join(", ", after)}");
+    }
+
+    /// <summary>
+    /// Reads the client's state every 10 ms until it is <paramref name="until"/> (included) or <paramref name="seconds"/>
+    /// elapse; returns the states read, in order.
+    /// </summary>
+    private static async Task<List<ConnectionState>> SampleStatesAsync(IClientUnderTest client, double seconds, ConnectionState? until = null)
+    {
+        var observed = new List<ConnectionState>();
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            var state = await client.GetStateAsync();
+            observed.Add(state);
+            if (state == until)
+                break;
+            await Task.Delay(10);
+        }
+
+        return observed;
+    }
+
+    /// <summary>
+    /// The C# client's StateChanged events while it reconnects: it stays Reconnecting between failed attempts (it does not
+    /// report each attempt's own disconnect) and raises the sequence Connected, Disconnecting, Disconnected, Reconnecting,
+    /// Connected. The other languages check their sequence in their own unit tests.
     /// </summary>
     [Test]
     [Transports(Type.Uds)]
-    public async Task ReconnectingStateLastsBetweenRetries(Type type)
+    public async Task ReconnectingStateChangedSequenceBetweenRetries(Type type)
     {
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
@@ -520,11 +610,11 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     }
 
     /// <summary>
-    /// When the C# client's reconnection policy gives up, the client goes from Reconnecting to Disconnected.
+    /// The C# client's StateChanged events when its reconnection policy gives up: Reconnecting, then Disconnected.
     /// </summary>
     [Test]
     [Transports(Type.Uds)]
-    public async Task ReconnectingStateEndsDisconnectedWhenThePolicyGivesUp(Type type)
+    public async Task ReconnectingStateChangedSequenceWhenThePolicyGivesUp(Type type)
     {
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);

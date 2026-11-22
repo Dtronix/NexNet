@@ -86,7 +86,11 @@ export declare class NexusClient<TNexus extends import('../contract/nexus.js').C
      * @param {import('../contract/handshake.js').ClientBinding<TProxy>} binding
      */
     constructor(config: import('../contract/config.js').ClientConfig, nexus: TNexus, binding: import('../contract/handshake.js').ClientBinding<TProxy>);
-    /** @returns {import('../contract/enums.js').ConnectionStateValue} */
+    /**
+     * The connection state. While the reconnection loop runs (from the loss of a session until an attempt connects or
+     * the loop ends) it is `Reconnecting`, also between failed attempts, as in C#.
+     * @returns {import('../contract/enums.js').ConnectionStateValue}
+     */
     get state(): import('../contract/enums.js').ConnectionStateValue;
     /** The server proxy. Throws before the first successful connect. @returns {TProxy} */
     get proxy(): TProxy;
