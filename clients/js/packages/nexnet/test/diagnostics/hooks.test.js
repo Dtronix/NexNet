@@ -342,6 +342,39 @@ describe('metrics hooks', () => {
     expect(of('nexnet.session.disconnects')).toEqual([[1, { 'nexnet.disconnect.reason': 'graceful', 'nexnet.session.phase': 'established' }]]);
   });
 
+  it('a reset logs a warning at most once per 10 s, with the resets since the last one (C# ReportPipeReset)', async () => {
+    /** @type {string[]} */
+    const warnings = [];
+    const logger = {
+      log: (/** @type {string} */ level, /** @type {string} */ message) => {
+        if (level === 'warning' && message.includes('Reset pipe')) warnings.push(message);
+      },
+    };
+    const h = await connectedHarness({ config: { logger } });
+    const peer = new ServerPeer(h);
+    const resetOne = async (/** @type {number} */ serverId) => {
+      const { pipe, sim, id } = await openPipe(h, peer, { serverId });
+      const reader = await new NexusDuplexChannel(pipe, stringFormatter).getReader();
+      sim.send(frameItems([pack((w) => w.writeInt(5))]));
+      await expect(reader.read()).rejects.toBeInstanceOf(NexusError);
+      await pipe[Symbol.asyncDispose]();
+      peer.sendState(id, PipeState.Complete);
+      await tick();
+      return id;
+    };
+
+    const first = await resetOne(9);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(new RegExp(`Reset pipe P${String(first).padStart(5, '0')}: a channel item breaks the framing\\.$`));
+    await resetOne(10);
+    await resetOne(11);
+    expect(warnings).toHaveLength(1);
+    h.clock.advance(10_000);
+    await resetOne(12);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[1]).toMatch(/Reset pipe P\d{5}: a channel item breaks the framing \(3 pipe resets since the last warning\)\.$/);
+  });
+
   it('records queue waits, pipe refusals, resets and credit waits', async () => {
     const h = await connectedHarness({ config: { maxConcurrentConnectionInvocations: 1, maxPipes: 3 } });
     const { m, of } = meter();
