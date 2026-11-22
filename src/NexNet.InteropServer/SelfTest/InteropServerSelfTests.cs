@@ -231,6 +231,25 @@ public class InteropServerSelfTests
 
         await Assert.That(await Opens("https://allowed.example")).IsTrue();
         await Assert.That(await Opens("https://evil.example")).IsFalse();
+        await Assert.That(server.RequestOrigins).IsEquivalentTo(new[] { "https://allowed.example", "https://evil.example" });
+    }
+
+    [Test]
+    public async Task RequestOrigins_RecordsOnlyRequestsWithAnOrigin()
+    {
+        await using var server = await StartDedicated();
+
+        using (var plain = new ClientWebSocket())
+            await plain.ConnectAsync(server.Endpoints.WebSocket, CancellationToken.None).WaitAsync(Wait);
+        await Assert.That(server.RequestOrigins).IsEmpty();
+
+        using (var page = new ClientWebSocket())
+        {
+            page.Options.SetRequestHeader("Origin", "http://127.0.0.1:1234");
+            await page.ConnectAsync(server.Endpoints.WebSocket, CancellationToken.None).WaitAsync(Wait);
+        }
+
+        await Assert.That(server.RequestOrigins).IsEquivalentTo(new[] { "http://127.0.0.1:1234" });
     }
 
     [Test]
