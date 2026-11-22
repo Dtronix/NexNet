@@ -25,16 +25,21 @@ import com.dtronix.nexnet.transport.Transport;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.SocketFactory;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
 import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
@@ -129,6 +134,90 @@ class OkHttpWebSocketConnectorTest {
             transport.close(DisconnectReason.GRACEFUL);
         }
         assertEquals(1000, echo.closeCode.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void theRemoteEndpointIsTheServerSocket() throws Exception {
+        server.enqueue(new MockResponse.Builder().webSocketUpgrade(new EchoServer()).build());
+        Transport transport = connector.connect(ClientConfig.webSocket(uri("/nexus")).build(), 5_000);
+        try {
+            String address = transport.remoteAddress();
+            assertNotNull(address);
+            assertTrue(InetAddress.getByName(address).isLoopbackAddress(), address);
+            assertEquals(server.getPort(), transport.remotePort());
+        } finally {
+            transport.close(DisconnectReason.GRACEFUL);
+        }
+        // Still known after the close, as on the built-in transports.
+        assertEquals(server.getPort(), transport.remotePort());
+    }
+
+    @Test
+    void anIdlePooledConnectionIsNotReusedForTheUpgrade() throws Exception {
+        server.enqueue(new MockResponse.Builder().body("ok").build());
+        server.enqueue(new MockResponse.Builder().webSocketUpgrade(new EchoServer()).build());
+        OkHttpClient shared = new OkHttpClient();
+        try (Response response = shared.newCall(new Request.Builder()
+            .url("http://" + server.getHostName() + ":" + server.getPort() + "/").build()).execute()) {
+            assertEquals("ok", response.body().string());
+        }
+        assertEquals(1, shared.connectionPool().idleConnectionCount());
+
+        Transport transport = new OkHttpWebSocketConnector(shared)
+            .connect(ClientConfig.webSocket(uri("/nexus")).build(), 5_000);
+        try {
+            assertEquals(server.getPort(), transport.remotePort());
+            assertNotNull(transport.remoteAddress());
+        } finally {
+            transport.close(DisconnectReason.GRACEFUL);
+        }
+        server.takeRequest(5, TimeUnit.SECONDS);
+        RecordedRequest upgrade = server.takeRequest(5, TimeUnit.SECONDS);
+        assertNotNull(upgrade);
+        assertEquals(1, upgrade.getConnectionIndex(), "The upgrade opened a new connection.");
+        shared.connectionPool().evictAll();
+    }
+
+    @Test
+    void theGivenSocketFactoryIsUsed() throws Exception {
+        AtomicInteger created = new AtomicInteger();
+        SocketFactory counting = new SocketFactory() {
+            @Override
+            public Socket createSocket() {
+                created.incrementAndGet();
+                return new Socket();
+            }
+
+            @Override
+            public Socket createSocket(String host, int port) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Socket createSocket(String host, int port, InetAddress localHost, int localPort) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Socket createSocket(InetAddress host, int port) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        server.enqueue(new MockResponse.Builder().webSocketUpgrade(new EchoServer()).build());
+        OkHttpWebSocketConnector own =
+            new OkHttpWebSocketConnector(new OkHttpClient.Builder().socketFactory(counting).build());
+        Transport transport = own.connect(ClientConfig.webSocket(uri("/nexus")).build(), 5_000);
+        try {
+            assertTrue(created.get() >= 1);
+            assertEquals(server.getPort(), transport.remotePort());
+        } finally {
+            transport.close(DisconnectReason.GRACEFUL);
+        }
     }
 
     @Test

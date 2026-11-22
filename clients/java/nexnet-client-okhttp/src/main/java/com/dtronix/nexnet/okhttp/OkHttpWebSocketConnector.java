@@ -10,6 +10,7 @@ import java.net.URI;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import okhttp3.ConnectionPool;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -41,7 +42,9 @@ import org.jspecify.annotations.Nullable;
  *       connection. The given client is not changed; the connector derives its own.</li>
  *   <li>OkHttp offers {@code permessage-deflate}; a server that accepts it compresses the messages, which changes
  *       nothing for NexNet.</li>
- *   <li>{@link Transport#remoteAddress()} is unknown (OkHttp does not expose the socket).</li>
+ *   <li>Every connection opens a new socket: the connector keeps WebSocket connections out of the given client's
+ *       connection pool, so {@link Transport#remoteAddress()} and {@link Transport#remotePort()} report the socket's
+ *       peer (the proxy's address through an HTTP proxy; unknown through a SOCKS proxy).</li>
  * </ul>
  *
  * <p>Only {@link TransportKind#WEB_SOCKET} configurations are accepted. Thread-safe; one connector may serve many
@@ -51,7 +54,8 @@ public final class OkHttpWebSocketConnector implements Transport.Connector {
     private final OkHttpClient client;
 
     /**
-     * Creates a connector over an OkHttp client. The client's connection pool and dispatcher are shared.
+     * Creates a connector over an OkHttp client. The client's dispatcher, socket factory and settings are shared; its
+     * connection pool is not (an upgrade never reuses a pooled connection).
      *
      * @param client the OkHttp client
      */
@@ -63,6 +67,9 @@ public final class OkHttpWebSocketConnector implements Transport.Connector {
             .followRedirects(false)
             .followSslRedirects(false)
             .readTimeout(0, TimeUnit.MILLISECONDS)
+            // A WebSocket connection never returns to a pool; an empty one of its own makes every upgrade open (and
+            // record) a new socket instead of taking an idle connection from the given client.
+            .connectionPool(new ConnectionPool(0, 1, TimeUnit.SECONDS))
             .build();
     }
 
@@ -76,7 +83,8 @@ public final class OkHttpWebSocketConnector implements Transport.Connector {
     }
 
     /**
-     * The OkHttp client the connector uses: the given one with redirects and the read timeout turned off.
+     * The OkHttp client the connector uses: the given one with redirects and the read timeout turned off, and a
+     * connection pool of its own.
      *
      * @return the client
      */
@@ -99,9 +107,11 @@ public final class OkHttpWebSocketConnector implements Transport.Connector {
             request.header(header.getKey(), header.getValue());
         }
         boolean secure = uri.getScheme().equalsIgnoreCase("wss");
+        SocketRecorder sockets = new SocketRecorder(client.socketFactory());
         OkHttpWebSocketTransport transport =
-            new OkHttpWebSocketTransport(secure, uri.getScheme().toLowerCase(Locale.ROOT) + "://");
-        WebSocket webSocket = client.newWebSocket(request.build(), transport.listener());
+            new OkHttpWebSocketTransport(secure, uri.getScheme().toLowerCase(Locale.ROOT) + "://", sockets);
+        WebSocket webSocket =
+            client.newBuilder().socketFactory(sockets).build().newWebSocket(request.build(), transport.listener());
         try {
             transport.awaitOpen(Math.max(1, timeoutMillis));
         } catch (OkHttpWebSocketTransport.UpgradeException e) {

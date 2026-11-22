@@ -9,7 +9,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.ProtocolException;
+import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -45,6 +47,7 @@ final class OkHttpWebSocketTransport implements Transport {
 
     private final boolean secure;
     private final String name;
+    private final SocketRecorder sockets;
     private final LinkedBlockingQueue<byte[]> received = new LinkedBlockingQueue<>();
     private final Object openLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -54,13 +57,16 @@ final class OkHttpWebSocketTransport implements Transport {
     private volatile @Nullable WebSocket webSocket;
     private volatile @Nullable IOException failure;
     private volatile @Nullable X509Certificate certificate;
+    private volatile @Nullable String remoteAddress;
+    private volatile int remotePort = -1;
     /** Set once the upgrade succeeded or failed. */
     private boolean openSettled;
     private @Nullable IOException openFailure;
 
-    OkHttpWebSocketTransport(boolean secure, String name) {
+    OkHttpWebSocketTransport(boolean secure, String name, SocketRecorder sockets) {
         this.secure = secure;
         this.name = name;
+        this.sockets = sockets;
     }
 
     WebSocketListener listener() {
@@ -124,6 +130,16 @@ final class OkHttpWebSocketTransport implements Transport {
     @Override
     public String name() {
         return name;
+    }
+
+    @Override
+    public @Nullable String remoteAddress() {
+        return remoteAddress;
+    }
+
+    @Override
+    public int remotePort() {
+        return remotePort;
     }
 
     @Override
@@ -201,6 +217,14 @@ final class OkHttpWebSocketTransport implements Transport {
         @Override
         public void onOpen(WebSocket ws, Response response) {
             webSocket = ws;
+            Socket socket = sockets.connected();
+            if (socket != null) {
+                InetAddress address = socket.getInetAddress();
+                if (address != null) {
+                    remoteAddress = address.getHostAddress();
+                    remotePort = socket.getPort() == 0 ? -1 : socket.getPort();
+                }
+            }
             Handshake handshake = response.handshake();
             if (handshake != null) {
                 List<Certificate> peer = handshake.peerCertificates();
