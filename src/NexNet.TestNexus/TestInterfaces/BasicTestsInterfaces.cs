@@ -25,6 +25,10 @@ public partial interface IClientNexus
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 
     ValueTask ClientData(byte[] data);
+
+    /// <summary>Runs in the separate invocation pool, limited by <c>MaxSeparatePoolInvocations</c>.</summary>
+    [NexusMethod(SeparatePool = true)]
+    ValueTask ClientSeparatePool(int data);
 }
 
 
@@ -140,6 +144,13 @@ public partial class ClientNexus
     public ValueTask ClientData(byte[] data)
     {
         return ClientDataEvent?.Invoke(this, data) ?? ValueTask.CompletedTask;
+    }
+
+    public Func<ClientNexus, int, ValueTask>? ClientSeparatePoolEvent;
+
+    public ValueTask ClientSeparatePool(int data)
+    {
+        return ClientSeparatePoolEvent?.Invoke(this, data) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnConnected(bool isReconnected)
