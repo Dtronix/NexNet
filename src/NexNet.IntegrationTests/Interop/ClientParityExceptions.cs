@@ -31,7 +31,9 @@ internal enum ParityGap
 
     /// <summary>
     /// The rows run, but part of the test checks the C# client only (a branch on <c>ClientLanguages.CSharp</c>, a check or
-    /// cast to an in-process driver type such as <c>client as InProcClientDriver&lt;,&gt;</c>, or <c>MatrixTestBase.InProc</c>).
+    /// cast to an in-process driver type such as <c>client as InProcClientDriver&lt;,&gt;</c>, <c>MatrixTestBase.InProc</c>, or a
+    /// read of a harness member only the C# client fills, such as <c>RemoteListState.IsReadOnly</c>, which is null on the
+    /// other languages: a <c>??</c> fallback on it would hide the gap).
     /// <c>MatrixTestBase.AssertNotOutstanding</c> checks every language and is exempt (<see cref="ClientParityExceptions.DriverTypeChecks"/>).
     /// </summary>
     CSharpOnlyAssertion,
@@ -61,7 +63,8 @@ internal sealed record DriverTypeCheckExemption(string Helper, string Reason);
 
 /// <summary>
 /// Every matrix test that does not run, or not fully, on every client language, and why. <see cref="ClientParityTests"/>
-/// fails when a test has a gap that is not listed here, and when an entry here no longer matches a gap.
+/// fails when a test has a gap that is not listed here, when an entry here no longer matches a gap, and when an entry's
+/// test (or helper) is not named in the "Parity exceptions" section of <c>docs/articles/multi-language-clients.md</c>.
 /// </summary>
 /// <remarks>
 /// Transports and capabilities per language: <c>src/NexNet.Interop/ClientLanguages.cs</c>. Java has no UDS and nothing
@@ -120,6 +123,9 @@ internal static class ClientParityExceptions
     private const string ListTestCounter =
         "Runtime internal: only the count of changes a list received before its snapshot is checked on C# alone. It is a C# runtime test field (NexusListClient.TestChangesReceivedBeforeSnapshot) that no harness operation exposes. The list state is asserted on every language, and the other languages are checked by their final contents, which a change applied before the snapshot would corrupt.";
 
+    private const string ListIsReadOnly =
+        "By design: ICollection<T>.IsReadOnly is C# API (INexusList.IsReadOnly); Java and JavaScript expose the list's mode, which the test asserts on every language. The ClientWrites_* tests check on every language that a client write is refused in ServerToClient and Relay mode and accepted in BiDirectional mode.";
+
     private const string OutstandingById =
         "Not a gap: AssertNotOutstanding asserts on every language that the client holds no invocation ID (IClientUnderTest.GetOutstandingInvocationsAsync). For the C# client only it also checks the given ID in the session's ID table, which is visible in process; that extra check narrows nothing on the other languages.";
 
@@ -171,6 +177,9 @@ internal static class ClientParityExceptions
         new("NexusClientTests_NexusDuplexPipe.Client_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ServerPipeObject),
         new("RemoteExceptionDetailTests.TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ExceptionTypeName),
         new("NexusCollectionSnapshotOrderTests.ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListTestCounter),
+        new("NexusListTests.IsReadOnly_IsFalseOnBidirectional", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListIsReadOnly),
+        new("NexusListTests.IsReadOnly_IsTrueOnServerToClient", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListIsReadOnly),
+        new("NexusListTests.IsReadOnly_IsTrueOnRelay", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListIsReadOnly),
 
         // Language variants by design (D).
         new("ReconnectionPolicyTests.DefaultReconnection_OnlyABrowserClientReconnects", ParityGap.PlatformVariantAssertion, ParityLanguages.Browser, BrowserDefaultReconnection),
