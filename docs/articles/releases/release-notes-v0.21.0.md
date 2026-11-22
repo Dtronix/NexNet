@@ -118,6 +118,14 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   connected", and any other write threw "Can't send when writer is not set." Argument checks (a negative index) still
   come first. ([#355](https://github.com/Dtronix/NexNet/pull/355))
   - **Migration:** code that relied on `RemoveAsync` returning false on a read-only list must not call it there.
+- **Behavior change: the C# client reports `Reconnecting` while it reconnects.** When a lost session starts the
+  reconnection loop, `NexusClient.StateChanged` now raises `ConnectionState.Reconnecting` (after the lost session's
+  `Disconnecting` and `Disconnected`), and `State` reads `Reconnecting` until an attempt connects (`Connected`) or the
+  policy gives up (`Disconnected`, raised once). Failed attempts no longer report their own `Disconnecting`/`Disconnected`.
+  Before, the client never raised `Reconnecting` and `State` read `Disconnected` between attempts. The Java and
+  JavaScript clients already reported `Reconnecting`. (S45)
+  - **Migration:** code that waited for `Disconnected` to notice a lost session while a reconnection policy is set
+    should also handle `Reconnecting`; `DisconnectedTask` is unchanged.
 
 ## New features
 
