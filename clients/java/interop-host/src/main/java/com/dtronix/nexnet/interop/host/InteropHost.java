@@ -422,6 +422,8 @@ final class InteropHost {
                 return pipe(scope, args).completeInput();
             case "pipe.forward":
                 return pipe(scope, args).forwardTo(scope.get(args.str("to"), PipeEntry.class));
+            case "pipe.bridge":
+                return pipe(scope, args).bridge(scope.get(args.str("other"), PipeEntry.class));
             case "pipe.dispose": {
                 Object value = scope.find(args.str("pipe"));
                 if (value instanceof PipeEntry) {

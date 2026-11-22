@@ -156,6 +156,30 @@ final class PipeEntry {
         return first.thenCompose(v -> pipe.forwardTo(to.pipe)).thenApply(v -> Protocol.empty());
     }
 
+    /**
+     * {@code pipe.bridge}: the runtime's {@link NexusDuplexPipe#bridge}. Bytes an earlier {@code pipe.read} left in
+     * either entry's buffer are written to the other pipe first (in C# they are still in the pipe's reader).
+     */
+    CompletableFuture<Map<String, Object>> bridge(PipeEntry other) {
+        if (other == this) {
+            throw new HostError(HostError.INVALID_OPERATION, "A pipe cannot be bridged to itself.");
+        }
+        CompletableFuture<Void> first = takeBuffered(other).thenCompose(v -> other.takeBuffered(this));
+        return first.thenCompose(v -> NexusDuplexPipe.bridge(pipe, other.pipe)).thenApply(v -> Protocol.empty());
+    }
+
+    /** Writes the bytes an earlier {@code pipe.read} left in this entry's buffer to {@code to}'s pipe. */
+    private CompletableFuture<Void> takeBuffered(PipeEntry to) {
+        byte[] rest;
+        synchronized (lock) {
+            rest = buffered;
+            buffered = new byte[0];
+        }
+        return rest.length == 0
+            ? CompletableFuture.completedFuture(null)
+            : to.pipe.write(ByteBuffer.wrap(rest));
+    }
+
     /** Appends the next chunk of input to the buffer; false at the end of input. */
     private CompletableFuture<Boolean> fill() {
         return pipe.read().thenApply(chunk -> {

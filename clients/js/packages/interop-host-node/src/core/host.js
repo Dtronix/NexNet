@@ -1799,6 +1799,16 @@ export class Host {
       await pe.pipe.forwardTo(to.pipe);
       return {};
     });
+    op('pipe.bridge', async (args, ctx) => {
+      const pe = this.#pipe(ctx, args.pipe);
+      const other = this.#pipe(ctx, args.other);
+      if (other === pe) throw invalidOperation('A pipe cannot be bridged to itself.');
+      // Bytes an earlier pipe.read left unread go first: in C# they are still in the pipe's reader.
+      if (pe.bufferedLength > 0) await other.writer().write(pe.take(pe.bufferedLength));
+      if (other.bufferedLength > 0) await pe.writer().write(other.take(other.bufferedLength));
+      await pe.pipe.bridge(other.pipe);
+      return {};
+    });
     op('pipe.completeInput', async (args, ctx) => {
       const pe = this.#pipe(ctx, args.pipe);
       pe.inputDone = true;
