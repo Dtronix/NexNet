@@ -320,19 +320,20 @@ jobs:
           if-no-files-found: ignore
 
   # Bucket-A interop rows (D23/D24) against each language host. Every row is required: a failing interop test fails
-  # the job. java-okhttp is the JVM host with NEXNET_JAVA_WEBSOCKET=okhttp (Q08): its WebSocket and WebSocketTls rows run
-  # on the OkHttp connector (nexnet-client-okhttp), and it reports no other transport, so their rows are skipped.
+  # the job. The matrix generates only the rows a language can run (H55), and the java job also runs every WebSocket
+  # and WebSocketTls row on the OkHttp connector of nexnet-client-okhttp (the java/WebSocket(okhttp) variant rows). The
+  # test session writes a coverage report (NEXNET_MATRIX_REPORT) and fails on a skipped row whose reason cites no card.
   interop:
     if: ${{ !inputs.only-android }}
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
-        lang: [node, java, java-okhttp, browser-chromium]
+        lang: [node, java, browser-chromium]
     env:
-      NEXNET_TEST_LANGS: ${{ matrix.lang == 'java-okhttp' && 'java' || matrix.lang }}
-      NEXNET_JAVA_WEBSOCKET: ${{ matrix.lang == 'java-okhttp' && 'okhttp' || '' }}
+      NEXNET_TEST_LANGS: ${{ matrix.lang }}
       NEXNET_REQUIRE_SDKS: '1'
+      NEXNET_MATRIX_REPORT: ${{ github.workspace }}/artifacts/matrix-coverage
     steps:
       - uses: actions/checkout@v7
         with:
@@ -353,20 +354,20 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - uses: actions/setup-node@v7
-        if: ${{ !startsWith(matrix.lang, 'java') }}
+        if: matrix.lang != 'java'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: clients/js/package-lock.json
 
       - uses: actions/setup-java@v6
-        if: startsWith(matrix.lang, 'java')
+        if: matrix.lang == 'java'
         with:
           distribution: temurin
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@v6
-        if: startsWith(matrix.lang, 'java')
+        if: matrix.lang == 'java'
         with:
           cache-read-only: ${{ env.NEXNET_GRADLE_CACHE_READ_ONLY }}
 
@@ -375,7 +376,7 @@ jobs:
 
       # The host build commands are fixed by docs/internals/interop-control-protocol.md §10.
       - name: Build the Node/browser host
-        if: ${{ !startsWith(matrix.lang, 'java') }}
+        if: matrix.lang != 'java'
         run: |
           npm ci --prefix clients/js
           npm run build:interop-host --prefix clients/js
@@ -386,7 +387,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build the JVM host
-        if: startsWith(matrix.lang, 'java')
+        if: matrix.lang == 'java'
         run: .github/scripts/gradle-retry.sh clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
@@ -396,6 +397,32 @@ jobs:
           dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
           --treenode-filter "/*/*/*/*[Lang=${{ env.NEXNET_TEST_LANGS }}]"
           -- --report-trx
+
+      # H55: the coverage report of the matrix (MatrixCoverage) as the step summary and an artifact. The test session
+      # already failed on an uncited skip; this step says so again in the summary, and fails when no report was written.
+      - name: Matrix coverage report
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          report="$NEXNET_MATRIX_REPORT"
+          if [ ! -f "$report/matrix-coverage.json" ]; then
+            echo "::error::The test session wrote no matrix coverage report to $report."
+            exit 1
+          fi
+          cat "$report/matrix-coverage.md" >> "$GITHUB_STEP_SUMMARY"
+          uncited=$(jq '.uncitedSkips' "$report/matrix-coverage.json")
+          if [ "$uncited" != "0" ]; then
+            echo "::error::$uncited matrix row(s) were skipped for a reason that cites no card; see the step summary."
+            exit 1
+          fi
+
+      - name: Upload the matrix coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: matrix-coverage-${{ matrix.lang }}
+          path: artifacts/matrix-coverage/
+          if-no-files-found: ignore
 
       - name: Upload interop results
         if: failure()
