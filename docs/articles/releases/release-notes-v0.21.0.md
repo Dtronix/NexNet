@@ -307,6 +307,12 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   example a WebSocket server that sends a text message right after the upgrade), the session disconnected while still
   holding its write lock, so the disconnect waited out its 5 s write-lock timeout before `ConnectAsync` failed. The
   send now releases the lock first ([#363](https://github.com/Dtronix/NexNet/pull/363)).
+- **C# client: `DisconnectAsync` stops a running reconnection.** A `DisconnectAsync` made while the client was
+  reconnecting did not stop the reconnection loop: between attempts it did nothing, and during an attempt's handshake
+  (or right after the attempt connected, from `OnConnected`) the disconnected attempt was retried, so the client
+  connected again after a graceful disconnect. It now ends the loop wherever it is; the client ends `Disconnected`
+  and does not reconnect. A reconnection attempt and a concurrent `ConnectAsync` can no longer both open a session.
+  The Java and JavaScript clients already stopped reconnecting on `disconnect()`.
 
 ## Documentation
 
