@@ -76,14 +76,12 @@ public static class ClientLanguages
         ClientCapabilities.AuthorizationHeader | ClientCapabilities.ClientCertificate | ClientCapabilities.Pinning
         | ClientCapabilities.CustomCa | ClientCapabilities.RemoteCertificate | ClientCapabilities.HttpSocket
         | ClientCapabilities.Tcp | ClientCapabilities.Uds | ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
-        | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
+        | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation
+        | ClientCapabilities.UpgradeHeaders;
 
     // Browsers: WebSocket only, and none of the TLS or header controls (gotcha 3).
     private const ClientCapabilities Browser = ClientCapabilities.FakeTime | ClientCapabilities.ClientPool
         | ClientCapabilities.PipeInputCompletion | ClientCapabilities.ChannelReadCancellation;
-
-    // Custom upgrade headers: Java and Node only. The C# client has an Authorization header and no other.
-    private const ClientCapabilities JavaAndNode = Everything | ClientCapabilities.UpgradeHeaders;
 
     // The Java client has no UDS transport (D4).
     private const ClientCapabilities JavaGaps = ClientCapabilities.Uds;
@@ -100,11 +98,11 @@ public static class ClientLanguages
     private static readonly IReadOnlyDictionary<string, ClientLanguageInfo> BuiltIn = new Dictionary<string, ClientLanguageInfo>(StringComparer.Ordinal)
     {
         [CSharp] = new(CSharp, ClientTransports.All, Everything | ClientCapabilities.Quic),
-        [Node] = new(Node, NodeTransports, JavaAndNode),
+        [Node] = new(Node, NodeTransports, Everything),
         [BrowserChromium] = new(BrowserChromium, BrowserTransports, Browser),
         [BrowserFirefox] = new(BrowserFirefox, BrowserTransports, Browser),
         [BrowserWebKit] = new(BrowserWebKit, BrowserTransports, Browser),
-        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), JavaAndNode & ~JavaGaps) { Variants = JavaVariants },
+        [Java] = new(Java, NodeTransports.Where(t => t != ClientTransport.Uds).ToArray(), Everything & ~JavaGaps) { Variants = JavaVariants },
     };
 
     private static readonly ConcurrentDictionary<string, ClientLanguageInfo> Languages = new(BuiltIn, StringComparer.Ordinal);

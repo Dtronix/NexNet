@@ -181,8 +181,8 @@ public enum ClientCapabilities
 
     /// <summary>
     /// Sends custom headers on the WebSocket and HttpSocket upgrade request (<see cref="ClientSpec.UpgradeHeaders"/>):
-    /// Java (<c>ClientConfig.Builder.header</c>) and Node (<c>webSocket.headers</c>, <c>httpSocket.headers</c>). The C#
-    /// client sends only an <c>Authorization</c> header (<see cref="AuthorizationHeader"/>), and a browser none.
+    /// C# (<c>HttpClientConfig.UpgradeHeaders</c>), Java (<c>ClientConfig.Builder.header</c>) and Node
+    /// (<c>webSocket.headers</c>, <c>httpSocket.headers</c>). A browser cannot send headers.
     /// </summary>
     UpgradeHeaders = 1 << 13,
 }
