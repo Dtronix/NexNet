@@ -8,6 +8,43 @@ namespace NexNet.Interop;
 /// <param name="Count">The list's count, read in the client the moment the operation completed.</param>
 public readonly record struct RemoteListOpResult(bool Ok, int Count);
 
+/// <summary>
+/// A slow consumer for a client's list (control protocol §6.10 <c>list.throttle</c>): the list's process test hook (C#
+/// <c>NexusBroadcastClient.ProcessTestHook</c>, Java <c>NexusListClient.setProcessTestHook</c>, JS
+/// <c>NexusList.setProcessTestHook</c>) delays or holds received list messages before the client processes them. While it
+/// does, the client reads nothing more from the collection pipe and grants the server no credit.
+/// </summary>
+/// <remarks>
+/// Messages are counted from the throttle's installation, the first one is 1. The first message is held when
+/// <see cref="Pause"/> is set, else delayed by <see cref="FirstDelayMs"/>; every later message whose number is a multiple
+/// of <see cref="Every"/> is delayed by <see cref="DelayMs"/>.
+/// </remarks>
+public sealed record RemoteListThrottle
+{
+    /// <summary>Delays every <see cref="Every"/>th message by <see cref="DelayMs"/> (at least 1; default 1, every message).</summary>
+    public int Every { get; init; } = 1;
+
+    /// <summary>The delay of every <see cref="Every"/>th message, in milliseconds; 0 for none.</summary>
+    public int DelayMs { get; init; }
+
+    /// <summary>The delay of the first message, in milliseconds; 0 for none.</summary>
+    public int FirstDelayMs { get; init; }
+
+    /// <summary>
+    /// Holds the first message until the throttle is replaced or removed (<see cref="RemoteListExtensions.ThrottleAsync{T}"/>)
+    /// or 60 seconds pass; a language host also releases it when it disposes the client.
+    /// </summary>
+    public bool Pause { get; init; }
+
+    /// <summary>Whether the throttle does anything; one that does not removes the hook.</summary>
+    internal bool IsActive => DelayMs > 0 || FirstDelayMs > 0 || Pause;
+}
+
+/// <summary>What a <see cref="RemoteListThrottle"/> has seen (control protocol §6.10 <c>list.throttleState</c>).</summary>
+/// <param name="Seen">The received messages the throttle was called for since its installation.</param>
+/// <param name="Holding">Whether it holds a message now (<see cref="RemoteListThrottle.Pause"/>).</param>
+public readonly record struct RemoteListThrottleState(int Seen, bool Holding);
+
 /// <summary>Harness-only operations on an <see cref="IRemoteList{T}"/> of a client under test.</summary>
 public static class RemoteListExtensions
 {
@@ -29,6 +66,39 @@ public static class RemoteListExtensions
             Remote.RemoteList<T> remote => remote.WatchAsync(throws: true),
             InProc.InProcRemoteList<T> inProc => inProc.WatchAsync(throws: true),
             _ => throw new NotSupportedException($"{list.GetType()} cannot install a throwing change handler."),
+        };
+    }
+
+    /// <summary>
+    /// Installs, replaces or (with null or an inactive throttle) removes a slow consumer on the client's list (control
+    /// protocol §6.10 <c>list.throttle</c>). Replacing or removing a throttle releases the message it holds. Works whether
+    /// or not the collection is enabled.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The list is not a list of a harness driver.</exception>
+    public static ValueTask ThrottleAsync<T>(this IRemoteList<T> list, RemoteListThrottle? throttle)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        return list switch
+        {
+            Remote.RemoteList<T> remote => remote.ThrottleAsync(throttle),
+            InProc.InProcRemoteList<T> inProc => inProc.ThrottleAsync(throttle),
+            _ => throw new NotSupportedException($"{list.GetType()} cannot throttle its list."),
+        };
+    }
+
+    /// <summary>
+    /// What the client list's throttle has seen, and whether it holds a message (control protocol §6.10
+    /// <c>list.throttleState</c>); zero and false without a throttle.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The list is not a list of a harness driver.</exception>
+    public static ValueTask<RemoteListThrottleState> GetThrottleStateAsync<T>(this IRemoteList<T> list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        return list switch
+        {
+            Remote.RemoteList<T> remote => remote.GetThrottleStateAsync(),
+            InProc.InProcRemoteList<T> inProc => new ValueTask<RemoteListThrottleState>(inProc.GetThrottleState()),
+            _ => throw new NotSupportedException($"{list.GetType()} cannot throttle its list."),
         };
     }
 

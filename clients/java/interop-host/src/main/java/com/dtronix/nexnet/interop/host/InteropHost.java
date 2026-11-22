@@ -463,6 +463,10 @@ final class InteropHost {
                 return done(clientOnly(scope, args).listWatch(args));
             case "list.unwatch":
                 return done(clientOnly(scope, args).listUnwatch(args));
+            case "list.throttle":
+                return done(clientOnly(scope, args).listThrottle(args));
+            case "list.throttleState":
+                return done(clientOnly(scope, args).listThrottleState(args));
 
             case "pool.create": {
                 ScaffoldingExport<?> export = export(args);

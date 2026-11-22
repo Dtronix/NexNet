@@ -53,6 +53,29 @@ internal sealed class RemoteList<T>(RemoteClientDriver driver, RemoteCollection 
 
     public ValueTask<bool> ClearAsync() => Op("clear");
 
+    /// <summary>Installs, replaces or removes the list's slow consumer (<see cref="RemoteListExtensions.ThrottleAsync{T}"/>).</summary>
+    public async ValueTask ThrottleAsync(RemoteListThrottle? throttle)
+    {
+        var args = new JsonObject { ["collection"] = ControlJson.ToJson(Collection) };
+        if (throttle is { IsActive: true })
+        {
+            args["every"] = throttle.Every;
+            args["delayMs"] = throttle.DelayMs;
+            args["firstDelayMs"] = throttle.FirstDelayMs;
+            args["pause"] = throttle.Pause;
+        }
+        await driver.CallAsync("list.throttle", args, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
+    }
+
+    /// <summary>What the list's slow consumer has seen (<see cref="RemoteListExtensions.GetThrottleStateAsync{T}"/>).</summary>
+    public async ValueTask<RemoteListThrottleState> GetThrottleStateAsync()
+    {
+        var result = await driver.CallAsync("list.throttleState", new JsonObject { ["collection"] = ControlJson.ToJson(Collection) },
+            RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
+        var seen = result["seen"] ?? throw new ControlProtocolException("list.throttleState returned no seen.");
+        return new RemoteListThrottleState(seen.GetValue<int>(), result["holding"]?.GetValue<bool>() == true);
+    }
+
     public async ValueTask<IReadOnlyList<T>> SnapshotAsync()
     {
         var result = await driver.CallAsync("list.snapshot", new JsonObject { ["collection"] = ControlJson.ToJson(Collection) }, RemoteClientDriver.DefaultOpMs)
