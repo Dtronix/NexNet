@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Collections;
 using NexNet.Diagnostics;
+using NexNet.Internals;
 using NexNet.Interop.Reflection;
 using NexNet.Interop.Scripting;
 using NexNet.Invocation;
@@ -32,8 +34,9 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     private readonly ConcurrentDictionary<string, System.Threading.Channels.Channel<InProcRemotePipe>> _held = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly InProcMetricsRecorder? _metrics;
+    private readonly Lock _lifecycleLock = new();
+    private Task _lifecycle = Task.CompletedTask;
     private ConnectionState _lastState = ConnectionState.Disconnected;
-    private volatile bool _sessionIsReconnection;
     private int _disposed;
 
     /// <summary>Creates the driver; the client is not connected.</summary>
@@ -64,30 +67,88 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         {
             _facade = (ScriptFacade)Activator.CreateInstance(facadeType)!;
             var unbound = binder.Bind(_facade, Nexus);
-            if (unbound.Count > 0)
+            if (unbound.Contains(_facade.OnConnected))
             {
-                // OnConnected(isReconnected) as the C# client computes it: true for a session the client's reconnection
-                // loop opened (created in the Reconnecting state, NexusSession's ReconnectingInProgress), false for a
-                // connect the test asked for. The session is created before it reports Connected.
+                // OnConnected runs where the C# client runs nexus.Connected: once the session has processed the
+                // ServerGreeting (the handshake is complete), not when it reports Connected, which it does as soon as
+                // the transport is up and before it sends its greeting. isReconnected is the value the client passes
+                // to nexus.Connected: true for a session its reconnection loop opened (created in the Reconnecting
+                // state, NexusSession's ReconnectingInProgress), false for a connect the test asked for.
                 var onSessionSetup = config.InternalOnSessionSetup;
                 config.InternalOnSessionSetup = session =>
                 {
                     onSessionSetup?.Invoke(session);
-                    _sessionIsReconnection = session.State == ConnectionState.Reconnecting;
+                    var isReconnection = session.State == ConnectionState.Reconnecting;
+                    var ready = SessionReadyTask(session);
+                    EnqueueLifecycle(async () =>
+                    {
+                        try
+                        {
+                            await ready.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return; // The driver is disposed.
+                        }
+
+                        // The ready task also completes when the session ends during the handshake: no OnConnected then.
+                        if (((IMeteredSession)session).IsEstablished)
+                            binder.RunDetached(_facade.OnConnected, new JsonArray(JsonValue.Create(isReconnection)));
+                    });
                 };
+            }
+
+            if (unbound.Contains(_facade.OnDisconnected))
+            {
                 _client.StateChanged += (_, state) =>
                 {
                     var previous = _lastState;
                     _lastState = state;
-                    foreach (var slot in unbound)
-                    {
-                        if (state == ConnectionState.Connected && slot == _facade.OnConnected)
-                            binder.RunDetached(slot, new JsonArray(JsonValue.Create(_sessionIsReconnection)));
-                        else if (state == ConnectionState.Disconnected && previous != ConnectionState.Disconnected && slot == _facade.OnDisconnected)
-                            binder.RunDetached(slot, new JsonArray());
-                    }
+                    // Queued behind the session's OnConnected, so the two run in the order the client raised them.
+                    if (state == ConnectionState.Disconnected && previous != ConnectionState.Disconnected)
+                        EnqueueLifecycle(() =>
+                        {
+                            binder.RunDetached(_facade.OnDisconnected, new JsonArray());
+                            return Task.CompletedTask;
+                        });
                 };
             }
+        }
+    }
+
+    /// <summary>
+    /// The task the C# client awaits before its connect returns (NexusSession's ready task, read by reflection: the
+    /// client has no public handshake-complete event). It completes once the session has processed the ServerGreeting,
+    /// right after the session starts nexus.Connected, or when the session ends first.
+    /// </summary>
+    private static Task SessionReadyTask(INexusSession session)
+    {
+        var field = session.GetType().GetField("_readyTaskCompletionSource", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException(
+                $"{session.GetType()} has no _readyTaskCompletionSource field; update {nameof(InProcClientDriver<TClientNexus, TServerProxy>)}.{nameof(SessionReadyTask)}.");
+        return (field.GetValue(session) as TaskCompletionSource)?.Task ?? Task.CompletedTask;
+    }
+
+    /// <summary>Runs <paramref name="next"/> after the lifecycle deliveries queued before it.</summary>
+    private void EnqueueLifecycle(Func<Task> next)
+    {
+        lock (_lifecycleLock)
+        {
+            _lifecycle = _lifecycle.ContinueWith(
+                async _ =>
+                {
+                    try
+                    {
+                        await next().ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // A lifecycle script has nobody to report to.
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default).Unwrap();
         }
     }
 
