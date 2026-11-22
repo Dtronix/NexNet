@@ -300,6 +300,7 @@ language-idiomatic APIs are not matrix tests.
 | A refused WebSocket upgrade (redirect) is `InternalError`, not `ProtocolError` (`UpgradeRedirect_IsNotFollowed_FailsWithProtocolError`) | Browser | The browser `WebSocket` API reports a failed upgrade only as a generic error, with no status. That the redirect is not followed is asserted on every language |
 | A text message closes the WebSocket with 1000, not 1003 (`WebSocket_TextMessage_ClientClosesWith1003`) | Browser | Page JavaScript may only send close code 1000 or 3000–4999. That the client refuses the session is asserted on every language |
 | The remote endpoint is empty while connected (`RemoteEndpoint_IsTheServerEndpointWhileConnected`) | Browser | The browser does not expose the peer address of a WebSocket |
+| Content headers (`Content-Type`, `Expires`, ...) in custom upgrade headers are refused (`ArgumentException`) | C# | .NET cannot put a content header on the upgrade request: `HttpRequestHeaders` refuses them, and the upgrade is a GET with no body. Java and JavaScript validate upgrade headers the same way otherwise, and send these. Not a matrix gap: no test sends a content header |
 
 **By design** (C#-only behavior or API, or a counterpart that is idiomatic and unit-tested in its own language):
 
