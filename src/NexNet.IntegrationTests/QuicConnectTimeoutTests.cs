@@ -51,8 +51,20 @@ internal class QuicConnectTimeoutTests : BaseTests
         await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await server.StopAsync().Timeout(TestTimeouts.Connect);
 
-        // The stopped in-process server's port drops the packets: the case seen in ReconnectsStopsAfterSpecifiedTimes.
-        await AssertConnectTimesOut((QuicClientConfig)CreateClientConfig(Type.Quic));
+        // The case seen in ReconnectsStopsAfterSpecifiedTimes. A stopped server frees its UDP port at once (S51), so
+        // the connect may be refused (ICMP port unreachable) before the timeout; it must never take longer.
+        var clientConfig = (QuicClientConfig)CreateClientConfig(Type.Quic);
+        clientConfig.ConnectionTimeout = ConnectionTimeoutMs;
+
+        var sw = Stopwatch.StartNew();
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(async () =>
+            await QuicTransport.ConnectAsync(clientConfig, CancellationToken.None).AsTask().Timeout(10));
+        sw.Stop();
+
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.ConnectionTimeout)
+            .Or.IsEqualTo(TransportError.ConnectionRefused);
+        await Assert.That(sw.Elapsed).IsLessThan(TimeSpan.FromMilliseconds(ConnectionTimeoutMs) + Slack)
+            .Because("The connect must fail within the connection timeout, not when msquic finishes the shutdown.");
     }
 
     private static async Task AssertConnectTimesOut(QuicClientConfig clientConfig)
