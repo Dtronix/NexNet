@@ -13,6 +13,13 @@ public sealed record LanguageHostOptions
     /// <summary>A ping without a response for this long is a crash.</summary>
     public TimeSpan PingTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// How long a ping may go unanswered, in all, while a test's request is in flight. A host whose single loop is busy
+    /// with heavy work (a client applying a snapshot of a million items) answers late; a ping still unanswered after
+    /// this long is a crash. Not below <see cref="PingTimeout"/>.
+    /// </summary>
+    public TimeSpan BusyPingTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
     /// <summary>The expected schema hash; null skips the check.</summary>
     public string? ExpectedSchemaHash { get; init; }
 
@@ -39,7 +46,7 @@ public sealed record HostCrash(int Generation, string Reason, string? ThreadDump
 
 /// <summary>
 /// One language host process and its control connection (control protocol §9): launches it, checks its hello, runs the
-/// warm-up self-test, pings it every second, and on a crash (no pong for 5 s, or the process ends) captures a thread
+/// warm-up self-test, pings it every second, and on a crash (no pong for 5 s, 30 s while a test's request is in flight, or the process ends) captures a thread
 /// dump and the stderr tail, fails the requests in flight with <see cref="HostCrashedException"/>, kills the process
 /// tree and launches a new host.
 /// </summary>
@@ -268,11 +275,11 @@ public sealed class LanguageHost : IAsyncDisposable
 
                 try
                 {
-                    await connection.RequestAsync(null, "ping", deadline: Options.PingTimeout).ConfigureAwait(false);
+                    await PingAsync(connection).ConfigureAwait(false);
                 }
-                catch (TimeoutException)
+                catch (TimeoutException e)
                 {
-                    reason = $"no response to ping within {Options.PingTimeout.TotalSeconds:F1} s";
+                    reason = e.Message;
                     break;
                 }
                 catch (Exception) when (_lifetime.IsCancellationRequested)
@@ -293,6 +300,39 @@ public sealed class LanguageHost : IAsyncDisposable
         }
 
         await HandleCrashAsync(generation, connection, process, reason).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Pings the host. A ping unanswered within <see cref="LanguageHostOptions.PingTimeout"/> while a test's request is in
+    /// flight gets another ping, up to <see cref="LanguageHostOptions.BusyPingTimeout"/> in all: the host is busy, not hung.
+    /// </summary>
+    /// <exception cref="TimeoutException">No response in time; the message is the crash reason.</exception>
+    private async Task PingAsync(ControlConnection connection)
+    {
+        try
+        {
+            await connection.RequestAsync(null, "ping", deadline: Options.PingTimeout).ConfigureAwait(false);
+            return;
+        }
+        catch (TimeoutException) when (connection.HasTestRequestsInFlight && Options.BusyPingTimeout > Options.PingTimeout)
+        {
+            // Busy with a test's request: wait longer below.
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException($"no response to ping within {Options.PingTimeout.TotalSeconds:F1} s");
+        }
+
+        try
+        {
+            // The host answers in order: this pong follows the late one.
+            await connection.RequestAsync(null, "ping", deadline: Options.BusyPingTimeout - Options.PingTimeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                $"no response to ping within {Options.BusyPingTimeout.TotalSeconds:F1} s while a test's request was in flight");
+        }
     }
 
     /// <summary>

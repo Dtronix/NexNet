@@ -73,6 +73,34 @@ public class LanguageHostTests
     }
 
     [Test]
+    public async Task UnansweredPings_WhileATestRequestIsInFlight_WaitForTheBusyTimeout()
+    {
+        // A host busy with a test's request (a client applying a huge snapshot) may answer pings late: only the busy
+        // timeout makes that a crash.
+        var launcher = new FakeHostLauncher();
+        var options = FastPings with { PingTimeout = TimeSpan.FromSeconds(1), BusyPingTimeout = TimeSpan.FromSeconds(5) };
+        await using var host = new LanguageHost("fake", FakeHostLauncher.Config(), launcher, options);
+        var crashed = new TaskCompletionSource<HostCrash>(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Crashed += c => crashed.TrySetResult(c);
+        await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(20));
+        var connection = await host.GetConnectionAsync();
+
+        await connection.BeginTestAsync("busy").WaitAsync(TimeSpan.FromSeconds(10));
+        var inFlight = connection.RequestAsync("busy", "fake.hang");
+        (await CurrentFake(launcher)).AnswerPings = false;
+        var stopped = DateTime.UtcNow;
+
+        // Past the plain ping timeout, the host is busy, not crashed.
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+        await Assert.That(crashed.Task.IsCompleted).IsFalse().Because("a busy host gets the busy timeout");
+
+        var crash = await crashed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await Assert.That(crash.Reason).Contains("while a test's request was in flight");
+        await Assert.That(DateTime.UtcNow - stopped).IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(4));
+        await Assert.ThrowsExactlyAsync<HostCrashedException>(async () => await inFlight.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Test]
     public async Task ProcessExit_IsACrash_AndOldHandlesFailWithHostCrashed()
     {
         await using var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(() => new InteropServerNexus());
