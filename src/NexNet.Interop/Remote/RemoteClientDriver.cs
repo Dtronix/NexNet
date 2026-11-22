@@ -24,6 +24,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
     private readonly ConcurrentDictionary<Task, byte> _outstanding = new();
     private readonly ForwardedCalls _forwards = new();
     private readonly ConcurrentDictionary<string, Action<ControlEvent>> _listWatches = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<RemoteToken> _connectTokens = new();
     private readonly IDisposable _events;
     private readonly ScriptFacade? _facade;
     private readonly RemoteInvoker _invoker;
@@ -90,8 +91,30 @@ public sealed class RemoteClientDriver : IClientUnderTest
     public Task ConnectAsync() => CallAsync("client.connect", null, DefaultWaitMs);
 
     /// <inheritdoc />
+    public Task ConnectAsync(RemoteCancel cancel) => CallAsync("client.connect", ConnectArgs(cancel), DefaultWaitMs);
+
+    /// <inheritdoc />
     public async Task<bool> TryConnectAsync()
         => (await CallAsync("client.tryConnect", null, DefaultWaitMs).ConfigureAwait(false))["ok"]?.GetValue<bool>() == true;
+
+    /// <inheritdoc />
+    public async Task<bool> TryConnectAsync(RemoteCancel cancel)
+        => (await CallAsync("client.tryConnect", ConnectArgs(cancel), DefaultWaitMs).ConfigureAwait(false))["ok"]?.GetValue<bool>() == true;
+
+    /// <summary>
+    /// The arguments of a connect with <paramref name="cancel"/> (control protocol §6.4). A runner token is kept, not
+    /// disposed, when the connect ends: the client runtime may still hold its token, and canceling it after the connect
+    /// must reach the runtime as it does in process. The driver releases it when it is disposed.
+    /// </summary>
+    private JsonObject? ConnectArgs(RemoteCancel cancel)
+    {
+        ThrowIfReleased();
+        if (RemoteInvoker.Cancel(this, cancel, out var token) is not { } json)
+            return null;
+        if (token != null)
+            _connectTokens.Enqueue(token);
+        return new JsonObject { ["cancel"] = json };
+    }
 
     /// <inheritdoc />
     public Task DisconnectAsync() => CallAsync("client.disconnect", null, DefaultWaitMs);
@@ -320,6 +343,8 @@ public sealed class RemoteClientDriver : IClientUnderTest
         }
 
         _forwards.CancelAll();
+        while (_connectTokens.TryDequeue(out var token))
+            token.Dispose();
         return true;
     }
 

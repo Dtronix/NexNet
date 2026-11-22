@@ -60,11 +60,12 @@ public interface IPoolUnderTest : IAsyncDisposable
 /// </summary>
 /// <remarks>
 /// <para>
-/// The pool owns the connection: <see cref="IClientUnderTest.ConnectAsync"/>, <see cref="IClientUnderTest.DisconnectAsync"/>,
+/// The pool owns the connection: <see cref="IClientUnderTest.ConnectAsync()"/>, <see cref="IClientUnderTest.DisconnectAsync"/>,
 /// <see cref="IClientUnderTest.CreatePipeAsync"/>, <see cref="IClientUnderTest.List{T}"/>,
 /// <see cref="IClientUnderTest.Callbacks{TScript}"/> and <see cref="IClientUnderTest.SignalAsync"/> throw
 /// <see cref="NotSupportedException"/>;
-/// <see cref="IClientUnderTest.TryConnectAsync"/> is <see cref="EnsureConnectedAsync"/>; and
+/// <see cref="IClientUnderTest.TryConnectAsync()"/> is <see cref="EnsureConnectedAsync"/> (a connect with a cancellation
+/// throws <see cref="NotSupportedException"/>); and
 /// <see cref="IClientUnderTest.AdvanceTimeAsync"/> moves the clock of the whole pool. The client nexus of pooled clients is
 /// not scripted: the server's calls to it complete with their default result.
 /// </para>

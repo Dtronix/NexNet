@@ -1,4 +1,5 @@
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
 using NexNet.Messages;
 using NexNet.Transports;
 #pragma warning disable VSTHRD200
@@ -92,5 +93,39 @@ internal partial class NexusClientTests
 
         await reconnected.Task.Timeout(T(TestTimeouts.Connect));
         await WaitUntil(() => client.State == ConnectionState.Connected, T(TestTimeouts.Connect));
+    }
+
+    /// <summary>
+    /// The connect token canceled after the connect succeeded does not disable reconnection on any language: the
+    /// cancellation reaches the client runtime's token (C# <c>CancellationToken</c>, Java <c>CancellationToken</c>, JS
+    /// <c>AbortSignal</c>) while the session is up, and the client still reconnects once the session is lost.
+    /// </summary>
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ConnectToken_CanceledAfterConnect_StillReconnects(ClientTarget target)
+    {
+        await using var server = await StartDedicatedServer(AbruptStop());
+        await using var client = await CreateClient(target, server, spec =>
+        {
+            spec.ReconnectDelaysMs = [0, 200];
+            spec.ReconnectContinuously = true;
+        });
+
+        using (var connectToken = new CancellationTokenSource())
+        {
+            await client.ConnectAsync(connectToken.Token).Timeout(T(TestTimeouts.Connect));
+            await connectToken.CancelAsync();
+        }
+
+        await WaitForFirstConnected(client);
+
+        // The cancellation has reached the client runtime before the session is lost.
+        await client.BarrierAsync().Timeout(T(1));
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
     }
 }

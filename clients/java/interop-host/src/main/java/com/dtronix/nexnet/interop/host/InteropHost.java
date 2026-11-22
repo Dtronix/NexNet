@@ -286,10 +286,15 @@ final class InteropHost {
                 scope.put(h, client);
                 return done(Protocol.map("h", h));
             }
-            case "client.connect":
-                return clientOnly(scope, args).connect();
-            case "client.tryConnect":
-                return clientOnly(scope, args).tryConnect();
+            case "client.connect": {
+                // A canceled connect fails with kind Canceled. A runner token stays in effect after the connect.
+                ClientEntry client = clientOnly(scope, args);
+                return withCancel(args, scope, client::connect);
+            }
+            case "client.tryConnect": {
+                ClientEntry client = clientOnly(scope, args);
+                return withCancel(args, scope, client::tryConnect);
+            }
             case "client.disconnect":
                 return clientOnly(scope, args).disconnect();
             case "client.dispose": {

@@ -195,8 +195,8 @@ final class ClientEntry extends Driven implements ScriptHost {
 
     // ------------------------------------------------------------------ lifecycle
 
-    CompletableFuture<Map<String, Object>> connect() {
-        return client.tryConnect().thenApply(result -> {
+    CompletableFuture<Map<String, Object>> connect(CancellationToken cancellationToken) {
+        return client.tryConnect(cancellationToken).thenApply(result -> {
             onAttempt(result);
             if (!result.isSuccess()) {
                 throw new CompletionException(connectError(result));
@@ -205,8 +205,8 @@ final class ClientEntry extends Driven implements ScriptHost {
         });
     }
 
-    CompletableFuture<Map<String, Object>> tryConnect() {
-        return client.tryConnect().thenApply(result -> {
+    CompletableFuture<Map<String, Object>> tryConnect(CancellationToken cancellationToken) {
+        return client.tryConnect(cancellationToken).thenApply(result -> {
             onAttempt(result);
             return Protocol.map("ok", result.isSuccess());
         });

@@ -183,7 +183,29 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     public Task ConnectAsync() => _client.ConnectAsync();
 
     /// <inheritdoc />
+    public async Task ConnectAsync(RemoteCancel cancel)
+    {
+        using var timer = InProcInvoker.CreateCancellation(cancel, out var token);
+        try
+        {
+            await _client.ConnectAsync(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException e) when (e is not TaskCanceledException && token.IsCancellationRequested)
+        {
+            // The kind Canceled of the language hosts.
+            throw new TaskCanceledException("The connection attempt was canceled.", e, token);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<bool> TryConnectAsync() => (await _client.TryConnectAsync().ConfigureAwait(false)).Success;
+
+    /// <inheritdoc />
+    public async Task<bool> TryConnectAsync(RemoteCancel cancel)
+    {
+        using var timer = InProcInvoker.CreateCancellation(cancel, out var token);
+        return (await _client.TryConnectAsync(token).ConfigureAwait(false)).Success;
+    }
 
     /// <inheritdoc />
     public Task DisconnectAsync() => _client.DisconnectAsync();

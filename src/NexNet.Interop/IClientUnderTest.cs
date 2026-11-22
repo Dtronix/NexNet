@@ -23,8 +23,31 @@ public interface IClientUnderTest : IAsyncDisposable
     /// <summary>Connects; throws when the connection fails.</summary>
     Task ConnectAsync();
 
+    /// <summary>
+    /// Connects with a cancellation passed to the client runtime's connect (C# <c>ConnectAsync(cancellationToken)</c>, Java
+    /// <c>connect(CancellationToken)</c>, JS <c>connect({ signal })</c>; control protocol §6.4 <c>client.connect</c>): a
+    /// connect canceled before it completes throws <see cref="TaskCanceledException"/> (kind <see cref="ErrorKind.Canceled"/>).
+    /// A <see cref="RemoteCancelKind.Token"/> cancellation stays in effect after the connect completes, so canceling it
+    /// later reaches the token the runtime was given, which must cancel only the connect.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client cannot cancel a connect (a pool rental).</exception>
+    Task ConnectAsync(RemoteCancel cancel)
+        => cancel.Kind == RemoteCancelKind.None
+            ? ConnectAsync()
+            : throw new NotSupportedException($"{Target}: this client cannot cancel a connect.");
+
     /// <summary>Connects; false when the connection fails.</summary>
     Task<bool> TryConnectAsync();
+
+    /// <summary>
+    /// Connects with a cancellation, as <see cref="ConnectAsync(RemoteCancel)"/>; false when the connection fails or
+    /// is canceled.
+    /// </summary>
+    /// <exception cref="NotSupportedException">The client cannot cancel a connect (a pool rental).</exception>
+    Task<bool> TryConnectAsync(RemoteCancel cancel)
+        => cancel.Kind == RemoteCancelKind.None
+            ? TryConnectAsync()
+            : throw new NotSupportedException($"{Target}: this client cannot cancel a connect.");
 
     /// <summary>Disconnects gracefully.</summary>
     Task DisconnectAsync();

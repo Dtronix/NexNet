@@ -228,8 +228,8 @@ before a response is sent arrives before that response.
 | Op | Args | Result |
 |---|---|---|
 | `client.create` | `{spec, nexus:{client, server}}` | `{h}`. Creates a client, not connected. `nexus.client`/`nexus.server` are the full metadata names of the client and server nexus interfaces (`NexNet.TestNexus.Interop.IInteropClientNexus`); a host that has no generated code for the pair fails with `NotSupported`. `spec` is a `ClientSpec` (§6.4.1). An option the client cannot honor fails with `NotSupported`, never silently. |
-| `client.connect` | `{h}` | `{}`; fails with the connection error (kind `Transport`, …). |
-| `client.tryConnect` | `{h}` | `{ok}` |
+| `client.connect` | `{h, cancel?}` | `{}`; fails with the connection error (kind `Transport`, …). `cancel` is `{afterMs}` or `{token}` as in `invoke` (§6.5), passed to the runtime's connect (C# `cancellationToken`, Java `CancellationToken`, JS `{ signal }`): a connect canceled before it completes fails with kind `Canceled` and leaves the client `Disconnected`. An `afterMs` timer stops when the connect ends; a `{token}` stays in effect after it, so a later `token.cancel` reaches the token the runtime holds (which cancels only the connect, never the reconnection of the session it opened). |
+| `client.tryConnect` | `{h, cancel?}` | `{ok}`; `ok` is false when the connect failed or was canceled. `cancel` as in `client.connect`. |
 | `client.disconnect` | `{h}` | `{}`, once the client is `Disconnected`. |
 | `client.dispose` | `{h}` | `{}`; releases the handle and everything the client owns. Disposing twice is not an error. |
 | `client.state` | `{h}` | `{state}`: a `ConnectionState` name (`Disconnected`, `Connecting`, `Connected`, `Reconnecting`, `Disconnecting`). |
