@@ -50,6 +50,14 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
 
     public async ValueTask CompleteInputAsync() => await Call("pipe.completeInput", null, RemoteClientDriver.DefaultOpMs).ConfigureAwait(false);
 
+    /// <summary>The language client's forward (control protocol §6.7 <c>pipe.forward</c>).</summary>
+    public async ValueTask ForwardToAsync(RemotePipe destination)
+    {
+        if (destination.Driver.Connection != driver.Connection || destination.Driver.Test != driver.Test)
+            throw new NotSupportedException("The destination pipe is a pipe of another language host or test.");
+        await Call("pipe.forward", new JsonObject { ["to"] = destination.Handle }, RemoteClientDriver.DefaultWaitMs).ConfigureAwait(false);
+    }
+
     public async ValueTask<IRemoteChannelWriter<T>> GetChannelWriterAsync<T>()
     {
         var codec = TypedCodecs.Get<T>();

@@ -108,6 +108,14 @@ internal sealed class InProcRemotePipe : IRemotePipe
 
     public ValueTask CompleteInputAsync() => Pipe.Input.CompleteAsync();
 
+    /// <summary>The C# client's forward (<see cref="NexusPipeForwardingExtensions.ForwardToAsync(INexusDuplexPipe, INexusDuplexPipe, CancellationToken)"/>).</summary>
+    public ValueTask ForwardToAsync(InProcRemotePipe destination)
+    {
+        if (ReferenceEquals(destination.Pipe, Pipe))
+            throw new InvalidOperationException("A pipe cannot be forwarded to itself.");
+        return Pipe.ForwardToAsync(destination.Pipe);
+    }
+
     public async ValueTask<IRemoteChannelWriter<T>> GetChannelWriterAsync<T>()
         => new ChannelWriter<T>(await Pipe.GetChannelWriter<T>().ConfigureAwait(false));
 
