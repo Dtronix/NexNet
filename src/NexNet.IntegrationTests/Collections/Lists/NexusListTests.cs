@@ -463,7 +463,10 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
         using (Assert.Multiple())
         {
             await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.BiDirectional);
-            await Assert.That(ReadOnlyOf(state)).IsFalse();
+
+            // ICollection<T>.IsReadOnly is C# API: Java and JavaScript expose only the mode (a parity exception).
+            if (target.Language == ClientLanguages.CSharp)
+                await Assert.That(state.IsReadOnly).IsFalse();
         }
 
         await s.EndAsync();
@@ -482,7 +485,10 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
         using (Assert.Multiple())
         {
             await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.ServerToClient);
-            await Assert.That(ReadOnlyOf(state)).IsTrue();
+
+            // ICollection<T>.IsReadOnly is C# API: Java and JavaScript expose only the mode (a parity exception).
+            if (target.Language == ClientLanguages.CSharp)
+                await Assert.That(state.IsReadOnly).IsTrue();
         }
 
         await s.EndAsync();
@@ -501,18 +507,108 @@ internal class NexusListTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
         using (Assert.Multiple())
         {
             await Assert.That(state.Mode).IsEqualTo(RemoteCollectionMode.Relay);
-            await Assert.That(ReadOnlyOf(state)).IsTrue();
+
+            // ICollection<T>.IsReadOnly is C# API: Java and JavaScript expose only the mode (a parity exception).
+            if (target.Language == ClientLanguages.CSharp)
+                await Assert.That(state.IsReadOnly).IsTrue();
         }
 
         await s.EndAsync();
     }
 
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ClientWrites_AreRefusedOnServerToClient(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var server = s.Nexus.IntListSC;
+        foreach (var item in new[] { 1, 2, 3 })
+            await server.AddAsync(item).Timeout(T(1));
+
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListSC));
+        await Assert.That(await list.EnableAsync().Timeout(T(2))).IsTrue();
+        await WaitForItemsAsync(list, 1, 2, 3);
+
+        // Only the server changes a server-to-client list: every client write is refused on the client, before it
+        // reaches the wire, with the same error kind on every language.
+        await AssertWritesRefusedAsync(list);
+
+        // Nothing changed, and the client still mirrors the server.
+        await server.AddAsync(4).Timeout(T(1));
+        await WaitForItemsAsync(list, 1, 2, 3, 4);
+        await Assert.That(server.ToArray()).IsEquivalentTo(new[] { 1, 2, 3, 4 }, CollectionOrdering.Matching);
+        await list.DisableAsync().Timeout(T(1));
+
+        // A list that is not enabled refuses every write the same way.
+        await AssertWritesRefusedAsync(list);
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ClientWrites_AreRefusedOnRelay(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        var list = s.Client.List<int>(nameof(IServerNexus.IntListRelay));
+
+        // A relay list mirrors its parent: the client may not change it. The refusal comes from the mode alone, so it
+        // is the same before the list is enabled and after (this relay has no parent, so its list stays empty).
+        await AssertWritesRefusedAsync(list);
+        await list.EnableAsync().Timeout(T(2));
+        await AssertWritesRefusedAsync(list);
+        await Assert.That(await ItemsAsync(list)).IsEmpty();
+        await s.EndAsync();
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
+    public async Task ClientWrites_AreAcceptedOnBidirectional(ClientTarget target)
+    {
+        await using var s = await ConnectAsync(target);
+        foreach (var item in new[] { 1, 2, 3 })
+            await s.ServerList.AddAsync(item).Timeout(T(1));
+
+        var list = s.List;
+        await Assert.That(await list.EnableAsync().Timeout(T(2))).IsTrue();
+        await WaitForItemsAsync(list, 1, 2, 3);
+
+        // The same writes the read-only modes refuse, each applied on the server.
+        await AcceptedAsync(list.AddAsync(99), 1, 2, 3, 99);
+        await AcceptedAsync(list.InsertAsync(0, 98), 98, 1, 2, 3, 99);
+        await AcceptedAsync(list.RemoveAsync(2), 98, 1, 3, 99);
+        await AcceptedAsync(list.RemoveAtAsync(0), 1, 3, 99);
+        await AcceptedAsync(list.ReplaceAsync(0, 97), 97, 3, 99);
+        await AcceptedAsync(list.MoveAsync(0, 2), 3, 99, 97);
+        await AcceptedAsync(list.ClearAsync());
+        await s.EndAsync();
+
+        async Task AcceptedAsync(ValueTask<bool> write, params int[] expected)
+        {
+            await Assert.That(await write.Timeout(T(1))).IsTrue();
+            await Assert.That(s.ServerList.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching);
+            await WaitForItemsAsync(list, expected);
+        }
+    }
+
     /// <summary>
-    /// The runtime's read-only flag (C# <c>INexusList.IsReadOnly</c>). Java and JavaScript have none and report only the
-    /// mode, which decides whether the client may change the list, so their flag is derived from it.
+    /// Asserts that every write to <paramref name="list"/> is refused with <see cref="InvalidOperationException"/>
+    /// (InvalidOperation on every language). Each targets an item or index of a list holding 1, 2, 3, so it would reach
+    /// the wire if it were allowed; a missing item is refused too, rather than answered with false.
     /// </summary>
-    private static bool ReadOnlyOf(RemoteListState state)
-        => state.IsReadOnly ?? state.Mode != RemoteCollectionMode.BiDirectional;
+    private static async Task AssertWritesRefusedAsync(IRemoteList<int> list)
+    {
+        await AssertRefusedAsync(() => list.AddAsync(99));
+        await AssertRefusedAsync(() => list.InsertAsync(0, 99));
+        await AssertRefusedAsync(() => list.RemoveAsync(2));
+        await AssertRefusedAsync(() => list.RemoveAtAsync(0));
+        await AssertRefusedAsync(() => list.ReplaceAsync(0, 99));
+        await AssertRefusedAsync(() => list.MoveAsync(0, 2));
+        await AssertRefusedAsync(() => list.ClearAsync());
+        await AssertRefusedAsync(() => list.RemoveAsync(42));
+
+        static async Task AssertRefusedAsync(Func<ValueTask<bool>> write)
+            => await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await write().Timeout(T(1)));
+    }
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
