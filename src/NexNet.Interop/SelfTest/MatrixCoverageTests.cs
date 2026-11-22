@@ -21,7 +21,7 @@ public class MatrixCoverageTests
     private static readonly RowResult[] Results =
     [
         new("Tests.B", "B(java/Tcp)", new ClientTarget("java", ClientTransport.Tcp), RowOutcome.Passed, null),
-        new("Tests.A", "A(java/WebSocket)", new ClientTarget("java", ClientTransport.WebSocket), RowOutcome.Failed, null),
+        new("Tests.A", "A(java/WebSocket)", new ClientTarget("java", ClientTransport.WebSocket), RowOutcome.Failed, null, "\n  Expected 1 | got 2\r\n  at Tests.A()"),
         new("Tests.A", "A(java/WebSocket(okhttp))", new ClientTarget("java", ClientTransport.WebSocket) { Variant = "okhttp" }, RowOutcome.Passed, null),
         new("Tests.C", "C(java/Tcp)", new ClientTarget("java", ClientTransport.Tcp), RowOutcome.Skipped, "no symlinks here"),
         new("Tests.D", "D(java/Tcp)", new ClientTarget("java", ClientTransport.Tcp), RowOutcome.Skipped, "K99: pending"),
@@ -65,6 +65,65 @@ public class MatrixCoverageTests
         await Assert.That(markdown).Contains("| java (okhttp) | 1 | 1 | 0 | 0 | 0 |");
         await Assert.That(markdown).Contains("| java | The java client has no Uds transport. | 2 | 2 |");
         await Assert.That(markdown).Contains("| C(java/Tcp) | java/Tcp | no symlinks here | **no** |");
+    }
+
+    [Test]
+    public async Task FailedRows_AreNamed_WithTheFirstLineOfTheirMessage()
+    {
+        RowResult[] results =
+        [
+            .. Results,
+            new("Tests.E", "E(node/Tcp)", new ClientTarget("node", ClientTransport.Tcp), RowOutcome.Failed, null, null),
+            new("Tests.0", "0(node/Tcp)", new ClientTarget("node", ClientTransport.Tcp), RowOutcome.Failed, null, "Timed out"),
+        ];
+        var report = MatrixCoverage.Build(results, Missing);
+
+        await Assert.That(report.Failed).IsEquivalentTo(
+            new[]
+            {
+                new FailedRow("Tests.0", "0(node/Tcp)", "node/Tcp", "Timed out"),
+                new FailedRow("Tests.A", "A(java/WebSocket)", "java/WebSocket", "Expected 1 | got 2"),
+                new FailedRow("Tests.E", "E(node/Tcp)", "node/Tcp", ""),
+            },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+        var markdown = report.ToMarkdown();
+        await Assert.That(markdown).Contains("### Failed rows\n\n| Test | Row | Message |\n|---|---|---|\n| Tests.0(node/Tcp) | node/Tcp | Timed out |\n");
+        await Assert.That(markdown).Contains("| Tests.A(java/WebSocket) | java/WebSocket | Expected 1 \\| got 2 |");
+        await Assert.That(markdown).DoesNotContain("at Tests.A()");
+
+        var json = report.ToJson();
+        await Assert.That(json).Contains("\"failed\": [");
+        await Assert.That(json).Contains("\"message\": \"Expected 1 | got 2\"");
+        await Assert.That(MatrixCoverage.Build(results.Reverse(), Missing).ToJson()).IsEqualTo(json);
+    }
+
+    [Test]
+    public async Task NoFailedRow_SaysNone()
+    {
+        var report = MatrixCoverage.Build(Results.Where(r => r.Outcome != RowOutcome.Failed), Missing);
+        await Assert.That(report.Failed).IsEmpty();
+        await Assert.That(report.ToMarkdown()).Contains("### Failed rows\n\nNone.\n");
+        await Assert.That(report.ToJson()).Contains("\"failed\": []");
+    }
+
+    [Test]
+    [Arguments(null, null)]
+    [Arguments("", null)]
+    [Arguments(" \r\n\t\n", null)]
+    [Arguments("one", "one")]
+    [Arguments("\r\n  first  \nsecond", "first")]
+    public async Task FirstLine_IsTheFirstNonBlankLineTrimmed(string? message, string? expected)
+    {
+        await Assert.That(MatrixCoverage.FirstLine(message)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task FirstLine_CutsALongLine()
+    {
+        var line = MatrixCoverage.FirstLine(new string('x', 1000));
+        await Assert.That(line!.Length).IsEqualTo(MatrixCoverage.MaxMessageLength);
+        await Assert.That(line).EndsWith("...");
     }
 
     [Test]
