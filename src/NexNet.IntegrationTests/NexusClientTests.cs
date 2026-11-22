@@ -508,18 +508,21 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
 
     /// <summary>
     /// When the reconnection policy gives up, the client goes from Reconnecting to Disconnected once, after its last
-    /// attempt, and stays there. Not on QUIC: an attempt to the stopped server can outlast the connection timeout by
-    /// seconds (S47).
+    /// attempt, and stays there.
     /// </summary>
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectingStateEndsDisconnectedWhenThePolicyGivesUp(ClientTarget target)
     {
+        // An attempt to the stopped server is usually refused quickly. A QUIC attempt gets no answer and lasts the
+        // connection timeout (no longer: S47 removed a ~3 s overshoot), so the timeout bounds each attempt.
+        var connectionTimeoutSeconds = T(TestTimeouts.Connect);
         await using var server = await StartDedicatedServer(AbruptStop());
 
         // Two attempts, 100 ms apart, then the policy gives up.
         await using var client = await Connect(target, server, spec =>
         {
+            spec.ConnectionTimeoutMs = (int)(connectionTimeoutSeconds * 1000);
             spec.ReconnectDelaysMs = [0, 100];
             spec.ReconnectContinuously = false;
         });
@@ -530,7 +533,7 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await disconnected;
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
 
-        var whileReconnecting = await SampleStatesAsync(client, T(TestTimeouts.Connect * 3), until: ConnectionState.Disconnected);
+        var whileReconnecting = await SampleStatesAsync(client, 2 * connectionTimeoutSeconds + T(2), until: ConnectionState.Disconnected);
         await Assert.That(whileReconnecting[^1]).IsEqualTo(ConnectionState.Disconnected)
             .Because("the policy gives up after two attempts");
         await Assert.That(whileReconnecting[..^1].Distinct()).IsEquivalentTo([ConnectionState.Reconnecting])
@@ -666,10 +669,10 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         await server.StopAsync();
 
         // One reconnect attempt fails, then the client gives up: the client is Reconnecting until then. The attempt is
-        // usually refused quickly; it is bounded by the connection timeout, but a QUIC attempt to the stopped server
-        // has been seen to take about 3 s longer.
+        // usually refused quickly; a QUIC attempt to the stopped server gets no answer and lasts the connection timeout,
+        // which bounds it (S47 removed a ~3 s overshoot past it).
         await Script(client).OnDisconnected.NextCallAsync().AsTask().Timeout(T(5));
-        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(TestTimeouts.Connect));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(2));
     }
 
     [Test]
