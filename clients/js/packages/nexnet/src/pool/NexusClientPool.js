@@ -196,22 +196,31 @@ export class NexusClientPool {
   }
 
   /**
-   * Returns a connector that resolves a collection on a pooled client. Each `getCollection()` rents a client;
-   * `release()` (or disposing the connector) returns every client it rented.
+   * Returns a connector that resolves a collection on a pooled client. Each `getCollection()` returns the client
+   * the connector holds to the pool, then rents one, so the connector holds at most one rental; `release()` (or
+   * disposing the connector) returns it.
    * @template T
    * @param {(proxy: TProxy) => import('../contract/collections.js').NexusList<T>} selector
    * @returns {{ getCollection(): Promise<import('../contract/collections.js').NexusList<T>>, release(): void, [Symbol.dispose](): void }}
    */
   collectionConnector(selector) {
-    /** @type {Array<import('../contract/pool.js').RentedNexusClient<TProxy>>} */
-    const rentals = [];
+    /** @type {import('../contract/pool.js').RentedNexusClient<TProxy> | null} */
+    let held = null;
     const release = () => {
-      for (const rental of rentals.splice(0)) rental.release();
+      const rental = held;
+      held = null;
+      rental?.release();
     };
     return {
       getCollection: async () => {
+        // Return the earlier rental before renting again: holding it while waiting for a permit would block for good
+        // on a pool of one connection.
+        release();
         const rental = await this.rent();
-        rentals.push(rental);
+        // A concurrent call may have stored its rental meanwhile: the connector holds the latest one only.
+        const raced = held;
+        held = rental;
+        raced?.release();
         return selector(rental.proxy);
       },
       release,
