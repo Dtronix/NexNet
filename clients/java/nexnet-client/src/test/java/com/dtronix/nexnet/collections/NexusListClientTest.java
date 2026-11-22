@@ -41,10 +41,13 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -787,5 +790,197 @@ class NexusListClientTest {
         assertEquals(Collections.singletonList(NexusListChange.Action.ADD), first.actions());
         assertSame(NexusCollectionMode.SERVER_TO_CLIENT, list.mode());
         assertEquals(COLLECTION_ID, list.collectionId());
+    }
+
+    // ------------------------------------------------------------------ process test hook
+
+    /** A process test hook that records each call's thread and returns the stage {@link #next} supplies. */
+    static final class Hook implements Supplier<CompletionStage<?>> {
+        final List<String> threads = new CopyOnWriteArrayList<>();
+        final List<CompletableFuture<Void>> stages = new CopyOnWriteArrayList<>();
+        volatile Supplier<CompletableFuture<Void>> next = CompletableFuture::new;
+
+        @Override
+        public CompletionStage<?> get() {
+            threads.add(Thread.currentThread().getName());
+            CompletableFuture<Void> stage = next.get();
+            stages.add(stage);
+            return stage;
+        }
+
+        int calls() {
+            return threads.size();
+        }
+    }
+
+    /** True when no live thread is inside the list client: nothing blocks on a held stage. */
+    static boolean noThreadInsideTheList() {
+        for (StackTraceElement[] stack : Thread.getAllStackTraces().values()) {
+            for (StackTraceElement frame : stack) {
+                String name = frame.getClassName();
+                if (name.equals(NexusListClient.class.getName())
+                    || name.startsWith(NexusListClient.class.getName() + "$")) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    @Test
+    void theProcessTestHookRunsBeforeEachItemAndANullStageGoesOnAtOnce() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        List<Integer> seen = new CopyOnWriteArrayList<>();
+        list.setProcessTestHook(() -> {
+            seen.add(list.size());
+            return null;
+        });
+        peer.sendItems(pipeId, item("insert-int"), valueItem(CollectionWire.INSERT, 0, 9, 0, 100));
+        waitFor(() -> list.size() == 5);
+        // Each call sees the list before its own item is applied.
+        assertEquals(Arrays.asList(3, 4), seen);
+        assertEquals(Arrays.asList(100L, 1L, 2L, 42L, -5L), list);
+    }
+
+    @Test
+    void anIncompleteStageHoldsTheItemWithoutBlockingAThreadAndResumesOnTheLane() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        Recorder<Long> events = new Recorder<>();
+        events.attach(list);
+        Hook hook = new Hook();
+        list.setProcessTestHook(hook);
+        peer.sendItems(pipeId, item("insert-int"), valueItem(CollectionWire.INSERT, 0, 9, 0, 100));
+        waitFor(() -> hook.calls() == 1);
+        // Held: the first item is not applied and the second is not processed; no thread waits for the stage.
+        waitFor(NexusListClientTest::noThreadInsideTheList);
+        Thread.sleep(50);
+        assertEquals(1, hook.calls());
+        assertEquals(Arrays.asList(1L, 2L, -5L), list);
+        assertTrue(events.actions().isEmpty());
+
+        // Completed here, on the test thread: processing resumes on the lane, not inline.
+        hook.stages.get(0).complete(null);
+        waitFor(() -> hook.calls() == 2);
+        assertEquals(Arrays.asList(1L, 2L, 42L, -5L), list);
+        String testThread = Thread.currentThread().getName();
+        for (String thread : hook.threads) {
+            assertNotEquals(testThread, thread);
+            assertTrue(thread.startsWith("nexnet-pool-"), thread);
+        }
+        Thread.sleep(50);
+        assertEquals(4, list.size());
+
+        hook.stages.get(1).complete(null);
+        waitFor(() -> list.size() == 5);
+        events.await(NexusListChange.Action.ADD, NexusListChange.Action.ADD);
+    }
+
+    @Test
+    void aSlowStageDelaysProcessing() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "test-timer"));
+        try {
+            Hook hook = new Hook();
+            hook.next = () -> {
+                CompletableFuture<Void> stage = new CompletableFuture<>();
+                timer.schedule(() -> stage.complete(null), 100, TimeUnit.MILLISECONDS);
+                return stage;
+            };
+            list.setProcessTestHook(hook);
+            long started = System.nanoTime();
+            peer.sendItems(pipeId, item("insert-int"));
+            waitFor(() -> hook.calls() == 1);
+            assertEquals(3, list.size());
+            waitFor(() -> list.size() == 4);
+            assertTrue(System.nanoTime() - started >= TimeUnit.MILLISECONDS.toNanos(90), "processing waited");
+        } finally {
+            timer.shutdownNow();
+        }
+    }
+
+    @Test
+    void aThrowingHookOrAFailedStageIsIgnored() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        list.setProcessTestHook(() -> {
+            throw new IllegalStateException("hook failure");
+        });
+        peer.sendItems(pipeId, item("insert-int"));
+        waitFor(() -> list.size() == 4);
+
+        // Already failed.
+        list.setProcessTestHook(() -> {
+            CompletableFuture<Void> failed = new CompletableFuture<>();
+            failed.completeExceptionally(new IllegalStateException("stage failure"));
+            return failed;
+        });
+        peer.sendItems(pipeId, valueItem(CollectionWire.INSERT, 0, 9, 0, 100));
+        waitFor(() -> list.size() == 5);
+
+        // Fails later.
+        Hook hook = new Hook();
+        list.setProcessTestHook(hook);
+        peer.sendItems(pipeId, valueItem(CollectionWire.INSERT, 0, 10, 0, 200));
+        waitFor(() -> hook.calls() == 1);
+        Thread.sleep(50);
+        assertEquals(5, list.size());
+        hook.stages.get(0).completeExceptionally(new IllegalStateException("late failure"));
+        waitFor(() -> list.size() == 6);
+        assertEquals(Arrays.asList(200L, 100L, 1L, 2L, 42L, -5L), list);
+        assertEquals(NexusCollectionState.CONNECTED, list.state());
+        assertTrue(session.isConnected());
+    }
+
+    @Test
+    void clearingTheHookStopsCallingItButAHeldItemStillWaits() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        Hook hook = new Hook();
+        list.setProcessTestHook(hook);
+        peer.sendItems(pipeId, item("insert-int"));
+        waitFor(() -> hook.calls() == 1);
+        list.setProcessTestHook(null);
+        peer.sendItems(pipeId, valueItem(CollectionWire.INSERT, 0, 9, 0, 100));
+        Thread.sleep(50);
+        assertEquals(3, list.size());
+
+        hook.stages.get(0).complete(null);
+        waitFor(() -> list.size() == 5);
+        peer.sendItems(pipeId, valueItem(CollectionWire.INSERT, 0, 10, 0, 200));
+        waitFor(() -> list.size() == 6);
+        assertEquals(1, hook.calls());
+    }
+
+    @Test
+    void disableWhileAnItemIsHeldClosesThePipeAndNeverAppliesIt() throws Exception {
+        connect();
+        NexusListClient<Long> list = list(NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.LONG);
+        int pipeId = enableWithReset(list);
+        Recorder<Long> events = new Recorder<>();
+        events.attach(list);
+        Hook hook = new Hook();
+        list.setProcessTestHook(hook);
+        peer.sendItems(pipeId, item("insert-int"));
+        waitFor(() -> hook.calls() == 1);
+
+        // The lane is free while the item is held, so the disable completes.
+        CompletableFuture<Void> disabled = list.disable();
+        assertEquals(CollectionPeer.COMPLETE, peer.takeState(pipeId));
+        peer.sendState(pipeId, CollectionPeer.COMPLETE, 0);
+        await(disabled);
+        hook.stages.get(0).complete(null);
+        Thread.sleep(50);
+        assertTrue(list.isEmpty());
+        assertEquals(NexusCollectionState.DISCONNECTED, list.state());
+        events.await(NexusListChange.Action.RESET);
+        assertEquals(1, hook.calls());
     }
 }
