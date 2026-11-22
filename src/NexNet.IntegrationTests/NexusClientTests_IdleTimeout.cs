@@ -1,5 +1,9 @@
 using NexNet.IntegrationTests.Metrics;
+using NexNet.Interop;
+using NexNet.InteropServer;
 using NexNet.Messages;
+using NexNet.TestNexus.Interop;
+using TestServer = NexNet.InteropServer.InteropServer<NexNet.TestNexus.Interop.InteropServerNexus, NexNet.TestNexus.Interop.InteropServerNexus.ClientProxy>;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -7,85 +11,148 @@ namespace NexNet.IntegrationTests;
 /// <summary>
 /// The client's ping interval derived from the idle timeout the server advertises in its greeting.
 /// </summary>
+/// <remarks>
+/// The matrix tests observe the interval on the wire: the client runs on a test clock and the server counts the pings it
+/// receives. The tests left on the C# client read its log (PingInterval warning) or its configuration API.
+/// </remarks>
 internal partial class NexusClientTests
 {
-    [Test]
-    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
-    public async Task PingInterval_DerivedFromServerIdleTimeout(Type type)
+    /// <summary>
+    /// Starts a server whose sessions time out after <paramref name="serverTimeoutMs"/> and connects the client of
+    /// <paramref name="target"/> on a test clock. <paramref name="pings"/> counts the pings the server receives.
+    /// </summary>
+    private async Task<(TestServer Server, IClientUnderTest Client)> ConnectForPingAsync(
+        ClientTarget target,
+        int serverTimeoutMs,
+        PingCounter pings,
+        int? pingIntervalMs = null)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Timeout = 6000;
-        var clientConfig = CreateClientConfig(type);
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        await Assert.That(clientConfig.PingInterval).IsNull();
-        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(2));
-    }
-
-    [Test]
-    [Transports(Type.Uds)]
-    public async Task PingInterval_DerivedIntervalIsAtLeastOneSecond(Type type)
-    {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Timeout = 1500;
-        var clientConfig = CreateClientConfig(type);
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(1));
-    }
-
-    [Test]
-    [Transports(Type.Uds)]
-    public async Task PingInterval_DerivedInterval_DrivesThePingTimer(Type type)
-    {
-        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Timeout = 6000;
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.Time = fakeTime;
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-
-        var pingCount = 0;
-        var pinged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        ServerTaps.OnReceive(serverConfig, (_, frame) =>
+        var server = await StartServer(new InteropServerOptions
         {
-            if (frame.Type == MessageType.Ping && Interlocked.Increment(ref pingCount) == 1)
-                pinged.TrySetResult();
+            Timeout = serverTimeoutMs,
+            ConfigureEndpoint = (_, config) => ServerTaps.OnReceive(config, (_, frame) =>
+            {
+                if (frame.Type == MessageType.Ping)
+                    pings.Increment();
+            }),
         });
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        try
+        {
+            var client = await Connect(target, server, spec =>
+            {
+                spec.FakeTime = true;
+                spec.PingIntervalMs = pingIntervalMs;
+            });
+            return (server, client);
+        }
+        catch
+        {
+            await server.DisposeAsync();
+            throw;
+        }
+    }
 
-        fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
-        await Barrier(client.Proxy);
-        await Assert.That(Volatile.Read(ref pingCount)).IsEqualTo(0).Because("No ping before a third of the server's idle timeout.");
+    /// <summary>
+    /// Asserts that the client sends its first ping after exactly <paramref name="intervalMs"/> of its test clock: none
+    /// one millisecond before, one at the interval.
+    /// </summary>
+    private static async Task AssertFirstPingAfter(IClientUnderTest client, PingCounter pings, int intervalMs)
+    {
+        // A round trip: the server has received everything the client sent before it.
+        await client.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
+        await Assert.That(pings.Count).IsEqualTo(0).Because("No ping before the interval starts.");
 
-        fakeTime.Advance(TimeSpan.FromMilliseconds(1));
-        await pinged.Task.Timeout(T(1));
+        await client.AdvanceTimeAsync(TimeSpan.FromMilliseconds(intervalMs - 1));
+        await client.BarrierAsync().Timeout(T(1));
+        await client.Proxy<IInteropServerNexus>().Ping().Timeout(T(1));
+        await Assert.That(pings.Count).IsEqualTo(0).Because($"No ping before {intervalMs} ms.");
+
+        await client.AdvanceTimeAsync(TimeSpan.FromMilliseconds(1));
+        await pings.First.Timeout(T(1));
+    }
+
+    /// <summary>Counts the pings a server receives.</summary>
+    private sealed class PingCounter
+    {
+        private readonly TaskCompletionSource _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public Task First => _first.Task;
+
+        public void Increment()
+        {
+            Interlocked.Increment(ref _count);
+            _first.TrySetResult();
+        }
     }
 
     [Test]
-    [Transports(Type.Uds)]
-    public async Task PingInterval_ExplicitIntervalIsRespected(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime)]
+    public async Task PingInterval_DerivedFromServerIdleTimeout(ClientTarget target)
     {
-        var logger = new CapturingLogger();
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Timeout = 6000;
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.Logger = logger;
-        clientConfig.PingInterval = 500;
-        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+        // A third of the server's idle timeout.
+        var pings = new PingCounter();
+        var (server, client) = await ConnectForPingAsync(target, 9000, pings);
+        await using (server)
+        await using (client)
+        {
+            await AssertFirstPingAfter(client, pings, 3000);
+            await MatrixTestBase.EndAsync(client);
+        }
+    }
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime)]
+    public async Task PingInterval_DerivedIntervalIsAtLeastOneSecond(ClientTarget target)
+    {
+        // A third of 1500 ms is 500 ms; the client pings no more often than once a second. The test's invocations keep
+        // the session from idling out on the server's (real) clock.
+        var pings = new PingCounter();
+        var (server, client) = await ConnectForPingAsync(target, 1500, pings);
+        await using (server)
+        await using (client)
+        {
+            await AssertFirstPingAfter(client, pings, 1000);
+            await MatrixTestBase.EndAsync(client);
+        }
+    }
 
-        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(500));
-        await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval"))).IsFalse();
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime)]
+    public async Task PingInterval_DerivedInterval_DrivesThePingTimer(ClientTarget target)
+    {
+        var pings = new PingCounter();
+        var (server, client) = await ConnectForPingAsync(target, 6000, pings);
+        await using (server)
+        await using (client)
+        {
+            await AssertFirstPingAfter(client, pings, 2000);
+
+            // And again one interval later.
+            await client.AdvanceTimeAsync(TimeSpan.FromMilliseconds(2000));
+            var deadline = DateTime.UtcNow.AddSeconds(T(1));
+            while (pings.Count < 2 && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            await Assert.That(pings.Count).IsEqualTo(2);
+            await MatrixTestBase.EndAsync(client);
+        }
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.FakeTime)]
+    public async Task PingInterval_ExplicitIntervalIsRespected(ClientTarget target)
+    {
+        // An explicit interval below the server's idle timeout wins over the derived one (2000 ms).
+        var pings = new PingCounter();
+        var (server, client) = await ConnectForPingAsync(target, 6000, pings, pingIntervalMs: 500);
+        await using (server)
+        await using (client)
+        {
+            await AssertFirstPingAfter(client, pings, 500);
+            await MatrixTestBase.EndAsync(client);
+        }
     }
 
     [Test]
