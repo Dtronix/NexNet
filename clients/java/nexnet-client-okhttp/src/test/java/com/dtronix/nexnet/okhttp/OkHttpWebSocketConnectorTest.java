@@ -388,6 +388,48 @@ class OkHttpWebSocketConnectorTest {
         }
     }
 
+    /** A server that sends a text message as soon as the upgrade completes and records the client's close code. */
+    static final class TextServer extends WebSocketListener {
+        final CompletableFuture<Integer> closeCode = new CompletableFuture<>();
+
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            webSocket.send("text");
+        }
+
+        @Override
+        public void onClosing(WebSocket webSocket, int code, String reason) {
+            closeCode.complete(code);
+            webSocket.close(1000, null);
+        }
+
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            closeCode.completeExceptionally(t);
+        }
+    }
+
+    @Test
+    void aNexusClientClosesWith1003OnATextMessage() throws Exception {
+        // The session ends (and closes the transport) as soon as the input fails, racing the 1003 close: the close
+        // code must still be 1003, never 1000 and never a cancelled socket.
+        HandshakeDescriptor handshake = new HandshakeDescriptor(
+            NexusRuntime.VERSION, "v2", 123456789, -987654321, new int[] {0});
+        for (int i = 0; i < 100; i++) {
+            TextServer text = new TextServer();
+            server.enqueue(new MockResponse.Builder().webSocketUpgrade(text).build());
+            try (NexusClient<TestProxy> client = NexusClient.create(
+                ClientConfig.webSocket(uri("/nexus")).build(), handshake, new TestNexus(), TestProxy::new, connector)) {
+                try {
+                    client.connect().get(10, TimeUnit.SECONDS);
+                } catch (java.util.concurrent.ExecutionException expected) {
+                    // The session ended before the server greeting.
+                }
+                assertEquals(1003, text.closeCode.get(10, TimeUnit.SECONDS), "Run " + i);
+            }
+        }
+    }
+
     @Test
     void theGivenClientIsNotChanged() {
         OkHttpClient original = new OkHttpClient();
