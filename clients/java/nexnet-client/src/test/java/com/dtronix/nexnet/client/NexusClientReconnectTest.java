@@ -27,6 +27,22 @@ class NexusClientReconnectTest {
             .build();
     }
 
+    /**
+     * Connects and returns a recorder of the state changes after CONNECTED. State listeners are notified on the serial
+     * callback executor after {@link NexusClient#state()} changes, so a listener added once {@code state()} reads
+     * CONNECTED can still receive the queued CONNECTED (K57). Record from before the connect, wait until CONNECTED has
+     * been delivered (nothing from the connect is queued behind it), then start from an empty list.
+     */
+    private static List<ConnectionState> connectAndRecord(NexusClient<TestProxy> client) throws Exception {
+        List<ConnectionState> states = new CopyOnWriteArrayList<>();
+        client.addStateListener(states::add);
+        client.connect().get(5, TimeUnit.SECONDS);
+        TestClients.waitFor(() -> states.contains(ConnectionState.CONNECTED));
+        assertEquals(List.of(ConnectionState.CONNECTING, ConnectionState.CONNECTED), states);
+        states.clear();
+        return states;
+    }
+
     @Test
     void reconnectsAfterALostSessionAndDisconnectedStaysPending() throws Exception {
         TestClients.Server server = new TestClients.Server();
@@ -139,10 +155,7 @@ class NexusClientReconnectTest {
         TestClients.Server server = new TestClients.Server();
         NexusClient<TestProxy> client = TestClients.client(server);
         try {
-            client.connect().get(5, TimeUnit.SECONDS);
-            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
-            List<ConnectionState> states = new CopyOnWriteArrayList<>();
-            client.addStateListener(states::add);
+            List<ConnectionState> states = connectAndRecord(client);
             server.disconnect(0, 30);
             client.disconnected().get(5, TimeUnit.SECONDS);
             TestClients.waitFor(() -> states.contains(ConnectionState.DISCONNECTED));
@@ -161,10 +174,7 @@ class NexusClientReconnectTest {
         try {
             ReconnectController controller = client.reconnection();
             assertNotNull(controller);
-            client.connect().get(5, TimeUnit.SECONDS);
-            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
-            List<ConnectionState> states = new CopyOnWriteArrayList<>();
-            client.addStateListener(states::add);
+            List<ConnectionState> states = connectAndRecord(client);
 
             // C#: Reconnecting from the loss of the session until an attempt connects, also between failed attempts.
             server.refuse = true;
@@ -210,10 +220,7 @@ class NexusClientReconnectTest {
         NexusClient<TestProxy> client = TestClients.client(ClientConfig.tcp("h", 1)
             .reconnectionPolicy(new DefaultReconnectionPolicy(new long[] {0, 10}, false)).build(), server);
         try {
-            client.connect().get(5, TimeUnit.SECONDS);
-            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
-            List<ConnectionState> states = new CopyOnWriteArrayList<>();
-            client.addStateListener(states::add);
+            List<ConnectionState> states = connectAndRecord(client);
             CompletableFuture<Void> disconnected = client.disconnected();
             server.refuse = true;
             server.disconnect(0, 20);
@@ -245,10 +252,7 @@ class NexusClientReconnectTest {
         try {
             ReconnectController controller = client.reconnection();
             assertNotNull(controller);
-            client.connect().get(5, TimeUnit.SECONDS);
-            TestClients.waitFor(() -> client.state() == ConnectionState.CONNECTED);
-            List<ConnectionState> states = new CopyOnWriteArrayList<>();
-            client.addStateListener(states::add);
+            List<ConnectionState> states = connectAndRecord(client);
             CompletableFuture<Void> disconnected = client.disconnected();
 
             CountDownLatch handedOver = new CountDownLatch(1);
