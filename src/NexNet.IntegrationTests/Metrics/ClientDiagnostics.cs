@@ -17,17 +17,6 @@ internal static class ClientDiagnostics
         _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
     };
 
-    /// <summary>Whether the client is the JavaScript client (Node or a browser).</summary>
-    public static bool IsJavaScript(ClientTarget target)
-        => target.Language == ClientLanguages.Node || target.Language.StartsWith("browser", StringComparison.Ordinal);
-
-    /// <summary>
-    /// The frames the client counts as sent beyond those the server counts as received: the JavaScript client counts the
-    /// protocol preamble it writes before its greeting as a frame (<c>WriteQueue.framesSent</c>), which C# and Java do
-    /// not. A runtime parity gap with a follow-up card (Q05 report); the bytes match on every language.
-    /// </summary>
-    public static int PreambleFrames(ClientTarget target) => IsJavaScript(target) ? 1 : 0;
-
     /// <summary>
     /// Reads <paramref name="read"/> until <paramref name="done"/> holds, for at most <paramref name="seconds"/> (already
     /// scaled: pass <c>T(x)</c>);

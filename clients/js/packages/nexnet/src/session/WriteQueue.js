@@ -17,6 +17,8 @@ export class WriteQueue {
   #inFlight = false;
   #closed = false;
   #finishing = false;
+  /** Queued chunks that are not frames (the preamble): sent and counted in {@link WriteQueue#bytesSent}, never in {@link WriteQueue#framesSent}. */
+  #pendingNonFrames = 0;
   /** The batch being written: its frames stay counted as pending writes until it settles or the queue closes. */
   /** @type {{ count: number } | null} */
   #inFlightBatch = null;
@@ -33,7 +35,7 @@ export class WriteQueue {
   flushStartedAt = 0;
   /** Clock time the last transport write completed; null until one has. @type {number | null} */
   lastSentAt = null;
-  /** Frames and bytes handed to the transport. */
+  /** Frames and bytes handed to the transport. The preamble counts as bytes only, as on the C# and Java clients. */
   framesSent = 0;
   bytesSent = 0;
 
@@ -67,11 +69,14 @@ export class WriteQueue {
    * Queues a frame. Resolves true once the transport accepted the write that carried it, false when the queue
    * closed first (the session ended) or the write failed.
    * @param {Uint8Array} frame
+   * @param {boolean} [isFrame] False for bytes that are not a frame (the preamble): they are counted in
+   *   {@link WriteQueue#bytesSent} but not in {@link WriteQueue#framesSent}.
    * @returns {Promise<boolean>}
    */
-  enqueue(frame) {
+  enqueue(frame, isFrame = true) {
     if (this.#closed || this.#finishing) return Promise.resolve(false);
     this.#push(frame);
+    if (!isFrame) this.#pendingNonFrames++;
     const promise = new Promise((resolve) => this.#waiters.push(resolve));
     this.schedule();
     return /** @type {Promise<boolean>} */ (promise);
@@ -106,6 +111,7 @@ export class WriteQueue {
     this.#closed = true;
     countSession('pendingWrites', -this.#pending.length);
     this.#pending = [];
+    this.#pendingNonFrames = 0;
     // A write the transport never settles must not leak the counter.
     if (this.#inFlightBatch) {
       countSession('pendingWrites', -this.#inFlightBatch.count);
@@ -131,8 +137,10 @@ export class WriteQueue {
 
     const chunks = this.#pending;
     const waiters = this.#waiters;
+    const nonFrames = this.#pendingNonFrames;
     this.#pending = [];
     this.#waiters = [];
+    this.#pendingNonFrames = 0;
     this.#inFlight = true;
     const batch = { count: chunks.length };
     this.#inFlightBatch = batch;
@@ -142,7 +150,7 @@ export class WriteQueue {
     let ok = true;
     try {
       await this.#transport.write(chunks);
-      this.framesSent += chunks.length;
+      this.framesSent += chunks.length - nonFrames;
       this.bytesSent += bytes;
       this.lastSentAt = this.#now();
     } catch (error) {
