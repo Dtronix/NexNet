@@ -346,18 +346,21 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
         });
         await WaitForFirstConnected(client);
 
-        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
-        await server.StopAsync();
-        await disconnected;
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await WaitForReconnected(client, T(TestTimeouts.Connect));
-
         // A graceful disconnect is not reconnected for; the connect after it is a new connection, not a reconnection.
+        // Checked before the automatic reconnection below, from a connection whose handshake has completed: a graceful
+        // disconnect while a reconnection's handshake is still running leaves the C# client's reconnection loop going,
+        // and it reconnects (a real reconnection) in a race with the application's connect.
         await client.DisconnectAsync().Timeout(T(1));
         await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         var call = await Script(client).OnConnected.NextCallAsync().AsTask().Timeout(T(1));
         await Assert.That(call.IsReconnected).IsFalse().Because("A connect the application asks for is not a reconnection.");
+
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
+        await server.StopAsync();
+        await disconnected;
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await WaitForReconnected(client, T(TestTimeouts.Connect));
     }
 
     [Test]
