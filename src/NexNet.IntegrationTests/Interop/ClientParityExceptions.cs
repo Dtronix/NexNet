@@ -30,8 +30,8 @@ internal enum ParityGap
     NoRunnableRow,
 
     /// <summary>
-    /// The rows run, but part of the test checks the C# client only (a branch on <c>ClientLanguages.CSharp</c>,
-    /// <c>MatrixTestBase.InProc</c>, <c>MatrixTestBase.AssertNotOutstandingInProc</c>).
+    /// The rows run, but part of the test checks the C# client only (a branch on <c>ClientLanguages.CSharp</c>, or
+    /// <c>MatrixTestBase.InProc</c>). <c>MatrixTestBase.AssertNotOutstanding</c> checks every language and is not a gap.
     /// </summary>
     CSharpOnlyAssertion,
 }

@@ -586,6 +586,11 @@ Gradle, Node or Java unless `NEXNET_TEST_LANGS` or `NEXNET_REQUIRE_SDKS=1` is se
   `artifacts/interop/<lang>/generated` (gitignored) and the workspace runtime.
 - **Golden vectors.** `NexNet.GoldenVectors` writes `tests/golden/*.jsonl`; Serialization.Tests, the JS Vitest suite
   and the Java JUnit suite all check them. Regenerate after a serializer or message change.
+- **Parity audit.** `IntegrationTests/Interop/ClientParityTests.cs` fails when a matrix test has no runnable row on a
+  language (transport, capability, `Languages`, `RequireInProc`) or checks part of its behavior on C# only (`InProc`,
+  a branch on `ClientLanguages.CSharp`), unless `Interop/ClientParityExceptions.cs` lists it with a reason (platform
+  limit, by design, or the card that closes it); it also fails on an entry no longer needed. A new client-matrix gap
+  must be listed there with its reason; keep `docs/articles/multi-language-clients.md` "Parity exceptions" in step.
 - `src/NexNet.Interop.Tests` tests the harness itself (framing, hello, host launch and crash handling, drivers).
 
 ---

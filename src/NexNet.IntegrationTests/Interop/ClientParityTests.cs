@@ -20,7 +20,7 @@ namespace NexNet.IntegrationTests.Interop;
 /// </para>
 /// <para>
 /// A test that runs on a language can still check part of its behavior on the C# client only: a branch on
-/// <see cref="ClientLanguages.CSharp"/>, <c>MatrixTestBase.InProc</c> or <c>MatrixTestBase.AssertNotOutstandingInProc</c>.
+/// <see cref="ClientLanguages.CSharp"/> or <c>MatrixTestBase.InProc</c> (<c>MatrixTestBase.AssertNotOutstanding</c> checks every language).
 /// The audit finds those in the IL of the test (its async state machine, lambdas and local functions included), and
 /// they need an exception of their own (<see cref="ParityGap.CSharpOnlyAssertion"/>).
 /// </para>
@@ -213,7 +213,7 @@ internal class ClientParityTests
         int Token(string name) => (typeof(MatrixTestBase).GetMethod(name, flags)
                                    ?? throw new InvalidOperationException($"MatrixTestBase.{name} not found: update the parity audit.")).MetadataToken;
 
-        // AssertNotOutstandingInProc is optional: a harness snapshot operation can replace it.
+        // AssertNotOutstandingInProc is optional: AssertNotOutstanding replaced it and checks every language.
         var csharpOnly = new[] { "InProc", "AssertNotOutstandingInProc" }
             .Select(name => typeof(MatrixTestBase).GetMethod(name, flags))
             .OfType<MethodInfo>()

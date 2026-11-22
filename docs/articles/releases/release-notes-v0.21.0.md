@@ -206,6 +206,9 @@ ES modules with JSDoc and `.d.ts` typings, no dependencies. Node 22+ (WebSocket,
 - **Reconnection, client pool, logging, metrics and snapshots** ([#162](https://github.com/Dtronix/NexNet/pull/162), [#183](https://github.com/Dtronix/NexNet/pull/183)). In browsers the keepalive runs in a Web
   Worker so background tabs keep their session, and reconnection retries when the tab becomes visible or the network
   returns ([#148](https://github.com/Dtronix/NexNet/pull/148), [#162](https://github.com/Dtronix/NexNet/pull/162)). See [JavaScript Client: Browser notes](../javascript-client.md#browser-notes).
+- **Query-string token:** `webSocket.queryToken` and `httpSocket.queryToken` (`{ name, value }`) append a token for the
+  NexNet.Asp `AccessTokenQueryParameter` hook to the upgrade URL, so browsers can pass an ASP.NET token; the Java
+  client has `ClientConfig.Builder.queryToken` ([#342](https://github.com/Dtronix/NexNet/pull/342)).
 - **TLS (Node):** certificate pins (`TlsOptions.pins`), `remoteCertificate`, and leak-audit counters exported from
   `@dtronix/nexnet/diagnostics` ([#174](https://github.com/Dtronix/NexNet/pull/174)).
 - **Codec and types:** MessagePack codec and value types checked against the golden vectors ([#203](https://github.com/Dtronix/NexNet/pull/203), [#226](https://github.com/Dtronix/NexNet/pull/226), [#256](https://github.com/Dtronix/NexNet/pull/256));
