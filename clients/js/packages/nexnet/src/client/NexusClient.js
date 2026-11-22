@@ -113,6 +113,10 @@ export class NexusClient extends EventTarget {
   #reconnectionPolicy;
   /** Created on the first successful connect; stopped by {@link NexusClient#disconnect}. @type {ReconnectController | null} */
   #reconnect = null;
+  /** True while a reconnection loop runs (C# `_reconnectLoopActive`): the state reads Reconnecting until it ends. */
+  #reconnectLoop = false;
+  /** Counts the reconnection loops, so the end of an old loop does not end a newer one. */
+  #reconnectLoops = 0;
 
   /**
    * Creates a client of the class it is called on. Validates `config` and throws `TypeError` when it is invalid
@@ -155,7 +159,11 @@ export class NexusClient extends EventTarget {
     });
   }
 
-  /** @returns {import('../contract/enums.js').ConnectionStateValue} */
+  /**
+   * The connection state. While the reconnection loop runs (from the loss of a session until an attempt connects or
+   * the loop ends) it is `Reconnecting`, also between failed attempts, as in C#.
+   * @returns {import('../contract/enums.js').ConnectionStateValue}
+   */
   get state() {
     return this.#state;
   }
@@ -318,7 +326,10 @@ export class NexusClient extends EventTarget {
   async disconnect() {
     const reconnect = this.#reconnect;
     this.#reconnect = null;
-    if (reconnect !== null) await reconnect.stop();
+    if (reconnect !== null) {
+      await reconnect.stop();
+      this.#endReconnectLoop();
+    }
     const session = this.#session;
     if (session !== null) await session.disconnect(DisconnectReason.Graceful);
     this.#resolveDisconnected?.();
@@ -474,7 +485,11 @@ export class NexusClient extends EventTarget {
     if (this.#proxy === null) this.#proxy = new this._binding.proxy(this.#handle);
     if (this.#reconnect === null && this.#reconnectionPolicy !== null) {
       const reconnect = new ReconnectController(/** @type {any} */ (this), { policy: this.#reconnectionPolicy, lifecycle: isBrowserEnvironment() });
-      reconnect.addEventListener('reconnectfailed', () => this.#resolveDisconnected?.());
+      reconnect.addEventListener('reconnecting', () => this.#beginReconnectLoop(reconnect));
+      reconnect.addEventListener('reconnectfailed', () => {
+        this.#endReconnectLoop();
+        this.#resolveDisconnected?.();
+      });
       this.#reconnect = reconnect;
     }
     const nexus = this.nexus;
@@ -568,8 +583,34 @@ export class NexusClient extends EventTarget {
     this.#log('warning', `NexNet: unencrypted transport (${this.#options.transportName}); credentials and data are visible on the network.`);
   }
 
+  /**
+   * A reconnection loop started: the client is Reconnecting until an attempt connects or the loop ends. A failed
+   * attempt's own states are not reported (C# parity).
+   * @param {ReconnectController} reconnect
+   */
+  #beginReconnectLoop(reconnect) {
+    const loop = ++this.#reconnectLoops;
+    this.#reconnectLoop = true;
+    this.#setState(ConnectionState.Reconnecting);
+    // The event is dispatched while the controller starts the loop; `idle` is that loop's promise once it returns.
+    queueMicrotask(() => void reconnect.idle.then(() => {
+      if (loop === this.#reconnectLoops) this.#endReconnectLoop();
+    }));
+  }
+
+  /** The reconnection loop ended (gave up or stopped): without a session the client is Disconnected again. */
+  #endReconnectLoop() {
+    if (!this.#reconnectLoop) return;
+    this.#reconnectLoop = false;
+    if (this.#session === null) this.#setState(ConnectionState.Disconnected);
+  }
+
   /** @param {import('../contract/enums.js').ConnectionStateValue} state */
   #setState(state) {
+    if (this.#reconnectLoop) {
+      if (state === ConnectionState.Connected) this.#reconnectLoop = false;
+      else state = ConnectionState.Reconnecting;
+    }
     const previous = this.#state;
     if (previous === state) return;
     this.#state = state;
