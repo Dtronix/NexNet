@@ -152,7 +152,24 @@ internal class QuicTransport : ITransport
         QuicConnection quicConnection;
         try
         {
-            quicConnection = await QuicConnection.ConnectAsync(connectionOptions, timeoutCancellation.Token).ConfigureAwait(false);
+            // A canceled QuicConnection.ConnectAsync only completes once msquic has shut the half-open connection
+            // down, about 3 s after the cancellation when the peer never answers (a stopped server whose port drops
+            // the packets). Stop waiting when the token fires, so the connect fails within the connection timeout,
+            // and let the abandoned attempt finish in the background.
+            var connectTask = QuicConnection.ConnectAsync(connectionOptions, timeoutCancellation.Token).AsTask();
+            try
+            {
+                quicConnection = await connectTask.WaitAsync(timeoutCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                _ = DisposeAbandonedConnectAsync(connectTask);
+                throw;
+            }
+        }
+        catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TransportException(TransportError.ConnectionTimeout, "Connection timed out.", e);
         }
         catch (AuthenticationException e)
         {
@@ -192,6 +209,23 @@ internal class QuicTransport : ITransport
         }
 
         return new QuicTransport(quicConnection, mainStream, clientConfig.SendSessionPipeOptions);
+    }
+
+    /// <summary>
+    /// Waits for a connect the caller stopped waiting for: closes the connection if it connected after all, and
+    /// observes its failure otherwise.
+    /// </summary>
+    private static async Task DisposeAbandonedConnectAsync(Task<QuicConnection> connectTask)
+    {
+        try
+        {
+            var connection = await connectTask.ConfigureAwait(false);
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // The attempt failed or was canceled: nothing to close.
+        }
     }
 
 }

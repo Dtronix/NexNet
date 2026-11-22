@@ -306,6 +306,11 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   CS8613/CS8614/CS8620 warnings ([#179](https://github.com/Dtronix/NexNet/pull/179)).
 - **QUIC: an authentication rejection is reported as `Authentication`.** A QUIC client could see `SocketError`
   instead, because the server's stream was disposed before its disconnect frame was sent ([#200](https://github.com/Dtronix/NexNet/pull/200)).
+- **A QUIC connect fails within `ConnectionTimeout`.** When the server never answered (for example a stopped server
+  whose port drops the packets), a C# QUIC connect failed about 3 s after its connection timeout, because a canceled
+  `QuicConnection.ConnectAsync` only completes once msquic has shut the half-open connection down. The client now
+  stops waiting when the timeout fires and reports `TransportException(ConnectionTimeout)` instead of
+  `ConnectionRefused` ([#388](https://github.com/Dtronix/NexNet/pull/388)).
 - **HttpSocket `TargetHost`.** The `SslClientAuthenticationOptions` remarks now say that `TargetHost` is ignored for
   HttpSocket and WebSocket clients: the URL host is always used for SNI and certificate validation ([#120](https://github.com/Dtronix/NexNet/pull/120)).
 - **A connect fails at once when the transport closes during it.** When a send found the transport already closed (for
