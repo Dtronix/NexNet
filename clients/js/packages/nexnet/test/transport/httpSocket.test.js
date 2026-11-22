@@ -90,7 +90,8 @@ describe('HttpSocket transport', () => {
     [403, 'AuthenticationError', DisconnectReason.Authentication],
     [404, 'InternalError', DisconnectReason.SocketError],
     [500, 'InternalError', DisconnectReason.SocketError],
-    [200, 'InternalError', DisconnectReason.SocketError],
+    [200, 'ProtocolError', DisconnectReason.SocketError],
+    [204, 'ProtocolError', DisconnectReason.SocketError],
   ])('maps HTTP %i to %s', async (status, kind, reason) => {
     const url = await server(({ socket }) => socket.end(httpStatus(status)));
     await expect(connect(url)).rejects.toMatchObject({ name: 'NexusTransportError', transportError: kind, reason, status });
