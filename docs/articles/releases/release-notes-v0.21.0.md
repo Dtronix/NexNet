@@ -116,7 +116,7 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   read-only …") before anything else is checked, as the Java and JavaScript clients do. Before, the refusal depended on
   the list's state: `RemoveAsync` of a missing item returned false, a write before `EnableAsync` threw "Client not
   connected", and any other write threw "Can't send when writer is not set." Argument checks (a negative index) still
-  come first. (PR_LINK)
+  come first. ([#355](https://github.com/Dtronix/NexNet/pull/355))
   - **Migration:** code that relied on `RemoveAsync` returning false on a read-only list must not call it there.
 
 ## New features
