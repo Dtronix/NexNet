@@ -82,6 +82,8 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     private final CopyOnWriteArrayList<StateListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean plaintextWarningLogged = new AtomicBoolean();
     private final @Nullable ReconnectController reconnection;
+    /** Test hold point (K56): runs after a lost session was handed to the reconnection controller. */
+    volatile @Nullable Runnable afterSessionLost;
 
     private final Object lock = new Object();
     private ConnectionState state = ConnectionState.DISCONNECTED;
@@ -547,23 +549,42 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             // C#: the state goes to Reconnecting and disconnected() stays pending until the loop gives up. Reconnecting
             // is set only once the controller has decided to start a loop (a declined reason stays Disconnected, K55),
             // and before the loop's first step is scheduled, so a fast attempt cannot connect before it.
-            if (controller.onSessionLost(reason, () -> setState(ConnectionState.RECONNECTING))) {
-                controller.idle().whenComplete((v, e) -> {
-                    if (state() != ConnectionState.CONNECTED) {
-                        setState(ConnectionState.DISCONNECTED);
-                    }
-                    CompletableFuture<Void> current = disconnected();
-                    if (current == a.disconnected || current.isDone()) {
-                        NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
-                    } else {
-                        current.whenComplete((x, y) -> a.disconnected.complete(null));
-                    }
-                });
+            // A loop that is still ending (its attempt has just connected this session) remembers the loss and starts
+            // a new loop for it as it ends (K56).
+            boolean reconnecting = controller.onSessionLost(reason, () -> setState(ConnectionState.RECONNECTING));
+            Runnable hook = afterSessionLost;
+            if (hook != null) {
+                hook.run();
+            }
+            if (reconnecting) {
+                awaitReconnection(controller, a);
                 return;
             }
-            // The policy declined (or a loop already runs): no loop owns the state, which stays Disconnected.
+            // The policy declined: no loop owns the state, which stays Disconnected.
         }
         NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
+    }
+
+    /**
+     * Completes the lost attempt's {@link Attempt#disconnected} once reconnection is over: when the loop ends without
+     * a loop that started for a loss in its last moments (K56) running after it.
+     */
+    private void awaitReconnection(ReconnectController controller, Attempt a) {
+        controller.idle().whenComplete((v, e) -> {
+            if (controller.isReconnecting()) {
+                awaitReconnection(controller, a);
+                return;
+            }
+            if (state() != ConnectionState.CONNECTED) {
+                setState(ConnectionState.DISCONNECTED);
+            }
+            CompletableFuture<Void> current = disconnected();
+            if (current == a.disconnected || current.isDone()) {
+                NexusExecutors.execute(callbackExecutor, () -> a.disconnected.complete(null));
+            } else {
+                current.whenComplete((x, y) -> a.disconnected.complete(null));
+            }
+        });
     }
 
     private byte[] acquireToken() throws Exception {

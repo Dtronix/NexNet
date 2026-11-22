@@ -193,8 +193,9 @@ class ReconnectControllerTest {
         assertEquals(List.of("start:[]:[]"), started);
         assertEquals(List.of("onReconnecting"), client.events);
 
-        // Neither a second loss while a loop runs nor a stopped controller calls back.
-        assertFalse(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("running")));
+        // A second loss while a loop runs is remembered but does not call back yet (K56); closing forgets it, and a
+        // stopped controller does not call back.
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("running")));
         c.close();
         assertFalse(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("stopped")));
         assertEquals(1, started.size());
@@ -291,9 +292,77 @@ class ReconnectControllerTest {
     void aSecondLossWhileReconnectingDoesNotStartAnotherLoop() {
         ReconnectController c = controller(new DefaultReconnectionPolicy());
         assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR));
-        assertFalse(c.onSessionLost(DisconnectReason.SOCKET_ERROR));
+        // Remembered for when the loop ends (K56), but no second loop runs now.
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR));
         assertEquals(1, ReconnectCounters.runningLoops());
+        assertEquals(List.of("onReconnecting"), client.events);
         c.close();
+        assertEquals(List.of("onReconnecting"), client.events);
+    }
+
+    @Test
+    void aSessionLostBeforeTheLoopEndsStartsANewLoopWhenItEnds() {
+        // K56 (C# S49): the attempt connected, and its session is lost while the loop is still ending (here from the
+        // onReconnected listener, which runs before the loop ends).
+        client.results.add(CompletableFuture.completedFuture(success()));
+        client.results.add(CompletableFuture.completedFuture(success()));
+        ReconnectController c = controller(new DefaultReconnectionPolicy());
+        List<String> started = new ArrayList<>();
+        List<Boolean> lostInWindow = new ArrayList<>();
+        c.addListener(new ReconnectListener() {
+            @Override
+            public void onReconnected(int attempts) {
+                if (lostInWindow.isEmpty()) {
+                    client.state = ConnectionState.DISCONNECTED;
+                    lostInWindow.add(c.onSessionLost(DisconnectReason.TIMEOUT,
+                        () -> started.add("second:" + c.isReconnecting())));
+                    assertEquals(List.of("first"), started);
+                }
+            }
+        });
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> started.add("first")));
+        // The new loop starts before the first loop's idle() completes, so a client waiting on it sees it running.
+        List<Boolean> runningWhenFirstEnded = new ArrayList<>();
+        c.idle().whenComplete((v, e) -> runningWhenFirstEnded.add(c.isReconnecting()));
+        // Both loops run here: the new loop's 0 ms delay elapses within the same advance.
+        timers.advance(0);
+
+        assertEquals(List.of(true), lostInWindow);
+        assertEquals(List.of(true), runningWhenFirstEnded);
+        assertEquals(List.of("first", "second:true"), started);
+        assertEquals(List.of("reconnecting:SOCKET_ERROR", "attempt:1", "reconnected:1",
+            "reconnecting:TIMEOUT", "attempt:1", "reconnected:1"), events.list);
+        assertFalse(c.isReconnecting());
+        assertTrue(c.idle().isDone());
+        assertEquals(List.of("onReconnecting", "reconnect", "onReconnecting", "reconnect"), client.events);
+    }
+
+    @Test
+    void aLossDuringTheLoopIsDroppedWhenTheLoopDoesNotConnectOrTheClientIsConnected() {
+        // The policy gives up: the remembered loss is not retried (C# parity).
+        ReconnectController c = controller(new DefaultReconnectionPolicy(new long[] {10}, false));
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR));
+        assertTrue(c.onSessionLost(DisconnectReason.TIMEOUT));
+        timers.advance(10);
+        assertFalse(c.isReconnecting());
+        assertEquals(List.of("onReconnecting", "reconnect"), client.events);
+
+        // The attempt connected and the client is still connected: nothing to reconnect.
+        client.results.add(CompletableFuture.completedFuture(success()));
+        ReconnectController d = new ReconnectController(client, new DefaultReconnectionPolicy(), timers,
+            Runnable::run, logger);
+        d.addListener(new ReconnectListener() {
+            @Override
+            public void onReconnected(int attempts) {
+                assertTrue(d.onSessionLost(DisconnectReason.TIMEOUT));
+            }
+        });
+        assertTrue(d.onSessionLost(DisconnectReason.SOCKET_ERROR));
+        timers.advance(0);
+        assertFalse(d.isReconnecting());
+        assertEquals(ConnectionState.CONNECTED, client.state);
+        assertEquals(List.of("onReconnecting", "reconnect", "onReconnecting", "reconnect"), client.events);
+        assertEquals(0, timers.pending());
     }
 
     @Test

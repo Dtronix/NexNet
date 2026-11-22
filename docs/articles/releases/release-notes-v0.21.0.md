@@ -336,6 +336,14 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   reconnection loop had finished did not start a new loop, so the client stayed `Disconnected`. And canceling the
   token passed to `ConnectAsync`/`TryConnectAsync` after the connect had succeeded turned off reconnection for that
   session. The loop now reconnects such a session when it ends, and the connect token cancels only the connect.
+- **Java client: a session lost before the reconnection loop ends is reconnected.** As in the C# client above, a
+  session that a reconnection attempt opened and that was lost before the loop had finished (for example from a
+  `ReconnectListener.onReconnected` listener) started no new loop, so the client stayed `DISCONNECTED`. The
+  controller now starts a new loop for it when the old one ends ([#398](https://github.com/Dtronix/NexNet/pull/398)).
+- **Java client: no `RECONNECTING` when the reconnection policy declines the reason.** A session lost for a reason
+  the policy does not reconnect (for example a graceful server disconnect) reported `RECONNECTING` before the client
+  settled on `DISCONNECTED`. It now ends at `DISCONNECTED`, as the C# and JavaScript clients do
+  ([#396](https://github.com/Dtronix/NexNet/pull/396)).
 - **JavaScript client: `disconnect()` aborts a reconnection attempt in progress.** A `disconnect()` made during a
   reconnection attempt's handshake waited for the attempt to finish: the attempt connected (`onConnected(true)` was
   called) and was then disconnected, a brief reconnect after a graceful disconnect. `disconnect()` (and
