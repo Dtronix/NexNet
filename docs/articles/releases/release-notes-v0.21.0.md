@@ -328,6 +328,10 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   connected again after a graceful disconnect. It now ends the loop wherever it is; the client ends `Disconnected`
   and does not reconnect. A reconnection attempt and a concurrent `ConnectAsync` can no longer both open a session.
   The Java and JavaScript clients already stopped reconnecting on `disconnect()`.
+- **C# client: reconnection edge cases.** A session that a reconnection attempt opened and that was lost before the
+  reconnection loop had finished did not start a new loop, so the client stayed `Disconnected`. And canceling the
+  token passed to `ConnectAsync`/`TryConnectAsync` after the connect had succeeded turned off reconnection for that
+  session. The loop now reconnects such a session when it ends, and the connect token cancels only the connect.
 
 ## Documentation
 
