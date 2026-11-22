@@ -13,8 +13,8 @@ export const HTTP_SOCKET_UPGRADE = 'nexnet-httpsockets';
 
 /**
  * Opens an HttpSocket transport (`ClientConfig.httpSocket`). Bytes that arrive with the `101` are fed to the session
- * first. `401`/`403` reject with `transportError` `AuthenticationError`; a `3xx` redirect is `ProtocolError` and is never
- * followed; any other status, `2xx` included, is a connect failure (`InternalError`). `status` is set on each.
+ * first. `401`/`403` reject with `transportError` `AuthenticationError`; a `2xx` answer, and a `3xx` redirect (never
+ * followed), is `ProtocolError`; any other status is a connect failure (`InternalError`). `status` is set on each.
  *
  * @type {import('../ITransport.js').TransportFactory}
  */

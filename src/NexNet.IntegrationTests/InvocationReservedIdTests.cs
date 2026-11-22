@@ -1,3 +1,5 @@
+using NexNet.Diagnostics;
+using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Interop;
 using NexNet.Interop.Hosts;
@@ -12,9 +14,8 @@ namespace NexNet.IntegrationTests;
 /// canceled after send is completed (no longer awaiting a result) but keeps its ID until the late reply releases it.
 /// </summary>
 /// <remarks>
-/// The matrix test checks the reserved IDs (<see cref="IClientUnderTest.GetOutstandingInvocationsAsync"/>) on every
-/// language. The snapshot's <c>AwaitingResults</c> is checked on the C# client only, until the harness can read a
-/// remote client's snapshot (Q05).
+/// The matrix test checks, on every language, the reserved IDs (<see cref="IClientUnderTest.GetOutstandingInvocationsAsync"/>)
+/// next to the snapshot's <c>AwaitingResults</c> and <c>CreditWaits</c> (<see cref="IClientUnderTest.GetSnapshotAsync"/>).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class InvocationReservedIdTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
@@ -52,18 +53,21 @@ internal class InvocationReservedIdTests(LanguageHostPool hosts) : MatrixTestBas
         var waiting = proxy.ServerTaskValueWithValueAndCancellation(3, waitingCts.Token).AsTask();
         await client.BarrierAsync().Timeout(T(1));
 
-        // The first two calls hold IDs; the one waiting for credit holds none.
+        // The first two calls hold IDs and await their results; the one waiting for credit holds none.
+        await AssertInvocations(client, awaitingResults: 2, creditWaits: 1);
         await AssertReservedIds(client, 2);
 
         // Canceled while waiting for credit: never sent, and it never held an ID.
         await waitingCts.CancelAsync();
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
+        await AssertInvocations(client, awaitingResults: 2, creditWaits: 0);
         await AssertReservedIds(client, 2);
 
-        // Canceled after send: the call completes at once, but its ID stays reserved until the server's reply, which
-        // comes only once the call leaves the server's queue.
+        // Canceled after send: the call completes at once (no longer awaiting a result), but its ID stays reserved
+        // until the server's reply, which comes only once the call leaves the server's queue.
         await secondCts.CancelAsync();
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await second.Timeout(T(1)));
+        await AssertInvocations(client, awaitingResults: 1, creditWaits: 0);
         await AssertReservedIds(client, 2);
 
         release.SetResult();
@@ -71,54 +75,20 @@ internal class InvocationReservedIdTests(LanguageHostPool hosts) : MatrixTestBas
 
         // The second call starts with its token canceled and replies Canceled, which releases its ID.
         await AssertNotOutstanding(client, 2);
+        await AssertInvocations(client, awaitingResults: 0, creditWaits: 0);
         await Assert.That(Volatile.Read(ref invocations)).IsEqualTo(2).Because("The call canceled while waiting for credit was never sent.");
         await EndAsync(client);
     }
 
-    /// <summary>
-    /// C#-only: the snapshot's <c>AwaitingResults</c> and <c>CreditWaits</c>, next to the session's reserved IDs. The
-    /// harness cannot read a remote client's snapshot yet (Q05).
-    /// </summary>
-    [Test]
-    public async Task Snapshot_CallWaitingForCreditIsNotAwaitingAResult()
+    /// <summary>The snapshot's awaited results and credit waits, read until they match (the snapshot is not synchronized with the calls).</summary>
+    private static async Task AssertInvocations(IClientUnderTest client, int awaitingResults, int creditWaits)
     {
-        var serverConfig = CreateServerConfig(Type.Tcp);
-        serverConfig.InvocationCredits = 1;
-        serverConfig.MaxConcurrentConnectionInvocations = 1;
-        var release = Signal();
-        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = HoldFirstCall(release));
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        var (client, _) = CreateClient(CreateClientConfig(Type.Tcp));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        var invocations = client.Session!.SessionInvocationStateManager;
-
-        var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, CancellationToken.None).AsTask();
-        using var secondCts = new CancellationTokenSource();
-        var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, secondCts.Token).AsTask();
-        await WaitUntil(() => client.GetSnapshot()!.Invocations is { AwaitingResults: 2, OutboundCredits: 0 });
-
-        using var waitingCts = new CancellationTokenSource();
-        var waiting = client.Proxy.ServerTaskValueWithValueAndCancellation(3, waitingCts.Token).AsTask();
-        await WaitUntil(() => client.GetSnapshot()!.Invocations.CreditWaits == 1);
-        await Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults).IsEqualTo(2);
-        await Assert.That(invocations.ReservedIdCount).IsEqualTo(2);
-
-        await waitingCts.CancelAsync();
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(T(1)));
-        await Assert.That(client.GetSnapshot()!.Invocations.CreditWaits).IsEqualTo(0);
-        await Assert.That(invocations.ReservedIdCount).IsEqualTo(2);
-
-        // Canceled after send: no longer awaiting a result, but its ID is reserved until the late reply.
-        await secondCts.CancelAsync();
-        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await second.Timeout(T(1)));
-        await Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults).IsEqualTo(1);
-        await Assert.That(invocations.ReservedIdCount).IsEqualTo(2);
-
-        release.SetResult();
-        await Assert.That(await first.Timeout(T(1))).IsEqualTo(1);
-        await WaitUntil(() => invocations.ReservedIdCount == 0);
-        await Assert.That(invocations.ReservedIdCount).IsEqualTo(0);
-        await Assert.That(client.GetSnapshot()!.Invocations.AwaitingResults).IsEqualTo(0);
+        var snapshot = await ClientDiagnostics.SnapshotUntil(client,
+            s => s.Invocations.AwaitingResults == awaitingResults && s.Invocations.CreditWaits == creditWaits, T(1));
+        await Assert.That(snapshot).IsNotNull().Because("The client has a session.");
+        NexusInvocationSnapshot invocations = snapshot!.Invocations;
+        await Assert.That(invocations.AwaitingResults).IsEqualTo(awaitingResults);
+        await Assert.That(invocations.CreditWaits).IsEqualTo(creditWaits);
     }
 
     /// <summary>The server method: call 1 runs until <paramref name="release"/>; any other waits for its cancellation.</summary>
