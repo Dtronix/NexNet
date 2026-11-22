@@ -21,8 +21,15 @@ namespace NexNet.IntegrationTests.Interop;
 /// <para>
 /// A test that runs on a language can still check part of its behavior on the C# client only: a branch on
 /// <see cref="ClientLanguages.CSharp"/> or <c>MatrixTestBase.InProc</c> (<c>MatrixTestBase.AssertNotOutstanding</c> checks every language).
-/// The audit finds those in the IL of the test (its async state machine, lambdas and local functions included), and
-/// they need an exception of their own (<see cref="ParityGap.CSharpOnlyAssertion"/>).
+/// The audit finds those in the IL of the test (its async state machine, lambdas and local functions included, and
+/// the methods of this assembly they call), and they need an exception of their own (<see cref="ParityGap.CSharpOnlyAssertion"/>).
+/// </para>
+/// <para>
+/// The same goes for a branch on any other language: a string comparison against a <see cref="ClientLanguages"/> name
+/// (<c>target.Language == ClientLanguages.Java</c>) or the start of a family of names
+/// (<c>target.Language.StartsWith("browser-")</c>), in the test or in a helper it calls (<c>IsBrowser(target)</c>). Such a
+/// test checks something else, often less, on that language, and needs an exception with the platform reason
+/// (<see cref="ParityGap.PlatformVariantAssertion"/>).
 /// </para>
 /// </remarks>
 internal class ClientParityTests
@@ -75,10 +82,38 @@ internal class ClientParityTests
         await Assert.That(issues[0]).Contains(ClientParityExceptions.Probe).And.Contains("browser");
     }
 
+    [Test]
+    public async Task Audit_FindsABranchOnALanguage()
+    {
+        // A branch on the browser family (an IsBrowser helper) that the exceptions do not cover is reported, as a variant.
+        const string test = "ClientTransportConformanceTests.WebSocket_TextMessage_ClientClosesWith1003";
+        var issues = Audit(ClientParityExceptions.All.Where(e => e.Test != test).ToArray());
+        await Assert.That(issues).Count().IsEqualTo(1);
+        await Assert.That(issues[0]).Contains(test).And.Contains("branches on the language").And.Contains("browser");
+    }
+
+    [Test]
+    public async Task Audit_KnowsEveryLanguageName()
+    {
+        await Assert.That(UngroupedLanguages()).IsEmpty();
+        await Assert.That(NamedLanguages(ClientLanguages.Java, out _)).IsEqualTo(ParityLanguages.Java);
+        await Assert.That(NamedLanguages(ClientLanguages.Node, out _)).IsEqualTo(ParityLanguages.Node);
+        await Assert.That(NamedLanguages(ClientLanguages.BrowserWebKit, out _)).IsEqualTo(ParityLanguages.Browser);
+        await Assert.That(NamedLanguages("browser-", out _)).IsEqualTo(ParityLanguages.Browser);
+        await Assert.That(NamedLanguages("browser", out _)).IsEqualTo(ParityLanguages.Browser);
+        await Assert.That(NamedLanguages(ClientLanguages.CSharp, out var csharp)).IsEqualTo(ParityLanguages.None);
+        await Assert.That(csharp).IsTrue();
+        await Assert.That(NamedLanguages("client", out _)).IsNull();
+        await Assert.That(NamedLanguages("", out _)).IsNull();
+    }
+
     /// <summary>The audit: what is missing from <paramref name="exceptions"/>, and what in it is stale.</summary>
     internal static IReadOnlyList<string> Audit(IReadOnlyList<ParityException> exceptions)
     {
         var issues = new List<string>();
+        foreach (var language in UngroupedLanguages())
+            issues.Add($"ClientLanguages.{language}: a client language the audit has no group for; add it to ClientParityTests.Languages and ParityLanguages.");
+
         var gaps = FindGaps(issues);
 
         foreach (var ((test, gap), languages) in gaps.OrderBy(g => g.Key.Test, StringComparer.Ordinal).ThenBy(g => g.Key.Gap))
@@ -104,6 +139,7 @@ internal class ClientParityTests
     {
         ParityGap.NoRunnableRow => "no runnable row",
         ParityGap.CSharpOnlyAssertion => "an assertion runs on the C# client only",
+        ParityGap.PlatformVariantAssertion => "the test branches on the language and checks something else (or less)",
         _ => gap.ToString(),
     };
 
@@ -148,6 +184,9 @@ internal class ClientParityTests
                 var runs = ParityLanguages.All & ~noRow;
                 if (body.HasCSharpOnlyAssertion && runs != ParityLanguages.None)
                     gaps[(test, ParityGap.CSharpOnlyAssertion)] = runs;
+
+                if ((body.Variants & runs) != ParityLanguages.None)
+                    gaps[(test, ParityGap.PlatformVariantAssertion)] = body.Variants & runs;
             }
         }
 
@@ -204,7 +243,15 @@ internal class ClientParityTests
 
     private sealed record Helpers(int RequireInProc, int[] CSharpOnly);
 
-    private readonly record struct BodyScan(bool RequiresInProc, bool HasCSharpOnlyAssertion);
+    /// <summary>What the IL of a test (and of the helpers it calls) does.</summary>
+    /// <param name="RequiresInProc">It calls <c>MatrixTestBase.RequireInProc</c>.</param>
+    /// <param name="HasCSharpOnlyAssertion">It branches on <see cref="ClientLanguages.CSharp"/> or calls <c>MatrixTestBase.InProc</c>.</param>
+    /// <param name="Variants">The languages it branches on, other than C#.</param>
+    private readonly record struct BodyScan(bool RequiresInProc, bool HasCSharpOnlyAssertion, ParityLanguages Variants)
+    {
+        public BodyScan Or(BodyScan other)
+            => new(RequiresInProc || other.RequiresInProc, HasCSharpOnlyAssertion || other.HasCSharpOnlyAssertion, Variants | other.Variants);
+    }
 
     /// <summary>The metadata tokens of the <c>MatrixTestBase</c> helpers the audit looks for.</summary>
     private static Helpers MatrixHelpers()
@@ -216,45 +263,124 @@ internal class ClientParityTests
         return new Helpers(Token("RequireInProc"), [Token("InProc")]);
     }
 
-    /// <summary>What the IL of the test, its state machine, lambdas and local functions calls.</summary>
-    private static BodyScan ScanBodies(MethodInfo test, Helpers helpers)
+    /// <summary>
+    /// Every language name of <see cref="ClientLanguages"/> (its string constants), so a language added there is
+    /// recognized in a branch without a change here.
+    /// </summary>
+    private static readonly string[] LanguageNames = typeof(ClientLanguages)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(f => f is { IsLiteral: true } && f.FieldType == typeof(string) && f.Name != nameof(ClientLanguages.EnvironmentVariable))
+        .Select(f => (string)f.GetRawConstantValue()!)
+        .ToArray();
+
+    /// <summary>The <see cref="ClientLanguages"/> names the audit has no <see cref="ParityLanguages"/> group for.</summary>
+    internal static IEnumerable<string> UngroupedLanguages()
+        => LanguageNames.Where(n => n != ClientLanguages.CSharp && Languages.All(l => l.Language != n));
+
+    /// <summary>
+    /// The languages a string literal of a test names, for a branch on the language: a language name
+    /// (<see cref="ClientLanguages"/>), or the start of a family of names (<c>"browser-"</c>, <c>"browser"</c>), which names
+    /// every language of the family. Null when it names none.
+    /// </summary>
+    /// <param name="literal">The literal.</param>
+    /// <param name="csharp">Whether it names the C# client.</param>
+    internal static ParityLanguages? NamedLanguages(string literal, out bool csharp)
     {
-        var requiresInProc = false;
-        var csharpOnly = false;
-        foreach (var body in Bodies(test))
+        csharp = literal == ClientLanguages.CSharp;
+        if (csharp)
+            return ParityLanguages.None;
+
+        var family = literal.EndsWith('-') ? literal : literal + "-";
+        var named = LanguageNames.Where(n => n == literal || (literal.Length > 0 && n.StartsWith(family, StringComparison.Ordinal))).ToArray();
+        if (named.Length == 0)
+            return null;
+
+        return Languages.Where(l => named.Contains(l.Language)).Aggregate(ParityLanguages.None, (all, l) => all | l.Group);
+    }
+
+    /// <summary>
+    /// What the IL of the test, its state machine, lambdas and local functions does, and that of the methods of this
+    /// assembly they call (an <c>IsBrowser(target)</c> helper, say).
+    /// </summary>
+    private static BodyScan ScanBodies(MethodInfo test, Helpers helpers)
+        => ScanMethod(test, helpers, new Dictionary<MethodBase, BodyScan>());
+
+    private static BodyScan ScanMethod(MethodBase method, Helpers helpers, Dictionary<MethodBase, BodyScan> scanned)
+    {
+        if (scanned.TryGetValue(method, out var known))
+            return known;
+
+        // Recursion (a helper calling itself or back into the test) ends here.
+        scanned[method] = default;
+        var result = default(BodyScan);
+        foreach (var body in Bodies(method))
         {
-            // The operand index of the last ldstr "csharp": a string comparison right after it (with at most the
-            // ClientTarget.Language getter between) is a branch on the language; the name alone (a client named
-            // "csharp") is not.
-            var csharpAt = -3;
+            // The operand index and languages of the last string literal that names a language: a string comparison right
+            // after it (with at most the ClientTarget.Language getter between) is a branch on the language; the name
+            // alone (a client named "csharp", a spec field) is not.
+            var namedAt = -3;
+            var namedCSharp = false;
+            var named = ParityLanguages.None;
             var operands = Operands(body);
             for (var i = 0; i < operands.Count; i++)
             {
                 var (operand, token) = operands[i];
                 if (operand == OperandType.InlineString)
                 {
-                    if (body.Module.ResolveString(token) == ClientLanguages.CSharp)
-                        csharpAt = i;
+                    if (NamedLanguages(body.Module.ResolveString(token), out var csharp) is { } languages)
+                        (namedAt, namedCSharp, named) = (i, csharp, languages);
                 }
                 else if (token == helpers.RequireInProc)
                 {
-                    requiresInProc = true;
+                    result = result with { RequiresInProc = true };
                 }
-                else if (helpers.CSharpOnly.Contains(token) || (i - csharpAt <= 2 && IsStringComparison(body.Module, token)))
+                else if (helpers.CSharpOnly.Contains(token))
                 {
-                    csharpOnly = true;
+                    result = result with { HasCSharpOnlyAssertion = true };
+                }
+                else if (i - namedAt <= 2 && IsStringComparison(body.Module, token))
+                {
+                    result = namedCSharp ? result with { HasCSharpOnlyAssertion = true } : result with { Variants = result.Variants | named };
+                }
+                else if (Helper(body, token) is { } helper)
+                {
+                    result = result.Or(ScanMethod(helper, helpers, scanned));
                 }
             }
         }
 
-        return new BodyScan(requiresInProc, csharpOnly);
+        scanned[method] = result;
+        return result;
+    }
+
+    /// <summary>The method of this assembly that <paramref name="token"/> calls from <paramref name="body"/>, if it is not a test.</summary>
+    private static MethodBase? Helper(MethodBase body, int token)
+    {
+        MethodBase? method;
+        try
+        {
+            method = body.Module.ResolveMethod(
+                token,
+                body.DeclaringType is { IsGenericType: true } type ? type.GetGenericArguments() : null,
+                body.IsGenericMethod ? body.GetGenericArguments() : null);
+        }
+        catch (ArgumentException)
+        {
+            // A member reference the module cannot resolve without more context: not a helper of this assembly.
+            return null;
+        }
+
+        if (method == null || method.Module != body.Module || method.GetCustomAttribute<TestAttribute>() != null)
+            return null;
+
+        return method.IsGenericMethod && method is MethodInfo generic ? generic.GetGenericMethodDefinition() : method;
     }
 
     private static bool IsStringComparison(Module module, int token)
     {
         try
         {
-            return module.ResolveMethod(token) is { DeclaringType: var type, Name: "op_Equality" or "op_Inequality" or "Equals" } && type == typeof(string);
+            return module.ResolveMethod(token) is { DeclaringType: var type, Name: "op_Equality" or "op_Inequality" or "Equals" or "StartsWith" or "EndsWith" or "Contains" or "CompareOrdinal" or "Compare" } && type == typeof(string);
         }
         catch (ArgumentException)
         {
@@ -264,7 +390,7 @@ internal class ClientParityTests
     }
 
     /// <summary>The test method and the compiler-generated methods of its body (named <c>&lt;Test&gt;...</c>).</summary>
-    private static IEnumerable<MethodBase> Bodies(MethodInfo test)
+    private static IEnumerable<MethodBase> Bodies(MethodBase test)
     {
         const BindingFlags all = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         var marker = "<" + test.Name + ">";
