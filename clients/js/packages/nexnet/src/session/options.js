@@ -131,6 +131,55 @@ function checkQueryToken(token, kind) {
   if (t.name.length === 0) throw new TypeError(`ClientConfig.${kind}.queryToken.name must not be empty`);
 }
 
+/** Upgrade headers the transport sets itself (lower case); `Sec-WebSocket-*` is refused by prefix. */
+const TRANSPORT_HEADERS = new Set(['host', 'connection', 'upgrade', 'content-length', 'transfer-encoding']);
+
+/** An HTTP token (RFC 9110 §5.6.2): letters, digits and the punctuation the class lists. */
+const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+/**
+ * Checks one upgrade header, the rules of C# `UpgradeHeaderCollection` and Java `ClientConfig.Builder.header`: the
+ * name is an HTTP token and not one the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`,
+ * `Content-Length`, `Transfer-Encoding`); the value is Latin-1 with no control character other than tab (no CR or
+ * LF). `Authorization` is allowed.
+ * @param {string} name
+ * @param {unknown} value
+ * @param {string} kind The transport property, for the message.
+ * @throws {TypeError} The name or value is refused.
+ */
+function checkUpgradeHeader(name, value, kind) {
+  if (!HTTP_TOKEN.test(name)) throw new TypeError(`ClientConfig.${kind}.headers: invalid header name '${name}'`);
+  const lower = name.toLowerCase();
+  if (TRANSPORT_HEADERS.has(lower) || lower.startsWith('sec-websocket-')) {
+    throw new TypeError(`ClientConfig.${kind}.headers: the ${name} header is set by the transport`);
+  }
+  if (typeof value !== 'string') throw new TypeError(`ClientConfig.${kind}.headers: the value of the ${name} header must be a string`);
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    if ((c < 0x20 && c !== 0x09) || c === 0x7f || c > 0xff) {
+      throw new TypeError(`ClientConfig.${kind}.headers: the value of the ${name} header has a control or non-Latin-1 character`);
+    }
+  }
+}
+
+/**
+ * Checks a `headers` option: absent, null, or an object of valid upgrade headers (`checkUpgradeHeader`) with no
+ * name set twice ignoring case.
+ * @param {unknown} headers
+ * @param {string} kind
+ */
+function checkUpgradeHeaders(headers, kind) {
+  if (headers === undefined || headers === null) return;
+  if (typeof headers !== 'object' || Array.isArray(headers)) throw new TypeError(`ClientConfig.${kind}.headers must be an object of name to value`);
+  const seen = new Set();
+  for (const [name, value] of Object.entries(headers)) {
+    checkUpgradeHeader(name, value, kind);
+    const lower = name.toLowerCase();
+    if (seen.has(lower)) throw new TypeError(`ClientConfig.${kind}.headers sets the ${name} header twice (names ignore case)`);
+    seen.add(lower);
+  }
+}
+
 /**
  * Name and security of the configured transport, known before it connects (as C# `TransportName`/`IsSecureTransport`).
  * @param {import('../contract/config.js').TransportKind} kind
@@ -145,6 +194,7 @@ export function describeTransport(kind, transportConfig) {
         throw new TypeError(`ClientConfig.webSocket.url must be ws: or wss:; got ${url.protocol}`);
       }
       checkQueryToken(transportConfig?.queryToken, kind);
+      checkUpgradeHeaders(transportConfig?.headers, kind);
       return { name: `${url.protocol}//`, isSecure: url.protocol === 'wss:' };
     }
     case 'httpSocket': {
@@ -153,6 +203,7 @@ export function describeTransport(kind, transportConfig) {
         throw new TypeError(`ClientConfig.httpSocket.url must be http: or https:; got ${url.protocol}`);
       }
       checkQueryToken(transportConfig?.queryToken, kind);
+      checkUpgradeHeaders(transportConfig?.headers, kind);
       return { name: `${url.protocol}//`, isSecure: url.protocol === 'https:' };
     }
     case 'tcp':
