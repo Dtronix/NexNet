@@ -1,4 +1,3 @@
-using System.Net;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -8,7 +7,8 @@ using NexNet.Transports;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Tests for RemoteAddress and RemotePort properties on sessions and transports.
+/// Tests for RemoteAddress and RemotePort properties on server sessions and transports. What a client reports is
+/// tested on every client language by <see cref="ClientSessionInfoTests"/>.
 /// </summary>
 internal class RemoteEndpointTests : BaseTests
 {
@@ -118,91 +118,6 @@ internal class RemoteEndpointTests : BaseTests
         await Assert.That(ports[0]).IsNotNull();
         await Assert.That(ports[1]).IsNotNull();
         await Assert.That(ports[0]).IsNotEqualTo(ports[1]).Because("Each client should have a different ephemeral port");
-    }
-
-    [Test]
-    [Transports(Type.Tcp, Type.TcpTls, Type.Quic)]
-    public async Task Client_SeesServerRemoteAddress(Type type)
-    {
-        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var serverConfig = CreateServerConfig(type);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, CreateClientConfig(type));
-
-        clientNexus.OnConnectedEvent = (nexus, _) =>
-        {
-            tcs.SetResult(nexus.Context.RemoteAddress);
-            return ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        var remoteAddress = await tcs.Task.Timeout(1);
-
-        await Assert.That(remoteAddress).IsNotNull();
-        await Assert.That(remoteAddress).IsNotEmpty();
-        // Client connects to loopback, so should see 127.0.0.1 or ::1
-        await Assert.That(remoteAddress).Matches(@"^(127\.0\.0\.1|::1|localhost)$");
-    }
-
-    [Test]
-    [Transports(Type.Tcp, Type.TcpTls, Type.Quic)]
-    public async Task Client_SeesServerRemotePort(Type type)
-    {
-        var tcs = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var serverConfig = CreateServerConfig(type);
-        var clientConfig = CreateClientConfig(type);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
-
-        // Get the expected server port from config
-        int? expectedPort = null;
-        if (serverConfig is TcpServerConfig tcpConfig)
-            expectedPort = ((IPEndPoint)tcpConfig.EndPoint).Port;
-        else if (serverConfig is TcpTlsServerConfig tlsConfig)
-            expectedPort = ((IPEndPoint)tlsConfig.EndPoint).Port;
-        else if (serverConfig is Quic.QuicServerConfig quicConfig)
-            expectedPort = ((IPEndPoint)quicConfig.EndPoint).Port;
-
-        clientNexus.OnConnectedEvent = (nexus, _) =>
-        {
-            tcs.SetResult(nexus.Context.RemotePort);
-            return ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        var remotePort = await tcs.Task.Timeout(1);
-
-        await Assert.That(remotePort).IsNotNull();
-        await Assert.That(remotePort).IsEqualTo(expectedPort).Because("Client should see the server's listening port");
-    }
-
-    // WebSocket and HttpSocket client-side tests
-    // Note: WebSocket/HttpSocket clients may not have RemoteAddress/RemotePort set
-    // because the underlying transport doesn't expose this easily
-    [Test]
-    [Transports(Type.WebSocket, Type.HttpSocket)]
-    public async Task Client_WebSocketHttpSocket_RemoteEndpointMayBeNull(Type type)
-    {
-        var tcs = new TaskCompletionSource<(string?, int?)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var serverConfig = CreateServerConfig(type);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, CreateClientConfig(type));
-
-        clientNexus.OnConnectedEvent = (nexus, _) =>
-        {
-            tcs.SetResult((nexus.Context.RemoteAddress, nexus.Context.RemotePort));
-            return ValueTask.CompletedTask;
-        };
-
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
-
-        var (remoteAddress, remotePort) = await tcs.Task.Timeout(1);
-
-        // WebSocket/HttpSocket client transports don't provide remote endpoint
-        await Assert.That(remoteAddress).IsNull();
-        await Assert.That(remotePort).IsNull();
     }
 
     [Test]
