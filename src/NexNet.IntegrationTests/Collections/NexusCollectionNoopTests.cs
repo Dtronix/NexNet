@@ -1,57 +1,68 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 
 namespace NexNet.IntegrationTests.Collections;
 
 /// <summary>
 /// Noop answers, client protocol errors and the client collection state (protocol specification §12).
 /// </summary>
-internal class NexusCollectionNoopTests : NexusCollectionBaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionNoopTests(LanguageHostPool hosts) : NexusCollectionBaseTests
 {
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
+
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task ConcurrentRemoveOfSameIndex_LoserCompletesFalse(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ConcurrentRemoveOfSameIndex_LoserCompletesFalse(ClientTarget target)
     {
-        var (server, client1, _) = await ConnectServerAndClient(type);
-        var serverNexus = server.NexusCreatedQueue.First();
-        var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
+        const int items = 10;
+        var (spec, nexuses) = await StartMatrixServerAsync(target);
+        await using var client1 = await ConnectMatrixClientAsync(target, spec);
+        await using var client2 = await ConnectMatrixClientAsync(target, spec);
+        var serverList = nexuses.First().IntListBi;
 
-        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
-        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await serverNexus.IntListBi.AddAsync(3).Timeout(1);
+        for (var i = 0; i < items; i++)
+            await serverList.AddAsync(i).Timeout(T(1));
 
-        var list1 = client1.Proxy.IntListBi;
-        var list2 = client2.Proxy.IntListBi;
-        await Assert.That(await list1.EnableAsync().Timeout(1)).IsTrue();
-        await Assert.That(await list2.EnableAsync().Timeout(1)).IsTrue();
+        var list1 = IntListBi(client1);
+        var list2 = IntListBi(client2);
+        await Assert.That(await list1.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
+        await Assert.That(await list2.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
 
-        using var removed1 = list1.WaitForEvent(NexusCollectionChangedAction.Remove);
-        using var removed2 = list2.WaitForEvent(NexusCollectionChangedAction.Remove);
-
-        // Both requests are built from the same base version: each reads its version synchronously before sending,
-        // and the other client's change cannot have been applied yet.
-        var remove1 = list1.RemoveAtAsync(0);
-        var remove2 = list2.RemoveAtAsync(0);
-
-        var results = await Task.WhenAll(remove1, remove2).Timeout(1);
-
-        await removed1.Wait();
-        await removed2.Wait();
-
-        using (Assert.Multiple())
+        // Both requests must be built from the same base version. The C# client reads its version synchronously before
+        // sending, so the other client's change cannot have been applied yet. A language host gets the two requests one
+        // after the other, and the second client may already hold the first one's change, so both requests win: retry
+        // until a round produces the Noop.
+        var noop = false;
+        for (var round = 0; round < items / 2 && !noop; round++)
         {
-            await Assert.That(results).IsEquivalentTo(new[] { true, false });
-            await Assert.That(serverNexus.IntListBi).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
-            await Assert.That(list1).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
-            await Assert.That(list2).IsEquivalentTo(new[] { 2, 3 }, CollectionOrdering.Matching);
-            await Assert.That(list1.State).IsEqualTo(NexusCollectionState.Connected);
-            await Assert.That(list2.State).IsEqualTo(NexusCollectionState.Connected);
+            var expected = serverList.ToArray();
+            await WaitForItemsAsync(list1, expected, $"round {round}: list 1 before the removes");
+            await WaitForItemsAsync(list2, expected, $"round {round}: list 2 before the removes");
 
+            var results = await Task.WhenAll(list1.RemoveAtAsync(0).AsTask(), list2.RemoveAtAsync(0).AsTask()).Timeout(T(1));
+            await Assert.That(results.Contains(true)).IsTrue().Because($"round {round}: one request wins");
+            noop = results.Contains(false);
+
+            // Whatever the outcome, both lists converge on the server's.
+            expected = serverList.ToArray();
+            await WaitForItemsAsync(list1, expected, $"round {round}: list 1 after the removes");
+            await WaitForItemsAsync(list2, expected, $"round {round}: list 2 after the removes");
         }
 
+        await Assert.That(noop).IsTrue().Because("one round must produce a Noop");
+
         // The collection still works after the Noop.
-        await Assert.That(await list2.AddAsync(4).Timeout(1)).IsTrue();
+        await Assert.That(await list2.AddAsync(100).AsTask().Timeout(T(1))).IsTrue();
+        await WaitForItemsAsync(list1, serverList.ToArray(), "list 1 after the add");
+
+        await list1.DisableAsync().AsTask().Timeout(T(1));
+        await list2.DisableAsync().AsTask().Timeout(T(1));
+        await MatrixTestBase.EndAsync(client1);
+        await MatrixTestBase.EndAsync(client2);
     }
 
     [Test]

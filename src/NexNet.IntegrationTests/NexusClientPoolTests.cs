@@ -25,8 +25,7 @@ namespace NexNet.IntegrationTests;
 /// <para>
 /// These stay on the C# pool (C#-runtime API, listed drops of P01g): argument validation of the
 /// <see cref="NexusClientPool{TClientNexus, TServerProxy}"/> constructor (zero or negative maximum, negative minimum
-/// idle, null config), the nexus-factory tests (custom factory throwing, returning null, call count, default factory),
-/// and the thread safety of the synchronous pool properties.
+/// idle, null config) and the nexus-factory tests (custom factory throwing, returning null, call count, default factory).
 /// </para>
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
@@ -654,38 +653,26 @@ internal class NexusClientPoolTests(LanguageHostPool hosts) : BaseTests
 
     // Concurrency Tests
     [Test]
-    public async Task Pool_ThreadSafePropertyAccess()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.ClientPool)]
+    public async Task Pool_ThreadSafePropertyAccess(ClientTarget target)
     {
-        // Arrange
-        var (server, _, _) = CreateServerClient(
-            CreateServerConfig(Type.Uds),
-            CreateClientConfig(Type.Uds));
+        await using var server = await StartServer();
+        await using var pool = await CreatePool(target, server.Endpoints, new ClientPoolSpec { MaxConnections = 5 });
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-
-        var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
-        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
-
-        try
+        // Concurrent reads of the pool's state while renting and returning.
+        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(async _ =>
         {
-            // Act - Concurrent property access while renting/returning
-            var tasks = Enumerable.Range(0, 20).Select(async _ =>
-            {
-                using var client = await pool.RentClientAsync().Timeout(T(1));
-                var available = pool.AvailableConnections; // Should not throw
-                var max = pool.MaxConnections; // Should not throw
-                await Task.Delay(10);
-                return available + max; // Just to use the values
-            }).ToArray();
+            await using var client = await Rent(pool);
+            var state = await pool.GetStateAsync(); // Should not throw
+            await Task.Delay(10);
+            return state;
+        })).Timeout(T(10));
 
-            var results = await Task.WhenAll(tasks).Timeout(T(1));
-            await Assert.That(results.Length).IsEqualTo(20);
-        }
-        finally
-        {
-            await pool.DisposeAsync();
-        }
+        await Assert.That(results.Length).IsEqualTo(20);
+        await Assert.That(results.All(s => s.MaxConnections == 5 && s.Rented is >= 1 and <= 5)).IsTrue().Because(string.Join(", ", results));
+        await Assert.That((await pool.GetStateAsync()).Rented).IsEqualTo(0);
+
+        await DisposeAndAssertNoLeaks(pool);
     }
 
     /*
@@ -1159,71 +1146,76 @@ internal class NexusClientPoolTests(LanguageHostPool hosts) : BaseTests
     }
 
     [Test]
-    public async Task Client_DisconnectedTask_CompletedAfterFailedConnect()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedConnect(ClientTarget target)
     {
         // No server listening
-        var (_, client, _) = CreateServerClient(
-            CreateServerConfig(Type.Uds),
-            CreateClientConfig(Type.Uds),
-            startServer: false);
+        target.SkipIfUnsupported();
+        InteropEndpoints endpoints;
+        await using (var stopped = await StartServer())
+            endpoints = stopped.Endpoints;
+        await using var client = await Harness.CreateClientAsync(target, ClientSpec.ForEndpoint(endpoints, target.Transport));
 
-        var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(result.Success).IsFalse();
-        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+        await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
+        await client.WhenDisconnectedAsync(T(1));
 
         // A second failed attempt leaves it completed too.
-        result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(result.Success).IsFalse();
-        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+        await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
+        await client.WhenDisconnectedAsync(T(1));
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
-    public async Task Client_DisconnectedTask_CompletedAfterFailedReconnect()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket])]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedReconnect(ClientTarget target)
     {
-        var (server, client, _) = CreateServerClient(
-            CreateServerConfig(Type.Uds),
-            CreateClientConfig(Type.Uds));
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var client = await Harness.CreateClientAsync(target, ClientSpec.ForEndpoint(server.Endpoints, target.Transport));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(client.DisconnectedTask.IsCompleted).IsFalse();
+        await Assert.That(await IsDisconnectedWithin(client, 50)).IsFalse();
 
         // The server stops: the session ends and its DisconnectedTask completes.
         await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-        await client.DisconnectedTask.Timeout(T(TestTimeouts.Connect));
+        await client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
 
         // A connect attempt that fails at the transport leaves DisconnectedTask completed.
-        var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(result.Success).IsFalse();
-        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+        await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
+        await client.WhenDisconnectedAsync(T(1));
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
-    public async Task Pool_RentedClient_DisconnectedTask_CompletedAfterFailedEnsureConnected()
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.WebSocket], Requires = ClientCapabilities.ClientPool)]
+    public async Task Pool_RentedClient_DisconnectedTask_CompletedAfterFailedEnsureConnected(ClientTarget target)
     {
-        var (server, _, _) = CreateServerClient(
-            CreateServerConfig(Type.Uds),
-            CreateClientConfig(Type.Uds));
+        await using var server = await StartServer();
+        await using var pool = await CreatePool(target, server.Endpoints, new ClientPoolSpec { MaxConnections = 1 });
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-
-        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
-            new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 1 });
-
-        try
+        await using (var client = await Rent(pool))
         {
-            using var client = await pool.RentClientAsync().Timeout(T(TestTimeouts.Connect));
-            await Assert.That(client.DisconnectedTask.IsCompleted).IsFalse();
+            await Assert.That(await IsDisconnectedWithin(client, 50)).IsFalse();
 
             await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-            await client.DisconnectedTask.Timeout(T(TestTimeouts.Connect));
+            await client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
 
             await Assert.That(await client.EnsureConnectedAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
-            await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+            await client.WhenDisconnectedAsync(T(1));
         }
-        finally
+
+        await DisposeAndAssertNoLeaks(pool);
+    }
+
+    /// <summary>Whether the client's session disconnects within <paramref name="milliseconds"/> (real time).</summary>
+    private static async Task<bool> IsDisconnectedWithin(IClientUnderTest client, int milliseconds)
+    {
+        try
         {
-            await pool.DisposeAsync();
+            await client.WhenDisconnectedAsync(milliseconds / 1000.0);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 

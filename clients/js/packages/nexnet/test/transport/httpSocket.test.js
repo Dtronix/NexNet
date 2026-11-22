@@ -77,6 +77,8 @@ describe('HttpSocket transport', () => {
     expect(seen?.headers['transfer-encoding']).toBeUndefined();
     expect(t.isSecure).toBe(false);
     expect(t.name).toBe('http://');
+    expect(t.remoteAddress).toMatch(/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/);
+    expect(t.remotePort).toBe(Number(new URL(url).port));
 
     // After the upgrade the stream is raw bytes, both ways.
     await t.write([Uint8Array.of(1, 2), Uint8Array.of(3)]);

@@ -1,5 +1,9 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Interop.InProc;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -8,99 +12,113 @@ namespace NexNet.IntegrationTests.Collections;
 /// request obsolete (protocol specification §12).
 /// </summary>
 [NotInParallel("stress")]
-internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusCollectionSnapshotOrderTests(LanguageHostPool hosts) : NexusCollectionBaseTests
 {
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
+
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.WebSocket])]
+    public async Task ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges(ClientTarget target)
     {
         const int writers = 4;
         const int writesPerWriter = 150;
         const int joiners = 6;
 
-        var (server, client1, _) = await ConnectServerAndClient(type);
-        var serverList = server.NexusCreatedQueue.First().IntListBi;
-
-        var writerList = client1.Proxy.IntListBi;
-        await Assert.That(await writerList.EnableAsync().Timeout(1)).IsTrue();
-
-        var joinerClients = new NexusClient<TestInterfaces.ClientNexus, TestInterfaces.ClientNexus.ServerProxy>[joiners];
-        for (var i = 0; i < joiners; i++)
+        var (spec, nexuses) = await StartMatrixServerAsync(target);
+        var clients = new List<IClientUnderTest>();
+        try
         {
-            (joinerClients[i], _) = CreateClient(CreateClientConfig(type));
-            await joinerClients[i].ConnectAsync().Timeout(TestTimeouts.Connect);
-        }
+            for (var i = 0; i < joiners + 1; i++)
+                clients.Add(await ConnectMatrixClientAsync(target, spec));
 
-        // An async gate: blocking eleven pool threads on a wait handle starves the parallel tests next to this one.
-        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var serverList = nexuses.First().IntListBi;
+            var writerList = IntListBi(clients[0]);
+            await Assert.That(await writerList.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
 
-        // Server writers mix inserts, removes and replaces; one client writer goes through the processor too.
-        var writerTasks = Enumerable.Range(0, writers).Select(w => Task.Run(async () =>
-        {
-            await start.Task.ConfigureAwait(false);
-            for (var i = 0; i < writesPerWriter; i++)
+            // An async gate: blocking eleven pool threads on a wait handle starves the parallel tests next to this one.
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // Server writers mix inserts, removes and replaces; one client writer goes through the processor too.
+            var writerTasks = Enumerable.Range(0, writers).Select(w => Task.Run(async () =>
             {
-                var value = w * 100_000 + i;
-                switch (i % 5)
+                await start.Task.ConfigureAwait(false);
+                for (var i = 0; i < writesPerWriter; i++)
                 {
-                    case 3 when serverList.Count > 10:
-                        await serverList.RemoveAtAsync(0).ConfigureAwait(false);
-                        break;
-                    case 4 when serverList.Count > 0:
-                        await serverList.ReplaceAsync(0, value).ConfigureAwait(false);
-                        break;
-                    default:
-                        await serverList.AddAsync(value).ConfigureAwait(false);
-                        break;
+                    var value = w * 100_000 + i;
+                    switch (i % 5)
+                    {
+                        case 3 when serverList.Count > 10:
+                            await serverList.RemoveAtAsync(0).ConfigureAwait(false);
+                            break;
+                        case 4 when serverList.Count > 0:
+                            await serverList.ReplaceAsync(0, value).ConfigureAwait(false);
+                            break;
+                        default:
+                            await serverList.AddAsync(value).ConfigureAwait(false);
+                            break;
+                    }
+                }
+            })).Append(Task.Run(async () =>
+            {
+                await start.Task.ConfigureAwait(false);
+                for (var i = 0; i < writesPerWriter; i++)
+                    await writerList.AddAsync(-i - 1).ConfigureAwait(false);
+            })).ToArray();
+
+            // Joiners enable while the writers run, then disable and enable again to take a second snapshot.
+            var joinerTasks = clients.Skip(1).Select((c, i) => Task.Run(async () =>
+            {
+                await start.Task.ConfigureAwait(false);
+                var list = IntListBi(c);
+                await Task.Delay(i * 3).ConfigureAwait(false);
+                if (!await list.EnableAsync().ConfigureAwait(false))
+                    throw new InvalidOperationException("Enable failed.");
+                await Task.Delay(5).ConfigureAwait(false);
+                await list.DisableAsync().ConfigureAwait(false);
+                if (!await list.EnableAsync().ConfigureAwait(false))
+                    throw new InvalidOperationException("Second enable failed.");
+            })).ToArray();
+
+            start.SetResult();
+            await Task.WhenAll(writerTasks.Concat(joinerTasks)).Timeout(T(20));
+
+            // Every broadcast is queued; wait for the clients to apply them. A client that applied a change before its
+            // snapshot would end up with other contents.
+            var expected = serverList.ToArray();
+            for (var i = 0; i < clients.Count; i++)
+                await WaitForItemsAsync(IntListBi(clients[i]), expected, $"list {i} contents");
+
+            // The C# client also counts the changes it received before its snapshot.
+            if (target.Language == ClientLanguages.CSharp)
+            {
+                for (var i = 0; i < clients.Count; i++)
+                {
+                    var list = (NexusListClient<int>)((InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)clients[i]).Client.Proxy.IntListBi;
+                    await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected).Because($"list {i} state");
+                    await Assert.That(list.TestChangesReceivedBeforeSnapshot).IsEqualTo(0)
+                        .Because($"list {i} must not receive changes before its snapshot");
                 }
             }
-        })).Append(Task.Run(async () =>
-        {
-            await start.Task.ConfigureAwait(false);
-            for (var i = 0; i < writesPerWriter; i++)
-                await writerList.AddAsync(-i - 1).ConfigureAwait(false);
-        })).ToArray();
 
-        // Joiners enable while the writers run, then disable and enable again to take a second snapshot.
-        var joinerTasks = joinerClients.Select((c, i) => Task.Run(async () =>
-        {
-            await start.Task.ConfigureAwait(false);
-            var list = c.Proxy.IntListBi;
-            await Task.Delay(i * 3).ConfigureAwait(false);
-            if (!await list.EnableAsync().ConfigureAwait(false))
-                throw new InvalidOperationException("Enable failed.");
-            await Task.Delay(5).ConfigureAwait(false);
-            await list.DisableAsync().ConfigureAwait(false);
-            if (!await list.EnableAsync().ConfigureAwait(false))
-                throw new InvalidOperationException("Second enable failed.");
-        })).ToArray();
-
-        start.SetResult();
-        await Task.WhenAll(writerTasks.Concat(joinerTasks)).Timeout(20);
-
-        var expected = serverList.ToArray();
-        var lists = joinerClients.Select(c => c.Proxy.IntListBi).Append(writerList).ToArray();
-
-        // Every broadcast is queued; wait for the clients to apply them.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && !lists.All(l => l.SequenceEqual(expected)))
-            await Task.Delay(10);
-
-        for (var i = 0; i < lists.Length; i++)
-        {
-            var list = lists[i];
-            var listClient = (NexusListClient<int>)list;
-            using (Assert.Multiple())
+            foreach (var client in clients)
             {
-                await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected).Because($"list {i} state");
-                await Assert.That(list.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching)
-                    .Because($"list {i} contents");
-                await Assert.That(listClient.TestChangesReceivedBeforeSnapshot).IsEqualTo(0)
-                    .Because($"list {i} must not receive changes before its snapshot");
+                await IntListBi(client).DisableAsync().AsTask().Timeout(T(1));
+                await MatrixTestBase.EndAsync(client);
             }
+        }
+        finally
+        {
+            foreach (var client in clients)
+                await client.DisposeAsync();
         }
     }
 
+    /// <remarks>
+    /// C#-only: it reads the lists' counts synchronously the moment a remove completes, which a language host cannot do
+    /// (a snapshot after the result is a later round trip, by when the winning change has arrived whatever the order).
+    /// </remarks>
     [Test]
     [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentRemove_LoserSeesWinningChangeBeforeFalse(Type type)

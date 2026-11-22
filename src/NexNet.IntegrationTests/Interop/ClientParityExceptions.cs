@@ -77,6 +77,9 @@ internal static class ClientParityExceptions
     private const string ExceptionTypeName =
         "By design: exception type names are language-specific; the other languages check the error kind and message.";
 
+    private const string ListTestCounter =
+        "Runtime internal: the count of changes a list received before its snapshot is a C# test counter that no harness operation exposes; the other languages are checked by their final contents, which such a change would corrupt.";
+
     /// <summary>The exceptions.</summary>
     internal static readonly ParityException[] All =
     [
@@ -105,5 +108,6 @@ internal static class ClientParityExceptions
         new("NexusServerTests_NexusDuplexPipe.Server_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.NoRunnableRow, ParityLanguages.All, ServerPipeObject),
         new("NexusClientTests_NexusDuplexPipe.Client_ThrowsWhenPassingPipeFromWrongNexus", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ServerPipeObject),
         new("RemoteExceptionDetailTests.TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ExceptionTypeName),
+        new("NexusCollectionSnapshotOrderTests.ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges", ParityGap.CSharpOnlyAssertion, ParityLanguages.All, ListTestCounter),
     ];
 }
