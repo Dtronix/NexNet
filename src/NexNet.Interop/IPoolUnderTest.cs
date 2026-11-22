@@ -47,9 +47,18 @@ public interface IPoolUnderTest : IAsyncDisposable
     Task AdvanceTimeAsync(TimeSpan by);
 
     /// <summary>
+    /// The pool's collection connector for the collection <paramref name="collectionName"/> of the server nexus (control
+    /// protocol §6.11 <c>pool.collection</c>). Nothing is rented until <see cref="IPoolCollectionConnector{T}.GetCollectionAsync"/>.
+    /// </summary>
+    /// <typeparam name="T">The item type of the collection.</typeparam>
+    /// <exception cref="ArgumentException">The server nexus has no collection <paramref name="collectionName"/> of <typeparamref name="T"/>.</exception>
+    IPoolCollectionConnector<T> GetCollectionConnector<T>(string collectionName);
+
+    /// <summary>
     /// Reports what the pool still holds: each of its clients that is not disconnected counts as an open client (idle or
-    /// rented), and a pool not disposed counts its health check as a timer. Clean once every rental is returned and the
-    /// pool disposed.
+    /// rented), and a pool not disposed counts its health check as a timer. A collection connector not released counts
+    /// as an open client once it rented one (<see cref="IPoolCollectionConnector{T}"/>). Clean once every rental is
+    /// returned, every connector released and the pool disposed.
     /// </summary>
     Task<LeakReport> EndTestAuditAsync();
 }

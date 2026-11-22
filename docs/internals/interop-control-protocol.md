@@ -445,6 +445,8 @@ pooled client.
 | `pool.state` | `{pool}` | `{maxConnections, idle, rented}`: the maximum, the clients idle in the pool, the rentals not returned. |
 | `pool.advanceTime` | `{pool, ms}` | `{}`. Moves the test clock of a pool created with `spec.fakeTime` (the health check and every client of the pool share it); timers due run before the response. `InvalidOperation` otherwise. |
 | `pool.dispose` | `{pool}` | `{}`: disposes the pool and its idle clients. Rentals not returned stay connected until they are returned (the pool then disposes them). Disposing twice is not an error. |
+| `pool.collection` | `{pool, connector, collection}` | `{h, client}` on success, `{failed}` as for `pool.rent`. Asks the pool's collection connector named `connector` for its collection (below). `h` is a **collection handle**, `client` the pooled client as in `pool.rent`. Bounded by `timeoutMs`. |
+| `pool.collectionRelease` | `{pool, connector}` | `{}`: releases the connector (below) and its collection handles. An unknown or released connector is not an error. |
 
 `test.audit` also takes `{pool}`: the leak report of the pool and its clients.
 
@@ -466,6 +468,24 @@ pooled client.
 **Return** (`pool.return`): a connected client goes back to the pool, idle; a client that is not connected, or of a
 disposed pool, is disposed.
 
+**Collection connector** (`pool.collection`, `pool.collectionRelease`): the runtime's connector of a pool for one
+collection of the server nexus (C# `NexusClientPool.GetCollectionConnector`, Java `NexusClientPool.collectionConnector`,
+JavaScript `NexusClientPool.collectionConnector`), as a relay server uses it.
+
+- `connector` is a runner-chosen name, unique per pool. The first `pool.collection` of a name creates the connector for
+  `collection` (a collection reference, §6.10), whose selector picks that collection from the rented client's proxy; a
+  later one with another collection fails with `BadRequest`.
+- Each `pool.collection` asks the connector for its collection (C# `GetCollection`, Java `collection()`, JavaScript
+  `getCollection()`), which rents a client from the pool. What happens to the rental of an earlier call is the
+  runtime's own (Java returns it, JavaScript keeps it until the release, C# stops referencing it). A connection failure
+  is a result, `{failed}`, as in `pool.rent`; a disposed pool or a released connector fails with `InvalidOperation`.
+- The **collection handle** `h` accepts the `list.*` ops (§6.10) for that collection only (another collection fails with
+  `BadRequest`); every other op fails with `NotSupported` or `UnknownHandle`. Its `list.changed` events carry `h`.
+- `pool.collectionRelease` calls the runtime's release (C# `Dispose`, Java `close()`, JavaScript `release()`): the
+  connector's client goes back to the pool as a returned rental does. Its collection handles are released, with their
+  watches and throttles. The runner answers for a released connector without asking.
+- The connector's rentals are not counted in `pool.state`'s `rented` (the rentals of `pool.rent`).
+
 **Rental handles** accept `client.state`, `client.awaitState`, `client.awaitReady`, `client.awaitDisconnected` and
 `invoke` (with `future.*` and `token.*`), as for a client handle. Every other client op (`client.connect`,
 `client.tryConnect`, `client.disconnect`, `client.dispose`, `time.advance`, `pipe.*`, `channel.*`, `list.*`,
@@ -476,8 +496,9 @@ released rental handle fails with `UnknownHandle`. The runner answers for a retu
 `ObjectDisposedException`.
 
 **Leaks.** For `test.audit` and `test.end`, every client of a pool that is not `Disconnected` (idle or rented) counts as
-an open client, and a pool not disposed counts one timer (its health check). `test.end` returns every rental, then
-disposes every pool of the scope.
+an open client, and a pool not disposed counts one timer (its health check). A collection connector not released counts
+as one more open client once it rented a client, and the watches of its collection handles count in `subscriptions`.
+`test.end` releases every collection connector, returns every rental, then disposes every pool of the scope.
 
 #### 6.11.1 Pool options
 

@@ -462,23 +462,23 @@ final class InteropHost {
                 return pipe(scope, args).channelReadAll();
 
             case "list.enable":
-                return clientOnly(scope, args).listEnable(args, cancelToken(scope, args));
+                return lists(scope, args).listEnable(args, cancelToken(scope, args));
             case "list.disable":
-                return clientOnly(scope, args).listDisable(args);
+                return lists(scope, args).listDisable(args);
             case "list.op":
-                return clientOnly(scope, args).listOp(args);
+                return lists(scope, args).listOp(args);
             case "list.snapshot":
-                return done(clientOnly(scope, args).listSnapshot(args));
+                return done(lists(scope, args).listSnapshot(args));
             case "list.state":
-                return done(clientOnly(scope, args).listState(args));
+                return done(lists(scope, args).listState(args));
             case "list.watch":
-                return done(clientOnly(scope, args).listWatch(args));
+                return done(lists(scope, args).listWatch(args));
             case "list.unwatch":
-                return done(clientOnly(scope, args).listUnwatch(args));
+                return done(lists(scope, args).listUnwatch(args));
             case "list.throttle":
-                return done(clientOnly(scope, args).listThrottle(args));
+                return done(lists(scope, args).listThrottle(args));
             case "list.throttleState":
-                return done(clientOnly(scope, args).listThrottleState(args));
+                return done(lists(scope, args).listThrottleState(args));
 
             case "pool.create": {
                 ScaffoldingExport<?> export = export(args);
@@ -507,6 +507,13 @@ final class InteropHost {
                 return done(pool(scope, args).state());
             case "pool.advanceTime":
                 return done(pool(scope, args).advanceTime(args.integer("ms")));
+            case "pool.collection":
+                return pool(scope, args).collection(args.str("connector"), args.obj("collection").str("name"));
+            case "pool.collectionRelease": {
+                PoolEntry pool = pool(scope, args);
+                String connector = args.str("connector");
+                return CompletableFuture.supplyAsync(() -> pool.releaseCollection(connector), workers);
+            }
             case "pool.dispose": {
                 PoolEntry pool = pool(scope, args);
                 return CompletableFuture.supplyAsync(() -> {
@@ -571,6 +578,15 @@ final class InteropHost {
             return (ClientEntry) value;
         }
         throw HostError.unknownHandle(h);
+    }
+
+    /** The {@code list.*} ops of a client, or of a collection of a pool's connector (§6.10, §6.11). */
+    private static ListOps lists(Scope scope, Args args) {
+        Object value = scope.find(args.str("h"));
+        if (value instanceof CollectionEntry) {
+            return ((CollectionEntry) value).lists;
+        }
+        return clientOnly(scope, args).lists;
     }
 
     private static PipeEntry pipe(Scope scope, Args args) {
@@ -714,6 +730,9 @@ final class InteropHost {
         try {
             for (CancellationTokenSource source : scope.tokens().values()) {
                 source.cancel();
+            }
+            for (PoolEntry pool : scope.all(PoolEntry.class)) {
+                pool.releaseCollections();
             }
             for (RentalEntry rental : scope.all(RentalEntry.class)) {
                 rental.release();
