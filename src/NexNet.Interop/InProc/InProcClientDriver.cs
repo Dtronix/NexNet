@@ -120,10 +120,12 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
 
     /// <inheritdoc />
     /// <remarks>
-    /// <see cref="NexusInvocationSnapshot.AwaitingResults"/>: the C# ID table is internal to NexNet, so a call canceled
-    /// after send is not counted here. The integration tests read that table directly to check the ID is released.
+    /// The reserved-ID count of the session's ID table (read through InternalsVisibleTo), the same count the language
+    /// hosts report: a call canceled after send counts until its late reply releases its ID, and a call waiting for
+    /// invocation credit holds no ID yet.
     /// </remarks>
-    public Task<int> GetOutstandingInvocationsAsync() => Task.FromResult(_client.GetSnapshot()?.Invocations.AwaitingResults ?? 0);
+    public Task<int> GetOutstandingInvocationsAsync()
+        => Task.FromResult(_client.Session?.SessionInvocationStateManager.ReservedIdCount ?? 0);
 
     /// <inheritdoc />
     public async Task WaitForStateAsync(ConnectionState state, double seconds)
