@@ -131,6 +131,10 @@ is now `int?`; `NexusServerState` has two new values; and there are new types an
   only once the loop ends (the policy gave up, or `disconnect()`/`close()` stopped it). Before, each failed attempt
   went back to `Disconnected` until the next one, and the JavaScript client read `Disconnected` during the first delay.
   Tested on every client language and transport.
+- **Behavior change: the Java client reports the lost session's `DISCONNECTING` and `DISCONNECTED`.** When the
+  server or the network ends a session, the Java client now reports `CONNECTED` → `DISCONNECTING` → `DISCONNECTED`
+  and then, with a reconnection policy, `RECONNECTING` → `CONNECTED`, as the C# and JavaScript clients do. Before, it
+  went straight from `CONNECTED` to `RECONNECTING` (or to `DISCONNECTED` without a policy).
 
 ## New features
 
@@ -328,6 +332,10 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   connected again after a graceful disconnect. It now ends the loop wherever it is; the client ends `Disconnected`
   and does not reconnect. A reconnection attempt and a concurrent `ConnectAsync` can no longer both open a session.
   The Java and JavaScript clients already stopped reconnecting on `disconnect()`.
+- **C# client: reconnection edge cases.** A session that a reconnection attempt opened and that was lost before the
+  reconnection loop had finished did not start a new loop, so the client stayed `Disconnected`. And canceling the
+  token passed to `ConnectAsync`/`TryConnectAsync` after the connect had succeeded turned off reconnection for that
+  session. The loop now reconnects such a session when it ends, and the connect token cancels only the connect.
 - **JavaScript client: `disconnect()` aborts a reconnection attempt in progress.** A `disconnect()` made during a
   reconnection attempt's handshake waited for the attempt to finish: the attempt connected (`onConnected(true)` was
   called) and was then disconnected, a brief reconnect after a graceful disconnect. `disconnect()` (and
