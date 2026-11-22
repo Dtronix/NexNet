@@ -84,12 +84,20 @@ var config = new HttpSocketClientConfig
     // Change to ws:// or wss:// for WebSocket connections
     Url = new Uri("http://127.0.0.1:9001/nexus"),
     // Optional authentication header
-    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
+    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue"),
+    // Optional custom headers of the upgrade request
+    UpgradeHeaders = { ["X-Tenant"] = "acme" },
 };
 
 var client = ClientNexus.CreateClient(config, new ClientNexus());
 await client.ConnectAsync();
 ```
+
+`UpgradeHeaders` adds headers to the WebSocket or HttpSocket upgrade request, for middleware or a reverse proxy that reads them. The Java (`ClientConfig.Builder.header`) and Node (`webSocket.headers`, `httpSocket.headers`) clients have the same option; browsers cannot send headers.
+
+- Names compare ignoring case; setting a name again replaces it. Headers are sent in the order they were added.
+- Each name and value is checked when it is set, and a refused one throws `ArgumentException`: a name that is not an HTTP token, a value with CR, LF or another control character (tab is allowed) or a character above U+00FF, the headers the transport sets (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`, `Transfer-Encoding`) and the other content headers (`Content-Type`, `Expires`, ...), since the upgrade request has no body.
+- `Authorization` may be set here. `AuthenticationHeader`, when not null, replaces it.
 
 For `https://`/`wss://` URLs, `SslClientAuthenticationOptions` on the client config sets the client certificate and server certificate validation. See [TLS and Certificates](transports.md#tls-and-certificates).
 
