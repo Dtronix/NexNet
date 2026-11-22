@@ -216,6 +216,15 @@ export type SnapshotClient = {
  */
 export declare function getClientSnapshot(client: SnapshotClient): NexusSessionSnapshot | null;
 /**
+ * How many outbound invocation IDs the client's current session holds (the interop `client.outstanding` view): result
+ * calls awaiting their result, calls canceled after send whose late result has not arrived yet, and streamed
+ * IgnoreReturn arguments still being sent. Unlike the snapshot's `awaitingResults`, a call canceled after send counts
+ * until its reply releases the ID, so this reaches 0 only when every ID was released.
+ * @param {SnapshotClient} client
+ * @returns {number} 0 when the client has no session.
+ */
+export declare function getReservedInvocationIds(client: SnapshotClient): number;
+/**
  * Field names of each snapshot record, in C# declaration order, for the cross-language field check.
  */
 export declare const SnapshotFields: Readonly<{

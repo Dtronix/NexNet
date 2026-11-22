@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DisconnectReason } from '../../src/contract/enums.js';
 import { NexusMessageTooLargeError, NexusRemoteInvocationError, NexusTransportError, NexusUnauthorizedError, isCancellationError } from '../../src/contract/errors.js';
 import { setInvocationCodec } from '../../src/invocation/codec.js';
+import { getClientSnapshot, getReservedInvocationIds } from '../../src/diagnostics/snapshot.js';
 import { getInvocationCounters } from '../../src/invocation/diagnostics.js';
 import { AbortReason, LargeMessageKind, ResultState, decodeInvocation, decodeMessageStart, encodeInvocationResult, encodeRemoteErrorDetail } from '../../src/invocation/messages.js';
 import { MessageType } from '../../src/session/protocol.js';
@@ -246,10 +247,14 @@ describe('cancellation (§4.5, D17)', () => {
     expect(h.framesOf(MessageType.InvocationCancellation).map((f) => decodeInvocationCancellation(f.body))).toEqual([{ invocationId: 1 }]);
     // The ID stays reserved until the late result arrives; that result is not a protocol error.
     expect(getInvocationCounters()).toMatchObject({ pendingInvocations: 0, reservedInvocationIds: 1 });
+    // The snapshot no longer awaits it, but the session still holds its ID (the interop client.outstanding view).
+    expect(getClientSnapshot(h.client)?.invocations.awaitingResults).toBe(0);
+    expect(getReservedInvocationIds(h.client)).toBe(1);
     h.sendResult(1, ResultState.Canceled);
     await tick();
     expect(h.session.isDisconnecting).toBe(false);
     expect(getInvocationCounters().reservedInvocationIds).toBe(0);
+    expect(getReservedInvocationIds(h.client)).toBe(0);
     // A second result for it would be a protocol error now.
     h.sendResult(1, ResultState.CompletedResult);
     await h.client.disconnected;

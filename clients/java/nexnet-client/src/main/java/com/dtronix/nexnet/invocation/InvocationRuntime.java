@@ -339,6 +339,19 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     /**
+     * Outbound invocation ids this session holds: result calls awaiting their result, calls canceled after send whose
+     * late result has not arrived yet, and streamed IgnoreReturn arguments still being sent. An id is reusable only once
+     * it leaves this count. The interop host reports it as {@code client.outstanding}.
+     *
+     * @return the count
+     */
+    public int reservedIdCount() {
+        synchronized (lock) {
+            return reservedIds.size();
+        }
+    }
+
+    /**
      * Large arguments and results being received; for tests and diagnostics.
      *
      * @return the count
@@ -390,7 +403,14 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             separateExecuting = executingLocked(separatePool);
             oldest = oldestWaitLocked(normalPool, nowNanos);
             separateOldest = oldestWaitLocked(separatePool, nowNanos);
-            awaiting = outstanding.size();
+            // As in C# and JS: a call canceled after send is complete, so it is not awaited even though its id stays
+            // reserved for the late result (reservedIdCount).
+            awaiting = 0;
+            for (OutboundCall<?> call : outstanding.values()) {
+                if (!call.isDone()) {
+                    awaiting++;
+                }
+            }
         }
         return new NexusInvocationSnapshot(queued, executing, normalPool.slots, Math.max(0, inboundCredits.get()),
             gate.available(), gate.waiting(), awaiting, 0, oldest, separateQueued, separateExecuting,

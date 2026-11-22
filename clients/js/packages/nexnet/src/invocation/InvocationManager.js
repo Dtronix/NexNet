@@ -285,6 +285,16 @@ export class InvocationManager {
     return this.#options.serializerOptions;
   }
 
+  /**
+   * Outbound invocation IDs this session holds: result calls awaiting their result, calls canceled after send whose
+   * late result has not arrived yet, and streamed IgnoreReturn arguments still being sent. An ID is reusable only once
+   * it leaves this count.
+   * @returns {number}
+   */
+  get reservedIdCount() {
+    return this.#idOwners.size;
+  }
+
   /** Outbound calls not yet completed. @returns {number} */
   get pendingCount() {
     return this.#calls.size;
@@ -333,7 +343,8 @@ export class InvocationManager {
   /**
    * The invocation part of the snapshot (C# `NexusInvocationSnapshot`). Waits are milliseconds on the session clock.
    * A client never drops invocations for lack of credit (only a server's multi-session invocations do), so
-   * `creditDrops` is always 0.
+   * `creditDrops` is always 0. `awaitingResults` counts sent result calls not yet completed; a call canceled after
+   * send is completed, so it is not counted even though its ID stays reserved ({@link reservedIdCount}).
    * @param {number} [now]
    * @returns {import('../diagnostics/snapshot.js').NexusInvocationSnapshot}
    */

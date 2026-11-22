@@ -119,6 +119,10 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
     public Task<NexusBudgetSnapshot?> GetBudgetAsync() => Task.FromResult(_client.GetSnapshot()?.Budget);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// <see cref="NexusInvocationSnapshot.AwaitingResults"/>: the C# ID table is internal to NexNet, so a call canceled
+    /// after send is not counted here. The integration tests read that table directly to check the ID is released.
+    /// </remarks>
     public Task<int> GetOutstandingInvocationsAsync() => Task.FromResult(_client.GetSnapshot()?.Invocations.AwaitingResults ?? 0);
 
     /// <inheritdoc />

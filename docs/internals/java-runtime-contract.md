@@ -763,7 +763,8 @@ Reported this way:
 
 | Member | Returns |
 |---|---|
-| `InvocationRuntime.snapshot(nowNanos)` | `NexusInvocationSnapshot` (C# `NexusInvocationSnapshot`): queued and executing invocations and the oldest queue wait, per pool (normal and separate), the pool sizes, the inbound credits, the outbound credits available, the calls waiting for credit and the calls awaiting a result. `creditDrops` is always 0 on a client |
+| `InvocationRuntime.snapshot(nowNanos)` | `NexusInvocationSnapshot` (C# `NexusInvocationSnapshot`): queued and executing invocations and the oldest queue wait, per pool (normal and separate), the pool sizes, the inbound credits, the outbound credits available, the calls waiting for credit and the calls awaiting a result (`awaitingResults`: sent result calls not yet completed; a call canceled after send is completed, so it is not counted). `creditDrops` is always 0 on a client |
+| `InvocationRuntime.reservedIdCount()` | The invocation ids the session holds: result calls awaiting their result, calls canceled after send whose late result has not arrived yet, and streamed IgnoreReturn arguments still being sent |
 | `InvocationRuntime.budgetSnapshot()` | `NexusBudgetSnapshot`: the session budget's limit and reserved bytes |
 | `InvocationRuntime.largeMessageSnapshots(nowNanos)` | One `NexusLargeMessageSnapshot` per large argument or result in transfer, received ones first: direction, kind, invocation id, total and transferred bytes, time since the last progress, and whether it is being aborted |
 | `PipeManager.snapshots(nowNanos)` | One `NexusPipeSnapshot` per pipe holding a receive window, by id |
@@ -771,6 +772,12 @@ Reported this way:
 `Diagnostics.snapshot(client)` combines these with the session readings into a `NexusSessionSnapshot` whose fields
 match the C# record (checked against `tests/golden/snapshot-fields.json`). It returns null when the client has no
 session. The values are read one at a time, so they are not an atomic picture.
+
+**Awaiting results and reserved ids.** `awaitingResults` means the same as in C# and JS: a call canceled after send
+completes at once and leaves the count, although its id stays reserved until the peer's late reply arrives and is
+consumed. `Diagnostics.reservedInvocationIds(client)` (`InvocationRuntime.reservedIdCount()`; 0 when the client has
+no session) counts the reserved ids, the canceled ones included. The interop host reports it as `client.outstanding`,
+so a runtime that never releases a canceled call's id fails the release checks.
 
 **`NexusMetrics` behavior.**
 

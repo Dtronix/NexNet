@@ -114,10 +114,16 @@ public interface IClientUnderTest : IAsyncDisposable
         => throw new NotSupportedException($"{Target}: the budget of a pooled client is not available.");
 
     /// <summary>
-    /// How many outbound invocations the client's current session still awaits a result for (control protocol §6.4
-    /// <c>client.outstanding</c>; the <c>invocations.awaitingResults</c> of the runtime's session snapshot). 0 when the
-    /// client has no session.
+    /// How many outbound invocation IDs the client's current session still holds (control protocol §6.4
+    /// <c>client.outstanding</c>): calls awaiting their result, and calls canceled after send whose late reply has not
+    /// arrived yet, which keep their ID until that reply releases it. 0 when the client has no session, and 0 once
+    /// every ID was released.
     /// </summary>
+    /// <remarks>
+    /// The language hosts report the runtime's reserved-ID count. The in-process C# driver cannot read the C# ID table
+    /// (it is internal to NexNet) and reports <see cref="NexusInvocationSnapshot.AwaitingResults"/>, which leaves out a
+    /// call canceled after send; the integration tests check the C# ID table directly, by ID.
+    /// </remarks>
     /// <exception cref="NotSupportedException">The client is a pool rental.</exception>
     Task<int> GetOutstandingInvocationsAsync()
         => throw new NotSupportedException($"{Target}: the invocations of a pooled client are not available.");

@@ -153,6 +153,18 @@ export function getClientSnapshot(client) {
 }
 
 /**
+ * How many outbound invocation IDs the client's current session holds (the interop `client.outstanding` view): result
+ * calls awaiting their result, calls canceled after send whose late result has not arrived yet, and streamed
+ * IgnoreReturn arguments still being sent. Unlike the snapshot's `awaitingResults`, a call canceled after send counts
+ * until its reply releases the ID, so this reaches 0 only when every ID was released.
+ * @param {SnapshotClient} client
+ * @returns {number} 0 when the client has no session.
+ */
+export function getReservedInvocationIds(client) {
+  return getInvocationManager(client._session)?.reservedIdCount ?? 0;
+}
+
+/**
  * The invocation part of a session without an invocation layer (never the case for a `NexusClient` session).
  * @param {import('../session/options.js').ResolvedClientOptions} options
  * @returns {NexusInvocationSnapshot}
