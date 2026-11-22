@@ -88,8 +88,8 @@ public class MatrixCoverageTests
             TUnit.Assertions.Enums.CollectionOrdering.Matching);
 
         var markdown = report.ToMarkdown();
-        await Assert.That(markdown).Contains("### Failed rows\n\n| Test | Row | Message |\n|---|---|---|\n| 0(node/Tcp) | node/Tcp | Timed out |\n");
-        await Assert.That(markdown).Contains("| A(java/WebSocket) | java/WebSocket | Expected 1 \\| got 2 |");
+        await Assert.That(markdown).Contains("### Failed rows\n\n| Test | Row | Message |\n|---|---|---|\n| Tests.0(node/Tcp) | node/Tcp | Timed out |\n");
+        await Assert.That(markdown).Contains("| Tests.A(java/WebSocket) | java/WebSocket | Expected 1 \\| got 2 |");
         await Assert.That(markdown).DoesNotContain("at Tests.A()");
 
         var json = report.ToJson();

@@ -364,7 +364,7 @@ public sealed record CoverageReport(
         {
             md.Append("| Test | Row | Message |\n|---|---|---|\n");
             foreach (var f in Failed)
-                md.Append($"| {Cell(f.DisplayName)} | {Cell(f.Row)} | {Cell(f.Message)} |\n");
+                md.Append($"| {Cell(QualifiedName(f))} | {Cell(f.Row)} | {Cell(f.Message)} |\n");
         }
 
         md.Append("\n### Not applicable (no row generated)\n\n");
@@ -392,6 +392,13 @@ public sealed record CoverageReport(
         }
 
         return md.ToString();
+    }
+
+    // The display name with the test's class: Class.Method(args).
+    private static string QualifiedName(FailedRow row)
+    {
+        var dot = row.Test.LastIndexOf('.');
+        return dot < 0 ? row.DisplayName : row.Test[..(dot + 1)] + row.DisplayName;
     }
 
     private static string Cell(string text) => text.Replace("|", "\\|", StringComparison.Ordinal).ReplaceLineEndings(" ");
