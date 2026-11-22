@@ -93,6 +93,51 @@ function sleep(ms) {
 }
 
 /**
+ * How long an op may convert items before it lets the event loop run. Every test on a host shares its event loop, so
+ * converting a large result in one go (a million list items take seconds) stalls the other tests' clients and
+ * requests past their timeouts (J41).
+ */
+const CONVERT_SLICE_MS = 10;
+
+/**
+ * Resolves from a macrotask, after pending I/O had its turn. A message on a fresh channel: unlike `setTimeout`, it is
+ * neither clamped nor throttled in a browser page.
+ * @returns {Promise<void>}
+ */
+function yieldToEventLoop() {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+
+/**
+ * `items.map(convert)` that yields to the event loop every {@link CONVERT_SLICE_MS} ms, so a large result does not
+ * stall the other tests on this host.
+ * @template T, R
+ * @param {readonly T[]} items
+ * @param {(item: T) => R} convert
+ * @returns {Promise<R[]>}
+ */
+async function mapYielding(items, convert) {
+  /** @type {R[]} */
+  const out = new Array(items.length);
+  let sliceStart = performance.now();
+  for (let i = 0; i < items.length; i++) {
+    out[i] = convert(items[i]);
+    if ((i & 255) === 255 && performance.now() - sliceStart >= CONVERT_SLICE_MS) {
+      await yieldToEventLoop();
+      sliceStart = performance.now();
+    }
+  }
+  return out;
+}
+
+/**
  * Rejects with the signal's reason when it aborts first.
  * @template T
  * @param {Promise<T>} promise
@@ -1824,7 +1869,7 @@ export class Host {
       if (!pe.channelReader || !pe.readerCodec) throw invalidOperation('channel.reader was not called for pipe ' + pe.h + '.');
       const codec = pe.readerCodec;
       const items = await pe.channelReader.readUntilComplete();
-      return { items: items.map((/** @type {unknown} */ item) => codec.toJson(item)) };
+      return { items: await mapYielding(items, (/** @type {unknown} */ item) => codec.toJson(item)) };
     });
 
     // Synchronized collections (§6.10).
@@ -1889,10 +1934,11 @@ export class Host {
       if (args.count === true) return result.then((ok) => ({ ok: ok === true, count: list.count }));
       return { ok: (await result) === true };
     });
-    op('list.snapshot', (args, ctx) => {
+    op('list.snapshot', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'list.snapshot');
       const { list, codec } = this.#list(entry, args.collection);
-      return { items: list.toArray().map((item) => codec.toJson(item)) };
+      // toArray copies: the snapshot is the list at this moment, whatever changes while it converts.
+      return { items: await mapYielding(list.toArray(), (item) => codec.toJson(item)) };
     });
     op('list.state', async (args, ctx) => {
       const entry = this.#client(ctx, args.h, 'list.state');
