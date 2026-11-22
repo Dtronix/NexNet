@@ -60,6 +60,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// session ended), before the attempt reads the outcome.
     /// </summary>
     internal Func<Task>? InternalOnSessionReady { get; set; }
+
+    /// <summary>
+    /// Test hook: awaited by the reconnection loop after one of its attempts connected, before the loop ends and
+    /// releases its ownership of the reconnection.
+    /// </summary>
+    internal Func<Task>? InternalOnReconnected { get; set; }
     
     /// <summary>
     /// Provides access to the client's nexus.
@@ -427,6 +433,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
                     reconnected = true;
                     _isReconnecting = false;
                     _config.Logger?.LogInfo("Reconnected");
+
+                    if (InternalOnReconnected is { } onReconnected)
+                        await onReconnected().ConfigureAwait(false);
+
                     return;
                 }
 
