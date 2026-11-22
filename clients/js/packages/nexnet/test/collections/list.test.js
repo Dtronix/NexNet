@@ -776,9 +776,12 @@ describe('process test hook', () => {
     });
     server.send(insert(4, 3, 4));
     await until(() => calls === 1);
-    await list.disable();
+    const disabling = list.disable();
+    await until(() => server.clientClosed());
+    // disable() waits until the server confirmed the close (Q14).
+    server.close();
+    await disabling;
     expect(list.isEnabled).toBe(false);
-    expect(server.clientClosed()).toBe(true);
     gate.resolve();
     for (let i = 0; i < 10; i++) await tick();
     expect(list.count).toBe(0);
