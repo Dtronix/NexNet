@@ -245,7 +245,10 @@ internal partial class NexusClientTests
         await server.StopAsync();
         await Script(client).OnDisconnected.NextCallAsync().AsTask().Timeout(T(5));
         await client.WaitForStateAsync(ConnectionState.Reconnecting, T(TestTimeouts.Connect));
-        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(TestTimeouts.Connect));
+
+        // The one attempt is usually refused quickly; a QUIC attempt to the stopped server gets no answer and lasts the
+        // connection timeout, which bounds it (S47 removed a ~3 s overshoot past it).
+        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(2));
 
         using var window = new CancellationTokenSource(500);
         var again = false;
