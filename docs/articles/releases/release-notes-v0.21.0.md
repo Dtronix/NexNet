@@ -339,7 +339,7 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
 - **Java client: a session lost before the reconnection loop ends is reconnected.** As in the C# client above, a
   session that a reconnection attempt opened and that was lost before the loop had finished (for example from a
   `ReconnectListener.onReconnected` listener) started no new loop, so the client stayed `DISCONNECTED`. The
-  controller now starts a new loop for it when the old one ends.
+  controller now starts a new loop for it when the old one ends ([#398](https://github.com/Dtronix/NexNet/pull/398)).
 - **Java client: no `RECONNECTING` when the reconnection policy declines the reason.** A session lost for a reason
   the policy does not reconnect (for example a graceful server disconnect) reported `RECONNECTING` before the client
   settled on `DISCONNECTED`. It now ends at `DISCONNECTED`, as the C# and JavaScript clients do
