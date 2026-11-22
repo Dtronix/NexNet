@@ -187,6 +187,41 @@ public class InteropServerSelfTests
     }
 
     [Test]
+    public async Task HoldAuthentication_HoldsTheChosenAuthenticationUntilReleased()
+    {
+        var options = new InteropServerOptions
+        {
+            TokenValidator = (_, _) => ValueTask.FromResult<IIdentity?>(new DefaultIdentity { DisplayName = "user" }),
+        };
+        var hold = options.HoldAuthentication(2);
+        await using var server = await StartDedicated(options);
+        try
+        {
+            // Authentication 1 is not held.
+            var first = await Connect(server.CreateClientConfig(InteropEndpointKind.Tcp));
+            await first.DisposeAsync();
+            await Assert.That(hold.Held.IsCompleted).IsFalse();
+
+            // Authentication 2 waits for the release; the validator set before the hold still decides it.
+            var second = InteropProbeClientNexus.CreateClient(server.CreateClientConfig(InteropEndpointKind.Tcp), new InteropProbeClientNexus());
+            var connect = second.ConnectAsync();
+            await hold.Held.WaitAsync(Wait);
+            await Task.Delay(100);
+            await Assert.That(connect.IsCompleted).IsFalse().Because("The server holds the handshake.");
+
+            hold.Release();
+            await connect.WaitAsync(Wait);
+            await Assert.That(await second.Proxy.GetIdentity().AsTask().WaitAsync(Wait)).IsEqualTo("user");
+            await second.DisposeAsync();
+            await Assert.That(hold.Count).IsEqualTo(2);
+        }
+        finally
+        {
+            hold.Release();
+        }
+    }
+
+    [Test]
     public async Task PerEndpointTimeout_Honored()
     {
         var options = new InteropServerOptions();

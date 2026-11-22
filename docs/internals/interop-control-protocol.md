@@ -633,3 +633,9 @@ When the file is missing, every row of the language fails with the command that 
 | `Hosts.HostLaunchConfig`, `SchemaHash` | `host.json` (§10), the expected schema hash (§4.6). |
 | `Hosts.LanguageHost`, `LanguageHostPool` | Launch, warm-up, ping, crash capture, process-tree kill, restart. The pool is a TUnit `ClassDataSource` shared per test session; it registers each host's driver with `Harness`. |
 | `Hosts.LanguageParallelLimitAttribute`, `RetryOnHostCrashAttribute` | Per-language parallel limit; retry once on a host crash. |
+
+The interop server (`src/NexNet.InteropServer`) runs in the runner's process, so its controls are C# calls, not
+operations of this protocol, and act the same for every language. `InteropServerOptions.HoldAuthentication(n)` holds
+the server's `n`-th authentication (counted from 1 over the server's life) until `InteropAuthenticationHold.Release()`:
+the client has sent its greeting and waits in its handshake, so a test can act during a connect or reconnection
+handshake (`Held` completes once the hold is reached; `Count` is the number of authentications so far).
