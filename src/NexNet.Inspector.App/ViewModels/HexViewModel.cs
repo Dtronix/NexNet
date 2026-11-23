@@ -1,7 +1,10 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using NexNet.Inspector.App.Controls.Hex;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
+using NexNet.Inspector.Core.Assembly;
+using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.ViewModels;
@@ -14,6 +17,7 @@ namespace NexNet.Inspector.App.ViewModels;
 public sealed partial class HexViewModel : ObservableObject, IDisposable
 {
     private readonly DocumentsViewModel? _documents;
+    private readonly List<HexPosition> _bookmarks = [];
 
     /// <summary>A hex pane that follows the documents' active tab and shares their sync bus.</summary>
     public HexViewModel(DocumentsViewModel documents)
@@ -59,6 +63,15 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsEmpty { get; private set; } = true;
 
+    /// <summary>
+    /// Shows a dialog over the window (the hex menu's "Go to offset…"); false when another one is open. Without a host
+    /// the dialog cannot open.
+    /// </summary>
+    public Func<GoToOffsetDialogViewModel, bool>? ShowDialog { get; set; }
+
+    /// <summary>The bookmarked offsets ("Bookmark offset"), in the order they were added.</summary>
+    public IReadOnlyList<HexPosition> Bookmarks => _bookmarks;
+
     /// <summary>The directions shown.</summary>
     public HexDirections Directions =>
         (ShowsInbound ? HexDirections.Inbound : HexDirections.None) | (ShowsOutbound ? HexDirections.Outbound : HexDirections.None);
@@ -78,6 +91,65 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
         }
 
         IsEmpty = Layout.LineCount == 0;
+    }
+
+    /// <summary>True when <paramref name="position"/> is bookmarked.</summary>
+    public bool IsBookmarked(HexPosition position) => _bookmarks.Contains(position);
+
+    /// <summary>Bookmarks an offset, or drops its bookmark; returns whether it is bookmarked now.</summary>
+    public bool ToggleBookmark(HexPosition position)
+    {
+        bool added = !_bookmarks.Remove(position);
+        if (added) _bookmarks.Add(position);
+        OnPropertyChanged(nameof(Bookmarks));
+        return added;
+    }
+
+    /// <summary>The offsets a direction's stream holds now, [Start, End); empty without a document.</summary>
+    public (long Start, long End) BoundsOf(TapDirection direction)
+    {
+        if (Document?.Session is not { } session) return (0, 0);
+        lock (session.Gate)
+        {
+            TransportOpStore store = session.GetStore(direction);
+            return (store.StartOffset, store.EndOffset);
+        }
+    }
+
+    /// <summary>
+    /// Selects the byte at <paramref name="position"/> (with the frame that holds it, so the inspector follows) and the
+    /// hex view scrolls to it; false when the stream does not hold it.
+    /// </summary>
+    public bool GoTo(HexPosition position)
+    {
+        if (Document?.Session is not { } session) return false;
+        FrameKey frame = new(position.Direction, -1);
+        long? ticks = null;
+        lock (session.Gate)
+        {
+            TransportOpStore store = session.GetStore(position.Direction);
+            if (position.Offset < store.StartOffset || position.Offset >= store.EndOffset) return false;
+            ReadOnlySpan<Core.Framing.FrameRecord> frames = session.Assembler.GetFrames(position.Direction);
+            int at = HexLayout.FrameAt(frames, position.Offset);
+            if (at >= 0)
+            {
+                frame = new FrameKey(position.Direction, frames[at].Seq);
+                ticks = frames[at].StartTicks;
+            }
+        }
+
+        Sync.Select(Selection.OfBytes(position.Direction, new StreamRange(position.Offset, 1)) with { Frame = frame }, ticks);
+        return true;
+    }
+
+    /// <summary>"Go to offset…": asks for an offset (starting at <paramref name="from"/>), then goes there.</summary>
+    /// <returns>The position gone to; null when canceled or no dialog could open.</returns>
+    public async Task<HexPosition?> PromptGoToAsync(HexPosition from)
+    {
+        GoToOffsetDialogViewModel dialog = new(from, BoundsOf);
+        if (ShowDialog is not { } show || !show(dialog)) return null;
+        HexPosition? chosen = await dialog.Result.ConfigureAwait(true);
+        return chosen is { } position && GoTo(position) ? position : null;
     }
 
     public void Dispose()

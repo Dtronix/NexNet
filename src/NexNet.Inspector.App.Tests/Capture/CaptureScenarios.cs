@@ -29,6 +29,9 @@ public enum CaptureScenario
 
     /// <summary>inspect-session-start: the Chat fixture's first 50 ms, the handshake traced from the ClientGreeting.</summary>
     InspectSessionStart,
+
+    /// <summary>context-menus: inspect-live with the lane menu on the FileUpload pipe, the hex selection menu and its Decode-as submenu.</summary>
+    ContextMenus,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -58,6 +61,7 @@ public static class CaptureScenarios
         [CaptureScenario.InspectLive] = new("inspect-live", InspectLiveScreen.Create),
         [CaptureScenario.OpenRecording] = new("open-recording", OpenRecordingScreen.Create),
         [CaptureScenario.InspectSessionStart] = new("inspect-session-start", InspectSessionStartScreen.Create),
+        [CaptureScenario.ContextMenus] = new("context-menus", ContextMenusScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

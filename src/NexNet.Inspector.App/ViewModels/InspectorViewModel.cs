@@ -31,6 +31,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     private CaptureSession? _handshakeSession;
     private long _handshakeVersion = -1;
     private bool _publishing;
+    private SelectionDecode _shownDecode = SelectionDecode.Auto;
 
     /// <summary>An inspector following the documents' active tab and their sync bus.</summary>
     public InspectorViewModel(DocumentsViewModel documents)
@@ -270,7 +271,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
 
     private void OnSyncChanged(SyncChanges changes)
     {
-        if ((changes & SyncChanges.Selection) != 0) Refresh(force: false);
+        if ((changes & SyncChanges.Decode) != 0) Refresh(force: true);
+        else if ((changes & SyncChanges.Selection) != 0) Refresh(force: false);
         if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
         if ((changes & (SyncChanges.Selection | SyncChanges.Hover)) != 0) RefreshLinked();
     }
@@ -376,18 +378,29 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
         Selection selection = Sync.Selection;
         if (_document?.Session is not { } session || selection.IsNone)
         {
+            _shownDecode = SelectionDecode.Auto;
             Show(null);
             return;
         }
 
         InspectorContent? content;
+        SelectionDecode decode = Sync.Decode;
+        bool decoding = decode.Covers(selection);
         lock (session.Gate)
         {
-            if (FrameOf(session, selection) is not { } frame)
+            // "Decode selection as ▸": the picked reading of the bytes replaces the schema's tree while the selection
+            // stays inside them; leaving it rebuilds the frame's own tree.
+            bool wasDecoding = !_shownDecode.IsAuto;
+            _shownDecode = decoding ? decode : SelectionDecode.Auto;
+            if (decoding)
+            {
+                content = !force && wasDecoding && Content is { } shown ? shown : SelectionProjection.Build(session, selection, decode);
+            }
+            else if (FrameOf(session, selection) is not { } frame)
             {
                 content = null;
             }
-            else if (!force && Content is { } current && current.Frame == frame)
+            else if (!force && !wasDecoding && Content is { } current && current.Frame == frame)
             {
                 content = current;
             }

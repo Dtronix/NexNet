@@ -24,7 +24,7 @@ public enum LayoutRowKind : byte
 /// <param name="Top">Its top, from the top of the lane area.</param>
 /// <param name="Height">Its height now.</param>
 /// <param name="Ordinal">For a lane in view, its 1-based place among its group's lanes in view (invocation rows are labelled by it).</param>
-/// <param name="Expanded">True when the lane is (heading to) 24 px: hovered or pinned.</param>
+/// <param name="Expanded">True when the lane is (heading to) 24 px: hovered, pinned or expanded by hand.</param>
 /// <param name="Pinned">True for a pinned lane.</param>
 public readonly record struct LayoutRow(
     LayoutRowKind Kind,
@@ -124,9 +124,9 @@ public sealed class TimelineLayout
                 TimelineLane lane = lanes[i];
                 if (lane.Group != group) continue;
                 bool pinned = model.IsPinned(lane.Key);
-                bool visible = pinned || lane.IsVisibleIn(window);
+                bool visible = !model.IsHidden(lane.Key) && (pinned || lane.IsVisibleIn(window));
                 if (visible && group == LaneGroupKind.Invocations) marksInView += lane.CountIn(window);
-                bool expanded = visible && (pinned || hovered == lane.Key);
+                bool expanded = visible && (pinned || hovered == lane.Key || model.IsExpanded(lane.Key));
                 double target = collapsed || !visible ? 0 : expanded ? ExpandedHeight : LaneHeight;
                 double height = Animator.Height(lane.Key, target, now, instant || collapsed);
                 if (visible && !collapsed) inView++;

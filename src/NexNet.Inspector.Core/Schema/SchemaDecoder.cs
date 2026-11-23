@@ -105,6 +105,21 @@ public sealed class SchemaDecoder
         return new DecodedValue(range, bytes, writer.Fields);
     }
 
+    /// <summary>
+    /// Decodes one value by its MessagePack shape alone, with no schema (the hex view's "Decode selection as ▸
+    /// MessagePack value"): scalars by wire type, arrays and maps as nested fields, bytes after the value as trailing.
+    /// </summary>
+    /// <param name="bytes">The bytes; the value starts at the first.</param>
+    /// <param name="range">Where the bytes came from.</param>
+    /// <param name="name">Name of the root field.</param>
+    public DecodedValue DecodeMessagePack(ReadOnlyMemory<byte> bytes, PayloadRange range = default, string? name = null)
+    {
+        var writer = new FieldWriter(bytes, Options);
+        writer.Walk(name);
+        writer.Finish();
+        return new DecodedValue(range, bytes, writer.Fields);
+    }
+
     /// <summary>Wraps bytes in one raw field.</summary>
     /// <param name="bytes">The bytes.</param>
     /// <param name="range">Where the bytes came from.</param>

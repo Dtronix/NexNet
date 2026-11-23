@@ -30,6 +30,9 @@ public enum SyncChanges : byte
 
     /// <summary>The traced message (it follows the selection, and grows as a live message's frames arrive).</summary>
     Trace = 1 << 6,
+
+    /// <summary>How the inspector reads the hex selection ("Decode selection as ▸").</summary>
+    Decode = 1 << 7,
 }
 
 /// <summary>
@@ -67,6 +70,9 @@ public sealed class SyncBus
 
     /// <summary>The decoded field under the pointer.</summary>
     public FieldHover Hover { get; private set; } = FieldHover.None;
+
+    /// <summary>How the inspector reads the selected bytes; <see cref="SelectionDecode.Auto"/> unless the user picked one.</summary>
+    public SelectionDecode Decode { get; private set; } = SelectionDecode.Auto;
 
     /// <summary>True while the window keeps its right edge on the newest data of a live document.</summary>
     public bool FollowLive { get; private set; }
@@ -141,12 +147,35 @@ public sealed class SyncBus
         if (selection != Selection)
         {
             Selection = selection;
+            // A decode the user picked reads its own bytes: a selection inside them (a decoded row's click) keeps it,
+            // anything else ends it.
+            if (!Decode.IsAuto && !Decode.Covers(selection))
+            {
+                Decode = SelectionDecode.Auto;
+                Mark(SyncChanges.Decode);
+            }
+
             // In the same notification as the selection, so no view draws the new selection with the old trace.
             Mark(ResolveTrace() ? SyncChanges.Selection | SyncChanges.Trace : SyncChanges.Selection);
         }
 
         if (ticks is { } t)
             SetPlayhead(t);
+    }
+
+    /// <summary>
+    /// Reads the selected bytes another way (the hex menu's "Decode selection as ▸"); <see cref="DecodeAs.Auto"/> goes back
+    /// to the schema's decode. Only a byte-range selection can be decoded so.
+    /// </summary>
+    public void SetDecode(DecodeAs mode)
+    {
+        SelectionDecode decode = mode == DecodeAs.Auto || Selection.Kind != SelectionKind.ByteRange
+            ? SelectionDecode.Auto
+            : new SelectionDecode(mode, Selection.Direction, Selection.Bytes);
+        if (decode == Decode)
+            return;
+        Decode = decode;
+        Mark(SyncChanges.Decode);
     }
 
     /// <summary>Sets the hovered decoded field.</summary>
@@ -207,10 +236,11 @@ public sealed class SyncBus
         Playhead = playhead;
         Selection = selection;
         Hover = FieldHover.None;
+        Decode = SelectionDecode.Auto;
         FollowLive = followLive;
         Trace = _resolver is { } resolve && !selection.IsNone ? resolve(selection) : MessageTrace.None;
         Mark(SyncChanges.Window | SyncChanges.Bounds | SyncChanges.Playhead | SyncChanges.Selection | SyncChanges.Hover
-             | SyncChanges.FollowLive | SyncChanges.Trace);
+             | SyncChanges.FollowLive | SyncChanges.Trace | SyncChanges.Decode);
     }
 
     private void Mark(SyncChanges change)

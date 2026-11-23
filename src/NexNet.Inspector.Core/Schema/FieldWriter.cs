@@ -60,6 +60,65 @@ internal sealed class FieldWriter
 
     public int Value(SchemaTypeRef? type, string? name) => Value(type, -1, -1, name, -1, 0);
 
+    /// <summary>
+    /// Walks one value by its MessagePack shape alone (no schema): scalars by their wire type, arrays as sequences, maps
+    /// as key/value entries, ext values skipped whole.
+    /// </summary>
+    public int Walk(string? name) => Walk(-1, name, -1, 0);
+
+    private int Walk(int parent, string? name, int element, int depth)
+    {
+        if (!TryToken(parent, name, element, out var token))
+            return -1;
+        if (_fields.Count >= _options.MaxFields || depth > _options.MaxDepth)
+            return SkipValue(FieldKind.Unknown, parent, name, element, null, null, DecodeProblem.LimitReached);
+
+        switch (token.Type)
+        {
+            case TokenType.Nil:
+                return Leaf(FieldKind.Nil, token, default, parent, name, element, null, null);
+            case TokenType.Boolean:
+                return Leaf(FieldKind.Boolean, token, new DecodedScalar(token.Bits, 0), parent, name, element, null, null);
+            case TokenType.UInt:
+                return Leaf(FieldKind.UnsignedInteger, token, new DecodedScalar(token.Bits, 0), parent, name, element, null, null);
+            case TokenType.Int:
+                return Leaf(FieldKind.Integer, token, new DecodedScalar(token.Bits, 0), parent, name, element, null, null);
+            case TokenType.Float32:
+                return Leaf(FieldKind.Single, token, new DecodedScalar(token.Bits, 0), parent, name, element, null, null);
+            case TokenType.Float64:
+                return Leaf(FieldKind.Double, token, new DecodedScalar(token.Bits, 0), parent, name, element, null, null);
+            case TokenType.Str:
+                return Leaf(FieldKind.String, token, default, parent, name, element, null, null);
+            case TokenType.Bin:
+                return Leaf(FieldKind.Binary, token, default, parent, name, element, null, null);
+            case TokenType.Array:
+            {
+                var index = Open(FieldKind.Sequence, parent, name, element, token, new DecodedScalar(token.Count, 0), null, null);
+                for (var i = 0; i < token.Count && !_stopped; i++)
+                    Walk(index, null, i, depth + 1);
+                return Close(index);
+            }
+
+            case TokenType.Map:
+            {
+                var index = Open(FieldKind.Map, parent, name, element, token, new DecodedScalar(token.Count, 0), null, null);
+                for (var i = 0; i < token.Count && !_stopped; i++)
+                {
+                    var entry = Add(FieldKind.MapEntry, index, null, i, _pos, 0, 0, default, null, null, DecodeProblem.None);
+                    Walk(entry, "Key", 0, depth + 2);
+                    Walk(entry, "Value", 1, depth + 2);
+                    Close(entry);
+                }
+
+                return Close(index);
+            }
+
+            default:
+                // An ext value has no meaning without the type that wrote it.
+                return SkipValue(FieldKind.Unknown, parent, name, element, null, null, DecodeProblem.UnknownType);
+        }
+    }
+
     public void Arguments(SchemaMethod method)
     {
         if (!TryToken(-1, method.Name, -1, out var token))

@@ -30,7 +30,8 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
         {
             StreamPaneKind.Events => new EventsViewModel(documents),
             StreamPaneKind.Ladder => new LadderViewModel(documents),
-            _ => new HexViewModel(documents),
+            // A hex pane opens its dialogs ("Go to offset…") through whatever host the workspace has when it asks.
+            _ => new HexViewModel(documents) { ShowDialog = dialog => ShowDialog?.Invoke(dialog) ?? false },
         });
         Timeline = new TimelineViewModel(documents);
         Inspector = new InspectorViewModel(documents);
@@ -73,6 +74,20 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
 
     /// <summary>True when the workspace shows: a document is open and Inspect is the workspace.</summary>
     public bool IsShown => _documents.HasDocuments && !_chrome.IsCompare;
+
+    /// <summary>Shows a dialog over the window (the hex menu's "Go to offset…"); false when one is already open.</summary>
+    public Func<GoToOffsetDialogViewModel, bool>? ShowDialog { get; set; }
+
+    /// <summary>
+    /// Brings a view into a lower pane (the lane menu's "Show in Ladder" / "Show in Hex stream"): a pane that shows it
+    /// already keeps it; otherwise the Hex stream takes the right pane when it shows, anything else the left.
+    /// </summary>
+    public void Show(StreamPaneKind kind)
+    {
+        if (Left.View.Value == kind || (ShowsRightPane && Right.View.Value == kind)) return;
+        StreamPaneViewModel pane = kind == StreamPaneKind.Hex && ShowsRightPane ? Right : Left;
+        pane.View.Value = kind;
+    }
 
     /// <summary>The left pane's ◫ Single / ◫ Split.</summary>
     [RelayCommand]

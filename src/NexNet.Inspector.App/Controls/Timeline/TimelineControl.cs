@@ -56,7 +56,7 @@ public readonly record struct TimelineHit(TimelineArea Area, LaneGroupKind Group
 /// trace band, gap hatching and playhead over them. It owns the time window, playhead and selection through the
 /// <see cref="SyncBus"/>: Ctrl+Wheel zooms around the pointer, Wheel pans time, Shift+Wheel scrolls the lanes, a click
 /// selects a mark (moving the playhead), dragging the overview moves the window, and P or a double-click on a gutter
-/// pins the lane (<see cref="PinCommand"/>; the lane menu is I26's).
+/// pins the lane (<see cref="PinCommand"/>); Space expands it, H hides it and T traces it (as the lane menu does).
 /// </summary>
 /// <remarks>
 /// Performance: marks are found by binary search on start tick and drawn only in the window, blocks that would land on
@@ -171,8 +171,11 @@ public sealed class TimelineControl : Control
     /// <summary>The lane under the pointer, drawn expanded; settable to show the hover state.</summary>
     public LaneKey? HoveredLane { get; set; }
 
-    /// <summary>The lane the last right-click was on (the lane menu's target, I26).</summary>
+    /// <summary>The lane the last right-click was on (the lane menu's target).</summary>
     public LaneKey? ContextLane { get; private set; }
+
+    /// <summary>The group whose header the last right-click was on (the group menu's target); null for none.</summary>
+    public LaneGroupKind? ContextGroup { get; private set; }
 
     /// <summary>The vertical layout of the last frame.</summary>
     public TimelineLayout Layout { get; } = new();
@@ -393,8 +396,9 @@ public sealed class TimelineControl : Control
         TimelineHit hit = HitTest(point);
         if (properties.IsRightButtonPressed)
         {
-            // The lane menu (I26) reads the lane it was opened on.
+            // The lane menu reads the lane it was opened on; a group header's menu, the group.
             ContextLane = hit.Lane?.Key;
+            ContextGroup = hit.Area == TimelineArea.Group ? hit.Group : null;
             return;
         }
 
@@ -505,10 +509,30 @@ public sealed class TimelineControl : Control
                 TogglePin(lane);
                 e.Handled = true;
                 break;
+            case Key.Space when HoveredLane is { } lane && _model is { } model:
+                model.ToggleExpanded(lane);
+                e.Handled = true;
+                break;
+            case Key.H when HoveredLane is { } lane && _model is { } model:
+                model.SetHidden(lane, true);
+                e.Handled = true;
+                break;
+            case Key.T when HoveredLane is { } lane:
+                e.Handled = TraceLane(lane);
+                break;
             case Key.Left or Key.Right:
                 e.Handled = Step(e.Key == Key.Right ? 1 : -1);
                 break;
         }
+    }
+
+    /// <summary>Traces what <paramref name="lane"/> shows in the window (T, the lane menu's "Trace frames in view").</summary>
+    /// <returns>False when the lane has nothing in view to trace.</returns>
+    public bool TraceLane(LaneKey lane)
+    {
+        if (_sync is not { } sync || _model is not { } model || !model.TryGetTraceTarget(lane, Window, out Selection selection, out long ticks)) return false;
+        sync.Select(selection, ticks);
+        return true;
     }
 
     /// <summary>Selects the previous or next frame in the selected frame's lane (keyboard Left/Right).</summary>

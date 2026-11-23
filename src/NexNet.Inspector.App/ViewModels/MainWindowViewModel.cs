@@ -35,7 +35,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Documents.SessionPicker ??= PickSession;
         Chrome = new ShellChromeViewModel(Documents);
         Chrome.Requested += OnShellRequested;
-        Inspect = new InspectWorkspaceViewModel(Documents, Chrome);
+        Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset };
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
         Documents.PropertyChanged += (_, e) =>
         {
@@ -94,6 +94,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ConnectDialogViewModel dialog = new(connect, CloseDialog);
         Dialog = dialog;
         return dialog;
+    }
+
+    /// <summary>Opens the hex view's "Go to offset…" dialog (unless a dialog is already open); it closes itself.</summary>
+    public bool ShowGoToOffset(GoToOffsetDialogViewModel dialog)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        if (Dialog is not null) return false;
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return true;
     }
 
     /// <summary>The title bar's requests: its Connect pill and the tab strip's + (the logo's menu is I28's).</summary>

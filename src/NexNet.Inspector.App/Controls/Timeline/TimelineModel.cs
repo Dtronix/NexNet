@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Model;
+using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.Controls.Timeline;
 
@@ -26,6 +27,8 @@ public sealed class TimelineModel
     private readonly List<TimelineLane> _lanes = [];
     private readonly Dictionary<LaneKey, TimelineLane> _byKey = [];
     private readonly HashSet<LaneKey> _pinned = [];
+    private readonly HashSet<LaneKey> _expanded = [];
+    private readonly HashSet<LaneKey> _hidden = [];
     private readonly bool[] _collapsed = new bool[GroupCount];
     private readonly bool[] _always = new bool[GroupCount];
     private readonly List<TimelineGap> _gaps = [];
@@ -154,6 +157,97 @@ public sealed class TimelineModel
 
     /// <summary>Flips a lane's pin.</summary>
     public void TogglePinned(LaneKey key) => SetPinned(key, !IsPinned(key));
+
+    /// <summary>True when the lane is expanded by hand (the lane menu's "Expand lane"): 24 px without a pin.</summary>
+    public bool IsExpanded(LaneKey key) => _expanded.Contains(key);
+
+    /// <summary>Expands a lane by hand, or lets it go back to its own height.</summary>
+    public void SetExpanded(LaneKey key, bool expanded)
+    {
+        if (expanded ? _expanded.Add(key) : _expanded.Remove(key)) NotifyChanged();
+    }
+
+    /// <summary>Flips a lane's expansion.</summary>
+    public void ToggleExpanded(LaneKey key) => SetExpanded(key, !IsExpanded(key));
+
+    /// <summary>True when the user hid the lane ("Hide lane"): it takes no room until shown again.</summary>
+    public bool IsHidden(LaneKey key) => _hidden.Contains(key);
+
+    /// <summary>The hidden lanes.</summary>
+    public IReadOnlyCollection<LaneKey> Hidden => _hidden;
+
+    /// <summary>Hides a lane (dropping its pin, which would otherwise keep it) or shows it again.</summary>
+    public void SetHidden(LaneKey key, bool hidden)
+    {
+        bool changed = hidden ? _hidden.Add(key) : _hidden.Remove(key);
+        if (hidden) changed |= _pinned.Remove(key);
+        if (changed) NotifyChanged();
+    }
+
+    /// <summary>Shows every hidden lane of <paramref name="group"/> again; returns how many.</summary>
+    public int ShowHidden(LaneGroupKind group)
+    {
+        int shown = 0;
+        foreach (TimelineLane lane in _lanes)
+        {
+            if (lane.Group == group && _hidden.Remove(lane.Key)) shown++;
+        }
+
+        if (shown > 0) NotifyChanged();
+        return shown;
+    }
+
+    /// <summary>The hidden lanes of <paramref name="group"/>.</summary>
+    public int HiddenCount(LaneGroupKind group)
+    {
+        int count = 0;
+        foreach (TimelineLane lane in _lanes)
+        {
+            if (lane.Group == group && _hidden.Contains(lane.Key)) count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// What tracing a lane's frames in <paramref name="window"/> selects: a pipe, channel or collection lane its pipe, an
+    /// invocation row its first span in view, a frame or transport lane its first frame in view.
+    /// </summary>
+    /// <returns>False when the lane has nothing in view to trace.</returns>
+    public bool TryGetTraceTarget(LaneKey key, TimeWindow window, out Selection selection, out long ticks)
+    {
+        selection = Selection.None;
+        ticks = 0;
+        if (FindLane(key) is not { } lane) return false;
+        if (key.Kind == LaneKind.Pipe)
+        {
+            selection = Selection.OfEntity(EntityKind.Pipe, key.Index);
+            ticks = Math.Max(lane.LifeStart, window.Start);
+            return lane.IsVisibleIn(window) || lane.HasMarkIn(window);
+        }
+
+        ReadOnlySpan<TimelineMark> marks = lane.Marks;
+        for (int i = lane.FirstCandidate(window.Start); i < marks.Length && marks[i].Start <= window.End; i++)
+        {
+            ref readonly TimelineMark mark = ref marks[i];
+            if (mark.End < window.Start) continue;
+            if (mark.Kind == MarkKind.Span && mark.Entity != EntityKind.None)
+            {
+                selection = Selection.OfEntity(mark.Entity, mark.EntityIndex);
+                ticks = mark.Start;
+                return true;
+            }
+
+            if (mark.Kind == MarkKind.Block && mark.Seq >= 0)
+            {
+                selection = Selection.OfFrame(new FrameKey(mark.Direction, mark.Seq));
+                ticks = mark.Start;
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>True when the group shows its header only.</summary>
     public bool IsCollapsed(LaneGroupKind group) => _collapsed[(int)group];

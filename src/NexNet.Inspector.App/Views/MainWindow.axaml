@@ -29,6 +29,9 @@
     <DataTemplate DataType="vm:OpenRecordingDialogViewModel">
       <recording:OpenRecordingDialog />
     </DataTemplate>
+    <DataTemplate DataType="vm:GoToOffsetDialogViewModel">
+      <inspect:GoToOffsetDialog />
+    </DataTemplate>
   </Window.DataTemplates>
   <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window
        draws its own title bar: the OS frame with the client area extended under it, or no frame at all on Linux
