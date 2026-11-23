@@ -16,7 +16,8 @@ namespace NexNet.Inspector.App.Tests.Capture;
 /// connection's first byte: the first 50 ms (preamble, greetings, the Users collection, Join, the canceled SendMessage,
 /// pings), Events on the left and the Hex stream on the right, the ClientGreeting selected so the handshake is traced
 /// (band over the HANDSHAKE lane, Events rows 1–4 tinted, the Handshake tab and its Pre / Greet assembly bar) and the
-/// handshake's Session lane pinned open. The title bar's "ALL · 3" record-all badge and the session popover are I28's.
+/// handshake's Session lane pinned open. The title bar shows a live connection to an in-process Chat server with three
+/// clients, Record all running ("ALL · 3"), and the session popover open under Session ▾.
 /// </summary>
 public static class InspectSessionStartScreen
 {
@@ -29,9 +30,13 @@ public static class InspectSessionStartScreen
     public static Window Create(CaptureContext context)
     {
         MainWindowViewModel viewModel = new(context.Themes, store: null, new DocumentsViewModel(AvaloniaUiDispatcher.Instance, null));
+        LiveConnection live = LiveConnection.Attach(viewModel);
         Open(viewModel);
+        LiveConnection.RecordAll(viewModel);
         MainWindow window = new() { DataContext = viewModel };
         window.Inspect.Timeline.Layout.Animator.Enabled = false;
+        live.TearDownWith(window, viewModel);
+        window.Opened += (_, _) => viewModel.Chrome.Session.IsPopoverOpen = true;
         return window;
     }
 

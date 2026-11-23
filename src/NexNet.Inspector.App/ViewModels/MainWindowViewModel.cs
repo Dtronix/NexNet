@@ -1,17 +1,23 @@
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
 using NexNet.Inspector.App.Services.Commands;
 using NexNet.Inspector.App.Settings;
 using NexNet.Inspector.Core.Format;
+using NexNet.Inspector.Core.Schema;
 using NexNet.Inspector.Core.Session;
+using NexNet.Inspector.Tap;
 
 namespace NexNet.Inspector.App.ViewModels;
 
 /// <summary>
 /// The main window's state: the theme choice, the open documents (with the sync bus every view follows), the empty
-/// window's home, the title bar's chrome, the dialog shown over it, the app's commands and the command palette.
+/// window's home, the title bar's chrome, the dialog shown over it, the app's commands and the command palette, and the
+/// application (logo) menu: File (open, save, recents), Session (connect, record all, switch session, workspace schema,
+/// overflow mode), View (theme, command palette) and Help, its items read from the command registry.
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject
 {
@@ -49,8 +55,58 @@ public sealed partial class MainWindowViewModel : ObservableObject
             if (e.PropertyName == nameof(DocumentsViewModel.HasDocuments) && !Documents.HasDocuments) Home.Refresh();
         };
         Theme = themes.Theme;
+        ThemeChoice = new EnumChoice<AppTheme>([(AppTheme.Dark, "Dark"), (AppTheme.Light, "Light"), (AppTheme.System, "System")], Theme);
+        ThemeChoice.ValueChanged += (_, value) => Theme = value;
+        Chrome.Session.Sessions.CollectionChanged += OnSessionsChanged;
         _ready = true;
     }
+
+    /// <summary>The app menu's Theme row: Dark | Light | System (OQ15: System follows the OS live).</summary>
+    public EnumChoice<AppTheme> ThemeChoice { get; }
+
+    /// <summary>The application menu under the logo is open.</summary>
+    [ObservableProperty]
+    public partial bool IsAppMenuOpen { get; set; }
+
+    /// <summary>File › Recent ▸: the recent recordings.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecentItems))]
+    public partial IReadOnlyList<MenuChoice> RecentItems { get; private set; } = [];
+
+    public bool HasRecentItems => RecentItems.Count > 0;
+
+    /// <summary>Session › Switch session ▸: the live connection's sessions, the attached one checked.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSessionItems))]
+    public partial IReadOnlyList<MenuChoice> SessionItems { get; private set; } = [];
+
+    public bool HasSessionItems => SessionItems.Count > 0;
+
+    /// <summary>Session › Schema ▸: load or clear the workspace schema.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<MenuChoice> SchemaItems { get; private set; } = [];
+
+    /// <summary>Session › Overflow mode ▸: Drop or Block for later attaches.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<MenuChoice> OverflowItems { get; private set; } = [];
+
+    /// <summary>"Schema · Chat.nnschema (embedded)": what decodes the active document.</summary>
+    [ObservableProperty]
+    public partial string SchemaHeader { get; private set; } = "Schema";
+
+    /// <summary>"Overflow mode · Drop".</summary>
+    [ObservableProperty]
+    public partial string OverflowHeader { get; private set; } = "Overflow mode";
+
+    /// <summary>Why loading a workspace schema failed; null when it did not.</summary>
+    [ObservableProperty]
+    public partial string? SchemaError { get; private set; }
+
+    /// <summary>The window's .nnschema file picker; null where there is none (tests, headless).</summary>
+    public Func<Task<string?>>? PickSchemaFile { get; set; }
+
+    /// <summary>Raised for what another part of the shell provides: Help &amp; shortcuts (F1), which has no view of its own yet.</summary>
+    public event Action<MenuRequest>? MenuRequested;
 
     /// <summary>The open documents, the active one and the sync bus.</summary>
     public DocumentsViewModel Documents { get; }
@@ -112,7 +168,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             connect.Target = r.Target;
         }
 
-        ConnectDialogViewModel dialog = new(connect, CloseDialog);
+        // A server's session is picked in the title bar's session popover, as after attaching.
+        ConnectDialogViewModel dialog = new(connect, CloseDialog) { SessionChooser = sessions => Chrome.Session.ChooseAsync(connect, sessions) };
         Dialog = dialog;
         return dialog;
     }
@@ -130,11 +187,162 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>The title bar's requests: its Connect pill and the tab strip's + (the logo's menu is I28's).</summary>
+    /// <summary>Ctrl+S, File › Save timeline as .nntl…: saves the active document through the documents' save handler (I29).</summary>
+    private async void Save()
+    {
+        if (Documents.Active is not { } document || Documents.SaveHandler is not { } save) return;
+        try
+        {
+            await save(document).ConfigureAwait(true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // An async void command must not throw into the dispatcher; the save handler reports its own failures.
+            System.Diagnostics.Debug.WriteLine("save failed: " + e.Message);
+        }
+    }
+
+    /// <summary>File › Recent ▸ item: opens the recording.</summary>
+    [RelayCommand]
+    private Task OpenRecent(string path) => OpenRecordingAsync(path);
+
+    /// <summary>Session › Schema ▸ › Load workspace schema…: a .nnschema the documents opened from now on compare with and can decode by.</summary>
+    [RelayCommand]
+    private async Task LoadSchema()
+    {
+        SchemaError = null;
+        if (PickSchemaFile is not { } pick || await pick().ConfigureAwait(true) is not { } path) return;
+        try
+        {
+            byte[] bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(true);
+            if (!NexusSchema.TryRead(bytes, out NexusSchema? schema, out string? error))
+            {
+                SchemaError = $"{Path.GetFileName(path)} is not a schema: {error}";
+                return;
+            }
+
+            Documents.WorkspaceSchema = schema;
+            Documents.WorkspaceSchemaName = path;
+            RefreshAppMenu();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            SchemaError = $"Could not read {Path.GetFileName(path)}: {e.Message}";
+        }
+    }
+
+    /// <summary>Session › Schema ▸ › Clear workspace schema: recordings decode by their embedded schema again.</summary>
+    [RelayCommand]
+    private void ClearSchema()
+    {
+        Documents.WorkspaceSchema = null;
+        Documents.WorkspaceSchemaName = null;
+        RefreshAppMenu();
+    }
+
+    /// <summary>Session › Overflow mode ▸: what later attaches do when the viewer falls behind.</summary>
+    [RelayCommand]
+    private void SetOverflow(InspectorOverflow overflow)
+    {
+        Documents.SetOverflow(overflow);
+        RefreshAppMenu();
+    }
+
+    /// <summary>"Chat.nnschema (embedded)", "contracts.nnschema (workspace)", "raw (no schema)".</summary>
+    public static string SchemaLabel(DocumentViewModel? active, NexusSchema? workspace, string? workspaceName)
+    {
+        if (active?.Session is { } session)
+        {
+            return session.Schema.Source switch
+            {
+                SchemaSource.Embedded => SchemaName(session.Schema.Schema) + " (embedded)",
+                SchemaSource.Workspace => WorkspaceLabel(workspace ?? session.Schema.Schema, workspaceName) + " (workspace)",
+                _ => "raw (no schema)",
+            };
+        }
+
+        return workspace is null ? "none" : WorkspaceLabel(workspace, workspaceName) + " (workspace)";
+    }
+
+    // The nexus's name without its Nexus suffix, as a file name ("ChatServerNexus" -> "Chat.nnschema").
+    private static string SchemaName(NexusSchema? schema)
+    {
+        if (schema is not { Exports.Count: > 0 }) return "schema";
+        string name = schema.Exports[0].Name;
+        foreach (string suffix in (ReadOnlySpan<string>)["ServerNexus", "ClientNexus", "Nexus"])
+        {
+            if (name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                name = name[..^suffix.Length];
+                break;
+            }
+        }
+
+        return name + ".nnschema";
+    }
+
+    private static string WorkspaceLabel(NexusSchema? schema, string? path) => path is { Length: > 0 } ? Path.GetFileName(path) : SchemaName(schema);
+
+    /// <summary>Rebuilds the app menu's submenus and headers from the documents, settings and live sessions.</summary>
+    public void RefreshAppMenu()
+    {
+        Commands.Refresh();
+        AppSettings settings = _store?.Current ?? new AppSettings();
+        MenuChoice[] recent = new MenuChoice[settings.RecentFiles.Count];
+        for (int i = 0; i < recent.Length; i++)
+            recent[i] = new MenuChoice(Path.GetFileName(settings.RecentFiles[i].Path), OpenRecentCommand, settings.RecentFiles[i].Path);
+        RecentItems = recent;
+
+        SchemaHeader = "Schema · " + SchemaLabel(Documents.Active, Documents.WorkspaceSchema, Documents.WorkspaceSchemaName);
+        SchemaItems =
+        [
+            new MenuChoice("Load workspace schema…", LoadSchemaCommand),
+            new MenuChoice("Clear workspace schema", ClearSchemaCommand, IsEnabled: Documents.WorkspaceSchema is not null),
+        ];
+
+        InspectorOverflow overflow = Documents.ConnectDefaults.Overflow;
+        OverflowHeader = "Overflow mode · " + (overflow == InspectorOverflow.Block ? "Block" : "Drop");
+        OverflowItems =
+        [
+            new MenuChoice("Drop · show gap markers", SetOverflowCommand, InspectorOverflow.Drop, overflow == InspectorOverflow.Drop),
+            new MenuChoice("Block · lossless, slows the connection", SetOverflowCommand, InspectorOverflow.Block, overflow == InspectorOverflow.Block),
+        ];
+        RefreshSessionItems();
+    }
+
+    private void RefreshSessionItems()
+    {
+        SessionAreaViewModel area = Chrome.Session;
+        MenuChoice[] sessions = new MenuChoice[area.Sessions.Count];
+        for (int i = 0; i < sessions.Length; i++)
+        {
+            SessionChoice choice = area.Sessions[i];
+            sessions[i] = new MenuChoice(choice.MenuLabel, area.ChooseCommand, choice, choice.IsAttached);
+        }
+
+        SessionItems = sessions;
+    }
+
+    partial void OnIsAppMenuOpenChanged(bool value)
+    {
+        if (!value) return;
+        RefreshAppMenu();
+        _ = Chrome.Session.RefreshSessionsAsync();
+    }
+
+    private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (IsAppMenuOpen) RefreshSessionItems();
+    }
+
+    /// <summary>The title bar's requests: the logo's app menu, its Connect pill and the tab strip's +.</summary>
     private void OnShellRequested(ShellRequest request)
     {
         switch (request)
         {
+            case ShellRequest.AppMenu:
+                IsAppMenuOpen = !IsAppMenuOpen;
+                break;
             case ShellRequest.Connect:
                 ShowConnect(null);
                 break;
@@ -204,6 +412,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.ThemeDark, () => Theme = AppTheme.Dark);
         Commands.Bind(AppCommand.ThemeLight, () => Theme = AppTheme.Light);
         Commands.Bind(AppCommand.ThemeSystem, () => Theme = AppTheme.System);
+        Commands.Bind(AppCommand.SaveTimeline, Save, () => Dialog is null && Documents.Active is not null && Documents.SaveHandler is not null);
+        SessionAreaViewModel session = Chrome.Session;
+        Commands.Bind(AppCommand.RecordAll, () => session.RecordAllCommand.Execute(null), () => session.RecordAllCommand.CanExecute(null));
+        session.RecordAllCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
+        Commands.Bind(AppCommand.HelpShortcuts, () => MenuRequested?.Invoke(MenuRequest.Help));
     }
 
     partial void OnDialogChanged(object? value)
@@ -217,6 +430,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         // The constructor's first assignment mirrors what is already applied and saved.
         if (!_ready) return;
+        ThemeChoice.Value = value;
         _themes.Theme = value;
         _store?.Update(s => s with { Theme = value });
     }

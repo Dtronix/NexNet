@@ -23,6 +23,12 @@ public sealed partial class TitleBar : UserControl
         Bar.PointerPressed += OnBarPressed;
     }
 
+    /// <summary>Where the application menu opens: under the logo button.</summary>
+    public Control AppMenuAnchor => LogoButton;
+
+    /// <summary>Where the session popover opens: under the connection group.</summary>
+    public Control SessionAnchor => ConnectionGroup;
+
     /// <summary>How the window draws its frame; <see cref="ChromeMode.Undecorated"/> makes the bar move the window itself.</summary>
     public ChromeMode Mode { get; set; } = WindowChromePolicy.Current;
 

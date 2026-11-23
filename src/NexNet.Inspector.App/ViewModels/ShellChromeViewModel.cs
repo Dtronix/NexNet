@@ -19,7 +19,15 @@ public sealed partial class ShellChromeViewModel : ObservableObject
         Documents = documents;
         Workspace = new EnumChoice<Workspace>([(Model.Workspace.Inspect, "Inspect"), (Model.Workspace.Compare, "Compare")], Model.Workspace.Inspect);
         Workspace.ValueChanged += (_, _) => OnPropertyChanged(nameof(IsCompare));
+        Session = new SessionAreaViewModel(documents);
+        TimeWindow = new TimeWindowReadoutViewModel(documents);
     }
+
+    /// <summary>The connection group, record button and session popover.</summary>
+    public SessionAreaViewModel Session { get; }
+
+    /// <summary>The − range + readout.</summary>
+    public TimeWindowReadoutViewModel TimeWindow { get; }
 
     /// <summary>The open documents, the active one and Ctrl+Tab order.</summary>
     public DocumentsViewModel Documents { get; }

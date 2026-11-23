@@ -1,0 +1,83 @@
+using System.ComponentModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using NexNet.Inspector.App.Services;
+using NexNet.Inspector.Core.Model;
+
+namespace NexNet.Inspector.App.ViewModels;
+
+/// <summary>
+/// The title bar's time window (controls/window-title-bar item 8): − · the visible range from the active capture's start
+/// ("1,240.0 – 1,290.0 ms", in seconds once the range reaches 10 s) · +. The buttons zoom the shared window around its
+/// centre by a factor of two, as Ctrl+Wheel does around the pointer.
+/// </summary>
+public sealed partial class TimeWindowReadoutViewModel : ObservableObject
+{
+    /// <summary>How much − and + zoom out and in.</summary>
+    public const double ZoomStep = 2;
+
+    private readonly DocumentsViewModel _documents;
+
+    /// <param name="documents">The documents and their shared sync bus.</param>
+    public TimeWindowReadoutViewModel(DocumentsViewModel documents)
+    {
+        ArgumentNullException.ThrowIfNull(documents);
+        _documents = documents;
+        documents.Sync.Changed += OnSyncChanged;
+        documents.PropertyChanged += OnDocumentsChanged;
+        Update();
+    }
+
+    /// <summary>The visible range, or empty when there is no window yet.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWindow))]
+    [NotifyCanExecuteChangedFor(nameof(ZoomInCommand), nameof(ZoomOutCommand))]
+    public partial string Text { get; private set; } = "";
+
+    /// <summary>True when a window is shown (a document is open and has data).</summary>
+    public bool HasWindow => Text.Length > 0;
+
+    /// <summary>"1,240.0 – 1,290.0 ms" (or "0.0 – 42.1 s"): a window from <paramref name="origin"/>, in the capture's ticks.</summary>
+    public static string Format(TimeWindow window, long origin, long frequency)
+    {
+        double from = TimeWindow.MillisecondsFromTicks(window.Start - origin, Math.Max(1, frequency));
+        double to = TimeWindow.MillisecondsFromTicks(window.End - origin, Math.Max(1, frequency));
+        return Math.Max(Math.Abs(from), Math.Abs(to)) >= 10_000
+            ? (from / 1000).ToString("N1", CultureInfo.InvariantCulture) + " – " + (to / 1000).ToString("N1", CultureInfo.InvariantCulture) + " s"
+            : from.ToString("N1", CultureInfo.InvariantCulture) + " – " + to.ToString("N1", CultureInfo.InvariantCulture) + " ms";
+    }
+
+    /// <summary>+: half the range, around its centre.</summary>
+    [RelayCommand(CanExecute = nameof(HasWindow))]
+    private void ZoomIn() => Zoom(1 / ZoomStep);
+
+    /// <summary>−: twice the range, around its centre.</summary>
+    [RelayCommand(CanExecute = nameof(HasWindow))]
+    private void ZoomOut() => Zoom(ZoomStep);
+
+    private void Zoom(double factor)
+    {
+        SyncBus sync = _documents.Sync;
+        if (sync.Window.IsEmpty) return;
+        sync.ZoomAround(sync.Window.Center, factor);
+    }
+
+    private void OnSyncChanged(SyncChanges changes)
+    {
+        if ((changes & (SyncChanges.Window | SyncChanges.Bounds)) != 0) Update();
+    }
+
+    private void OnDocumentsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(DocumentsViewModel.Active) or nameof(DocumentsViewModel.HasDocuments)) Update();
+    }
+
+    private void Update()
+    {
+        TimeWindow window = _documents.Sync.Window;
+        Text = _documents.Active is { Session: { } session } document && !window.IsEmpty
+            ? Format(window, session.StartTicks, document.Frequency)
+            : "";
+    }
+}

@@ -45,6 +45,10 @@
     <Style Selector="^:pressed">
       <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
     </Style>
+    <!-- The logo while its menu is open. -->
+    <Style Selector="^.open">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
     <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
       <Setter Property="IsVisible" Value="True" />
     </Style>

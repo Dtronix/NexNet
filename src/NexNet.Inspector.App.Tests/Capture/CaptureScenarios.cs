@@ -27,13 +27,19 @@ public enum CaptureScenario
     /// <summary>open-recording: the empty window behind the dialog on a two-session recording whose schema differs.</summary>
     OpenRecording,
 
-    /// <summary>inspect-session-start: the Chat fixture's first 50 ms, the handshake traced from the ClientGreeting.</summary>
+    /// <summary>
+    /// inspect-session-start: the Chat fixture's first 50 ms, the handshake traced from the ClientGreeting; a live
+    /// connection recording all sessions and the session popover open.
+    /// </summary>
     InspectSessionStart,
 
     /// <summary>context-menus: inspect-live with the lane menu on the FileUpload pipe, the hex selection menu and its Decode-as submenu.</summary>
     ContextMenus,
     /// <summary>command-palette: inspect-live with the palette open, queried for the traced invocation's id.</summary>
     CommandPalette,
+
+    /// <summary>inspect-app-menu: inspect-live with a live connection and the logo's application menu open.</summary>
+    InspectAppMenu,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -65,6 +71,7 @@ public static class CaptureScenarios
         [CaptureScenario.InspectSessionStart] = new("inspect-session-start", InspectSessionStartScreen.Create),
         [CaptureScenario.ContextMenus] = new("context-menus", ContextMenusScreen.Create),
         [CaptureScenario.CommandPalette] = new("command-palette", CommandPaletteScreen.Create),
+        [CaptureScenario.InspectAppMenu] = new("inspect-app-menu", InspectAppMenuScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

@@ -31,6 +31,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     private readonly SettingsStore? _store;
     private readonly TimeProvider _time;
     private readonly List<DocumentViewModel> _recent = [];
+    private ConnectDefaults? _connectDefaults;
 
     /// <param name="ui">Where document refreshes and sync notifications run.</param>
     /// <param name="store">Where recents and connect defaults are saved; null keeps them for this run only.</param>
@@ -43,6 +44,12 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         _time = time ?? TimeProvider.System;
         Sync = new SyncBus(ui) { TraceResolver = ResolveTrace };
     }
+
+    /// <summary>The clock of recents, the probe debounce and the live REC timer.</summary>
+    internal TimeProvider Time => _time;
+
+    /// <summary>Where posted refreshes run.</summary>
+    internal IUiDispatcher Ui => _ui;
 
     /// <summary>The time window, playhead and selection every view follows.</summary>
     public SyncBus Sync { get; }
@@ -105,7 +112,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     public ConnectViewModel CreateConnect()
     {
         var settings = _store?.Current ?? new AppSettings();
-        return new ConnectViewModel(this, settings.Connect ?? ConnectDefaults.Default, settings.RecentEndpoints, _time);
+        return new ConnectViewModel(this, ConnectDefaults, settings.RecentEndpoints, _time);
     }
 
     /// <summary>
@@ -169,7 +176,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         ArgumentNullException.ThrowIfNull(connection);
         var target = session is null ? InspectorTargetKind.Client : InspectorTargetKind.Session;
         var request = new InspectorAttachRequest(target, session?.Id ?? 0, overflow, snapshot, Record: false);
-        var document = new LiveDocumentViewModel(connection, _ui, WorkspaceSchema);
+        var document = new LiveDocumentViewModel(connection, _ui, WorkspaceSchema, _time);
         try
         {
             await document.AttachAsync(request, session, cancellationToken).ConfigureAwait(true);
@@ -187,6 +194,27 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
             Connect = new ConnectDefaults { Endpoint = endpoint, Target = target, Overflow = overflow, Snapshot = snapshot },
         });
         return document;
+    }
+
+    /// <summary>Puts a recording written outside a document (Record all) first in the recent files.</summary>
+    /// <param name="path">The recording.</param>
+    /// <param name="sessions">Sessions it holds.</param>
+    public void AddRecentRecording(string path, int sessions)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        _store?.Update(s => s.WithRecentFile(path, sessions, _time.GetUtcNow()));
+    }
+
+    /// <summary>The connect defaults saved by the last attach (or the app menu's overflow mode).</summary>
+    public ConnectDefaults ConnectDefaults => _store?.Current.Connect ?? _connectDefaults ?? ConnectDefaults.Default;
+
+    /// <summary>Sets the overflow mode later attaches use (the app menu's Overflow mode ▸).</summary>
+    public void SetOverflow(InspectorOverflow overflow)
+    {
+        var defaults = ConnectDefaults with { Overflow = overflow };
+        _connectDefaults = defaults;
+        _store?.Update(s => s with { Connect = defaults });
+        OnPropertyChanged(nameof(ConnectDefaults));
     }
 
     /// <summary>Makes a document the active one: the sync bus takes its window, playhead and selection.</summary>

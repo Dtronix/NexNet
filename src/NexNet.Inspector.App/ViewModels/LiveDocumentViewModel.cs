@@ -22,14 +22,16 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     public const string RecordingDisabledReason = "Recording disabled by server config";
 
     private readonly NexusSchema? _workspace;
+    private readonly TimeProvider _time;
     private AttachRun? _run;
     private bool _saved;
 
-    internal LiveDocumentViewModel(InspectorConnection connection, IUiDispatcher ui, NexusSchema? workspace)
+    internal LiveDocumentViewModel(InspectorConnection connection, IUiDispatcher ui, NexusSchema? workspace, TimeProvider? time = null)
         : base(DocumentKind.Live, ui)
     {
         Connection = connection;
         _workspace = workspace;
+        _time = time ?? TimeProvider.System;
         Title = connection.ServerInfo.Role == NntlSessionRole.Client ? "Client" : "Server";
     }
 
@@ -59,6 +61,10 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     /// <summary>The attach request in use.</summary>
     [ObservableProperty]
     public partial InspectorAttachRequest? Request { get; private set; }
+
+    /// <summary>When the current attach started streaming (the title bar's REC timer counts from it); null when detached.</summary>
+    [ObservableProperty]
+    public partial DateTimeOffset? AttachedAt { get; private set; }
 
     /// <summary>Why the session ended, once it did (the banner's "DisconnectGraceful (21)").</summary>
     [ObservableProperty]
@@ -110,6 +116,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
 
         var run = new AttachRun(new LiveCapture(_workspace), stream);
         _run = run;
+        AttachedAt = _time.GetUtcNow();
         State = LiveState.Live;
         run.Pump = Task.Run(() => PumpAsync(run));
     }
@@ -136,6 +143,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
 
         await StopRunAsync().ConfigureAwait(true);
         Reset();
+        AttachedAt = null;
         State = LiveState.Detached;
     }
 

@@ -27,11 +27,18 @@ public readonly record struct EndpointConnectOptions(TimeSpan Timeout, bool Allo
 /// </summary>
 public sealed class InspectorConnection : IAsyncDisposable
 {
-    private InspectorConnection(EndpointAddress address, InspectorClient client, InspectorServerInfo info)
+    // Kept so the same endpoint can be reached again on a second connection (Record all streams beside the attach).
+    private readonly byte[] _token;
+    private readonly EndpointConnectOptions _options;
+
+    private InspectorConnection(EndpointAddress address, InspectorClient client, InspectorServerInfo info, byte[] token,
+        EndpointConnectOptions options)
     {
         Address = address;
         Client = client;
         ServerInfo = info;
+        _token = token;
+        _options = options;
     }
 
     /// <summary>Where it is connected.</summary>
@@ -55,7 +62,7 @@ public sealed class InspectorConnection : IAsyncDisposable
         try
         {
             var info = await client.GetServerInfoAsync().WaitAsync(options.Timeout, cancellationToken).ConfigureAwait(false);
-            return new InspectorConnection(address, client, info);
+            return new InspectorConnection(address, client, info, token.ToArray(), options);
         }
         catch
         {
@@ -97,6 +104,14 @@ public sealed class InspectorConnection : IAsyncDisposable
         $"Reached {address} · server policy: recording {(info.AllowRecording ? "allowed" : "disabled")} · "
         + $"secrets {(info.IncludeSecrets ? "included" : "redacted")} · "
         + (info.SchemaHash is { Length: > 0 } ? "schema provided" : "no schema provided");
+
+    /// <summary>
+    /// Opens a second connection to the same endpoint with the same token and options. The endpoint streams one attach or
+    /// record-all per connection, so recording every session while this one stays attached needs its own.
+    /// </summary>
+    /// <exception cref="InspectorConnectionException">Unreachable, or the token was refused.</exception>
+    public Task<InspectorConnection> ConnectAgainAsync(CancellationToken cancellationToken = default) =>
+        ConnectAsync(Address, _token, _options, cancellationToken);
 
     /// <summary>The live sessions (a server's; a client's single connection).</summary>
     public Task<InspectorSessionInfo[]> ListSessionsAsync() => Client.ListSessionsAsync();

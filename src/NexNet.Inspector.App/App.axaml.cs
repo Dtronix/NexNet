@@ -81,7 +81,9 @@ public sealed partial class App : Application
         {
             themes.Dispose();
             os.Dispose();
-            // Ends live streams and closes recordings; unsaved-data prompts happen before exit (I29).
+            // Finishes a Record all in progress, ends live streams and closes recordings; unsaved-data prompts happen before
+            // exit (I29).
+            viewModel.Chrome.Session.DisposeAsync().AsTask().GetAwaiter().GetResult();
             viewModel.Documents.DisposeAsync().AsTask().GetAwaiter().GetResult();
         };
     }

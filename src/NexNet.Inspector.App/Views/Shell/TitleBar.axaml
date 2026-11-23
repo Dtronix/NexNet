@@ -44,25 +44,85 @@
         </Button>
       </StackPanel>
 
-      <!-- The time window: the shared visible range (I19/I28); with nothing open, "— no timeline —". -->
+      <!-- The time window: − · the shared visible range · +; with nothing to show, "— no timeline —". -->
       <Border Name="TimeWindowArea" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
               AutomationProperties.Name="Time window">
-        <Border Name="NoTimeline" Height="{DynamicResource Size.HeaderControl}" Padding="8,0"
-                BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
-                CornerRadius="{DynamicResource Radius.Md}"
-                IsVisible="{Binding !Documents.HasDocuments}">
-          <TextBlock Text="— no timeline —" VerticalAlignment="Center"
-                     FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
-                     Foreground="{DynamicResource Brush.Text.Tertiary}" />
-        </Border>
+        <Panel>
+          <Border Name="NoTimeline" Height="{DynamicResource Size.HeaderControl}" Padding="8,0"
+                  BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Md}"
+                  IsVisible="{Binding !TimeWindow.HasWindow}">
+            <TextBlock Text="— no timeline —" VerticalAlignment="Center"
+                       FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
+                       Foreground="{DynamicResource Brush.Text.Tertiary}" />
+          </Border>
+          <Border Name="TimeWindowGroup" Height="{DynamicResource Size.HeaderControl}"
+                  BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
+                  CornerRadius="{DynamicResource Radius.Md}" IsVisible="{Binding TimeWindow.HasWindow}"
+                  TextElement.FontFamily="{DynamicResource Font.Mono}" TextElement.FontSize="{DynamicResource FontSize.Data}">
+            <StackPanel Orientation="Horizontal">
+              <Button Name="ZoomOutButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
+                      WindowDecorationProperties.ElementRole="User" Content="−" Foreground="{DynamicResource Brush.Text.Primary}"
+                      Command="{Binding TimeWindow.ZoomOutCommand}" AutomationProperties.Name="Zoom out" />
+              <TextBlock Name="TimeWindowText" Text="{Binding TimeWindow.Text}" VerticalAlignment="Center" Margin="2,0" />
+              <Button Name="ZoomInButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
+                      WindowDecorationProperties.ElementRole="User" Content="+" Foreground="{DynamicResource Brush.Text.Primary}"
+                      Command="{Binding TimeWindow.ZoomInCommand}" AutomationProperties.Name="Zoom in" />
+            </StackPanel>
+          </Border>
+        </Panel>
       </Border>
 
-      <!-- The session area: connection, session and recording (I28). Empty, it offers Connect… (Ctrl+K). -->
-      <Border Name="SessionArea" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
-              AutomationProperties.Name="Connection">
+      <!-- The session area: the connection group (status · endpoint · Session ▾, which opens the session popover) and the
+           record button (the REC timer, or ALL · n while every session is recorded; disabled with its tooltip when the
+           server disallows recording, OQ4). With no live connection it offers Connect… (Ctrl+K). -->
+      <StackPanel Name="SessionArea" DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="6,0,0,0"
+                  VerticalAlignment="Center" AutomationProperties.Name="Connection">
+        <Border Name="ConnectionGroup" Height="{DynamicResource Size.HeaderControl}" ClipToBounds="True"
+                BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1" CornerRadius="{DynamicResource Radius.Md}"
+                IsVisible="{Binding Session.HasConnection}">
+          <StackPanel Orientation="Horizontal">
+            <Border Background="{DynamicResource Brush.Surface.Raised}" Padding="8,0">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Panel Width="7" Height="7" VerticalAlignment="Center">
+                  <Ellipse Fill="{DynamicResource Brush.Status.Ok}" IsVisible="{Binding Session.IsOnline}" />
+                  <Ellipse Fill="{DynamicResource Brush.Text.Tertiary}" IsVisible="{Binding !Session.IsOnline}" />
+                </Panel>
+                <TextBlock Name="RoleText" Text="{Binding Session.RoleLabel}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <TextBlock Name="EndpointText" Text="{Binding Session.EndpointText}" Margin="8,0" VerticalAlignment="Center"
+                       FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}" />
+            <Border Width="1" Background="{DynamicResource Brush.Border.Default}" />
+            <Button Name="SessionButton" Theme="{StaticResource ChromeButton}" Height="22" CornerRadius="0" Padding="8,0"
+                    Foreground="{DynamicResource Brush.Text.Primary}"
+                    WindowDecorationProperties.ElementRole="User"
+                    Command="{Binding Session.TogglePopoverCommand}"
+                    AutomationProperties.Name="Sessions on server">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="Session" VerticalAlignment="Center" />
+                <TextBlock Name="SessionIdText" Text="{Binding Session.SessionText}" VerticalAlignment="Center"
+                           FontFamily="{DynamicResource Font.Mono}" FontWeight="{DynamicResource FontWeight.SemiBold}" />
+                <TextBlock Text="{Binding Session.SessionDetail, StringFormat='· {0}'}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Brush.Text.Secondary}"
+                           IsVisible="{Binding Session.SessionDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Text="▾" FontSize="9" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <Button Name="RecordButton" Classes="record" Height="{DynamicResource Size.HeaderControl}"
+                WindowDecorationProperties.ElementRole="User"
+                IsVisible="{Binding Session.HasLive}"
+                Content="{Binding Session.RecordText}"
+                Command="{Binding Session.RecordAllCommand}"
+                ToolTip.Tip="{Binding Session.RecordTooltip}" ToolTip.ShowOnDisabled="True"
+                AutomationProperties.Name="Record all sessions" />
+
         <Button Name="ConnectButton" Theme="{StaticResource ChromeGroup}"
                 WindowDecorationProperties.ElementRole="User"
-                IsVisible="{Binding !Documents.HasDocuments}"
+                IsVisible="{Binding !Session.HasConnection}"
                 Command="{Binding RequestCommand}" CommandParameter="{x:Static m:ShellRequest.Connect}"
                 AutomationProperties.Name="Not connected. Connect (Ctrl+K)">
           <Border Background="{DynamicResource Brush.Surface.Raised}" Padding="8,0">
@@ -75,7 +135,7 @@
             </StackPanel>
           </Border>
         </Button>
-      </Border>
+      </StackPanel>
 
       <!-- Logo: the application menu. -->
       <Button Name="LogoButton" DockPanel.Dock="Left" Theme="{StaticResource ChromeButton}"

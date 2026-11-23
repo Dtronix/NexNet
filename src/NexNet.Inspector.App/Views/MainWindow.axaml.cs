@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Platform;
 using NexNet.Inspector.App.Services.Commands;
@@ -41,6 +42,16 @@ public sealed partial class MainWindow : Window
         using (Stream icon = AssetLoader.Open(IconUri)) Icon = new WindowIcon(icon);
         Chrome = chrome;
         TitleBar.Mode = chrome;
+        AppMenuPopup.PlacementTarget = TitleBar.AppMenuAnchor;
+        SessionPopup.PlacementTarget = TitleBar.SessionAnchor;
+        AppMenu.CloseRequested += (_, _) => AppMenuPopup.IsOpen = false;
+        AppMenuPopup.Opened += (_, _) =>
+        {
+            TitleBar.AppMenuAnchor.Classes.Set("open", true);
+            // Keyboard navigation starts in the menu, as a context menu opened from the keyboard does.
+            AppMenu.Focus(NavigationMethod.Directional);
+        };
+        AppMenuPopup.Closed += (_, _) => TitleBar.AppMenuAnchor.Classes.Set("open", false);
         if (chrome == ChromeMode.Undecorated)
         {
             // No OS frame: the bar moves and maximizes the window, the grips resize it.
@@ -86,6 +97,7 @@ public sealed partial class MainWindow : Window
         base.OnDataContextChanged(e);
         ChromeModel?.UpdateWidth(Bounds.Width);
         BindShortcuts((DataContext as MainWindowViewModel)?.Commands);
+        if (DataContext is MainWindowViewModel model) model.PickSchemaFile ??= PickSchemaAsync;
     }
 
     /// <summary>
@@ -107,6 +119,20 @@ public sealed partial class MainWindow : Window
             KeyBindings.Add(binding);
             _commandBindings.Add(binding);
         }
+    }
+
+    private static readonly FilePickerFileType Schemas = new("NexNet schemas") { Patterns = ["*.nnschema"] };
+
+    private async Task<string?> PickSchemaAsync()
+    {
+        if (StorageProvider is not { CanOpen: true } storage) return null;
+        IReadOnlyList<IStorageFile> picked = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Load workspace schema",
+            AllowMultiple = false,
+            FileTypeFilter = [Schemas],
+        });
+        return picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

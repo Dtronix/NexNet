@@ -53,6 +53,19 @@
     <!-- The modal layer below the title bar: scrim and the open dialog (connect, open-recording). -->
     <c:DialogHost x:Name="Dialogs" Grid.Row="1" Dialog="{Binding Dialog}" />
 
+    <!-- The application menu under the logo and the session popover under the connection group. Both render in the
+         window's overlay layer (anchored in code to the title bar's parts), so they stay inside the window. -->
+    <Popup x:Name="AppMenuPopup" IsOpen="{Binding IsAppMenuOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedLeft"
+           VerticalOffset="2" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True" WindowManagerAddShadowHint="False">
+      <shell:AppMenu x:Name="AppMenu" />
+    </Popup>
+    <Popup x:Name="SessionPopup" DataContext="{Binding Chrome.Session}" x:DataType="vm:SessionAreaViewModel"
+           IsOpen="{Binding IsPopoverOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedLeft"
+           HorizontalOffset="-28" VerticalOffset="6" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True"
+           WindowManagerAddShadowHint="False">
+      <shell:SessionPopover x:Name="SessionPopover" />
+    </Popup>
+
     <!-- The command palette over the whole window, title bar included (56 px from the window top). -->
     <Panel Grid.RowSpan="2" IsVisible="{Binding Palette.IsOpen}">
       <palette:CommandPalette x:Name="Palette" DataContext="{Binding Palette}" />
