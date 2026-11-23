@@ -103,7 +103,7 @@ internal static class ClientParityExceptions
         "By design: exception type names are language-specific; the other languages check the error kind and message.";
 
     private const string BrowserRedirectError =
-        "Platform limit: the browser WebSocket API reports a refused upgrade (a redirect included) only as a generic error event, with no status, so the browser client cannot tell a protocol error from a transport failure and reports InternalError, not ProtocolError. The rest of the test (the redirect is not followed, one request) holds on every language.";
+        "Platform limit: the browser WebSocket API reports a refused upgrade (a redirect included) only as a generic error event, with no status, so the browser client cannot tell a protocol error from a transport failure and reports InternalError, not ProtocolError. WebKit's WebSocket (libsoup on Linux) also follows the redirect itself, before page JS sees anything, so the redirect target may get one connection on WebKit rows; the connect still fails with no session. The rest of the test (the connect fails, one request to the endpoint, the redirect not followed on every other language) holds on every language.";
 
     private const string BrowserCloseCode =
         "Platform limit: page JS may only send close code 1000 or 3000-4999 (WebSocket.close throws InvalidAccessError for 1003), so a browser client closes normally (1000) on a text message. That it refuses the session holds on every language.";

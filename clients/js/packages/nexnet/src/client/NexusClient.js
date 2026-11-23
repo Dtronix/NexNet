@@ -441,7 +441,11 @@ export class NexusClient extends EventTarget {
         return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: error.reason || DisconnectReason.SocketError, error };
       }
       if (timeout.signal.aborted) {
-        const timedOut = new NexusTransportError(`Connection timed out after ${options.connectionTimeout} ms.`, { reason: DisconnectReason.Timeout, cause: error });
+        // transportError as C# TransportException(ConnectionTimeout) (protocol spec §13.1). Without it the error has no
+        // kind: a WebKit WebSocket that has not yet reported a refused connect when the timeout fires lands here.
+        const timedOut = /** @type {import('../transport/TransportBase.js').TransportConnectError} */ (
+          new NexusTransportError(`Connection timed out after ${options.connectionTimeout} ms.`, { reason: DisconnectReason.Timeout, cause: error }));
+        timedOut.transportError = 'ConnectionTimeout';
         return { success: false, state: ConnectionResultState.Disconnected, disconnectReason: DisconnectReason.Timeout, error: timedOut };
       }
       return { success: false, state: ConnectionResultState.Exception, disconnectReason: DisconnectReason.SocketError, error };

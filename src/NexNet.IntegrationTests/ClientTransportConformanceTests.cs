@@ -16,8 +16,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 /// <remarks>
 /// A browser reports every failed WebSocket connect the same way (<c>InternalError</c>, the WebSocket API gives page JS
-/// no status), and page JS may close a WebSocket only with 1000 or 3000–4999, so those rows check what the platform
-/// lets the client see and do (<c>@dtronix/nexnet</c> <c>transport/WebSocketTransport.js</c>).
+/// no status), WebKit's WebSocket follows an upgrade redirect itself, and page JS may close a WebSocket only with 1000
+/// or 3000–4999, so those rows check what the platform lets the client see and do (<c>@dtronix/nexnet</c> <c>transport/WebSocketTransport.js</c>).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class ClientTransportConformanceTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
@@ -46,9 +46,11 @@ internal class ClientTransportConformanceTests(LanguageHostPool hosts) : MatrixT
         var exception = await ConnectFailsAsync(target, endpoint.GetAddress(target.Transport.ToEndpointKind()));
         await Assert.That(exception.Error).IsEqualTo(IsBrowser(target) ? TransportError.InternalError : TransportError.ProtocolError);
 
-        // The connect failed on the redirect itself: no second request went to the target or back to the endpoint.
-        await Assert.That(endpoint.RedirectTargetConnections).IsEqualTo(0);
+        // The connect failed on the redirect itself: no request went back to the endpoint, and (but on WebKit) none went
+        // to the target. WebKit's WebSocket (libsoup, as on the Linux CI runners) follows the redirect before page JS sees
+        // anything, so the target may get a connection; the connect must still fail (above), with no session.
         await Assert.That(endpoint.Requests).IsEqualTo(1);
+        await Assert.That(endpoint.RedirectTargetConnections).IsLessThanOrEqualTo(MayFollowUpgradeRedirect(target) ? 1 : 0);
     }
 
     [Test]
@@ -118,4 +120,10 @@ internal class ClientTransportConformanceTests(LanguageHostPool hosts) : MatrixT
     }
 
     private static bool IsBrowser(ClientTarget target) => target.Language.StartsWith("browser-", StringComparison.Ordinal);
+
+    /// <summary>
+    /// True for WebKit, whose WebSocket follows a redirect of the upgrade itself (against the WHATWG handshake's
+    /// redirect mode `error`), where page JS can neither see nor stop it.
+    /// </summary>
+    private static bool MayFollowUpgradeRedirect(ClientTarget target) => target.Language == ClientLanguages.BrowserWebKit;
 }

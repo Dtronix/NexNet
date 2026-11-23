@@ -511,7 +511,8 @@ A transport factory rejects a failed connect with a `NexusTransportError` carryi
 
 `reason` is `DisconnectReason.Authentication` for `AuthenticationError` and `SocketError` for everything else, as in
 the C# client. `connect()` rethrows this error as is; `tryConnect()` returns it as `error` with that
-`disconnectReason`. A connect that exceeds `connectionTimeout` fails with `DisconnectReason.Timeout` instead.
+`disconnectReason`. A connect that exceeds `connectionTimeout` fails with `DisconnectReason.Timeout` and `transportError`
+`ConnectionTimeout` instead.
 
 **Authentication failures during the handshake ([#299](https://github.com/Dtronix/NexNet/pull/299)).** `connect()` also rejects with a `NexusTransportError` whose
 `transportError` is `AuthenticationError` (and `reason` `DisconnectReason.Authentication`), as C# `ConnectAsync`
