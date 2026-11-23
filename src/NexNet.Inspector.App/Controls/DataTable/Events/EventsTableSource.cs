@@ -163,6 +163,7 @@ public sealed class EventsTableSource : DataTableSource
         EventTargetKind target = EventTargetKind.None;
         ushort targetId = 0;
         string? method = null;
+        string? label = null;
         if (link.Entity == EntityKind.Invocation && (uint)link.EntityIndex < (uint)assembler.Invocations.Length)
         {
             InvocationRow invocation = assembler.Invocations[link.EntityIndex];
@@ -181,6 +182,7 @@ public sealed class EventsTableSource : DataTableSource
             PipeRow pipe = assembler.Pipes[link.EntityIndex];
             target = pipe.Content == PipeContent.Channel ? EventTargetKind.Channel : EventTargetKind.Pipe;
             targetId = pipe.PipeId;
+            label = session.Decoder.GetPipeLabel(link.EntityIndex);
         }
         else if (frame.Target == FrameTarget.Pipe)
         {
@@ -208,6 +210,8 @@ public sealed class EventsTableSource : DataTableSource
             Target = target,
             TargetId = targetId,
             MethodName = method,
+            PipeLabel = label,
+            Detail = assembler.GetDetail(key.Direction, key.Seq),
             ChunkNumber = chunk,
             ChunkCount = chunks,
             IsTraced = _members is { IsActive: true } members ? members.Contains(key) : !_trace.IsNone && message == _trace,

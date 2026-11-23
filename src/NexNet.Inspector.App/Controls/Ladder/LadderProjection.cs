@@ -114,6 +114,14 @@ public sealed class LadderProjection
                 && assembler.Pipes[link.EntityIndex].Content != PipeContent.Raw;
             target = channel ? LadderTarget.Channel : LadderTarget.Pipe;
             targetId = frame.TargetId;
+            if (link.Entity == EntityKind.Pipe && session.Decoder.GetPipeLabel(link.EntityIndex) is { } label)
+                name = _model.AddLabel(label);
+        }
+        else if (link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length)
+        {
+            // DuplexPipeUpdateState names its pipe in the body, not a post-header: assembly linked it.
+            target = assembler.Pipes[link.EntityIndex].Content != PipeContent.Raw ? LadderTarget.Channel : LadderTarget.Pipe;
+            targetId = assembler.Pipes[link.EntityIndex].PipeId;
         }
 
         if (frame.Type == MessageType.MessageStart && (uint)link.Message < (uint)assembler.Messages.Length)
@@ -123,8 +131,12 @@ public sealed class LadderProjection
         if ((uint)link.Message < (uint)assembler.Messages.Length)
             _model.SetMessage(link.Message, assembler.Messages[link.Message].Ref);
 
+        // Results and large messages already say their state or kind through the note.
+        FrameDetail detail = assembler.GetDetail(frame.Direction, frame.Seq);
+        if (detail.Kind is FrameDetailKind.Result or FrameDetailKind.MessageStart) detail = FrameDetail.None;
+
         return new LadderRow(new FrameKey(frame.Direction, frame.Seq), frame.StartTicks, frame.Kind, frame.Type, frame.Flags,
-            Bytes(frame), target, targetId, note, name, frame.FirstOpId, frame.LastOpId, link.Entity, link.EntityIndex, link.Message, part);
+            Bytes(frame), target, targetId, note, name, frame.FirstOpId, frame.LastOpId, link.Entity, link.EntityIndex, link.Message, part, detail);
     }
 
     // Chunks are numbered as they are projected, which is stream order within the message's direction.

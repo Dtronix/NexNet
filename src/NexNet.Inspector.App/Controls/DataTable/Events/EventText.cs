@@ -1,4 +1,6 @@
 using System.Globalization;
+using NexNet.Inspector.App.Model;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Messages;
 
@@ -29,16 +31,29 @@ public static class EventText
             : name + " " + number;
     }
 
-    /// <summary>The Target column: <c>inv 812 SendAttachment</c>, <c>pipe 3·1</c>, <c>chan 4·2</c>; empty for none.</summary>
-    public static string Target(in EventRow row) => row.Target switch
+    /// <summary>
+    /// The Target column: the target with its name and what the body adds (<c>inv 812 SendAttachment</c>,
+    /// <c>inv 1 · Completed</c>, <c>pipe 1·1 Users · Ready</c>, <c>chan 4·2 LogLine</c>, <c>NnP␔ · v1</c>,
+    /// <c>auth token · redacted</c>, <c>clientId 0x3A21</c>, <c>+1</c>); empty for none.
+    /// </summary>
+    public static string Target(in EventRow row)
     {
-        EventTargetKind.Invocation => row.MethodName is { } method
-            ? "inv " + row.TargetId.ToString(CultureInfo.InvariantCulture) + " " + method
-            : "inv " + row.TargetId.ToString(CultureInfo.InvariantCulture),
-        EventTargetKind.Pipe => "pipe " + PipeIds(row.TargetId),
-        EventTargetKind.Channel => "chan " + PipeIds(row.TargetId),
-        _ => "",
-    };
+        string target = row.Target switch
+        {
+            EventTargetKind.Invocation => "inv " + row.TargetId.ToString(CultureInfo.InvariantCulture),
+            EventTargetKind.Pipe => "pipe " + PipeIds(row.TargetId),
+            EventTargetKind.Channel => "chan " + PipeIds(row.TargetId),
+            _ => "",
+        };
+        string? name = row.Target switch
+        {
+            // A result or a large message's start names its state or kind instead, as the package's rows do.
+            EventTargetKind.Invocation => row.Detail.Kind == FrameDetailKind.None ? row.MethodName : null,
+            EventTargetKind.Pipe or EventTargetKind.Channel => row.PipeLabel,
+            _ => null,
+        };
+        return FrameDetailText.Join(target, name, FrameDetailText.Words(row.Detail, row.Flags));
+    }
 
     /// <summary>What assistive technology announces for a row: type, direction and time.</summary>
     public static string Accessible(in EventRow row) =>

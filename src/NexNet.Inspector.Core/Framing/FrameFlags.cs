@@ -2,9 +2,9 @@ namespace NexNet.Inspector.Core.Framing;
 
 /// <summary>Annotations on a <see cref="FrameRecord"/>; each one maps to a chip letter in the viewer.</summary>
 /// <remarks>
-/// The parser sets only <see cref="TransportSplit"/> and <see cref="Incomplete"/>. The other values are reserved here so
-/// message assembly (<see cref="NexNetSplit"/>, <see cref="Cancel"/>) and redaction (<see cref="Redacted"/>) can add
-/// them to the same record without a second flags type.
+/// The parser sets only <see cref="TransportSplit"/> and <see cref="Incomplete"/>. Message assembly adds
+/// <see cref="NexNetSplit"/> and <see cref="Cancel"/>, and a capture session adds <see cref="Redacted"/> to a frame whose
+/// bytes overlap a range its op store recorded as redacted, all on the same record without a second flags type.
 /// </remarks>
 [Flags]
 public enum FrameFlags : byte

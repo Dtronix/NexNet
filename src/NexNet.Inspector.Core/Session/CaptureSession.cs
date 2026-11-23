@@ -35,6 +35,10 @@ public sealed class CaptureSession
     private readonly List<FrameKey> _order = [];
     private readonly List<NntlGap> _gaps = [];
     private readonly bool[] _fromInception = new bool[2];
+
+    // Per direction, the first redaction that can still overlap a later frame: frames complete in stream order, so the
+    // ranges before it are behind every frame to come.
+    private readonly int[] _redactionCursor = new int[2];
     private FrameParser? _inboundParser;
     private FrameParser? _outboundParser;
     private long _version;
@@ -280,12 +284,26 @@ public sealed class CaptureSession
         Interlocked.Increment(ref _version);
     }
 
+    // True when a redaction range of the frame's direction overlaps the frame's bytes. The op stores learn the ranges
+    // when the op is appended, before the parser emits the frames the op completes.
+    private bool IsRedacted(in FrameRecord frame)
+    {
+        var ranges = GetStore(frame.Direction).Redactions;
+        ref var cursor = ref _redactionCursor[(int)frame.Direction];
+        while (cursor < ranges.Length && ranges[cursor].End <= frame.Offset)
+            cursor++;
+        return cursor < ranges.Length && ranges[cursor].Offset < frame.Offset + frame.Length;
+    }
+
     private readonly struct Sink(CaptureSession session) : IFrameSink
     {
         public void Add(in FrameRecord frame)
         {
             session._order.Add(new FrameKey(frame.Direction, frame.Seq));
-            session.Assembler.Add(frame);
+            if (frame.Length > 0 && session.IsRedacted(frame))
+                session.Assembler.Add(frame with { Flags = frame.Flags | FrameFlags.Redacted });
+            else
+                session.Assembler.Add(frame);
         }
     }
 }

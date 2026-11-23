@@ -195,6 +195,28 @@ public sealed class SessionDecoder : IPipeContentResolver
         return false;
     }
 
+    /// <summary>
+    /// A short name for what a pipe carries, for one-line labels: a collection pipe's collection ("Users"), a channel's
+    /// item type ("LogLine"). Null for a raw pipe, or when the schema does not say.
+    /// </summary>
+    /// <param name="pipe">Index into the assembler's pipes.</param>
+    public string? GetPipeLabel(int pipe)
+    {
+        if ((uint)pipe >= (uint)_assembler.Pipes.Length || Schema is null)
+            return null;
+
+        var row = _assembler.Pipes[pipe];
+        switch (row.Content)
+        {
+            case PipeContent.Collection when row.Collection >= 0:
+                return TryGetCollection(_assembler.Collections[row.Collection].CollectionId, out var collection) ? collection.Name : null;
+            case PipeContent.Channel:
+                return ChannelItemType(row)?.Decl?.Name;
+            default:
+                return null;
+        }
+    }
+
     // A channel's item type comes from its opener's channel parameter.
     private SchemaTypeRef? ChannelItemType(in PipeRow pipe)
     {

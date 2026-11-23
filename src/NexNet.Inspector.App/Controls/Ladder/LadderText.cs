@@ -1,4 +1,5 @@
 using System.Globalization;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 using NexNet.Messages;
@@ -54,7 +55,10 @@ public static class LadderText
             : name;
     }
 
-    /// <summary>The target ("inv 812", "pipe 3·1", "chan 4·2") with the method name and note; empty for none.</summary>
+    /// <summary>
+    /// The target ("inv 812", "pipe 3·1", "chan 4·2") with the method or channel name, the note, and what the body adds
+    /// ("NnP␔ · v1", "auth token · redacted", "clientId 0x3A21", "+1", "Ready"); empty for none.
+    /// </summary>
     public static string Detail(in LadderRow row, string? name)
     {
         string target = row.Target switch
@@ -66,8 +70,8 @@ public static class LadderText
         };
         if (name is not null) target = target.Length == 0 ? name : target + " " + name;
         string? note = Note(row.Note);
-        if (note is null) return target;
-        return target.Length == 0 ? note : target + " · " + note;
+        if (note is not null) target = target.Length == 0 ? note : target + " · " + note;
+        return FrameDetailText.Join(target, null, FrameDetailText.Words(row.Detail, row.Flags));
     }
 
     /// <summary>The byte count ("4,096 B"); null when the row shows none.</summary>
@@ -108,6 +112,7 @@ public static class LadderText
         };
         if (name is not null) text += " " + name;
         if (Note(row.Note) is { } note) text += ", " + note;
+        if (FrameDetailText.Words(row.Detail, row.Flags) is { } detail) text += ", " + detail;
         if (row.Bytes >= 0) text += ", " + row.Bytes.ToString("N0", CultureInfo.InvariantCulture) + " bytes";
         foreach (FrameFlags flag in FlagChip.DisplayOrder)
         {

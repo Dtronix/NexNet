@@ -74,6 +74,12 @@ public readonly record struct EventRow
     /// <summary>The invoked method's name from the schema, for an invocation target; null when unknown.</summary>
     public string? MethodName { get; init; }
 
+    /// <summary>What a pipe or channel carries ("Users", "LogLine"), from the schema; null when unknown or raw.</summary>
+    public string? PipeLabel { get; init; }
+
+    /// <summary>What the body says beyond the target (preamble version, greeting token or ID, credits, pipe state, result).</summary>
+    public FrameDetail Detail { get; init; }
+
     /// <summary>For a MessageChunk, its 1-based number among its message's chunks; 0 otherwise.</summary>
     public int ChunkNumber { get; init; }
 
