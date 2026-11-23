@@ -76,8 +76,8 @@ gh pr view N --json title,body -q '.title + "\n" + .body'    # for each PR numbe
 ```
 
 Squash-merge subjects are often cut short, so read the PR body for the detail. Check that each PR is on the notes
-page and add any that are missing. A PR merged without updating the page is the usual gap: for v0.20.0, #93, #102 and
-#103 were missing. CI-only and docs-only PRs still get an entry, under Build or Documentation.
+page and add any that are missing. A PR merged without updating the page is the usual gap: one past release was missing
+#93, #102 and #103. CI-only and docs-only PRs still get an entry, under Build or Documentation.
 
 ### Page layout
 
@@ -127,7 +127,7 @@ python .github/scripts/release-notes.py vX.Y.Z <scratch>/body.md
 
 The script must succeed. Its output must start at `## Highlights` (the title and Released lines are removed).
 
-There is no change-log page or script in the repository. For v0.21.0, the full per-PR change log is a comment on
+There is no change-log page or script in the repository. For the multi-language release, the full per-PR change log is a comment on
 PR #326 (<https://github.com/Dtronix/NexNet/pull/326#issuecomment-7053892215>); the notes page links it from Highlights
 and from its `## Full change log` section, so the GitHub release body links it too. Check that the link is in `body.md`.
 

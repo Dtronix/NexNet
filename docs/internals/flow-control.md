@@ -1,11 +1,11 @@
 # Flow control, large values and hostile-peer limits
 
-Status: implemented in NexNet 0.18.0; see [protocol-specification.md](protocol-specification.md) for the wire
+Status: implemented; see [protocol-specification.md](protocol-specification.md) for the wire
 format. Section 12 records the decisions made during implementation where this design left room.
 
 ## 1. Background
 
-An application on NexNet 0.17.0 hung in production. Diagnosis from memory dumps, confirmed against master:
+An application hung in production. Diagnosis from memory dumps, confirmed against master:
 
 - `NexusPipeReader.BufferData` (`src/NexNet/Pipes/NexusPipeReader.cs`) is awaited inside the session read loop
   (`NexusSession.Receiving.cs`, `DuplexPipeWrite` case). Above the high-water cutoff (256 KiB) it waits until
@@ -362,7 +362,7 @@ Decisions made while implementing, where the design above did not settle the det
 | Abort routing | Both sides can send and receive streams with the same key. Busy and TooLarge come from a stream's receiver, Cancelled and Ack from its sender; the reason selects the stream. |
 | Large-message reservations | The reservation moves to the reassembled message and is released when the message is disposed (after the invocation runs, or the result is read), so queued large invocations stay within the budget. |
 | Invocation credit return | Coalesced and sent once half the advertised credits are pending, keeping the per-call cost to counters. Any send that flushes while a batch is pending writes the `InvocationCredit` frame before its flush, under the write mutex it already holds; the control sender sends it alone only if no other send takes it first. |
-| Protocol version | The preamble's version byte stays 1 until NexNet 1.0, as in 0.17; the release notes state that 0.17 and 0.18 peers can't talk to each other. |
+| Protocol version | The preamble's version byte stays 1 until NexNet 1.0; the release notes state when peers on different versions can't talk to each other. |
 | Router invocations | Two passes. `INexusSession.TryWriteInvocation` writes the invocation, without waiting, to every session that has credit and no send in progress (a flush to a backed-up transport holds the write mutex, so that session is busy); like `ChannelWriter.TryWrite`, success means committed to the output, not delivered. The busy sessions are then sent to concurrently, at most 256 at a time, all within one `ProgressTimeout`; a session still without credit is skipped with a rate-limited warning. A single-frame invocation is encoded once (`MessageFrame`) and the frame copied to every session (fire-and-forget, invocation ID 0); a streamed one is sent as a per-session copy with a tracked ID. A broadcast is delayed by at most one `ProgressTimeout` in total, and healthy sessions not at all. |
 | Decode guard | `NexusSerializerOptions.MaxElements` (0 = no limit) holds the element limit; a configuration resolves 0 to `max(65536, MaxMessageSize / 16)`. |
 | Channel item stall | `ProgressTimeout` applies to channel items that received extra credit: the writer holds the credit to send them, so no data means it stopped. Items within the window hold only memory already reserved. |

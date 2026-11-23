@@ -224,7 +224,7 @@ A Generator test checks that two runs give byte-identical bundles and that no em
 
 ## 10. Package size
 
-Measured on 0.20.0: the embedded runtime adds about 1.5 MB to `NexNet.Generator.dll` (1.3 MB → 2.8 MB; JavaScript
+At the time of writing, the embedded runtime adds about 1.5 MB to `NexNet.Generator.dll` (1.3 MB → 2.8 MB; JavaScript
 0.58 MB and Java 0.9 MB of source, uncompressed). The `.nupkg` is a zip, so the download grows by about 0.4 MB (the
 package is 0.66 MB with the runtime). Resources are loaded only when a target emits the runtime; a project without
 `NexNetTarget` never touches them. Compressing the resources at build time would shrink the DLL by about 1 MB on disk

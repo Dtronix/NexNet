@@ -116,7 +116,7 @@ The emitter writes one constant per export from the IR (`handshake`, `clientAcce
 
 ```java
 public static final HandshakeDescriptor DESCRIPTOR = new HandshakeDescriptor(
-    "0.20.0",            // NexusRuntime.VERSION the code was generated for; major.minor must match the runtime
+    "X.Y.Z",             // NexusRuntime.VERSION the code was generated for; major.minor must match the runtime
     "v2",                // handshake.version, or null when the server API is unversioned (max 16 chars)
     123456789,           // handshake.serverNexusHash (opaque; never recomputed)
     -987654321,          // handshake.clientNexusHash

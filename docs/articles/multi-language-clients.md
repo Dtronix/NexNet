@@ -91,8 +91,8 @@ holds the exported nexus (the one referencing `NexNet.Generator`).
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NexNet" Version="0.21.0" />
-    <PackageReference Include="NexNet.Generator" Version="0.21.0">
+    <PackageReference Include="NexNet" Version="*" />
+    <PackageReference Include="NexNet.Generator" Version="*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

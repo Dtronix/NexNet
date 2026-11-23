@@ -73,7 +73,7 @@ know (so a later minor addition is not a breaking change) and MUST fail the conn
 ### 4.1 hello (host → runner, first frame)
 
 ```json
-{"t":"hello","proto":1,"token":"<token>","lang":"node","runtime":"node 22.11.0","lib":"@dtronix/nexnet 0.20.0",
+{"t":"hello","proto":1,"token":"<token>","lang":"node","runtime":"node 22.11.0","lib":"@dtronix/nexnet <version>",
  "schemaHash":"<sha256 hex>","capabilities":["Tcp","Uds","HttpSocket","CustomCa"],
  "transports":["Tcp","TcpTls","Uds","HttpSocket","HttpSocketTls","WebSocket","WebSocketTls"],
  "maxConcurrency":8,"pid":12345}
