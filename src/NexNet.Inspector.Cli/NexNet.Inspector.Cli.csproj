@@ -12,6 +12,9 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="NexNet.Inspector.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />

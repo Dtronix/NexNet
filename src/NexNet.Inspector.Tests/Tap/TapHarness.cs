@@ -48,18 +48,45 @@ internal sealed class TapHarness : IAsyncDisposable
 
     public Task StartAsync() => Server.StartAsync();
 
-    public async Task<InspectorEndpoint> StartEndpointAsync()
+    /// <summary>The endpoint's address in nexnet-tap form (tcp://, tls:// or uds:).</summary>
+    public string? EndpointAddress { get; private set; }
+
+    public async Task<InspectorEndpoint> StartEndpointAsync(TapTransport transport = TapTransport.Uds)
     {
-        _endpointPath = NewSocketPath();
-        Endpoint = await Inspector.StartEndpointAsync(new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath) },
-            EndpointToken);
+        ServerConfig config;
+        switch (transport)
+        {
+            case TapTransport.Uds:
+                _endpointPath = NewSocketPath();
+                config = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath) };
+                EndpointAddress = "uds:" + _endpointPath;
+                break;
+            case TapTransport.Tcp:
+                var port = FreePort();
+                config = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, port) };
+                EndpointAddress = $"tcp://127.0.0.1:{port}";
+                break;
+            default:
+                var tlsPort = FreePort();
+                config = new TcpTlsServerConfig
+                {
+                    EndPoint = new IPEndPoint(IPAddress.Loopback, tlsPort),
+                    SslServerAuthenticationOptions = ServerTlsOptions(),
+                };
+                EndpointAddress = $"tls://127.0.0.1:{tlsPort}";
+                break;
+        }
+
+        Endpoint = await Inspector.StartEndpointAsync(config, EndpointToken);
         return Endpoint;
     }
 
     public async Task<InspectorClient> ConnectViewerAsync(byte[]? token = null)
     {
+        if (_endpointPath is null)
+            throw new InvalidOperationException("ConnectViewerAsync needs a UDS endpoint.");
         var viewer = await InspectorClient.ConnectAsync(
-            new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath!) }, token ?? EndpointToken);
+            new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath) }, token ?? EndpointToken);
         _owned.Add(viewer);
         return viewer;
     }
@@ -162,14 +189,7 @@ internal sealed class TapHarness : IAsyncDisposable
                 {
                     EndPoint = new IPEndPoint(IPAddress.Loopback, _port),
                     TcpNoDelay = true,
-                    SslServerAuthenticationOptions = new SslServerAuthenticationOptions
-                    {
-                        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                        ClientCertificateRequired = false,
-                        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(
-                            Path.Combine(AppContext.BaseDirectory, "certs", "server.pfx"), "certPass"),
-                    },
+                    SslServerAuthenticationOptions = ServerTlsOptions(),
                 };
                 break;
         }
@@ -177,6 +197,15 @@ internal sealed class TapHarness : IAsyncDisposable
         config.Timeout = 300_000;
         return config;
     }
+
+    private static SslServerAuthenticationOptions ServerTlsOptions() => new()
+    {
+        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+        ClientCertificateRequired = false,
+        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(
+            Path.Combine(AppContext.BaseDirectory, "certs", "server.pfx"), "certPass"),
+    };
 
     private string NewSocketPath()
     {

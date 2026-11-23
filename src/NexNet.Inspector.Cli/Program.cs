@@ -1,11 +1,22 @@
 namespace NexNet.Inspector.Cli;
 
-/// <summary>Entry point of <c>nexnet-tap</c>. The commands (list, record, info, repair) arrive in I10.</summary>
+/// <summary>Entry point of <c>nexnet-tap</c>; the commands live in <see cref="TapCli"/>.</summary>
 internal static class Program
 {
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
-        Console.Out.WriteLine("nexnet-tap: no commands yet.");
-        return args.Length == 0 ? 0 : 2;
+        using var interrupt = new CancellationTokenSource();
+        // The first Ctrl+C stops a recording cleanly (detach, then the footer arrives); a second one ends the process.
+        Console.CancelKeyPress += (_, e) =>
+        {
+            if (interrupt.IsCancellationRequested)
+                return;
+            e.Cancel = true;
+            interrupt.Cancel();
+        };
+
+        var cli = new TapCli(Console.Out, Console.Error);
+        return await cli.RunAsync(args, Environment.GetEnvironmentVariable(CliArguments.TokenVariable), interrupt.Token)
+            .ConfigureAwait(false);
     }
 }
