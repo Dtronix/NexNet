@@ -148,6 +148,8 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `MessageFrame.cs` - Encodes a complete frame outside a session (pre-encoded broadcast frames)
 - `InvocationWriteResult.cs` - Result of `INexusSession.TryWriteInvocation`: Written (committed to the output), Busy (would wait), Failed
 - `IInvocationSlot.cs` - Execution slot an invocation holds; released when its pipe registers
+- `ISessionTransportView.cs` - Test seam: the reader/writer a session uses and its transport
+- `Pipelines/TapPipeReader.cs` / `Pipelines/TapPipeWriter.cs` - Transport tap wrappers (see 1.14), installed in the session constructor only when `ConfigBase.Tap` returns a per-session tap; otherwise `_pipeInput`/`_pipeOutput` are the transport's own instances
 
 **Internal State Flags:** ProtocolConfirmed, InitialClientGreetingReceived, InitialServerGreetingReceived, NexusCompletedConnection, ReconnectingInProgress
 
@@ -260,6 +262,7 @@ Meter `NexNet` and session snapshots (docs/articles/metrics.md).
 - `IMeteredSession.cs` / `SessionMetricsTotals.cs` - What a session gives a collection (lock-free reads only)
 - `NexusSessionSnapshot.cs` - Public snapshot records (session, budget, invocations, pipes, partial item, large messages, server)
 - `LogFormat.cs` - Byte and duration formatting for log messages
+- `INexusTap.cs` - Transport tap seam (opt-in `ConfigBase.Tap`): `INexusTap.SessionStarted(in NexusTapSessionInfo)` returns a per-session `INexusSessionTap` or null; it gets `OnRead` (only the bytes each read adds, never the unconsumed remainder again), `OnWrite` (the bytes committed since the last flush, once per flush), `OnConnected(final id)`, `OnClosed(reason)`. Bytes are post-TLS from the preamble on, borrowed (no copy) until the call or its returned task completes; Stopwatch timestamps. An incomplete `ValueTask` holds the read loop/flush (lossless back-pressure); a throwing tap is logged and stops tapping that direction. Recording, rings, redaction and endpoints live in NexNet.Inspector.Tap, not core. The wrappers (`Internals/Pipelines/TapPipeReader`/`TapPipeWriter`) allocate nothing per operation once warm; with no tap the session keeps the raw transport pipes, so the cost is one null check per session
 Per-frame counts (`_framesSent`/`_bytesSent` under the write mutex, `_framesReceived`/`_bytesReceived` once per read in `Process`) are single-writer fields updated with `Volatile.Write` (a plain store on 64-bit): never add `Interlocked` or allocations to the per-frame paths. Tags are fixed values only (role, transport via `ConfigBase.TransportName`, reasons); never IDs, addresses or peer data.
 
 ---

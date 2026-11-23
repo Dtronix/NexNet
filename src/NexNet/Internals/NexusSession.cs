@@ -15,14 +15,17 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
 using NexNet.Logging;
+using NexNet.Internals.Pipelines;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Threading;
 using NexNet.RateLimiting;
 using NexNet.Diagnostics;
+using System.Diagnostics;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner, IMeteredSession
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner, IMeteredSession,
+    ISessionTransportView
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -47,6 +50,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;
     private PipeWriter? _pipeOutput;
+
+    // Opt-in transport tap (ConfigBase.Tap): null unless one is configured and accepted this session. Cleared once
+    // the tap has been told the session closed.
+    private INexusSessionTap? _tap;
 
     private readonly AsyncMutex _writeMutex = new();
     private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 8);
@@ -287,6 +294,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         LastReceived = _config.Time.GetTickCount64();
         _metricsTags = configurations.MetricsTags ?? NexusMetrics.GetTagSet(_config);
 
+        // Without a tap the session keeps the transport's own reader and writer: this check is the whole cost.
+        if (_config.Tap != null)
+            AttachTap(_config.Tap, configurations.Transport);
+
         // Note: Session registration is deferred until after authentication completes
         // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
         // to prevent unauthenticated sessions from appearing in the registry.
@@ -419,9 +430,72 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         }
         finally
         {
+            // After the output is complete: nothing more is written.
+            TapClosed();
             _disconnectCompleted.TrySetResult();
         }
     }
+
+    private void AttachTap(INexusTap configured, ITransport transport)
+    {
+        INexusSessionTap? tap;
+        try
+        {
+            tap = configured.SessionStarted(new NexusTapSessionInfo(_id, IsServer, _metricsTags.TransportName,
+                _endpoint?.Name, RemoteAddress, RemotePort, Stopwatch.GetTimestamp()));
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Transport tap failed to start; the session is not tapped.");
+            return;
+        }
+
+        if (tap == null)
+            return;
+
+        _tap = tap;
+        _pipeInput = new TapPipeReader(transport.Input, tap, Logger);
+        _pipeOutput = new TapPipeWriter(transport.Output, tap, Logger);
+    }
+
+    /// <summary>
+    /// Tells the tap the handshake completed, with the session's final ID. Once per session.
+    /// </summary>
+    private void TapConnected()
+    {
+        try
+        {
+            _tap?.OnConnected(Id);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Transport tap failed on connect.");
+        }
+    }
+
+    /// <summary>
+    /// Tells the tap the session ended, once: from the disconnect, or from the end of a read loop no disconnect took
+    /// over.
+    /// </summary>
+    private void TapClosed()
+    {
+        if (_tap == null)
+            return;
+
+        var tap = Interlocked.Exchange(ref _tap, null);
+        try
+        {
+            tap?.OnClosed(DisconnectReason);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Transport tap failed on close.");
+        }
+    }
+
+    PipeReader? ISessionTransportView.Input => _pipeInput;
+    PipeWriter? ISessionTransportView.Output => _pipeOutput;
+    ITransport ISessionTransportView.Transport => _transportConnection;
 
     /// <summary>
     /// True once a <see cref="DisconnectCore"/> call has taken over the session's teardown; it then completes the
