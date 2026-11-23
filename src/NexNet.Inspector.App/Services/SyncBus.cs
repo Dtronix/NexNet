@@ -27,6 +27,9 @@ public enum SyncChanges : byte
 
     /// <summary>The bounds the window is kept in (the active document's time range).</summary>
     Bounds = 1 << 5,
+
+    /// <summary>The traced message (it follows the selection, and grows as a live message's frames arrive).</summary>
+    Trace = 1 << 6,
 }
 
 /// <summary>
@@ -41,6 +44,7 @@ public enum SyncChanges : byte
 public sealed class SyncBus
 {
     private readonly ChangeCoalescer _notify;
+    private Func<Selection, MessageTrace>? _resolver;
     private int _changes;
 
     /// <param name="ui">Where <see cref="Changed"/> is raised.</param>
@@ -66,6 +70,29 @@ public sealed class SyncBus
 
     /// <summary>True while the window keeps its right edge on the newest data of a live document.</summary>
     public bool FollowLive { get; private set; }
+
+    /// <summary>
+    /// The traced message: what the selection traces in the active document (<see cref="TraceResolver"/>), resolved once
+    /// here so the timeline band, the ladder bracket, the Events tint and the inspector's Message trace tab agree.
+    /// </summary>
+    public MessageTrace Trace { get; private set; } = MessageTrace.None;
+
+    /// <summary>
+    /// Resolves a selection to its trace (the documents set it to read the active document's session); null resolves
+    /// nothing, and the views fall back to tracing from the selection by themselves.
+    /// </summary>
+    public Func<Selection, MessageTrace>? TraceResolver
+    {
+        get => _resolver;
+        set
+        {
+            _resolver = value;
+            RefreshTrace();
+        }
+    }
+
+    /// <summary>True when <see cref="Trace"/> is resolved by <see cref="TraceResolver"/>; views then draw it.</summary>
+    public bool ResolvesTrace => _resolver is not null;
 
     /// <summary>Sets the window, kept inside <see cref="Bounds"/>. Moving it by hand stops following live.</summary>
     /// <param name="window">The new window.</param>
@@ -114,7 +141,8 @@ public sealed class SyncBus
         if (selection != Selection)
         {
             Selection = selection;
-            Mark(SyncChanges.Selection);
+            // In the same notification as the selection, so no view draws the new selection with the old trace.
+            Mark(ResolveTrace() ? SyncChanges.Selection | SyncChanges.Trace : SyncChanges.Selection);
         }
 
         if (ticks is { } t)
@@ -128,6 +156,26 @@ public sealed class SyncBus
             return;
         Hover = hover;
         Mark(SyncChanges.Hover);
+    }
+
+    /// <summary>
+    /// Resolves the trace of the current selection again (the active document grew or changed); a trace that came out
+    /// the same is kept, so the views are told only when it changed.
+    /// </summary>
+    public void RefreshTrace()
+    {
+        if (ResolveTrace())
+            Mark(SyncChanges.Trace);
+    }
+
+    // Resolves the selection's trace; true when it changed.
+    private bool ResolveTrace()
+    {
+        MessageTrace trace = _resolver is { } resolve && !Selection.IsNone ? resolve(Selection) : MessageTrace.None;
+        if (trace.SameAs(Trace))
+            return false;
+        Trace = trace;
+        return true;
     }
 
     /// <summary>Turns following the live edge on or off.</summary>
@@ -160,8 +208,9 @@ public sealed class SyncBus
         Selection = selection;
         Hover = FieldHover.None;
         FollowLive = followLive;
+        Trace = _resolver is { } resolve && !selection.IsNone ? resolve(selection) : MessageTrace.None;
         Mark(SyncChanges.Window | SyncChanges.Bounds | SyncChanges.Playhead | SyncChanges.Selection | SyncChanges.Hover
-             | SyncChanges.FollowLive);
+             | SyncChanges.FollowLive | SyncChanges.Trace);
     }
 
     private void Mark(SyncChanges change)

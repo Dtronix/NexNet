@@ -23,9 +23,25 @@ public sealed class PropertyTreeView : ListBox
     public static readonly StyledProperty<PropertyRow?> HoveredRowProperty =
         AvaloniaProperty.Register<PropertyTreeView, PropertyRow?>(nameof(HoveredRow), defaultBindingMode: BindingMode.TwoWay);
 
+    public static readonly StyledProperty<PropertyRow?> LinkedRowProperty =
+        AvaloniaProperty.Register<PropertyTreeView, PropertyRow?>(nameof(LinkedRow));
+
+    static PropertyTreeView() =>
+        LinkedRowProperty.Changed.AddClassHandler<PropertyTreeView>(static (view, e) => view.OnLinkedRowChanged(e));
+
     public PropertyTreeView() =>
         // Tunnelling: the item handles a press itself (selection), and a section's press must fold it instead.
         AddHandler(PointerPressedEvent, OnPressedTunnel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+    /// <summary>
+    /// The row whose bytes are hovered elsewhere (the hex view): drawn with the hover fill (class "linked") though the
+    /// pointer is not over it.
+    /// </summary>
+    public PropertyRow? LinkedRow
+    {
+        get => GetValue(LinkedRowProperty);
+        set => SetValue(LinkedRowProperty, value);
+    }
 
     protected override Type StyleKeyOverride => typeof(PropertyTreeView);
 
@@ -40,6 +56,13 @@ public sealed class PropertyTreeView : ListBox
     {
         base.PrepareContainerForItemOverride(container, item, index);
         container.Classes.Set("section", item is PropertyRow { IsSection: true });
+        container.Classes.Set("linked", item is PropertyRow row && ReferenceEquals(row, LinkedRow));
+    }
+
+    private void OnLinkedRowChanged(AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is PropertyRow old && ContainerFromItem(old) is { } was) was.Classes.Set("linked", false);
+        if (e.NewValue is PropertyRow row && ContainerFromItem(row) is { } now) now.Classes.Set("linked", true);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)

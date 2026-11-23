@@ -45,6 +45,7 @@ public sealed class LadderView : Control
     private bool _attached;
     private bool _scrolling;
     private bool _pushing;
+    private bool _laying;
     private TimeWindow _pushed;
     private double? _pendingOffset;
 
@@ -192,14 +193,31 @@ public sealed class LadderView : Control
     {
         _header.Measure(new Size(availableSize.Width, LadderHeader.HeaderHeight));
         double height = double.IsFinite(availableSize.Height) ? Math.Max(0, availableSize.Height - LadderHeader.HeaderHeight) : double.PositiveInfinity;
-        _scroller.Measure(new Size(availableSize.Width, height));
+        _laying = true;
+        try
+        {
+            _scroller.Measure(new Size(availableSize.Width, height));
+        }
+        finally
+        {
+            _laying = false;
+        }
+
         return new Size(0, LadderHeader.HeaderHeight + (double.IsFinite(height) ? 0 : _scroller.DesiredSize.Height));
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
         _header.Arrange(new Rect(0, 0, finalSize.Width, LadderHeader.HeaderHeight));
-        _scroller.Arrange(new Rect(0, LadderHeader.HeaderHeight, finalSize.Width, Math.Max(0, finalSize.Height - LadderHeader.HeaderHeight)));
+        _laying = true;
+        try
+        {
+            _scroller.Arrange(new Rect(0, LadderHeader.HeaderHeight, finalSize.Width, Math.Max(0, finalSize.Height - LadderHeader.HeaderHeight)));
+        }
+        finally
+        {
+            _laying = false;
+        }
 
         // An offset asked for before the rows were measured was clamped to the old extent: apply it now that it is known.
         if (_pendingOffset is { } pending)
@@ -329,7 +347,7 @@ public sealed class LadderView : Control
 
     private void OnSyncChanged(SyncChanges changes)
     {
-        if ((changes & SyncChanges.Selection) != 0)
+        if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0)
         {
             int before = _selected;
             RefreshSelection();
@@ -362,7 +380,8 @@ public sealed class LadderView : Control
         if (_model is { } model && _sync is { } sync)
         {
             _selected = model.SelectedIndex(sync.Selection);
-            _trace = model.GetTrace(sync.Selection);
+            // The bus's trace when it resolves one (the app); a bus without a resolver (a gallery) traces from the selection.
+            _trace = sync.ResolvesTrace ? model.GetTrace(sync.Trace) : model.GetTrace(sync.Selection);
         }
         else
         {
@@ -400,7 +419,10 @@ public sealed class LadderView : Control
     // The user scrolled: pan the shared window so it starts at the top row's time, at the same zoom.
     private void OnScrollerPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.Property != ScrollViewer.OffsetProperty || _scrolling) return;
+        // The scroller re-clamps its offset while it is laid out (the rows' extent or the viewport changed: a model
+        // refresh, a relayout, the first measure): that is layout, not the user scrolling, and must not move the window.
+        if (e.Property != ScrollViewer.OffsetProperty || _scrolling || _laying) return;
+
         _pendingOffset = null;
         if (!IsSynced) return;
         if (_model is not { Count: > 0 } model || _sync is not { Window.IsEmpty: false } sync) return;

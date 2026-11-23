@@ -31,6 +31,10 @@
     <Style Selector="^:pointerover">
       <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
     </Style>
+    <!-- Hovered in the hex view: the same fill as the pointer's (property-tree hover: "syncs hex hover"). -->
+    <Style Selector="^.linked">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
     <Style Selector="^:selected">
       <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
     </Style>

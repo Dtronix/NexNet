@@ -1,0 +1,84 @@
+<!--
+  The inspector's Message trace tab (controls/property-tree, "Message trace tab"): a virtualized list of 21 px rows on
+  surface.panel, one per step of the traced message in wire order — direction glyph, step (UI font), the T chip of a
+  transport split, time ms and bytes (mono 11 px, secondary). Interleaved frames are indented 12 px at 60 % opacity.
+  The current step (the selected frame's) is state.selected with the 3 px accent.trace bar at its left edge, as the
+  data table marks its selected row; hover is the raised fill.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="using:NexNet.Inspector.App.Controls"
+                    xmlns:m="using:NexNet.Inspector.App.Model">
+
+  <ControlTheme x:Key="TraceStepItem" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="Height" Value="{DynamicResource Size.PropertyRow}" />
+    <Setter Property="Padding" Value="10,0,14,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Center" />
+          <Border Name="TraceBar" Width="3" HorizontalAlignment="Left" IsVisible="False"
+                  Background="{DynamicResource Brush.Accent.Trace}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:selected /template/ Border#TraceBar">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="MessageTraceList" TargetType="ListBox">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0,0,0,4" />
+    <Setter Property="SelectionMode" Value="Single" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ItemContainerTheme" Value="{StaticResource TraceStepItem}" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="AutomationProperties.Name" Value="Message trace" />
+    <Setter Property="ItemTemplate">
+      <DataTemplate x:DataType="m:TraceStepRow">
+        <Grid Classes="trace-step" Classes.inbound="{Binding IsInbound}" Opacity="{Binding RowOpacity}"
+              ColumnDefinitions="14,*,Auto,72,52" ToolTip.Tip="{Binding Detail}">
+          <TextBlock Classes="glyph" Text="{Binding Glyph}" VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Meta}" />
+          <TextBlock Grid.Column="1" Classes="step" Text="{Binding Label}" Margin="{Binding LabelMargin}" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+          <c:FlagChip Grid.Column="2" Flag="TransportSplit" IsVisible="{Binding IsTransportSplit}" Margin="4,0,0,0"
+                      VerticalAlignment="Center" />
+          <TextBlock Grid.Column="3" Classes="mono" Text="{Binding Time}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Bytes}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+      </DataTemplate>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+          <ScrollViewer Name="PART_ScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+          </ScrollViewer>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+</ResourceDictionary>

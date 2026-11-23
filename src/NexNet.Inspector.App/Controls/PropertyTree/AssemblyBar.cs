@@ -4,6 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
 using NexNet.Inspector.App.Controls.Primitives;
+using NexNet.Inspector.Core.Model;
 
 namespace NexNet.Inspector.App.Controls.PropertyTree;
 
@@ -18,6 +19,12 @@ public enum AssemblySegmentKind : byte
 
     /// <summary>MessageAbort: "A", no payload bytes.</summary>
     Abort = 2,
+
+    /// <summary>A preamble of the handshake: "Pre ▼" or "Pre ▲".</summary>
+    Preamble = 3,
+
+    /// <summary>A greeting of the handshake: "Greet ▼" or "Greet ▲".</summary>
+    Greeting = 4,
 }
 
 /// <summary>One segment of the assembly bar: one fragment of the message.</summary>
@@ -26,15 +33,22 @@ public enum AssemblySegmentKind : byte
 /// <param name="Length">Payload bytes the fragment carried (its share of the bar).</param>
 /// <param name="IsCurrent">True for the fragment of the selected frame.</param>
 /// <param name="InterleavedBefore">Frames of other messages between the previous fragment and this one.</param>
-public readonly record struct AssemblySegment(AssemblySegmentKind Kind, int Number, long Length, bool IsCurrent, int InterleavedBefore)
+/// <param name="Direction">The frame's direction: a handshake segment's ▼ (inbound) or ▲ (outbound).</param>
+public readonly record struct AssemblySegment(AssemblySegmentKind Kind, int Number, long Length, bool IsCurrent, int InterleavedBefore,
+    TapDirection Direction = TapDirection.Inbound)
 {
-    /// <summary>The segment's label: S, A or the chunk number.</summary>
+    /// <summary>The segment's label: S, A, the chunk number, or Pre / Greet with the direction's arrow.</summary>
     public string Label => Kind switch
     {
         AssemblySegmentKind.Start => "S",
         AssemblySegmentKind.Abort => "A",
+        AssemblySegmentKind.Preamble => Direction == TapDirection.Inbound ? "Pre ▼" : "Pre ▲",
+        AssemblySegmentKind.Greeting => Direction == TapDirection.Inbound ? "Greet ▼" : "Greet ▲",
         _ => Number.ToString(CultureInfo.InvariantCulture),
     };
+
+    /// <summary>True when the segment takes a share of the bar by <see cref="Length"/> (else the fixed narrow width).</summary>
+    public bool IsProportional => Kind is not (AssemblySegmentKind.Start or AssemblySegmentKind.Abort) && Length > 0;
 }
 
 /// <summary>
@@ -103,7 +117,7 @@ public sealed class AssemblyBar : Control
         for (int i = 0; i < segments.Count; i++)
         {
             if (i > 0) gaps += segments[i].InterleavedBefore > 0 ? InterleavedGap : Gap;
-            if (segments[i].Kind == AssemblySegmentKind.Chunk && segments[i].Length > 0) bytes += segments[i].Length;
+            if (segments[i].IsProportional) bytes += segments[i].Length;
             else fixedWidth += MinSegmentWidth;
         }
 
@@ -113,7 +127,7 @@ public sealed class AssemblyBar : Control
         {
             if (i > 0) x += segments[i].InterleavedBefore > 0 ? InterleavedGap : Gap;
             AssemblySegment s = segments[i];
-            double w = s.Kind == AssemblySegmentKind.Chunk && s.Length > 0 && bytes > 0
+            double w = s.IsProportional && bytes > 0
                 ? Math.Max(MinSegmentWidth, share * s.Length / bytes)
                 : MinSegmentWidth;
             boxes[i] = (x, w);
@@ -191,13 +205,26 @@ public sealed class AssemblyBar : Control
     {
         int chunks = 0;
         int current = 0;
+        int handshake = 0;
+        string? currentLabel = null;
         if (Segments is { } segments)
         {
             foreach (AssemblySegment s in segments)
             {
                 if (s.Kind == AssemblySegmentKind.Chunk) chunks++;
-                if (s.IsCurrent) current = s.Number;
+                if (s.Kind is AssemblySegmentKind.Preamble or AssemblySegmentKind.Greeting) handshake++;
+                if (s.IsCurrent)
+                {
+                    current = s.Number;
+                    currentLabel = s.Label;
+                }
             }
+        }
+
+        if (handshake > 0)
+        {
+            AutomationProperties.SetName(this, currentLabel is null ? $"Handshake: {handshake} frames" : $"Handshake: {currentLabel} of {handshake} frames");
+            return;
         }
 
         AutomationProperties.SetName(this, current > 0

@@ -129,7 +129,11 @@ public sealed class HexViewTests
         await Assert.That((hit, offset)).IsEqualTo((true, 11L));
         await Assert.That(local).IsEqualTo(new HexRange(TapDirection.Inbound, 10, 12));
         await Assert.That(marked).IsTrue();
-        await Assert.That(hover.IsNone).IsTrue();
+        // The header field is published in its frame's coordinates (negative: before the body), for the property tree.
+        await Assert.That(hover.FieldIndex).IsEqualTo(FieldHover.FrameBytes);
+        await Assert.That(hover.Message.Kind).IsEqualTo(MessageRefKind.Frame);
+        await Assert.That(hover.Length).IsEqualTo(2);
+        await Assert.That(hover.Offset).IsLessThan(0);
         await Assert.That(left).IsNull();
     }
 

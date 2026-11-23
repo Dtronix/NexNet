@@ -78,6 +78,16 @@ public readonly record struct FieldHover(MessageRef Message, int FieldIndex, lon
     /// <summary>No field hovered.</summary>
     public static FieldHover None => new(MessageRef.None, -1, 0, 0);
 
+    /// <summary>
+    /// The <see cref="FieldIndex"/> of a hover that names no decoded field but a frame's own bytes (its type, length,
+    /// post-header, a preamble), in the frame's coordinates: offset 0 is its first body byte, header bytes negative.
+    /// </summary>
+    public const int FrameBytes = int.MaxValue;
+
+    /// <summary>A frame's own bytes hovered: <paramref name="offset"/> from its first body byte (negative in the header).</summary>
+    public static FieldHover OfFrameBytes(TapDirection direction, long seq, long offset, int length) =>
+        new(MessageRef.ForFrame(direction, seq), FrameBytes, offset, length);
+
     /// <summary>True for <see cref="None"/>.</summary>
     public bool IsNone => FieldIndex < 0;
 }

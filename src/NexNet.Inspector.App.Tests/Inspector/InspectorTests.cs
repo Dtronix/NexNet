@@ -69,14 +69,17 @@ public class InspectorTests
         await Assert.That(tree.FormattedCount).IsEqualTo(0);
         PropertyRow attachment = tree.Rows.First(r => r.Name == "attachment");
         await Assert.That(attachment.HasChildren).IsTrue();
-        await Assert.That(attachment.IsExpanded).IsFalse();
+        // The single object argument shows its members (inspect-live: roomId, fileName, data).
+        await Assert.That(attachment.IsExpanded).IsTrue();
         await Assert.That(attachment.Value).IsEqualTo("Attachment");
         await Assert.That(tree.FormattedCount).IsEqualTo(1);
 
         int before = tree.Rows.Count;
         tree.Toggle(attachment.Node);
-        await Assert.That(tree.Rows.Count).IsGreaterThan(before);
-        // Opening made rows for the children but rendered none of their values.
+        await Assert.That(tree.Rows.Count).IsLessThan(before);
+        tree.Toggle(attachment.Node);
+        await Assert.That(tree.Rows.Count).IsEqualTo(before);
+        // Showing the children made rows for them but rendered none of their values.
         await Assert.That(tree.FormattedCount).IsEqualTo(1);
         PropertyRow fileName = tree.Rows.First(r => r.Name == "FileName" || r.Name == "fileName");
         await Assert.That(fileName.Value).StartsWith("\"");
@@ -141,7 +144,9 @@ public class InspectorTests
         inspector.TabIndex = 1;
         await Assert.That(inspector.Tab).IsEqualTo(InspectorTab.Trace);
         await Assert.That(inspector.ShowsTree).IsFalse();
-        await Assert.That(inspector.ShowsAssembly).IsFalse();
+        // The assembly footer stays under the trace too.
+        await Assert.That(inspector.ShowsAssembly).IsTrue();
+        await Assert.That(inspector.ShowsTraceList).IsTrue();
 
         documents.Sync.Select(Selection.None);
         await Assert.That(inspector.HasContent).IsFalse();
@@ -158,8 +163,8 @@ public class InspectorTests
 
         await Assert.That(inspector.Content!.IsHandshake).IsTrue();
         await Assert.That(inspector.TabLabels[1]).IsEqualTo("Handshake");
-        await Assert.That(inspector.Rows!.First(r => r.IsSection && r.Name.Contains("greeting", StringComparison.Ordinal)).Value).IsEqualTo("handshake");
-        await Assert.That(inspector.HasAssembly).IsFalse();
+        await Assert.That(inspector.Rows!.First(r => r.IsSection && r.Name == "ClientGreeting").Value).StartsWith("inbound · ");
+        await Assert.That(inspector.Assembly!.Title).IsEqualTo("Handshake");
     }
 
     [Test]

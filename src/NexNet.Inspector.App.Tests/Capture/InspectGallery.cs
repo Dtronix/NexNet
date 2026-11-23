@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using NexNet.Inspector.App.Controls;
 using NexNet.Inspector.App.Controls.PropertyTree;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Model;
 
@@ -23,6 +24,57 @@ public static class InspectGallery
     {
         yield return new("Pane header", PaneHeaders);
         yield return new("Property tree", PropertyTrees);
+        yield return new("Message trace and handshake (I25)", Traces);
+    }
+
+    /// <summary>The height <see cref="Traces"/> adds to the gallery.</summary>
+    public const double TraceHeight = 360;
+
+    // The Message trace tab with the package's #812 sample (chunk 2 current, interleaved runs dimmed and indented) and
+    // the handshake assembly bar with Greet ▼ current.
+    private static Control Traces()
+    {
+        long ms = System.Diagnostics.Stopwatch.Frequency / 1000;
+        long At(double milliseconds) => (long)(milliseconds * ms);
+        TraceStep Step(TraceStepKind kind, TapDirection direction, long seq, double time, int bytes, string label, Core.Framing.FrameFlags flags = default,
+            int frames = 1) =>
+            new(kind, new Core.Session.FrameKey(direction, seq), At(time), bytes, kind == TraceStepKind.Chunk ? 0 : -1, 0x1A3F00, bytes,
+                4466, flags == default ? 4466 : 4467, flags, label, frames);
+        TraceStep[] steps =
+        [
+            Step(TraceStepKind.Start, TapDirection.Inbound, 18_200, 1258.102, 7, "MessageStart"),
+            Step(TraceStepKind.Chunk, TapDirection.Inbound, 18_210, 1259.880, 4100, "Chunk 1/5", Core.Framing.FrameFlags.TransportSplit),
+            Step(TraceStepKind.Interleaved, TapDirection.Inbound, 18_211, 1260.812, 16_392, "↳ pipe 3·1, Ping", frames: 2),
+            Step(TraceStepKind.Chunk, TapDirection.Inbound, 18_233, 1262.418, 4100, "Chunk 2/5", Core.Framing.FrameFlags.TransportSplit),
+            Step(TraceStepKind.Interleaved, TapDirection.Inbound, 18_234, 1263.611, 16_384, "↳ pipe 3·1"),
+            Step(TraceStepKind.Chunk, TapDirection.Inbound, 18_240, 1265.003, 4100, "Chunk 3/5"),
+            Step(TraceStepKind.Whole, TapDirection.Outbound, 18_262, 1273.106, 23, "InvocationResult"),
+        ];
+        TraceStepRow[] rows = [.. steps.Select(s => new TraceStepRow(s, 0, System.Diagnostics.Stopwatch.Frequency))];
+        ListBox list = new() { ItemsSource = rows, SelectedIndex = 3, Height = 170 };
+        ControlGallery.Bind(list, StyledElement.ThemeProperty, "MessageTraceList");
+        StackPanel trace = new() { Margin = new Thickness(0, 4) };
+        TextBlock title = ControlGallery.Text("Invocation #812 · SendAttachment  7 frames · 15.0 ms · 3 interleaved", "FontSize.Data", "Brush.Text.Secondary");
+        title.Margin = new Thickness(10, 4, 14, 4);
+        trace.Children.Add(title);
+        trace.Children.Add(list);
+
+        AssemblySegment[] handshake =
+        [
+            new(AssemblySegmentKind.Preamble, 0, 1, false, 0, TapDirection.Inbound),
+            new(AssemblySegmentKind.Greeting, 0, 2, true, 0, TapDirection.Inbound),
+            new(AssemblySegmentKind.Preamble, 0, 1, false, 0, TapDirection.Outbound),
+            new(AssemblySegmentKind.Greeting, 0, 2, false, 0, TapDirection.Outbound),
+        ];
+        StackPanel footer = new() { Margin = new Thickness(10, 8, 10, 10) };
+        footer.Children.Add(ControlGallery.Text("Handshake  4 frames · 3.1 ms · auth ok", "FontSize.Data", "Brush.Text.Secondary"));
+        footer.Children.Add(new AssemblyBar { Segments = handshake, Margin = new Thickness(0, 6) });
+        footer.Children.Add(ControlGallery.Text("Preamble and ClientGreeting arrived in one read (#1) · token redacted", "FontSize.Meta", "Brush.Text.Secondary"));
+
+        WrapPanel states = new() { ItemSpacing = 16, LineSpacing = 16 };
+        states.Children.Add(Captioned("message trace (chunk 2 current)", Framed(trace)));
+        states.Children.Add(Captioned("handshake bar (Greet ▼ current)", Framed(footer)));
+        return states;
     }
 
     private static Control PaneHeaders()

@@ -268,6 +268,27 @@ public sealed class TimelineModel
         }
     }
 
+    /// <summary>
+    /// The band and lit marks of a trace resolved on the sync bus: an invocation's band spans its span (request to
+    /// result) and its span is drawn selected; any other trace (a pipe run, a channel item, the handshake, a pipe) spans
+    /// exactly its member frames, which are the marks lit.
+    /// </summary>
+    public TimelineTrace GetTrace(MessageTrace trace)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+        if (!trace.IsActive) return TimelineTrace.None;
+        if (trace.Entity == EntityKind.Invocation && _spanByIndex.TryGetValue(trace.EntityIndex, out int at))
+        {
+            InvocationSpan span = _sorted[at];
+            return new TimelineTrace(true, EntityKind.Invocation, trace.EntityIndex, span.Direction, -1, Math.Min(span.Start, trace.Start),
+                Math.Max(span.End, trace.End)) { Members = trace };
+        }
+
+        EntityKind entity = trace.Entity is EntityKind.Invocation or EntityKind.Pipe ? trace.Entity : EntityKind.None;
+        return new TimelineTrace(true, entity, entity == EntityKind.None ? -1 : trace.EntityIndex, trace.Message.Direction, -1, trace.Start,
+            trace.End) { Members = trace };
+    }
+
     /// <summary>Removes everything but pins and collapsed groups (a new document, a detach).</summary>
     public void Clear()
     {

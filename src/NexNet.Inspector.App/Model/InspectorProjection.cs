@@ -51,6 +51,15 @@ public static class InspectorProjection
         PropertyTreeModel tree = new();
         FrameLink link = assembler.GetLink(frame.Direction, frame.Seq);
 
+        bool handshake = frame.Kind == FrameKind.Preamble || link.Entity == EntityKind.Greeting;
+        if (handshake)
+        {
+            HandshakeFrame(tree, session, frame, link, store, frameMap);
+            tree.Complete();
+            return new InspectorContent(key, assembler.GetMessage(frame.Direction, frame.Seq), tree, "#" + frame.Seq.ToString("N0", Invariant), true,
+                HandshakeAssembly(session, key), (frame.Flags & FrameFlags.Incomplete) == 0 && HandshakeComplete(assembler));
+        }
+
         Header(tree, session, frame, store, frameMap);
         Transport(tree, frame, store, frameMap);
 
@@ -71,16 +80,12 @@ public static class InspectorProjection
             case EntityKind.Pipe:
                 Pipe(tree, session, frame, link, fragments);
                 break;
-            case EntityKind.Greeting:
-                Greeting(tree, assembler.Greetings[link.EntityIndex], store, frameMap);
-                break;
             default:
                 Body(tree, frame, store, frameMap);
                 break;
         }
 
         tree.Complete();
-        bool handshake = frame.Kind == FrameKind.Preamble || link.Entity == EntityKind.Greeting;
         AssemblyInfo? assembly = link.Message >= 0 ? Assembly(session, frame, assembler.Messages[link.Message], fragments) : null;
         bool final = (frame.Flags & FrameFlags.Incomplete) == 0
                      && (link.Message < 0 || assembler.Messages[link.Message].State != AssemblyState.Assembling)
@@ -90,8 +95,237 @@ public static class InspectorProjection
                          EntityKind.Pipe => assembler.Pipes[link.EntityIndex].Lifecycle is PipeLifecycle.Closed or PipeLifecycle.Refused,
                          _ => true,
                      };
-        return new InspectorContent(key, message, tree, "#" + frame.Seq.ToString("N0", Invariant), handshake, assembly, final);
+        return new InspectorContent(key, message, tree, "#" + frame.Seq.ToString("N0", Invariant), false, assembly, final);
     }
+
+    /// <summary>
+    /// The Handshake tab (inspect-session-start): every handshake frame in wire order, each a section of its decoded
+    /// fields — the preambles' magic and version, the ClientGreeting's versions, nexus hashes, the redacted token (its
+    /// marker's SHA-256 prefix) and credits, the ServerGreeting's session id and limits. Call under the session's gate.
+    /// </summary>
+    /// <returns>The tree; null when the session holds no handshake frame (attached mid-session).</returns>
+    public static PropertyTreeModel? BuildHandshake(CaptureSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        MessageTrace trace = MessageTrace.Resolve(session, Selection.OfEntity(EntityKind.Greeting, 0));
+        if (trace.Kind != TraceKind.Handshake) return null;
+
+        MessageAssembler assembler = session.Assembler;
+        PropertyTreeModel tree = new();
+        foreach (ref readonly TraceStep step in trace.Steps)
+        {
+            if (!session.TryGetFrame(step.Frame, out FrameRecord frame)) continue;
+            TransportOpStore store = session.GetStore(frame.Direction);
+            PayloadMap map = PayloadMap.ForFrame(frame.Direction, frame.Seq, frame.BodyOffset);
+            string where = "#" + frame.Seq.ToString("N0", Invariant) + " · " + Ms(session, frame.StartTicks) + " ms";
+            if (frame.Kind == FrameKind.Preamble)
+            {
+                Preamble(tree, frame, store, map, "Preamble " + Arrow(frame.Direction), where);
+                continue;
+            }
+
+            FrameLink link = assembler.GetLink(frame.Direction, frame.Seq);
+            if (link.Entity != EntityKind.Greeting) continue;
+            tree.Section(frame.Type + " " + Arrow(frame.Direction), where);
+            GreetingFields(tree, assembler.Greetings[link.EntityIndex], store, map);
+        }
+
+        tree.Complete();
+        return tree;
+    }
+
+    // A preamble or greeting on the Decoded tab: the preamble that shared its read, the frame's own section (its type
+    // and length bytes, then the greeting's fields), and the read that carried it with the other side's reply.
+    private static void HandshakeFrame(PropertyTreeModel tree, CaptureSession session, in FrameRecord frame, in FrameLink link,
+        TransportOpStore store, in PayloadMap map)
+    {
+        MessageAssembler assembler = session.Assembler;
+        string where = Word(frame.Direction) + " · " + Ms(session, frame.StartTicks) + " ms";
+        if (frame.Kind == FrameKind.Preamble)
+        {
+            Preamble(tree, frame, store, map, "Preamble", where);
+        }
+        else
+        {
+            ReadOnlySpan<FrameRecord> frames = assembler.GetFrames(frame.Direction);
+            if (frames.Length > 0 && frames[0].Kind == FrameKind.Preamble && frames[0].Seq != frame.Seq && frames[0].LastOpId == frame.FirstOpId)
+            {
+                FrameRecord preamble = frames[0];
+                Preamble(tree, preamble, store, PayloadMap.ForFrame(preamble.Direction, preamble.Seq, preamble.BodyOffset), "Preamble",
+                    "#" + preamble.Seq.ToString("N0", Invariant) + " · same " + (frame.Direction == TapDirection.Inbound ? "read" : "write"));
+            }
+
+            tree.Section(frame.Type.ToString(), where);
+            Span<byte> wire = stackalloc byte[2];
+            long toBody = frame.Offset - frame.BodyOffset;
+            tree.Field("Type", "0x" + ((byte)frame.Type).ToString("X2", Invariant) + " · " + ((byte)frame.Type).ToString(Invariant),
+                bytes: map.Map(toBody, 1));
+            if (frame.HeaderLength >= 3)
+            {
+                string le = Read(store, frame.Offset + 1, wire) ? " · LE " + Hex(wire) : "";
+                tree.Field("Body length", frame.BodyLength.ToString("N0", Invariant) + le, bytes: map.Map(toBody + 1, 2));
+            }
+
+            if (link.Entity == EntityKind.Greeting) GreetingFields(tree, assembler.Greetings[link.EntityIndex], store, map);
+        }
+
+        HandshakeTransport(tree, session, frame, store, map);
+    }
+
+    // The preamble's eight bytes: the magic "NnP\x14", three reserved zeros and the protocol version.
+    private static void Preamble(PropertyTreeModel tree, in FrameRecord frame, TransportOpStore store, in PayloadMap map, string title, string summary)
+    {
+        tree.Section(title, summary);
+        long toBody = frame.Offset - frame.BodyOffset;
+        Span<byte> bytes = stackalloc byte[FrameLayout.PreambleLength];
+        if (frame.Length < FrameLayout.PreambleLength || !Read(store, frame.Offset, bytes))
+        {
+            tree.Field("Bytes", "no longer held", PropertyTone.Muted, map.Map(toBody, frame.Length));
+            return;
+        }
+
+        bool magic = bytes[..4].SequenceEqual(FrameLayout.PreambleMagic);
+        bool reserved = bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0;
+        tree.Field("Magic", Hex(bytes[..4]) + (magic ? " ✓" : " ✗"), magic ? PropertyTone.Normal : PropertyTone.NexNet, map.Map(toBody, 4));
+        tree.Field("Reserved · version", Hex(bytes[4..7]) + " · " + bytes[7].ToString(Invariant) + (reserved ? " ✓" : " ✗"),
+            reserved ? PropertyTone.Normal : PropertyTone.NexNet, map.Map(toBody + 4, 4));
+    }
+
+    // "read #1 · 129 B · 2 frames": the op that carried the frame, its other frames, and the other side's answer.
+    private static void HandshakeTransport(PropertyTreeModel tree, CaptureSession session, in FrameRecord frame, TransportOpStore store, in PayloadMap map)
+    {
+        MessageAssembler assembler = session.Assembler;
+        string unit = frame.Direction == TapDirection.Inbound ? "read" : "write";
+        string summary;
+        if (frame.FirstOpId == frame.LastOpId && store.TryFindOp(frame.Offset, out int index))
+        {
+            StreamOp op = store.Ops[index];
+            int carried = FramesIn(assembler.GetFrames(frame.Direction), op.Offset, op.End);
+            summary = unit + " #" + op.OpId.ToString(Invariant) + " · " + op.Length.ToString("N0", Invariant) + " B · " + carried.ToString(Invariant)
+                      + (carried == 1 ? " frame" : " frames");
+        }
+        else
+        {
+            long ops = frame.LastOpId - frame.FirstOpId + 1;
+            summary = "split across " + ops.ToString(Invariant) + " " + unit + "s";
+        }
+
+        tree.Section("Transport", summary);
+        long end = frame.Offset + frame.Length;
+        if (store.TryFindOp(frame.Offset, out int first))
+        {
+            ReadOnlySpan<StreamOp> all = store.Ops;
+            for (int i = first; i < all.Length && all[i].Offset < end; i++)
+            {
+                StreamOp op = all[i];
+                long from = Math.Max(op.Offset, frame.Offset);
+                long to = Math.Min(op.End, end);
+                if (to <= from) continue;
+                tree.Field("#" + op.OpId.ToString(Invariant), from.ToString("X6", Invariant) + " – " + (to - 1).ToString("X6", Invariant),
+                    PropertyTone.Transport, map.Map(from - frame.BodyOffset, (int)(to - from)));
+            }
+        }
+
+        // The other side's greeting: how long the answer took (or how long before it the request came).
+        FrameLink link = assembler.GetLink(frame.Direction, frame.Seq);
+        if (link.Entity != EntityKind.Greeting) return;
+        GreetingKind own = assembler.Greetings[link.EntityIndex].Kind;
+        foreach (ref readonly GreetingRow other in assembler.Greetings)
+        {
+            if (other.Direction == frame.Direction || (own == GreetingKind.Server) == (other.Kind == GreetingKind.Server)) continue;
+            if (!assembler.TryGetFrame(other.Direction, other.Seq, out FrameRecord reply)) continue;
+            double ms = (reply.StartTicks - frame.StartTicks) * 1000.0 / session.Header.StopwatchFrequency;
+            string name = own == GreetingKind.Server ? "Client greeting" : "Server reply";
+            tree.Field(name, reply.Type + " " + (ms >= 0 ? "+" : "") + ms.ToString("N2", Invariant) + " ms " + Arrow(reply.Direction));
+            break;
+        }
+    }
+
+    // How many frames of a direction overlap a stream range (the frames one op carried).
+    private static int FramesIn(ReadOnlySpan<FrameRecord> frames, long from, long to)
+    {
+        int lo = 0, hi = frames.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            if (frames[mid].Offset + frames[mid].Length <= from) lo = mid + 1;
+            else hi = mid;
+        }
+
+        int count = 0;
+        for (int i = lo; i < frames.Length && frames[i].Offset < to; i++) count++;
+        return count;
+    }
+
+    private static bool HandshakeComplete(MessageAssembler assembler)
+    {
+        foreach (ref readonly GreetingRow greeting in assembler.Greetings)
+        {
+            if (greeting.Kind == GreetingKind.Server) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The handshake's assembly bar: Pre ▼ / Greet ▼ / Pre ▲ / Greet ▲ in wire order with the selected frame current,
+    /// "4 frames · 3.1 ms · auth ok", and how the reads carried them.
+    /// </summary>
+    private static AssemblyInfo? HandshakeAssembly(CaptureSession session, FrameKey current)
+    {
+        MessageTrace trace = MessageTrace.Resolve(session, Selection.OfFrame(current));
+        if (trace.Kind != TraceKind.Handshake) return null;
+
+        MessageAssembler assembler = session.Assembler;
+        ReadOnlySpan<TraceStep> steps = trace.Steps;
+        AssemblySegment[] segments = new AssemblySegment[steps.Length];
+        bool serverReplied = false;
+        bool redacted = false;
+        string note = "";
+        for (int i = 0; i < steps.Length; i++)
+        {
+            TraceStep step = steps[i];
+            bool preamble = step.Kind == TraceStepKind.Preamble;
+            // The bar gives a greeting twice a preamble's room, as the package draws it, whatever their bytes.
+            segments[i] = new AssemblySegment(preamble ? AssemblySegmentKind.Preamble : AssemblySegmentKind.Greeting, 0, preamble ? 1 : 2,
+                step.Frame == current, 0, step.Frame.Direction);
+            if (preamble || !assembler.TryGetFrame(step.Frame.Direction, step.Frame.Seq, out FrameRecord frame)) continue;
+            FrameLink link = assembler.GetLink(frame.Direction, frame.Seq);
+            if (link.Entity != EntityKind.Greeting) continue;
+            GreetingRow greeting = assembler.Greetings[link.EntityIndex];
+            serverReplied |= greeting.Kind == GreetingKind.Server;
+            if (greeting.Kind != GreetingKind.Server)
+            {
+                redacted |= (frame.Flags & FrameFlags.Redacted) != 0 || Overlaps(session.GetStore(frame.Direction).Redactions, frame.Offset, frame.Offset + frame.Length);
+                // "Preamble and ClientGreeting arrived in one read (#1)": the client's opening shares its first op.
+                if (i > 0 && steps[i - 1].Kind == TraceStepKind.Preamble && steps[i - 1].Frame.Direction == frame.Direction
+                    && steps[i - 1].LastOpId == frame.FirstOpId)
+                {
+                    string unit = frame.Direction == TapDirection.Inbound ? "read" : "write";
+                    note = "Preamble and " + frame.Type + " arrived in one " + unit + " (#" + frame.FirstOpId.ToString(Invariant) + ")";
+                }
+            }
+        }
+
+        if (redacted) note += (note.Length > 0 ? " · " : "") + "token redacted";
+        double ms = (trace.End - trace.Start) * 1000.0 / session.Header.StopwatchFrequency;
+        string summary = steps.Length.ToString(Invariant) + (steps.Length == 1 ? " frame" : " frames") + " · " + ms.ToString("N1", Invariant) + " ms"
+                         + (serverReplied ? " · auth ok" : " · awaiting server");
+        return new AssemblyInfo("Handshake", summary, note, segments);
+    }
+
+    private static bool Overlaps(ReadOnlySpan<StreamRange> ranges, long from, long to)
+    {
+        foreach (StreamRange r in ranges)
+        {
+            if (r.Offset < to && from < r.End) return true;
+        }
+
+        return false;
+    }
+
+    private static string Ms(CaptureSession session, long ticks) =>
+        ((ticks - session.StartTicks) * 1000.0 / session.Header.StopwatchFrequency).ToString("N3", Invariant);
 
     private static void Header(PropertyTreeModel tree, CaptureSession session, in FrameRecord frame, TransportOpStore store, in PayloadMap map)
     {
@@ -264,31 +498,25 @@ public static class InspectorProjection
         }
     }
 
-    private static void Greeting(PropertyTreeModel tree, in GreetingRow greeting, TransportOpStore store, in PayloadMap map)
+    // A greeting's fields under their wire names (spec §4.1, §4.2), integers in decimal as the schema shows them.
+    private static void GreetingFields(PropertyTreeModel tree, in GreetingRow greeting, TransportOpStore store, in PayloadMap map)
     {
-        string title = greeting.Kind switch
-        {
-            GreetingKind.Client => "Client greeting",
-            GreetingKind.ClientReconnection => "Client reconnection",
-            _ => "Server greeting",
-        };
-        tree.Section(title, "handshake");
         if (greeting.Kind == GreetingKind.Server)
         {
-            tree.Field("Client id", "0x" + greeting.ClientId.ToString("X", Invariant));
-            tree.Field("Client nexus hash", "0x" + greeting.ClientNexusHash.ToString("X8", Invariant));
-            if (greeting.IdleTimeoutMs > 0) tree.Field("Idle timeout", greeting.IdleTimeoutMs.ToString("N0", Invariant) + " ms");
+            tree.Field("clientId", "0x" + greeting.ClientId.ToString("X", Invariant) + " · session id");
+            tree.Field("version", greeting.ClientNexusHash.ToString("N0", Invariant) + " · client nexus hash");
+            if (greeting.IdleTimeoutMs > 0) tree.Field("idleTimeout", greeting.IdleTimeoutMs.ToString("N0", Invariant) + " ms");
         }
         else
         {
-            if (greeting.Version is { } version) tree.Field("Version", "\"" + version + "\"");
-            tree.Field("Server nexus hash", "0x" + greeting.ServerNexusHash.ToString("X8", Invariant));
-            tree.Field("Client nexus hash", "0x" + greeting.ClientNexusHash.ToString("X8", Invariant));
+            tree.Field("version", greeting.Version is { } version ? "\"" + version + "\" · str" : "nil", greeting.Version is null ? PropertyTone.Muted : PropertyTone.Normal);
+            tree.Field("serverNexusHash", greeting.ServerNexusHash.ToString("N0", Invariant));
+            tree.Field("clientNexusHash", greeting.ClientNexusHash.ToString("N0", Invariant));
             Token(tree, greeting.Token, store, map);
         }
 
-        tree.Field("Max message size", greeting.MaxMessageSize.ToString("N0", Invariant) + " B");
-        tree.Field("Invocation credits", greeting.InvocationCredits.ToString("N0", Invariant));
+        tree.Field("maxMessageSize", greeting.MaxMessageSize.ToString("N0", Invariant));
+        tree.Field("invocationCredits", greeting.InvocationCredits.ToString("N0", Invariant));
     }
 
     private static void Token(PropertyTreeModel tree, PayloadRange token, TransportOpStore store, in PayloadMap map)

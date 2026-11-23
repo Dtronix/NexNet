@@ -26,6 +26,9 @@ public enum CaptureScenario
 
     /// <summary>open-recording: the empty window behind the dialog on a two-session recording whose schema differs.</summary>
     OpenRecording,
+
+    /// <summary>inspect-session-start: the Chat fixture's first 50 ms, the handshake traced from the ClientGreeting.</summary>
+    InspectSessionStart,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -54,6 +57,7 @@ public static class CaptureScenarios
         [CaptureScenario.Connect] = new("connect", ConnectScreen.Create),
         [CaptureScenario.InspectLive] = new("inspect-live", InspectLiveScreen.Create),
         [CaptureScenario.OpenRecording] = new("open-recording", OpenRecordingScreen.Create),
+        [CaptureScenario.InspectSessionStart] = new("inspect-session-start", InspectSessionStartScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

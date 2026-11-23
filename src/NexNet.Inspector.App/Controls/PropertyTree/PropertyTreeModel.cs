@@ -101,9 +101,12 @@ public sealed class PropertyTreeModel
         _values.Add(value);
         long origin = value.Range.IsNone ? 0 : value.Range.Offset;
         int lift = fields[0].Kind == FieldKind.Arguments && fields[0].Parent < 0 ? 1 : 0;
+        int firstNode = _nodes.Count;
+        int topLevel = 0;
         for (int i = lift; i < fields.Length; i++)
         {
             ref readonly DecodedField field = ref fields[i];
+            if (field.Depth - lift <= 0) topLevel++;
             string name = value.IsRaw ? rawName : field.Name ?? (field.ElementIndex >= 0 ? "[" + field.ElementIndex.ToString(CultureInfo.InvariantCulture) + "]" : "value");
             _nodes.Add(new PropertyNode
             {
@@ -119,6 +122,12 @@ public sealed class PropertyTreeModel
                 Expanded = false,
             });
         }
+
+        // A single object argument opens one level, so its members show (inspect-live: attachment's roomId, fileName,
+        // data rows) instead of one closed row.
+        var nodes = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_nodes);
+        if (topLevel == 1 && nodes.Length > firstNode + 1 && nodes[firstNode + 1].Depth > nodes[firstNode].Depth)
+            nodes[firstNode].Expanded = true;
     }
 
     /// <summary>Ends the build: computes subtrees and the visible rows.</summary>
@@ -213,6 +222,34 @@ public sealed class PropertyTreeModel
         }
 
         if (found >= 0) ExpandAncestors(found);
+        return found;
+    }
+
+    /// <summary>
+    /// The visible row whose bytes a hovered field names (the hex view's hover, in the same message coordinates the
+    /// rows publish): the row with exactly those bytes, else the deepest visible row that holds the field's first byte.
+    /// Collapsed rows are not opened: a hover only lights what shows.
+    /// </summary>
+    /// <returns>The node, or -1 when no visible row holds the bytes.</returns>
+    public int FindVisible(in MessageRef message, long offset, int length)
+    {
+        int found = -1;
+        int foundDepth = -1;
+        long foundLength = long.MaxValue;
+        foreach (int i in _visible)
+        {
+            ref readonly PropertyNode n = ref Node(i);
+            if (n.Kind != PropertyRowKind.Field || n.Bytes.IsNone || n.Bytes.Message != message) continue;
+            if (n.Bytes.Offset == offset && n.Bytes.Length == length) return i;
+            if (offset < n.Bytes.Offset || offset >= n.Bytes.Offset + n.Bytes.Length) continue;
+            if (n.Depth > foundDepth || (n.Depth == foundDepth && n.Bytes.Length < foundLength))
+            {
+                found = i;
+                foundDepth = n.Depth;
+                foundLength = n.Bytes.Length;
+            }
+        }
+
         return found;
     }
 

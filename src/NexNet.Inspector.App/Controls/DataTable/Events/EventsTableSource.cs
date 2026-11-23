@@ -1,3 +1,4 @@
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
@@ -23,6 +24,7 @@ public sealed class EventsTableSource : DataTableSource
     private int _count;
     private long _version = -1;
     private MessageRef _trace = MessageRef.None;
+    private MessageTrace? _members;
 
     /// <summary>The session shown; null shows no rows.</summary>
     public CaptureSession? Session => _session;
@@ -40,6 +42,22 @@ public sealed class EventsTableSource : DataTableSource
         {
             if (value == _trace) return;
             _trace = value;
+            NotifyRowsChanged();
+        }
+    }
+
+    /// <summary>
+    /// The trace resolved on the sync bus: when set (and active), the rows of every frame that carried part of it are
+    /// tinted (an invocation's request, cancellation and result; the handshake's four frames), in place of
+    /// <see cref="Trace"/>'s single message.
+    /// </summary>
+    public MessageTrace? Members
+    {
+        get => _members;
+        set
+        {
+            if (ReferenceEquals(value, _members)) return;
+            _members = value;
             NotifyRowsChanged();
         }
     }
@@ -192,7 +210,7 @@ public sealed class EventsTableSource : DataTableSource
             MethodName = method,
             ChunkNumber = chunk,
             ChunkCount = chunks,
-            IsTraced = !_trace.IsNone && message == _trace,
+            IsTraced = _members is { IsActive: true } members ? members.Contains(key) : !_trace.IsNone && message == _trace,
         };
         return true;
     }

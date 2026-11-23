@@ -173,15 +173,51 @@ public sealed class InspectLayoutTests
             lock (picks.Document.Session!.Gate) gapInView = picks.Document.Session.Gaps.ToArray().Any(g => g.FromTicks >= window.Start && g.ToTicks <= window.End);
             InspectorContent? content = model.Inspect.Inspector.Content;
             bool pinned = model.Inspect.Timeline.Model.IsPinned(new LaneKey(LaneKind.Pipe, picks.Pipe));
+            MessageTrace trace = model.Documents.Sync.Trace;
+            bool traceInView = trace.Start > window.Start && trace.End < window.End;
+            double ms = (window.End - window.Start) * 1000.0 / picks.Document.Frequency;
             model.Documents.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            return (picks, content, gapInView, pinned);
+            return (picks, content, gapInView, pinned, traceInView, ms);
         });
+
+        await Assert.That(result.traceInView).IsTrue();
+        await Assert.That(result.ms).IsGreaterThanOrEqualTo(50).And.IsLessThan(100);
 
         await Assert.That(result.content!.Frame).IsEqualTo(result.picks.Chunk);
         await Assert.That(result.content.Assembly!.Segments.Single(s => s.IsCurrent).Number).IsEqualTo(2);
         await Assert.That(result.gapInView).IsTrue();
         await Assert.That(result.pinned).IsTrue();
         await Assert.That(result.picks.Pipe).IsGreaterThanOrEqualTo(0);
+    }
+
+    [Test]
+    public async Task The_inspect_session_start_scenario_shows_the_first_50_ms_with_the_handshake_traced()
+    {
+        var result = await HeadlessSession.Run(() =>
+        {
+            using ThemeService themes = new(HeadlessSession.App, new FakeOsTheme(Avalonia.Platform.PlatformThemeVariant.Light), AppTheme.Light);
+            MainWindowViewModel model = new(themes, store: null, new DocumentsViewModel(AvaloniaUiDispatcher.Instance, null));
+            InspectSessionStartScreen.Picks picks = InspectSessionStartScreen.Open(model);
+            TimeWindow window = model.Documents.Sync.Window;
+            long start;
+            lock (picks.Document.Session!.Gate) start = picks.Document.Session.StartTicks;
+            double ms = (window.End - window.Start) * 1000.0 / picks.Document.Frequency;
+            InspectorContent? content = model.Inspect.Inspector.Content;
+            MessageTrace trace = model.Documents.Sync.Trace;
+            (StreamPaneKind left, StreamPaneKind right) = (model.Inspect.Left.View.Value, model.Inspect.Right.View.Value);
+            bool pinned = model.Inspect.Timeline.Model.IsPinned(new LaneKey(LaneKind.Session, 0));
+            model.Documents.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            return (picks, content, trace.Kind, window.Start - start, ms, left, right, pinned);
+        });
+
+        await Assert.That(result.content!.Frame).IsEqualTo(result.picks.Greeting);
+        await Assert.That(result.content.IsHandshake).IsTrue();
+        await Assert.That(result.content.Assembly!.Title).IsEqualTo("Handshake");
+        await Assert.That(result.Kind).IsEqualTo(TraceKind.Handshake);
+        await Assert.That(result.Item4).IsEqualTo(0L);
+        await Assert.That(Math.Abs(result.ms - InspectSessionStartScreen.WindowMilliseconds)).IsLessThan(0.01);
+        await Assert.That((result.left, result.right)).IsEqualTo((StreamPaneKind.Events, StreamPaneKind.Hex));
+        await Assert.That(result.pinned).IsTrue();
     }
 
     [Test]

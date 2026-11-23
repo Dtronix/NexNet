@@ -301,7 +301,17 @@ public sealed class HexView : UserControl
                 {
                     hover = hit.Hover;
                     if (hover.IsNone)
+                    {
                         local = hit.Field;
+                        // No decoded field: a header field or a preamble is still published, in the frame's coordinates,
+                        // so the property tree lights its row too. A body byte outside every field names no row.
+                        if (hit.Role is HexCellRole.Type or HexCellRole.Length or HexCellRole.PostHeader or HexCellRole.Preamble
+                            && session.TryGetFrame(hit.Frame, out var frame))
+                        {
+                            hover = FieldHover.OfFrameBytes(direction, frame.Seq, hit.Field.Start - frame.BodyOffset,
+                                (int)(hit.Field.End - hit.Field.Start));
+                        }
+                    }
                 }
             }
         }

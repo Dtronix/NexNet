@@ -1,9 +1,13 @@
 <!--
   The inspector (controls/property-tree, right of every inspect screen): a pane header (Decoded | Message trace, or
-  Handshake at session start, with the selected frame's id at the right), then the Decoded tab: the property tree of
-  the selected frame and, for a message assembled from several frames, the assembly footer (bold title and secondary
-  summary 11 px, the 18 px bar, a 10.5 px note). Nothing selected: a tertiary hint. The Message trace / Handshake tab's
-  content is I25's.
+  Handshake at session start, with the selected frame's id at the right), then the selected tab over the assembly
+  footer (bold title and secondary summary 11 px, the 18 px bar, a 10.5 px note), which shows under either tab for a
+  message assembled from several frames and for the handshake.
+  Decoded: the property tree of the selected frame; nothing selected: a tertiary hint.
+  Message trace: the traced message's title and summary, then its steps in wire order (MessageStart → Chunk 1/5 (T) →
+  "↳ pipe 3·1, Ping" → … → InvocationResult), the current step selected; a click moves the selection there.
+  Handshake (a preamble or greeting selected): every handshake frame's decoded fields.
+  Hovering a field in the hex view lights its row (LinkedRow), as hovering the row rings its bytes there.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -37,11 +41,29 @@
       <pt:PropertyTreeView Name="Tree" IsVisible="{Binding ShowsTree}" Margin="0,0,0,0"
                            ItemsSource="{Binding Rows}"
                            SelectedItem="{Binding SelectedRow}"
-                           HoveredRow="{Binding HoveredRow}" />
+                           HoveredRow="{Binding HoveredRow}"
+                           LinkedRow="{Binding LinkedRow}" />
       <TextBlock Name="EmptyHint" IsVisible="{Binding ShowsHint}" Margin="10,16" TextWrapping="Wrap"
                  Text="{x:Static vm:InspectorViewModel.EmptyHint}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
-      <TextBlock Name="TraceHint" IsVisible="{Binding IsTrace}" Margin="10,16" TextWrapping="Wrap"
-                 Text="The message trace of the selected frame shows here." Foreground="{DynamicResource Brush.Text.Tertiary}" />
+
+      <DockPanel Name="TracePanel" IsVisible="{Binding ShowsTraceList}">
+        <TextBlock DockPanel.Dock="Top" Margin="10,8,14,4" FontSize="{DynamicResource FontSize.Data}" TextWrapping="Wrap">
+          <Run Text="{Binding TraceTitle}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Primary}" />
+          <Run Text=" " />
+          <Run Text="{Binding TraceSummary}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </TextBlock>
+        <ListBox Name="TraceList" Theme="{StaticResource MessageTraceList}"
+                 ItemsSource="{Binding TraceRows}" SelectedItem="{Binding SelectedTraceRow}" />
+      </DockPanel>
+      <TextBlock Name="TraceHint" IsVisible="{Binding ShowsTraceHint}" Margin="10,16" TextWrapping="Wrap"
+                 Text="{x:Static vm:InspectorViewModel.TraceHint}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+
+      <pt:PropertyTreeView Name="HandshakeTree" IsVisible="{Binding ShowsHandshake}"
+                           AutomationProperties.Name="Handshake"
+                           ItemsSource="{Binding HandshakeRows}"
+                           SelectedItem="{Binding HandshakeSelectedRow}"
+                           HoveredRow="{Binding HandshakeHoveredRow}"
+                           LinkedRow="{Binding HandshakeLinkedRow}" />
     </Panel>
   </DockPanel>
 </UserControl>

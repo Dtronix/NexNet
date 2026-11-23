@@ -14,10 +14,10 @@ using NexNet.Inspector.Core.Session;
 namespace NexNet.Inspector.App.Tests.Capture;
 
 /// <summary>
-/// The inspect-live screen (PLAN §8) from the Chat fixture chat-server.nntl: the window from just before the five-chunk
-/// SendAttachment starts to just after the dropped-events gap, so the whole traced message and the hatched gap show
-/// (the package's 1,240–1,290 ms window holds both only in its mock data: in the fixture the chunks are paced ~260 ms
-/// apart and the gap follows the last one); SendAttachment's chunk 2 selected (traced on the timeline, decoded in the
+/// The inspect-live screen (PLAN §8) from the Chat fixture chat-server.nntl: a 50 ms window (as the package's
+/// 1,240–1,290 ms) around the five-chunk SendAttachment, the traced message over part of it and the dropped-events gap
+/// after it in view (the window grows only if the fixture's gap falls further out); SendAttachment's chunk 2 selected
+/// (traced on the timeline with its band, bracketed in the Ladder, listed on the Message trace tab, decoded in the
 /// inspector with its 5-chunk assembly bar) and the playhead on it; the interleaved FileUpload pipe pinned.
 /// </summary>
 public static class InspectLiveScreen
@@ -91,13 +91,24 @@ public static class InspectLiveScreen
                 }
             }
 
-            long ms = session.Header.StopwatchFrequency / 1000;
-            assembler.TryGetFrame(message.Direction, message.Seq, out Core.Framing.FrameRecord start);
-            long gapEnd = start.StartTicks;
-            foreach (Core.Format.NntlGap gap in session.Gaps) gapEnd = Math.Max(gapEnd, gap.ToTicks);
-            TimeWindow window = new(start.StartTicks - (10 * ms), gapEnd + (25 * ms));
-            return new Picks(document, message, new FrameKey(chunk.Direction, chunk.Seq), pipe, window);
+            MessageTrace trace = MessageTrace.Resolve(session, Selection.OfMessage(message, new FrameKey(chunk.Direction, chunk.Seq)));
+            return new Picks(document, message, new FrameKey(chunk.Direction, chunk.Seq), pipe, WindowAround(session, trace.Start, trace.End));
         }
+    }
+
+    /// <summary>The screen's window: the package's 50 ms, the traced span a third of the way in and the next gap in view.</summary>
+    internal static TimeWindow WindowAround(CaptureSession session, long start, long end)
+    {
+        long ms = session.Header.StopwatchFrequency / 1000;
+        long gapEnd = -1;
+        foreach (Core.Format.NntlGap gap in session.Gaps)
+        {
+            if (gap.FromTicks >= end && (gapEnd < 0 || gap.ToTicks < gapEnd)) gapEnd = gap.ToTicks;
+        }
+
+        long from = start - (16 * ms);
+        long to = Math.Max(from + (50 * ms), Math.Max(end, gapEnd) + (6 * ms));
+        return new TimeWindow(from, to);
     }
 
     private static long TicksOf(CaptureSession session, FrameKey key)

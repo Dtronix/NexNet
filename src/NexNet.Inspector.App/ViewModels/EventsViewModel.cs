@@ -87,7 +87,10 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>The traced message, whose rows get the trace tint (I25 sets it from its trace; for now the selection's).</summary>
+    /// <summary>
+    /// The traced message, whose rows get the trace tint when the sync bus resolves no trace of its own (with one,
+    /// <see cref="EventsTableSource.Members"/> tints every frame of the bus's trace).
+    /// </summary>
     public MessageRef Trace
     {
         get => Rows.Trace;
@@ -107,6 +110,7 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
         {
             Rows.Attach(document?.Session);
             ApplySelection(Sync.Selection);
+            ApplyTrace();
         }
         else
         {
@@ -162,6 +166,7 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
     private void OnSyncChanged(SyncChanges changes)
     {
         if ((changes & SyncChanges.Selection) != 0) ApplySelection(Sync.Selection);
+        if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) ApplyTrace();
         if ((changes & SyncChanges.FollowLive) != 0) OnPropertyChanged(nameof(FollowLive));
     }
 
@@ -186,6 +191,8 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
             _ => MessageRef.None,
         };
     }
+
+    private void ApplyTrace() => Rows.Members = Sync.ResolvesTrace ? Sync.Trace : null;
 
     // The tint marks the other frames of a message split across several: a frame that is its own message has none.
     private static MessageRef TraceOf(MessageRef message) => message.Kind == MessageRefKind.Frame ? MessageRef.None : message;

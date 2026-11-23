@@ -175,6 +175,18 @@ public sealed class LadderModel
         }
     }
 
+    /// <summary>
+    /// The bracket of a trace resolved on the sync bus: every row whose frame carried part of the traced message (an
+    /// invocation's request, cancellation and result; a pipe run's writes; the handshake), and the span from the first to
+    /// the last of them.
+    /// </summary>
+    public LadderTrace GetTrace(MessageTrace trace)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+        if (!trace.IsActive) return LadderTrace.None;
+        return Span(new LadderTrace(LadderTraceKind.Members, trace.Entity, trace.EntityIndex, default, -1, -1) { Members = trace });
+    }
+
     /// <summary>Empties the model (another document, a detach).</summary>
     public void Clear()
     {

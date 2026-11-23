@@ -684,13 +684,16 @@ public sealed class TimelineControl : Control
 
     private void OnSyncChanged(SyncChanges changes)
     {
-        if ((changes & SyncChanges.Selection) != 0) RefreshTrace();
+        if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
         if ((changes & (SyncChanges.Window | SyncChanges.Bounds | SyncChanges.Selection)) != 0) InvalidateMeasure();
         InvalidateVisual();
     }
 
+    // The bus's trace when it resolves one (the app); a bus without a resolver (a gallery) traces from the selection.
     private void RefreshTrace() =>
-        _trace = _model is { } model && _sync is { } sync ? model.GetTrace(sync.Selection) : TimelineTrace.None;
+        _trace = _model is not { } model || _sync is not { } sync ? TimelineTrace.None
+            : sync.ResolvesTrace ? model.GetTrace(sync.Trace)
+            : model.GetTrace(sync.Selection);
 
     private void UpdateLayout(long now)
     {

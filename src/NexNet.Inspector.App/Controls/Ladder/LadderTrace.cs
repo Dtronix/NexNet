@@ -1,3 +1,4 @@
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Session;
 
@@ -18,6 +19,9 @@ public readonly record struct LadderTrace(LadderTraceKind Kind, EntityKind Entit
     /// <summary>Nothing traced.</summary>
     public static LadderTrace None => new(LadderTraceKind.None, EntityKind.None, -1, default, -1, -1);
 
+    /// <summary>The traced message's frames, for <see cref="LadderTraceKind.Members"/>.</summary>
+    public MessageTrace? Members { get; init; }
+
     /// <summary>True when at least one row is traced.</summary>
     public bool IsActive => Kind != LadderTraceKind.None && First >= 0;
 
@@ -27,6 +31,7 @@ public readonly record struct LadderTrace(LadderTraceKind Kind, EntityKind Entit
         LadderTraceKind.Entity => row.Entity == Entity && row.EntityIndex == Index,
         LadderTraceKind.Message => row.Message == Index,
         LadderTraceKind.Frame => row.Frame == Frame,
+        LadderTraceKind.Members => Members?.Contains(row.Frame) ?? false,
         _ => false,
     };
 

@@ -68,6 +68,9 @@ public enum LadderTraceKind : byte
 
     /// <summary>One frame that carries its message whole.</summary>
     Frame = 3,
+
+    /// <summary>The frames of the trace resolved on the sync bus (<see cref="LadderTrace.Members"/>).</summary>
+    Members = 4,
 }
 
 /// <summary>How a row takes part in the trace bracket.</summary>

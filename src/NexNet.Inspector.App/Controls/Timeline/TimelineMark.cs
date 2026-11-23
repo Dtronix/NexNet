@@ -1,5 +1,7 @@
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Model;
+using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.Controls.Timeline;
 
@@ -90,13 +92,26 @@ public readonly record struct TimelineTrace(
     public static TimelineTrace None => new(false, EntityKind.None, -1, TapDirection.Inbound, -1, 0, 0);
 
     /// <summary>
+    /// The traced message's frames, when the trace came from the sync bus: then a frame mark is lit exactly when its
+    /// frame carried part of the message (a pipe run's own writes, not the whole pipe's), whatever entity it is linked to.
+    /// </summary>
+    public MessageTrace? Members { get; init; }
+
+    /// <summary>
     /// True when <paramref name="mark"/> belongs to the trace and stays at full opacity: transport ops by time (an op
-    /// carries whatever frames it carries), everything else by entity or frame.
+    /// carries whatever frames it carries), frames by membership when the members are known, everything else by entity
+    /// or frame.
     /// </summary>
     public bool Lights(in TimelineMark mark)
     {
         if (!IsActive) return true;
         if ((mark.Flags & MarkFlags.Op) != 0) return mark.End >= Start && mark.Start <= End;
+        if (Members is { } members)
+        {
+            if (mark.Seq >= 0) return members.Contains(new FrameKey(mark.Direction, mark.Seq));
+            return Entity != EntityKind.None && mark.Entity == Entity && mark.EntityIndex == EntityIndex;
+        }
+
         if (Entity != EntityKind.None) return mark.Entity == Entity && mark.EntityIndex == EntityIndex;
         return mark.Seq == Seq && mark.Direction == Direction;
     }

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using NexNet.Inspector.App.Controls;
 using NexNet.Inspector.App.Controls.PropertyTree;
@@ -26,6 +27,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
 
     private readonly DocumentsViewModel? _documents;
     private DocumentViewModel? _document;
+    private MessageTrace _trace = MessageTrace.None;
+    private CaptureSession? _handshakeSession;
+    private long _handshakeVersion = -1;
     private bool _publishing;
 
     /// <summary>An inspector following the documents' active tab and their sync bus.</summary>
@@ -60,14 +64,70 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
             if (_document is not null) _document.DataChanged += OnDataChanged;
             OnPropertyChanged();
             Refresh(force: true);
+            _trace = MessageTrace.None;
+            RefreshTrace();
         }
     }
+
+    /// <summary>The Message trace tab's hint when nothing is traced.</summary>
+    public const string TraceHint = "Select a message on the timeline or in a view to follow it across frames.";
 
     /// <summary>What is shown; null when nothing is selected.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Tree), nameof(Rows), nameof(HasContent), nameof(FrameLabel), nameof(Assembly), nameof(HasAssembly), nameof(TabLabels),
-        nameof(ShowsTree), nameof(ShowsHint), nameof(ShowsAssembly))]
+        nameof(ShowsTree), nameof(ShowsHint), nameof(ShowsAssembly), nameof(IsHandshake), nameof(ShowsHandshake), nameof(ShowsTraceList),
+        nameof(ShowsTraceHint))]
     public partial InspectorContent? Content { get; private set; }
+
+    /// <summary>True for a preamble or greeting: the second tab is the Handshake tab.</summary>
+    public bool IsHandshake => Content is { IsHandshake: true };
+
+    /// <summary>The trace the Message trace tab lists (the sync bus's).</summary>
+    public MessageTrace Trace => _trace;
+
+    /// <summary>The Message trace tab's rows, one per step in wire order.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTrace), nameof(ShowsTraceList), nameof(ShowsTraceHint))]
+    public partial IReadOnlyList<TraceStepRow> TraceRows { get; private set; } = [];
+
+    /// <summary>True when a message is traced.</summary>
+    public bool HasTrace => TraceRows.Count > 0;
+
+    /// <summary>The Message trace tab's title ("Invocation #812 · SendAttachment").</summary>
+    [ObservableProperty]
+    public partial string TraceTitle { get; private set; } = "";
+
+    /// <summary>The Message trace tab's summary ("7 frames · 15.0 ms · 6 interleaved").</summary>
+    [ObservableProperty]
+    public partial string TraceSummary { get; private set; } = "";
+
+    /// <summary>The current step: the selected frame's; selecting another selects its frame (the playhead jumps).</summary>
+    [ObservableProperty]
+    public partial TraceStepRow? SelectedTraceRow { get; set; }
+
+    /// <summary>The Handshake tab's tree: every handshake frame decoded.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HandshakeRows))]
+    public partial PropertyTreeModel? HandshakeTree { get; private set; }
+
+    /// <summary>The Handshake tree's visible rows.</summary>
+    public PropertyRowList? HandshakeRows => HandshakeTree?.Rows;
+
+    /// <summary>The Handshake tree's selected row; a click selects the field's bytes.</summary>
+    [ObservableProperty]
+    public partial PropertyRow? HandshakeSelectedRow { get; set; }
+
+    /// <summary>The Handshake tree's row under the pointer: published as the hovered field.</summary>
+    [ObservableProperty]
+    public partial PropertyRow? HandshakeHoveredRow { get; set; }
+
+    /// <summary>The Decoded tree's row whose bytes the hex view hovers.</summary>
+    [ObservableProperty]
+    public partial PropertyRow? LinkedRow { get; private set; }
+
+    /// <summary>The Handshake tree's row whose bytes the hex view hovers.</summary>
+    [ObservableProperty]
+    public partial PropertyRow? HandshakeLinkedRow { get; private set; }
 
     /// <summary>The Decoded tab's tree.</summary>
     public PropertyTreeModel? Tree => Content?.Tree;
@@ -92,7 +152,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
 
     /// <summary>The selected tab (the header's tabs bind it).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Tab), nameof(IsDecoded), nameof(IsTrace), nameof(ShowsTree), nameof(ShowsHint), nameof(ShowsAssembly))]
+    [NotifyPropertyChangedFor(nameof(Tab), nameof(IsDecoded), nameof(IsTrace), nameof(ShowsTree), nameof(ShowsHint), nameof(ShowsAssembly),
+        nameof(ShowsHandshake), nameof(ShowsTraceList), nameof(ShowsTraceHint))]
     public partial int TabIndex { get; set; }
 
     /// <summary>The selected tab.</summary>
@@ -101,7 +162,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     /// <summary>True on the Decoded tab.</summary>
     public bool IsDecoded => Tab == InspectorTab.Decoded;
 
-    /// <summary>True on the Message trace / Handshake tab (its content is I25's).</summary>
+    /// <summary>True on the Message trace / Handshake tab.</summary>
     public bool IsTrace => Tab == InspectorTab.Trace;
 
     /// <summary>True when the Decoded tab shows a frame's tree.</summary>
@@ -110,8 +171,17 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     /// <summary>True when the Decoded tab shows the empty hint.</summary>
     public bool ShowsHint => !HasContent && IsDecoded;
 
-    /// <summary>True when the Decoded tab shows the assembly footer.</summary>
-    public bool ShowsAssembly => HasAssembly && IsDecoded;
+    /// <summary>True when the assembly footer shows: under the Decoded tree and under the trace alike.</summary>
+    public bool ShowsAssembly => HasAssembly;
+
+    /// <summary>True when the second tab shows the Handshake tree.</summary>
+    public bool ShowsHandshake => IsTrace && IsHandshake;
+
+    /// <summary>True when the second tab lists the traced message's steps.</summary>
+    public bool ShowsTraceList => IsTrace && !IsHandshake && HasTrace;
+
+    /// <summary>True when the second tab shows its hint: nothing traced.</summary>
+    public bool ShowsTraceHint => IsTrace && !IsHandshake && !HasTrace;
 
     /// <summary>The selected row: follows a byte-range selection; set by a click, it selects the row's bytes.</summary>
     [ObservableProperty]
@@ -138,12 +208,41 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
         Document = null;
     }
 
-    partial void OnSelectedRowChanged(PropertyRow? value)
+    partial void OnSelectedRowChanged(PropertyRow? value) => SelectBytes(value);
+
+    partial void OnHandshakeSelectedRowChanged(PropertyRow? value) => SelectBytes(value);
+
+    partial void OnHoveredRowChanged(PropertyRow? value) => PublishHover(value);
+
+    partial void OnHandshakeHoveredRowChanged(PropertyRow? value) => PublishHover(value);
+
+    partial void OnSelectedTraceRowChanged(TraceStepRow? value)
+    {
+        if (_publishing || value is null) return;
+        TraceStep step = value.Step;
+        // The traced message stays the selection (picked from the step's frame), so the trace and its list stay put
+        // while the inspector, the panes and the playhead move to the step.
+        Selection selection = _trace.Message.IsNone ? Selection.OfFrame(step.Frame) : Selection.OfMessage(_trace.Message, step.Frame);
+        _publishing = true;
+        try
+        {
+            Sync.Select(selection, step.Ticks);
+        }
+        finally
+        {
+            _publishing = false;
+        }
+    }
+
+    private void SelectBytes(PropertyRow? value)
     {
         if (_publishing || value is null || value.Bytes.IsNone || Content is not { } content) return;
         PropertyBytes bytes = value.Bytes;
-        // The byte range keeps the frame and message it came from, so this inspector stays on its frame.
-        Selection selection = Selection.OfBytes(bytes.Direction, bytes.Stream) with { Frame = content.Frame, Message = content.Message };
+        // The byte range keeps the frame and message it came from, so this inspector stays on its frame; a row of a
+        // frame's own bytes (a handshake row of another frame) names that frame.
+        FrameKey frame = bytes.Message.Kind == MessageRefKind.Frame ? new FrameKey(bytes.Message.Direction, bytes.Message.Seq) : content.Frame;
+        MessageRef message = frame == content.Frame ? content.Message : bytes.Message;
+        Selection selection = Selection.OfBytes(bytes.Direction, bytes.Stream) with { Frame = frame, Message = message };
         _publishing = true;
         try
         {
@@ -155,7 +254,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnHoveredRowChanged(PropertyRow? value)
+    private void PublishHover(PropertyRow? value)
     {
         if (value is null || value.Bytes.IsNone)
         {
@@ -172,6 +271,93 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     private void OnSyncChanged(SyncChanges changes)
     {
         if ((changes & SyncChanges.Selection) != 0) Refresh(force: false);
+        if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
+        if ((changes & (SyncChanges.Selection | SyncChanges.Hover)) != 0) RefreshLinked();
+    }
+
+    // The hex view hovers a field: light the row with its bytes in whichever tree shows (hex → tree linking).
+    private void RefreshLinked()
+    {
+        FieldHover hover = Sync.Hover;
+        LinkedRow = LinkedIn(Tree, hover);
+        HandshakeLinkedRow = LinkedIn(HandshakeTree, hover);
+    }
+
+    private static PropertyRow? LinkedIn(PropertyTreeModel? tree, in FieldHover hover)
+    {
+        if (tree is null || hover.IsNone || hover.Length <= 0) return null;
+        int node = tree.FindVisible(hover.Message, hover.Offset, hover.Length);
+        return node >= 0 ? tree.RowOf(node) : null;
+    }
+
+    // The bus's trace as the Message trace tab's rows; the current step follows the frame shown.
+    private void RefreshTrace()
+    {
+        MessageTrace trace = Sync.Trace;
+        if (!ReferenceEquals(trace, _trace))
+        {
+            _trace = trace;
+            OnPropertyChanged(nameof(Trace));
+            TraceStepRow[] rows = [];
+            string summary = "";
+            if (trace.IsActive && _document?.Session is { } session)
+            {
+                long origin;
+                long frequency = session.Header.StopwatchFrequency;
+                lock (session.Gate) origin = session.StartTicks;
+                ReadOnlySpan<TraceStep> steps = trace.Steps;
+                rows = new TraceStepRow[steps.Length];
+                for (int i = 0; i < steps.Length; i++) rows[i] = new TraceStepRow(steps[i], origin, frequency);
+                CultureInfo invariant = CultureInfo.InvariantCulture;
+                int members = trace.MemberCount;
+                int interleaved = trace.InterleavedCount;
+                double ms = (trace.End - trace.Start) * 1000.0 / Math.Max(1, frequency);
+                summary = members.ToString(invariant) + (members == 1 ? " frame" : " frames") + " · " + ms.ToString("N1", invariant) + " ms"
+                          + (interleaved > 0 ? " · " + interleaved.ToString(invariant) + " interleaved" : "");
+            }
+
+            _publishing = true;
+            try
+            {
+                SelectedTraceRow = null;
+                TraceRows = rows;
+                TraceTitle = trace.IsActive ? trace.Title : "";
+                TraceSummary = summary;
+            }
+            finally
+            {
+                _publishing = false;
+            }
+        }
+
+        FollowTraceStep();
+    }
+
+    private void FollowTraceStep()
+    {
+        TraceStepRow? current = null;
+        if (Content is { } content)
+        {
+            foreach (TraceStepRow row in TraceRows)
+            {
+                if (row.Step.Frame == content.Frame)
+                {
+                    current = row;
+                    break;
+                }
+            }
+        }
+
+        if (ReferenceEquals(current, SelectedTraceRow)) return;
+        _publishing = true;
+        try
+        {
+            SelectedTraceRow = current;
+        }
+        finally
+        {
+            _publishing = false;
+        }
     }
 
     private void OnDataChanged(DocumentViewModel document)
@@ -230,11 +416,30 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
         {
             SelectedRow = null;
             HoveredRow = null;
+            HandshakeSelectedRow = null;
+            HandshakeHoveredRow = null;
             Content = content;
+            HandshakeTree = content is { IsHandshake: true } ? BuildHandshake() : null;
         }
         finally
         {
             _publishing = false;
+        }
+
+        RefreshLinked();
+        FollowTraceStep();
+    }
+
+    // The Handshake tab's tree, kept while the frames it was built from stay the same.
+    private PropertyTreeModel? BuildHandshake()
+    {
+        if (_document?.Session is not { } session) return null;
+        lock (session.Gate)
+        {
+            if (HandshakeTree is { } current && ReferenceEquals(_handshakeSession, session) && _handshakeVersion == session.Version) return current;
+            _handshakeSession = session;
+            _handshakeVersion = session.Version;
+            return InspectorProjection.BuildHandshake(session);
         }
     }
 

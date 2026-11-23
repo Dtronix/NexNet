@@ -19,7 +19,7 @@ public sealed record GallerySection(string Title, Func<Control> Build);
 public static class ControlGallery
 {
     /// <summary>Tall enough for many sections; raise it when the gallery outgrows it.</summary>
-    public const double Height = 10450 + DataTableGallery.Height + SessionListGallery.Height;
+    public const double Height = 10450 + DataTableGallery.Height + SessionListGallery.Height + InspectGallery.TraceHeight;
 
     /// <summary>The sections, in display order. Add new controls here.</summary>
     public static readonly List<GallerySection> Sections =

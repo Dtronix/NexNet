@@ -41,7 +41,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         _ui = ui;
         _store = store;
         _time = time ?? TimeProvider.System;
-        Sync = new SyncBus(ui);
+        Sync = new SyncBus(ui) { TraceResolver = ResolveTrace };
     }
 
     /// <summary>The time window, playhead and selection every view follows.</summary>
@@ -289,10 +289,22 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         Activate(document);
     }
 
+    // What a selection traces in the active document's session.
+    private MessageTrace ResolveTrace(Selection selection)
+    {
+        if (Active?.Session is not { } session)
+            return MessageTrace.None;
+        lock (session.Gate)
+            return MessageTrace.Resolve(session, selection);
+    }
+
     private void OnDocumentChanged(DocumentViewModel document)
     {
         if (document != Active)
             return;
+
+        // A traced message still arriving (chunks, its result) grows with the data.
+        Sync.RefreshTrace();
 
         var range = document.TimeRange;
         Sync.SetBounds(document.Kind == DocumentKind.Live ? default : range);

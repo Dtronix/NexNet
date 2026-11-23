@@ -28,6 +28,8 @@
         <!-- Pane headers and the inspector's property tree (I23). -->
         <ResourceInclude Source="/Themes/PaneHeader.axaml" />
         <ResourceInclude Source="/Themes/PropertyTree.axaml" />
+        <!-- The inspector's Message trace tab (I25). -->
+        <ResourceInclude Source="/Themes/MessageTrace.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>
@@ -38,4 +40,5 @@
   <StyleInclude Source="/Themes/ToolTip.axaml" />
   <StyleInclude Source="/Themes/ScrollRail.axaml" />
   <StyleInclude Source="/Themes/PropertyTreeRows.axaml" />
+  <StyleInclude Source="/Themes/MessageTraceRows.axaml" />
 </Styles>
