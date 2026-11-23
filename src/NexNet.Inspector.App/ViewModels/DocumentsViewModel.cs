@@ -224,6 +224,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         Documents.Remove(document);
         _recent.Remove(document);
         document.DataChanged -= OnDocumentChanged;
+        OnDocumentRemoved(document);
         OnPropertyChanged(nameof(HasDocuments));
         if (Active == document)
         {
@@ -255,10 +256,12 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         _recent.Clear();
     }
 
-    private void Add(DocumentViewModel document)
+    /// <summary>Adds an opened document as the last tab and activates it.</summary>
+    internal void Add(DocumentViewModel document)
     {
         document.DataChanged += OnDocumentChanged;
         Documents.Add(document);
+        OnDocumentAdded(document);
         OnPropertyChanged(nameof(HasDocuments));
         Activate(document);
     }

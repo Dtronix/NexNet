@@ -1,29 +1,23 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+        xmlns:shell="using:NexNet.Inspector.App.Views.Shell"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
         Width="1440" Height="900"
         MinWidth="1100" MinHeight="700"
+        WindowDecorations="BorderOnly" ExtendClientAreaToDecorationsHint="True" ExtendClientAreaTitleBarHeightHint="36"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource Brush.Surface.App}"
         Foreground="{DynamicResource Brush.Text.Primary}"
         FontFamily="{DynamicResource Font.Ui}"
         FontSize="{DynamicResource FontSize.Body}">
-  <!-- Minimum size from OQ10; the collapse rules below ~1200 px arrive with the chrome (I16). -->
-  <Grid RowDefinitions="Auto,*">
-    <!-- Title-bar region: a placeholder of the design's height until I16 builds the real title bar here. -->
-    <Border x:Name="TitleBarRegion"
-            Height="{DynamicResource Size.TitleBar}"
-            Background="{DynamicResource Brush.Surface.Chrome}"
-            BorderBrush="{DynamicResource Brush.Border.Default}"
-            BorderThickness="0,0,0,1">
-      <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
-        <Image Source="/Assets/Logo/logo-128.png" Width="20" Height="20" />
-        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
-      </StackPanel>
-    </Border>
+  <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window
+       draws its own title bar: the OS frame with the client area extended under it, or no frame at all on Linux
+       (MainWindow.axaml.cs). -->
+  <Grid x:Name="Root" RowDefinitions="Auto,*">
+    <shell:TitleBar x:Name="TitleBar" DataContext="{Binding Chrome}" />
 
     <!-- Empty state: I17 replaces it with the home cards (connect, open, recents). -->
     <StackPanel x:Name="EmptyState" Grid.Row="1" Spacing="10"

@@ -26,12 +26,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _themes = themes;
         _store = store;
         Documents = documents ?? new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store);
+        Chrome = new ShellChromeViewModel(Documents);
         Theme = themes.Theme;
         _ready = true;
     }
 
     /// <summary>The open documents, the active one and the sync bus.</summary>
     public DocumentsViewModel Documents { get; }
+
+    /// <summary>The title bar and the window's collapse state (OQ10).</summary>
+    public ShellChromeViewModel Chrome { get; }
 
     public string Title => AppName;
 

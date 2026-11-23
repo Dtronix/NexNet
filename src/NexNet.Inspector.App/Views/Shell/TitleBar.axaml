@@ -1,0 +1,117 @@
+<!--
+  The window's single 36 px chrome row (controls/window-title-bar), replacing a menu bar and a toolbar. Left to right, 6 px
+  apart on surface.chrome with a border.default bottom line: the logo button (the application menu, I28), the
+  Inspect | Compare switch, a 1 x 18 divider, the document tabs and + (or "No documents open"), the drag gap, the session
+  area (I28 fills it with the connection group, session and record button; empty, it offers Connect…), the time window
+  (I19/I28; empty, "— no timeline —"), and the 46 x 36 caption buttons.
+  The whole bar is the TitleBar element: dragging moves the window, a double-click maximizes. Every interactive element in
+  it carries the User role (or its caption role, which gives Windows the hit-test codes and Snap Layouts on Maximize):
+  without one Windows takes a click on it as a caption drag. The caption buttons act through Click handlers.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:m="using:NexNet.Inspector.App.Model"
+             xmlns:shell="using:NexNet.Inspector.App.Views.Shell"
+             x:Class="NexNet.Inspector.App.Views.Shell.TitleBar"
+             x:DataType="vm:ShellChromeViewModel"
+             AutomationProperties.Name="Title bar">
+  <Border Name="Bar"
+          Height="{DynamicResource Size.TitleBar}"
+          Background="{DynamicResource Brush.Surface.Chrome}"
+          BorderBrush="{DynamicResource Brush.Border.Default}"
+          BorderThickness="0,0,0,1"
+          Padding="6,0,0,0"
+          WindowDecorationProperties.ElementRole="TitleBar">
+    <DockPanel>
+      <!-- Caption buttons, full height, 4 px after the last group. -->
+      <StackPanel Name="CaptionButtons" DockPanel.Dock="Right" Orientation="Horizontal" Margin="4,0,0,0"
+                  VerticalAlignment="Top" AutomationProperties.Name="Window">
+        <Button Name="MinimizeButton" Classes="caption" Click="OnMinimize"
+                WindowDecorationProperties.ElementRole="MinimizeButton" AutomationProperties.Name="Minimize">
+          <PathIcon Width="10" Height="10" Data="{StaticResource Glyph.Caption.Minimize}" />
+        </Button>
+        <Button Name="MaximizeButton" Classes="caption" Click="OnMaximize"
+                WindowDecorationProperties.ElementRole="MaximizeButton" AutomationProperties.Name="Maximize">
+          <Panel>
+            <PathIcon Name="MaximizeGlyph" Width="10" Height="10" Data="{StaticResource Glyph.Caption.Maximize}" />
+            <PathIcon Name="RestoreGlyph" Width="10" Height="10" Data="{StaticResource Glyph.Caption.Restore}" IsVisible="False" />
+          </Panel>
+        </Button>
+        <Button Name="CloseButton" Classes="caption caption-close" Click="OnClose"
+                WindowDecorationProperties.ElementRole="CloseButton" AutomationProperties.Name="Close">
+          <PathIcon Width="10" Height="10" Data="{StaticResource Glyph.Caption.Close}" />
+        </Button>
+      </StackPanel>
+
+      <!-- The time window: the shared visible range (I19/I28); with nothing open, "— no timeline —". -->
+      <Border Name="TimeWindowArea" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
+              AutomationProperties.Name="Time window">
+        <Border Name="NoTimeline" Height="{DynamicResource Size.HeaderControl}" Padding="8,0"
+                BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
+                CornerRadius="{DynamicResource Radius.Md}"
+                IsVisible="{Binding !Documents.HasDocuments}">
+          <TextBlock Text="— no timeline —" VerticalAlignment="Center"
+                     FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
+                     Foreground="{DynamicResource Brush.Text.Tertiary}" />
+        </Border>
+      </Border>
+
+      <!-- The session area: connection, session and recording (I28). Empty, it offers Connect… (Ctrl+K). -->
+      <Border Name="SessionArea" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
+              AutomationProperties.Name="Connection">
+        <Button Name="ConnectButton" Theme="{StaticResource ChromeGroup}"
+                WindowDecorationProperties.ElementRole="User"
+                IsVisible="{Binding !Documents.HasDocuments}"
+                Command="{Binding RequestCommand}" CommandParameter="{x:Static m:ShellRequest.Connect}"
+                AutomationProperties.Name="Not connected. Connect (Ctrl+K)">
+          <Border Background="{DynamicResource Brush.Surface.Raised}" Padding="8,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource Brush.Text.Tertiary}" />
+              <TextBlock Text="Not connected · Connect…" VerticalAlignment="Center" />
+              <TextBlock Text="Ctrl+K" VerticalAlignment="Center"
+                         FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
+                         Foreground="{DynamicResource Brush.Text.Tertiary}" />
+            </StackPanel>
+          </Border>
+        </Button>
+      </Border>
+
+      <!-- Logo: the application menu. -->
+      <Button Name="LogoButton" DockPanel.Dock="Left" Theme="{StaticResource ChromeButton}"
+              WindowDecorationProperties.ElementRole="User"
+              Command="{Binding RequestCommand}" CommandParameter="{x:Static m:ShellRequest.AppMenu}"
+              AutomationProperties.Name="Application menu">
+        <StackPanel Orientation="Horizontal" Spacing="3">
+          <Image Source="/Assets/Logo/logo-128.png" Width="22" Height="19" Stretch="Uniform" />
+          <TextBlock Text="▾" FontSize="9" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </StackPanel>
+      </Button>
+
+      <ListBox Name="WorkspaceSwitch" DockPanel.Dock="Left" Margin="6,0,0,0" Theme="{StaticResource Segmented}"
+               WindowDecorationProperties.ElementRole="User"
+               ItemsSource="{Binding Workspace.Labels}"
+               SelectedIndex="{Binding Workspace.SelectedIndex}"
+               AutomationProperties.Name="Workspace" />
+
+      <Border DockPanel.Dock="Left" Width="1" Height="18" Margin="10,0,4,0" VerticalAlignment="Center"
+              Background="{DynamicResource Brush.Border.Default}" />
+
+      <!-- The documents: tabs and +; with none open, "No documents open". Not clipped: the tabs' focus rings reach past them. -->
+      <StackPanel Name="DocumentsArea" DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="6,0,0,0"
+                  VerticalAlignment="Center" ClipToBounds="False">
+        <shell:DocumentTabStrip Name="Tabs" IsCompare="{Binding IsCompare}" IsVisible="{Binding Documents.HasDocuments}" />
+        <TextBlock Name="NoDocuments" Text="No documents open" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Brush.Text.Tertiary}"
+                   IsVisible="{Binding !Documents.HasDocuments}" />
+        <Button Name="AddButton" Theme="{StaticResource ChromeButton}" Classes="add" Content="+"
+                WindowDecorationProperties.ElementRole="User"
+                Command="{Binding RequestCommand}" CommandParameter="{x:Static m:ShellRequest.Open}"
+                AutomationProperties.Name="Open a recording" />
+      </StackPanel>
+
+      <!-- The drag gap: the rest of the row (the bar's own fill takes the pointer). -->
+      <Panel Name="DragGap" />
+    </DockPanel>
+  </Border>
+</UserControl>

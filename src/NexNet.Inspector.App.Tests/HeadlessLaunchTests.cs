@@ -32,7 +32,7 @@ public sealed class HeadlessLaunchTests
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 using WriteableBitmap frame = window.CaptureRenderedFrame()!;
                 return new Shown(window.Title, window.MinWidth, window.MinHeight,
-                    window.FindControl<Border>("TitleBarRegion")!.Bounds.Height,
+                    window.FindControl<Views.Shell.TitleBar>("TitleBar")!.Bounds.Height,
                     window.FindControl<TextBlock>("EmptyStateHint")!.Text, window.Icon is not null,
                     FramePixels.DistinctColours(frame, minimum: 8), frame.PixelSize);
             }

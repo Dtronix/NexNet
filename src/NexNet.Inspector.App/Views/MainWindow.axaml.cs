@@ -1,21 +1,65 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Platform;
+using NexNet.Inspector.App.Model;
+using NexNet.Inspector.App.Platform;
 using NexNet.Inspector.App.Settings;
+using NexNet.Inspector.App.ViewModels;
+using NexNet.Inspector.App.Views.Shell;
 
 namespace NexNet.Inspector.App.Views;
 
+/// <summary>
+/// The shell window. It draws its own title bar (<see cref="ChromeMode"/>): on Windows the OS frame stays and the client
+/// area extends under the bar, re-applied by <see cref="TitleBarRecovery"/> when a display or session change drops it,
+/// and the window pads itself by its off-screen margin when maximized; on Linux it has no OS decorations, and edge grips
+/// resize it. It tells the chrome its width (the OQ10 collapse rules) and holds Ctrl+Tab / Ctrl+Shift+Tab.
+/// </summary>
 public sealed partial class MainWindow : Window
 {
     private static readonly Uri IconUri = new("avares://nexnet-inspector/Assets/Logo/logo-256.png");
 
     private PixelPoint _normalPosition;
     private Size _normalSize;
+    private TitleBarRecovery? _titleBarRecovery;
+    private Panel? _resizeGrips;
 
     public MainWindow()
+        : this(WindowChromePolicy.Current)
+    {
+    }
+
+    /// <param name="chrome">How the window draws its frame; tests pick the Linux mode on any OS.</param>
+    internal MainWindow(ChromeMode chrome)
     {
         InitializeComponent();
         using (Stream icon = AssetLoader.Open(IconUri)) Icon = new WindowIcon(icon);
+        Chrome = chrome;
+        TitleBar.Mode = chrome;
+        if (chrome == ChromeMode.Undecorated)
+        {
+            // No OS frame: the bar moves and maximizes the window, the grips resize it.
+            ExtendClientAreaToDecorationsHint = false;
+            WindowDecorations = WindowDecorations.None;
+            _resizeGrips = ResizeGrips.Create(this);
+            Grid.SetRowSpan(_resizeGrips, 2);
+            Root.Children.Add(_resizeGrips);
+        }
+
+        // Tunnelling, so Ctrl+Tab cycles documents before focus navigation takes the Tab.
+        AddHandler(KeyDownEvent, OnKeyDownTunnel, RoutingStrategies.Tunnel);
+        Opened += (_, _) =>
+        {
+            // The platform handle exists from here on.
+            // Only a real Win32 window has a procedure to hook (not the headless platform's).
+            if (Chrome == ChromeMode.Extended && TryGetPlatformHandle() is { Handle: not 0, HandleDescriptor: "HWND" })
+                _titleBarRecovery = TitleBarRecovery.Start(OperatingSystem.IsWindows(), () => new Win32TitleBarWindow(this), new DispatcherScheduler(),
+                    static line => Trace.TraceInformation(line));
+        };
+        Closed += (_, _) => _titleBarRecovery?.Dispose();
 
         // A maximized window's bounds are the screen's; the placement keeps the last normal ones so a restore after
         // relaunch returns to them.
@@ -28,6 +72,38 @@ public sealed partial class MainWindow : Window
         {
             if (WindowState == WindowState.Normal) _normalSize = e.NewSize;
         };
+    }
+
+    /// <summary>How the window draws its frame.</summary>
+    public ChromeMode Chrome { get; }
+
+    private ShellChromeViewModel? ChromeModel => (DataContext as MainWindowViewModel)?.Chrome;
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        ChromeModel?.UpdateWidth(Bounds.Width);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty) ChromeModel?.UpdateWidth(Bounds.Width);
+
+        // Properties set while the XAML loads arrive before the named parts exist.
+        if ((change.Property == WindowStateProperty || change.Property == OffScreenMarginProperty) && Root is not null)
+        {
+            // Maximized, an extended window reaches past the screen by its off-screen margin: pad it back in.
+            Root.Margin = WindowState is WindowState.Maximized ? OffScreenMargin : default;
+            if (_resizeGrips is not null) _resizeGrips.IsVisible = WindowState is WindowState.Normal;
+        }
+    }
+
+    private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Tab || !e.KeyModifiers.HasFlag(KeyModifiers.Control) || ChromeModel is not { } chrome) return;
+        chrome.Documents.Cycle(backwards: e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+        e.Handled = true;
     }
 
     /// <summary>The window's normal bounds and state, as saved in the settings.</summary>

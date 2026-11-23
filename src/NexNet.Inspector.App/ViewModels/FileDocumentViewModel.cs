@@ -26,7 +26,7 @@ public sealed partial class FileDocumentViewModel : DocumentViewModel
         Warnings = recording.Warnings;
         Title = recording.Path is { } path ? System.IO.Path.GetFileName(path) : "Recording";
         if (recording.Sessions.Count > 1)
-            Title += $" · {LiveDocumentViewModel.SessionLabel(session.SessionId)}";
+            Title += " › " + LiveDocumentViewModel.SessionHex(session.SessionId);
     }
 
     /// <summary>The recording.</summary>

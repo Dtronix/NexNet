@@ -85,7 +85,7 @@ public class LiveAttachTests
         await Assert.That(document).IsNotNull().Because(connect.ConnectError ?? "");
         await Assert.That(documents.Active).IsSameReferenceAs(document);
         await Assert.That(document.State).IsEqualTo(LiveState.Live);
-        await Assert.That(document.Title).IsEqualTo(LiveDocumentViewModel.SessionLabel(session.Id));
+        await Assert.That(document.Title).IsEqualTo(LiveDocumentViewModel.TabTitle(session.Id));
         await Assert.That(document.RecordingAllowed).IsFalse();
         await Assert.That(document.RecordingDisabledTooltip).IsEqualTo("Recording disabled by server config");
 

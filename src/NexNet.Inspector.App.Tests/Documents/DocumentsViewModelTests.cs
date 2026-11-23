@@ -109,7 +109,7 @@ public class DocumentsViewModelTests
             new RecordingOpenChoice(recording.Sessions[2].SessionId, SchemaChoice.Embedded));
         var third = (await documents.OpenRecordingAsync(Wait.Fixture("server-all.nntl")))!;
         await Assert.That(third.Session!.SessionId).IsEqualTo(third.Recording.Sessions[2].SessionId);
-        await Assert.That(third.Title).Contains("Session 0x");
+        await Assert.That(third.Title).StartsWith("server-all.nntl › 0x");
     }
 
     [Test]

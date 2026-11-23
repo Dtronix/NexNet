@@ -69,8 +69,14 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     public partial string? Error { get; private set; }
 
     /// <summary>A short label for a session id: the low 16 bits in hex, as the title bar shows it ("Session 0x3A21").</summary>
-    public static string SessionLabel(long sessionId) =>
-        "Session 0x" + ((ushort)sessionId).ToString("X4", CultureInfo.InvariantCulture);
+    public static string SessionLabel(long sessionId) => "Session " + SessionHex(sessionId);
+
+    /// <summary>The low 16 bits of a session id in hex ("0x3A21"), as tabs and the session group show it.</summary>
+    public static string SessionHex(long sessionId) =>
+        "0x" + ((ushort)sessionId).ToString("X4", CultureInfo.InvariantCulture);
+
+    /// <summary>A live tab's title: "Live · 0x3A21" (document-tab).</summary>
+    public static string TabTitle(long sessionId) => "Live · " + SessionHex(sessionId);
 
     /// <summary>
     /// Attaches (again) and starts reading the stream. A document that already holds a session drops it first: the
@@ -87,7 +93,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         Reset();
         Request = request;
         AttachedSession = session;
-        Title = session is { } s ? SessionLabel(s.Id) : ServerInfo.Role == NntlSessionRole.Client ? "Client" : "Server";
+        Title = session is { } s ? TabTitle(s.Id) : ServerInfo.Role == NntlSessionRole.Client ? "Client" : "Server";
         State = LiveState.Attaching;
 
         InspectorStream stream;

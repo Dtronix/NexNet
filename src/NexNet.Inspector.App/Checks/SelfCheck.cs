@@ -120,9 +120,9 @@ public static class SelfCheck
     private static (bool, string) CheckMainWindow(MainWindow window)
     {
         TextBlock? hint = window.FindControl<TextBlock>("EmptyStateHint");
-        Border? titleBar = window.FindControl<Border>("TitleBarRegion");
+        Views.Shell.TitleBar? titleBar = window.FindControl<Views.Shell.TitleBar>("TitleBar");
         if (hint?.Text != "Connect or open a recording") return (false, $"empty-state text is '{hint?.Text}'");
-        if (titleBar is null || titleBar.Bounds.Height != 36) return (false, $"title-bar region is {titleBar?.Bounds.Height} px high, not 36");
+        if (titleBar is null || titleBar.Bounds.Height != 36) return (false, $"title bar is {titleBar?.Bounds.Height} px high, not 36");
         if (window.MinWidth != 1100 || window.MinHeight != 700) return (false, $"minimum size is {window.MinWidth}x{window.MinHeight}");
         return (true, $"{window.ClientSize.Width:0}x{window.ClientSize.Height:0}, title bar 36 px, bound");
     }
