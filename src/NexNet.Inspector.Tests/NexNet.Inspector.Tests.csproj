@@ -6,7 +6,13 @@
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
     <OutputType>Exe</OutputType>
+    <!-- The schema decoder tests read the generated InspectorSchema of their own test nexus. The generator is a
+         ProjectReference analyzer, so its props are not imported: the property is made compiler visible here. -->
+    <NexNetEmitInspectorSchema>true</NexNetEmitInspectorSchema>
   </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
   </ItemGroup>

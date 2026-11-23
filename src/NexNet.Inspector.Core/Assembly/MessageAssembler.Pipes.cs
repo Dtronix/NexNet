@@ -14,8 +14,8 @@ public sealed partial class MessageAssembler
     // NexusPipeWriter sends a write in chunks of at most this many bytes; a full chunk means the write went on.
     private const int PipeChunkLength = ushort.MaxValue;
 
-    // Bounds the DuplexPipe invocations kept while waiting for their Ready: pipe IDs found among their arguments that
-    // never open (plain integer arguments) would otherwise accumulate.
+    // Bounds the DuplexPipe invocations kept while waiting for their Ready: without a schema, pipe IDs guessed from
+    // their arguments that never open (plain integer arguments) would otherwise accumulate.
     private const int MaxPendingOpeners = 256;
 
     private readonly List<PipeRow> _pipes = [];
@@ -341,10 +341,15 @@ public sealed partial class MessageAssembler
         }
     }
 
-    // Records the pipe IDs a DuplexPipe invocation may have sent: each top-level argument that is an integer 1-255.
+    // Records the pipe IDs a DuplexPipe invocation sent. With a resolver that knows the method (the schema), that is
+    // exactly its pipe argument; otherwise every top-level argument that is an integer 1-255 is a candidate.
     private void RegisterPipeOpener(int invocation, TapDirection caller, ReadOnlySequence<byte> arguments)
     {
         var opener = new PipeOpener { Invocation = invocation, Direction = caller };
+        var exact = -1;
+        if (PipeContentResolver is { } resolver && resolver.TryGetPipeArgument(_invocations[invocation], out exact) && exact < 0)
+            return;
+
         try
         {
             var reader = new MsgPackReader(arguments);
@@ -352,10 +357,12 @@ public sealed partial class MessageAssembler
             for (var i = 0; i < count; i++)
             {
                 var code = reader.PeekCode();
-                if (code is >= 1 and <= 0x7F || code == MsgPackCode.UInt8)
+                if ((exact < 0 || i == exact) && (code is >= 1 and <= 0x7F || code == MsgPackCode.UInt8))
                     opener.Add(reader.ReadByte());
                 else
                     reader.Skip();
+                if (i == exact)
+                    break;
             }
         }
         catch (NexusSerializationException)

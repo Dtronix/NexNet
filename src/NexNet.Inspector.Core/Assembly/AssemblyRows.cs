@@ -411,8 +411,9 @@ public readonly record struct GreetingRow
 
 /// <summary>Decides what a newly opened pipe carries, from the invocation that opened it.</summary>
 /// <remarks>
-/// Only the schema knows whether a method's pipe parameter is a raw pipe, a typed channel or a collection, so the
-/// schema layer implements this; without one every pipe stays <see cref="PipeContent.Raw"/>.
+/// Only the schema knows whether a method's pipe parameter is a raw pipe, a typed channel or a collection, and which
+/// argument holds the pipe ID, so the schema layer implements this (<c>Schema.SessionDecoder</c>); without one every
+/// pipe stays <see cref="PipeContent.Raw"/> and openers are matched heuristically.
 /// </remarks>
 public interface IPipeContentResolver
 {
@@ -420,6 +421,22 @@ public interface IPipeContentResolver
     /// <param name="opener">The opening invocation (its method ID is the collection ID for a collection).</param>
     /// <returns>What the pipe carries.</returns>
     PipeContent Resolve(in InvocationRow opener);
+
+    /// <summary>
+    /// Says which top-level argument of a DuplexPipe invocation carries the opener's pipe ID, so the pipe is linked to
+    /// exactly the invocation that sent it. Called once per such invocation, when its arguments are complete.
+    /// </summary>
+    /// <param name="invocation">The invocation (its method ID is the collection ID for a collection).</param>
+    /// <param name="argument">The 0-based argument index; -1 when the method has no pipe argument.</param>
+    /// <returns>
+    /// False when the method is not known: the assembler then treats every top-level integer argument 1-255 as a
+    /// candidate pipe ID.
+    /// </returns>
+    bool TryGetPipeArgument(in InvocationRow invocation, out int argument)
+    {
+        argument = -1;
+        return false;
+    }
 }
 
 internal struct Fragment

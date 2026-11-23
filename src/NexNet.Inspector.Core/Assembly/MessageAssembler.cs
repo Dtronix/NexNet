@@ -62,8 +62,8 @@ public sealed partial class MessageAssembler : IFrameSink
     /// <param name="inbound">Bytes the tapped endpoint read.</param>
     /// <param name="outbound">Bytes the tapped endpoint wrote.</param>
     /// <param name="role">
-    /// Which side the tapped endpoint is, when known. Otherwise it is inferred from the preamble or greetings; it is
-    /// needed to tell the opener's byte of a pipe ID.
+    /// Which side the tapped endpoint is, when known. Otherwise it is inferred from the greetings; it is needed to tell
+    /// the opener's byte of a pipe ID and, with a schema, which nexus interface an invocation calls.
     /// </param>
     public MessageAssembler(IStreamBytes inbound, IStreamBytes outbound, NntlSessionRole? role = null)
     {
@@ -157,12 +157,9 @@ public sealed partial class MessageAssembler : IFrameSink
         Links(direction).Add(FrameLink.None);
         Version++;
 
+        // Both sides write a preamble (spec §1), so it says nothing about the role; the greetings do.
         if (frame.Kind == FrameKind.Preamble)
-        {
-            // Only the client writes a preamble.
-            Role ??= direction == TapDirection.Outbound ? NntlSessionRole.Client : NntlSessionRole.Server;
             return;
-        }
 
         if (frame.Kind != FrameKind.Frame || (frame.Flags & FrameFlags.Incomplete) != 0)
             return;
