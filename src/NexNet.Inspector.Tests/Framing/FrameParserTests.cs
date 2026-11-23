@@ -274,19 +274,36 @@ public class FrameParserTests
     public async Task Pushing_one_byte_ops_into_a_struct_sink_allocates_nothing()
     {
         var (stream, frames) = GoldenFrames.Stream();
-        var parser = new FrameParser(TapDirection.Outbound, expectPreamble: true);
-        var counter = new int[1];
+        const int rounds = 5;
 
-        // Warm up JIT paths on a separate parser so tiering does not count.
-        ParseCounting(new FrameParser(TapDirection.Outbound, expectPreamble: true), stream, counter);
-        counter[0] = 0;
+        // Every parser and counter exists before the first measurement: a parser parses one stream, and creating one
+        // inside a round would be counted against Push.
+        var parsers = new FrameParser[rounds];
+        var counters = new int[rounds][];
+        for (var round = 0; round < rounds; round++)
+        {
+            parsers[round] = new FrameParser(TapDirection.Outbound, expectPreamble: true);
+            counters[round] = new int[1];
+        }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        ParseCounting(parser, stream, counter);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Warm up JIT paths on separate parsers so tiering does not count.
+        var warmUp = new int[1];
+        for (var i = 0; i < 3; i++)
+            ParseCounting(new FrameParser(TapDirection.Outbound, expectPreamble: true), stream, warmUp);
 
-        await Assert.That(counter[0]).IsEqualTo(frames.Count);
-        await Assert.That(allocated).IsEqualTo(0);
+        // The least of a few rounds: a per-op allocation shows in every round, while the runtime's occasional work
+        // on this thread under load (tiering, on-stack replacement) shows in some. Nothing between the reads but Push.
+        var least = long.MaxValue;
+        for (var round = 0; round < rounds; round++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            ParseCounting(parsers[round], stream, counters[round]);
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        foreach (var counter in counters)
+            await Assert.That(counter[0]).IsEqualTo(frames.Count);
+        await Assert.That(least).IsEqualTo(0);
     }
 
     private static void ParseCounting(FrameParser parser, byte[] stream, int[] counter)
