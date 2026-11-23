@@ -49,6 +49,13 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
     /// <summary>The typing pause before a probe; tests shorten it.</summary>
     public TimeSpan ProbeDelay { get; set; } = DefaultProbeDelay;
 
+    /// <summary>
+    /// What a probe runs: connect, read the policy, disconnect. Tests and the capture harness swap in an answer of their
+    /// own, so the debounce and the status line can be driven without a server.
+    /// </summary>
+    internal Func<string, EndpointScheme, ReadOnlyMemory<byte>, EndpointConnectOptions, CancellationToken, Task<EndpointProbeResult>> Prober { get; set; }
+        = InspectorConnection.ProbeAsync;
+
     /// <summary>Connect and probe timeouts and the TLS certificate policy.</summary>
     public EndpointConnectOptions ConnectOptions { get; set; } = EndpointConnectOptions.Default;
 
@@ -250,7 +257,7 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
                 return;
 
             ProbeState = ProbeState.Probing;
-            var result = await InspectorConnection.ProbeAsync(endpoint, transport, token, ConnectOptions, cancellationToken)
+            var result = await Prober(endpoint, transport, token, ConnectOptions, cancellationToken)
                 .ConfigureAwait(true);
 
             // A newer probe (more typing) owns the status line.

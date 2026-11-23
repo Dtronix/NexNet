@@ -17,6 +17,10 @@
         <ResourceInclude Source="/Themes/RadioCard.axaml" />
         <!-- Window chrome: title bar buttons and the document tabs (I16). -->
         <ResourceInclude Source="/Themes/WindowChrome.axaml" />
+        <!-- Dialog layer, banner and home cards (I17). -->
+        <ResourceInclude Source="/Themes/Dialog.axaml" />
+        <ResourceInclude Source="/Themes/Banner.axaml" />
+        <ResourceInclude Source="/Themes/Card.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

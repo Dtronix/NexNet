@@ -1,0 +1,90 @@
+<!--
+  The Connect dialog (connect screen): 540 px. "Inspect a" Server | Client radio cards; Transport select beside the mono
+  Inspector endpoint (initial focus; probed after 500 ms without typing or when it loses focus, OQ18); the password
+  token; "When the viewer falls behind" Drop | Block; the snapshot checkbox; the status line (OQ2); footer hint, Cancel
+  and Connect. Groups are 14 px apart, a label 4 px above its field.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:p="using:NexNet.Inspector.App.Controls.Primitives"
+             x:Class="NexNet.Inspector.App.Views.Connect.ConnectDialog"
+             x:DataType="vm:ConnectDialogViewModel">
+  <UserControl.Styles>
+    <!-- OQ2: a failed probe or connect draws the endpoint's 1.5 px error border (the reason is the status line). -->
+    <Style Selector="TextBox.invalid /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Status.Error}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+  </UserControl.Styles>
+
+  <c:DialogFrame x:Name="Frame" Width="540"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding SubmitCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="Cancel" Command="{Binding CancelCommand}" />
+        <Button x:Name="ConnectButton" Classes="md primary" Content="{Binding PrimaryLabel}" Command="{Binding SubmitCommand}" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <StackPanel Spacing="14">
+      <StackPanel>
+        <TextBlock Classes="field-label" Text="Inspect a" />
+        <Grid ColumnDefinitions="*,8,*">
+          <RadioButton x:Name="ServerCard" Theme="{StaticResource RadioCard}" GroupName="connect-target"
+                       Content="Server" p:ControlHint.Text="Pick any one connected session"
+                       IsChecked="{Binding IsServer}" />
+          <RadioButton x:Name="ClientCard" Grid.Column="2" Theme="{StaticResource RadioCard}" GroupName="connect-target"
+                       Content="Client" p:ControlHint.Text="Its single connection"
+                       IsChecked="{Binding IsClient}" />
+        </Grid>
+      </StackPanel>
+
+      <Grid ColumnDefinitions="120,8,*">
+        <StackPanel>
+          <TextBlock Classes="field-label" Text="Transport" />
+          <ComboBox x:Name="TransportSelect" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Transport.Labels}"
+                    SelectedIndex="{Binding Transport.SelectedIndex}"
+                    AutomationProperties.Name="Transport" />
+        </StackPanel>
+        <StackPanel Grid.Column="2">
+          <TextBlock Classes="field-label" Text="Inspector endpoint" />
+          <TextBox x:Name="EndpointBox" Classes="mono" Classes.invalid="{Binding HasEndpointError}"
+                   Text="{Binding Connect.Endpoint}"
+                   PlaceholderText="host:port, tcp://, tls:// or uds:"
+                   c:DialogHost.InitialFocus="True"
+                   AutomationProperties.Name="Inspector endpoint" />
+        </StackPanel>
+      </Grid>
+
+      <StackPanel>
+        <TextBlock Classes="field-label" Text="Inspector token" />
+        <TextBox x:Name="TokenBox" Classes="password" Text="{Binding Connect.Token}"
+                 AutomationProperties.Name="Inspector token" />
+      </StackPanel>
+
+      <StackPanel>
+        <TextBlock Classes="field-label" Text="When the viewer falls behind" />
+        <!-- The connect screen draws this row 32 px: the 28 px segments inside the track's 2 px padding. -->
+        <ListBox x:Name="OverflowChoice" Theme="{StaticResource Segmented}" Classes="dialog" Height="32"
+                 ItemsSource="{Binding Overflow.Labels}"
+                 SelectedIndex="{Binding Overflow.SelectedIndex}"
+                 AutomationProperties.Name="When the viewer falls behind" />
+      </StackPanel>
+
+      <CheckBox x:Name="SnapshotCheck" Content="Request a state snapshot on attach"
+                p:ControlHint.Text="(open pipes, pending invocations)"
+                IsChecked="{Binding Connect.Snapshot}" />
+
+      <c:Banner x:Name="Status" Kind="Status"
+                Tone="{Binding StatusTone}"
+                Content="{Binding StatusText}"
+                IsVisible="{Binding HasStatus}" />
+    </StackPanel>
+  </c:DialogFrame>
+</UserControl>

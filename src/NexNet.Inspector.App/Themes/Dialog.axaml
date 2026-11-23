@@ -1,0 +1,139 @@
+<!--
+  Dialog (controls/dialog): the modal layer (DialogHost) and the dialog panel (DialogFrame).
+  - DialogHost: color.overlay.scrim at Opacity.Scrim.Dialog (0.45 light / 0.72 dark): an opaque colour made see-through
+    by Opacity, never a translucent brush faded from Transparent. The dialog sits centred, 60 px below the top of the
+    layer (the layer starts under the title bar, which stays visible and draggable).
+  - DialogFrame: panel fill, 1 px border.default, 10 px radius, shadow.dialog. Title row 36 px on chrome with a bottom
+    border (13 px bold title, mono subtitle, 28 px close button); body padded 14; footer on chrome with a top border,
+    padded 10 14: mono 10.5 px tertiary hint left, buttons right.
+  The title row and footer round their outer corners by 9 (10 less the 1 px border) instead of clipping the panel, so the
+  shadow is not clipped with it.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="using:NexNet.Inspector.App.Controls">
+
+  <ControlTheme x:Key="{x:Type c:DialogHost}" TargetType="c:DialogHost">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="PART_Scrim"
+                  Background="{DynamicResource Brush.Overlay.Scrim}"
+                  Opacity="{DynamicResource Opacity.Scrim.Dialog}" />
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top"
+                            Margin="0,60,0,24" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+
+  <!-- The title row's ✕: 28 px, no fill until hovered; the focus ring as every button's (OQ1). -->
+  <ControlTheme x:Key="DialogCloseButton" TargetType="Button">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Chrome}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Md}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="8"
+                  BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+          <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+            <Path Data="M0.75,0.75 L7.25,7.25 M7.25,0.75 L0.75,7.25" Width="8" Height="8"
+                  Stroke="{TemplateBinding Foreground}" StrokeThickness="1.5" StrokeLineCap="Round"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="{x:Type c:DialogFrame}" TargetType="c:DialogFrame">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.2Xl}" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Panel"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                BoxShadow="{DynamicResource Shadow.Dialog}">
+          <DockPanel>
+            <Border Name="PART_TitleRow" DockPanel.Dock="Top"
+                    Height="{DynamicResource Size.TitleBar}"
+                    Background="{DynamicResource Brush.Surface.Chrome}"
+                    BorderBrush="{DynamicResource Brush.Border.Default}"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="9,9,0,0"
+                    Padding="14,0,4,0">
+              <DockPanel>
+                <Button Name="PART_Close" DockPanel.Dock="Right"
+                        Theme="{StaticResource DialogCloseButton}"
+                        Command="{TemplateBinding CancelCommand}"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Close" />
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <TextBlock Name="PART_Title" Text="{TemplateBinding Title}"
+                             FontSize="{DynamicResource FontSize.Title}" FontWeight="Bold"
+                             VerticalAlignment="Center" />
+                  <TextBlock Name="PART_Subtitle" Text="{TemplateBinding Subtitle}"
+                             FontFamily="{DynamicResource Font.Mono}"
+                             Foreground="{DynamicResource Brush.Text.Secondary}"
+                             VerticalAlignment="Center"
+                             IsVisible="{TemplateBinding Subtitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+            <Border Name="PART_Footer" DockPanel.Dock="Bottom"
+                    Background="{DynamicResource Brush.Surface.Chrome}"
+                    BorderBrush="{DynamicResource Brush.Border.Default}"
+                    BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,9,9"
+                    Padding="14,10">
+              <DockPanel>
+                <ContentPresenter Name="PART_FooterPresenter" DockPanel.Dock="Right"
+                                  Content="{TemplateBinding Footer}"
+                                  VerticalAlignment="Center" />
+                <TextBlock Name="PART_Hint" Text="{TemplateBinding Hint}"
+                           FontFamily="{DynamicResource Font.Mono}"
+                           FontSize="{DynamicResource FontSize.Meta}"
+                           Foreground="{DynamicResource Brush.Text.Tertiary}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+            </Border>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              Padding="{TemplateBinding Padding}" />
+          </DockPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+</ResourceDictionary>

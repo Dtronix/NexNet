@@ -10,6 +10,7 @@ using NexNet.Inspector.App.Services;
 using NexNet.Inspector.App.Settings;
 using NexNet.Inspector.App.ViewModels;
 using NexNet.Inspector.App.Views;
+using NexNet.Inspector.App.Views.Home;
 
 namespace NexNet.Inspector.App.Checks;
 
@@ -119,9 +120,9 @@ public static class SelfCheck
 
     private static (bool, string) CheckMainWindow(MainWindow window)
     {
-        TextBlock? hint = window.FindControl<TextBlock>("EmptyStateHint");
+        TextBlock? hint = window.FindControl<HomeView>("Home")?.FindControl<TextBlock>("AppTitle");
         Views.Shell.TitleBar? titleBar = window.FindControl<Views.Shell.TitleBar>("TitleBar");
-        if (hint?.Text != "Connect or open a recording") return (false, $"empty-state text is '{hint?.Text}'");
+        if (hint?.Text != MainWindowViewModel.AppName) return (false, $"home title is '{hint?.Text}'");
         if (titleBar is null || titleBar.Bounds.Height != 36) return (false, $"title bar is {titleBar?.Bounds.Height} px high, not 36");
         if (window.MinWidth != 1100 || window.MinHeight != 700) return (false, $"minimum size is {window.MinWidth}x{window.MinHeight}");
         return (true, $"{window.ClientSize.Width:0}x{window.ClientSize.Height:0}, title bar 36 px, bound");

@@ -1,0 +1,143 @@
+<!--
+  Banner (controls/banner), one template laid out three ways by its kind:
+  - :status (connect): a status line on surface.raised, 6 px radius, padded 8 10; 7 px dot (status.ok, status.error, or
+    tertiary) or, while busy, a 12 px spinner (border.strong ring with a direction.inbound arc); 11 px secondary text
+    that wraps.
+  - :sessionended: the 34 px strip under the title bar: warning surface, bottom warning border, padded 0 12; 8 px
+    tertiary dot, bold title, secondary detail, then the actions at the right.
+  - :schemamismatch: the warning card: warning surface and border, 6 px radius, padded 10 12; an 18 px warning.icon
+    badge with a white "!", bold title over the secondary body.
+  The spinner turns by a RenderTransform animation; the colours never animate.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="using:NexNet.Inspector.App.Controls">
+
+  <ControlTheme x:Key="{x:Type c:Banner}" TargetType="c:Banner">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Surface.Raised}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Lg}" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <DockPanel>
+            <ContentPresenter Name="PART_Actions" DockPanel.Dock="Right"
+                              Content="{TemplateBinding Actions}"
+                              VerticalAlignment="Center" Margin="10,0,0,0"
+                              IsVisible="{TemplateBinding Actions, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            <Panel Name="PART_Lead" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0">
+              <Ellipse Name="PART_Dot" Width="7" Height="7" VerticalAlignment="Center"
+                       Fill="{DynamicResource Brush.Text.Tertiary}" />
+              <Panel Name="PART_Spinner" Width="12" Height="12" IsVisible="False">
+                <Panel.RenderTransform>
+                  <RotateTransform />
+                </Panel.RenderTransform>
+                <Ellipse Stroke="{DynamicResource Brush.Border.Strong}" StrokeThickness="2" />
+                <Path Data="M2.464,2.464 A5,5 0 0 1 9.536,2.464"
+                      Stroke="{DynamicResource Brush.Direction.Inbound}" StrokeThickness="2" />
+              </Panel>
+              <!-- The badge's "!" is white in both themes: the token white of a glyph on a filled control. -->
+              <Border Name="PART_Badge" Width="18" Height="18" CornerRadius="9" IsVisible="False"
+                      Background="{DynamicResource Brush.Warning.Icon}">
+                <TextBlock Text="!" FontWeight="Bold" FontSize="{DynamicResource FontSize.Data}"
+                           Foreground="{DynamicResource Brush.Caption.CloseGlyphHover}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+            </Panel>
+            <StackPanel Name="PART_Text" VerticalAlignment="Center" Spacing="3">
+              <TextBlock Name="PART_Title" Text="{TemplateBinding Title}" FontWeight="Bold"
+                         Foreground="{DynamicResource Brush.Text.Primary}"
+                         VerticalAlignment="Center"
+                         IsVisible="{TemplateBinding Title, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                VerticalAlignment="Center"
+                                TextWrapping="Wrap" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Status tones (a status line; the strip keeps its tertiary dot). -->
+    <Style Selector="^:ok /template/ Ellipse#PART_Dot">
+      <Setter Property="Fill" Value="{DynamicResource Brush.Status.Ok}" />
+    </Style>
+    <Style Selector="^:error /template/ Ellipse#PART_Dot">
+      <Setter Property="Fill" Value="{DynamicResource Brush.Status.Error}" />
+    </Style>
+    <Style Selector="^:busy /template/ Ellipse#PART_Dot">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="^:busy /template/ Panel#PART_Spinner">
+      <Setter Property="IsVisible" Value="True" />
+      <Style.Animations>
+        <Animation Duration="0:0:0.8" IterationCount="Infinite">
+          <KeyFrame Cue="0%">
+            <Setter Property="RotateTransform.Angle" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="RotateTransform.Angle" Value="360" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- The session-ended strip. -->
+    <Style Selector="^:sessionended">
+      <Setter Property="Background" Value="{DynamicResource Brush.Warning.Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warning.Border}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    </Style>
+    <Style Selector="^:sessionended /template/ Ellipse#PART_Dot">
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="Fill" Value="{DynamicResource Brush.Text.Tertiary}" />
+    </Style>
+    <Style Selector="^:sessionended /template/ Panel#PART_Lead">
+      <Setter Property="Margin" Value="0,0,10,0" />
+    </Style>
+    <Style Selector="^:sessionended /template/ StackPanel#PART_Text">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Spacing" Value="10" />
+    </Style>
+    <Style Selector="^:sessionended /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!-- The schema-mismatch warning card. -->
+    <Style Selector="^:schemamismatch">
+      <Setter Property="Background" Value="{DynamicResource Brush.Warning.Surface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warning.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    </Style>
+    <Style Selector="^:schemamismatch /template/ Panel#PART_Lead">
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,0,10,0" />
+    </Style>
+    <Style Selector="^:schemamismatch /template/ Ellipse#PART_Dot">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="^:schemamismatch /template/ Border#PART_Badge">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

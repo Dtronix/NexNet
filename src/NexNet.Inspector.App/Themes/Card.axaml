@@ -1,0 +1,190 @@
+<!--
+  Card (controls/card), the home screen's containers.
+  - ActionCard: a button card. Padding 16, 8 px radius, 1 px border.default, panel fill; 16 px line icon (1.6 stroke)
+    and 14 px bold title 8 px apart, 12 px secondary description (17 px lines), mono 10.5 px tertiary shortcut, 6 px
+    between them. Hover = direction.inbound border on chrome; keyboard focus = 2 px inbound ring 1 px outside;
+    :droptarget = a dashed border.strong border (a Rectangle: Border has no dashes); :dragover (a file over the window) =
+    direction.outbound border on state.selected, the drop text in place of the description.
+  - ListCard: 1 px border.default, 8 px radius, panel fill; 24 px chrome header (11.5 px semibold) with a bottom border;
+    26 px rows padded 0 10 with a border.row line under each but the last; :empty shows the tertiary empty text.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:h="using:NexNet.Inspector.App.Views.Home">
+
+  <!-- The design's 16 px line icons (SYSTEM.md "Icons"), in a 16 x 16 box. -->
+  <StreamGeometry x:Key="Glyph.Pulse">M2,8 H6 L8,3 L10,13 L12,8 H14</StreamGeometry>
+  <StreamGeometry x:Key="Glyph.Folder">M2,4.5 H6 L7.5,6 H14 V12.5 H2 Z</StreamGeometry>
+
+  <ControlTheme x:Key="{x:Type h:ActionCard}" TargetType="h:ActionCard">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xl}" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <!-- Margin -3 with a 2 px border: the ring sits 1 px outside the card (outline-offset: 1px). -->
+          <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="11"
+                  BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+          <Border Name="PART_Card"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <StackPanel Spacing="6">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Path Name="PART_Icon" Width="16" Height="16" Stretch="None"
+                      Data="{TemplateBinding Icon}" Stroke="{TemplateBinding IconBrush}" StrokeThickness="1.6"
+                      VerticalAlignment="Center" />
+                <TextBlock Name="PART_Title" Text="{TemplateBinding Title}"
+                           FontSize="{DynamicResource FontSize.Large}" FontWeight="Bold"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <TextBlock Name="PART_Description" Text="{TemplateBinding Description}"
+                         Foreground="{DynamicResource Brush.Text.Secondary}"
+                         LineHeight="17" TextWrapping="Wrap" />
+              <TextBlock Name="PART_DropText" Text="{TemplateBinding DropText}"
+                         Foreground="{DynamicResource Brush.Text.Secondary}"
+                         LineHeight="17" TextWrapping="Wrap" IsVisible="False" />
+              <TextBlock Name="PART_Shortcut" Text="{TemplateBinding Shortcut}"
+                         FontFamily="{DynamicResource Font.Mono}"
+                         FontSize="{DynamicResource FontSize.Meta}"
+                         Foreground="{DynamicResource Brush.Text.Tertiary}" />
+            </StackPanel>
+          </Border>
+          <Rectangle Name="PART_Dash" IsVisible="False" RadiusX="8" RadiusY="8"
+                     Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1" StrokeDashArray="3,2" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:droptarget">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+    </Style>
+    <!-- The dashed outline replaces the solid border; the padding takes its pixel so the content does not move. -->
+    <Style Selector="^:droptarget /template/ Border#PART_Card">
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="17" />
+    </Style>
+    <Style Selector="^:droptarget /template/ Rectangle#PART_Dash">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Chrome}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- Last, so a file over the window wins over hover. -->
+    <Style Selector="^:dragover">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Outbound}" />
+    </Style>
+    <Style Selector="^:dragover /template/ TextBlock#PART_Description">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="^:dragover /template/ TextBlock#PART_DropText">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="ListCardItem" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Row}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          <Border Name="PART_FocusRing" BorderThickness="2" IsVisible="False"
+                  BorderBrush="{DynamicResource Brush.Direction.Inbound}" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:nth-last-child(1)">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Chrome}" />
+    </Style>
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="{x:Type h:ListCard}" TargetType="h:ListCard">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xl}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="SelectionMode" Value="Single" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ItemContainerTheme" Value="{StaticResource ListCardItem}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Card"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                ClipToBounds="True">
+          <DockPanel>
+            <Border Name="PART_Header" DockPanel.Dock="Top" Height="24" Padding="10,0" CornerRadius="7,7,0,0"
+                    Background="{DynamicResource Brush.Surface.Chrome}"
+                    BorderBrush="{DynamicResource Brush.Border.Default}"
+                    BorderThickness="0,0,0,1">
+              <TextBlock Text="{TemplateBinding Title}" VerticalAlignment="Center"
+                         FontSize="{DynamicResource FontSize.Small}" FontWeight="SemiBold" />
+            </Border>
+            <TextBlock Name="PART_Empty" DockPanel.Dock="Top" Text="{TemplateBinding EmptyText}" Padding="10,14"
+                       Foreground="{DynamicResource Brush.Text.Tertiary}" IsVisible="False" />
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+          </DockPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:empty /template/ TextBlock#PART_Empty">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

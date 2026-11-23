@@ -8,10 +8,11 @@ using NexNet.Inspector.App.Services;
 using NexNet.Inspector.App.Settings;
 using NexNet.Inspector.App.ViewModels;
 using NexNet.Inspector.App.Views;
+using NexNet.Inspector.App.Views.Home;
 
 namespace NexNet.Inspector.App.Tests;
 
-/// <summary>The main window opens headless with its placeholder shell, minimum size and placement.</summary>
+/// <summary>The main window opens headless with its shell, the home screen, minimum size and placement.</summary>
 [NotInParallel("avalonia")]
 public sealed class HeadlessLaunchTests
 {
@@ -33,7 +34,7 @@ public sealed class HeadlessLaunchTests
                 using WriteableBitmap frame = window.CaptureRenderedFrame()!;
                 return new Shown(window.Title, window.MinWidth, window.MinHeight,
                     window.FindControl<Views.Shell.TitleBar>("TitleBar")!.Bounds.Height,
-                    window.FindControl<TextBlock>("EmptyStateHint")!.Text, window.Icon is not null,
+                    window.FindControl<HomeView>("Home")!.FindControl<TextBlock>("AppTitle")!.Text, window.Icon is not null,
                     FramePixels.DistinctColours(frame, minimum: 8), frame.PixelSize);
             }
             finally
@@ -46,7 +47,7 @@ public sealed class HeadlessLaunchTests
         await Assert.That(shown.MinWidth).IsEqualTo(1100);
         await Assert.That(shown.MinHeight).IsEqualTo(700);
         await Assert.That(shown.TitleBarHeight).IsEqualTo(36);
-        await Assert.That(shown.Hint).IsEqualTo("Connect or open a recording");
+        await Assert.That(shown.Hint).IsEqualTo("NexNet Inspector");
         await Assert.That(shown.HasIcon).IsTrue();
         await Assert.That(shown.Colours).IsGreaterThanOrEqualTo(8);
         await Assert.That(shown.Frame).IsEqualTo(new PixelSize(1440, 900));

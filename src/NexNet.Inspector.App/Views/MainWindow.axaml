@@ -2,6 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:NexNet.Inspector.App.ViewModels"
         xmlns:shell="using:NexNet.Inspector.App.Views.Shell"
+        xmlns:c="using:NexNet.Inspector.App.Controls"
+        xmlns:home="using:NexNet.Inspector.App.Views.Home"
+        xmlns:connect="using:NexNet.Inspector.App.Views.Connect"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
@@ -13,21 +16,27 @@
         Foreground="{DynamicResource Brush.Text.Primary}"
         FontFamily="{DynamicResource Font.Ui}"
         FontSize="{DynamicResource FontSize.Body}">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+  </Window.KeyBindings>
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:ConnectDialogViewModel">
+      <connect:ConnectDialog />
+    </DataTemplate>
+  </Window.DataTemplates>
   <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window
        draws its own title bar: the OS frame with the client area extended under it, or no frame at all on Linux
        (MainWindow.axaml.cs). -->
   <Grid x:Name="Root" RowDefinitions="Auto,*">
     <shell:TitleBar x:Name="TitleBar" DataContext="{Binding Chrome}" />
 
-    <!-- Empty state: I17 replaces it with the home cards (connect, open, recents). -->
-    <StackPanel x:Name="EmptyState" Grid.Row="1" Spacing="10"
-                HorizontalAlignment="Center" VerticalAlignment="Center">
-      <Image Source="/Assets/Logo/logo-128.png" Width="64" Height="64" HorizontalAlignment="Center" />
-      <TextBlock Text="{Binding Title}" HorizontalAlignment="Center"
-                 FontSize="{DynamicResource FontSize.Display}" FontWeight="SemiBold" />
-      <TextBlock x:Name="EmptyStateHint" Text="{Binding EmptyStateHint}" HorizontalAlignment="Center"
-                 FontSize="{DynamicResource FontSize.Large}"
-                 Foreground="{DynamicResource Brush.Text.Secondary}" />
-    </StackPanel>
+    <!-- The empty window: hero, action cards, recents; dropping a .nntl on it opens the file. -->
+    <Panel Grid.Row="1" IsVisible="{Binding !Documents.HasDocuments}">
+      <home:HomeView x:Name="Home" DataContext="{Binding Home}" />
+    </Panel>
+
+    <!-- The modal layer below the title bar: scrim and the open dialog (connect, open-recording). -->
+    <c:DialogHost x:Name="Dialogs" Grid.Row="1" Dialog="{Binding Dialog}" />
   </Grid>
 </Window>

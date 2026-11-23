@@ -73,7 +73,7 @@ jobs:
 
     # Headless Avalonia drawn by Skia: no display needed. The capture tests skip without NEXNET_INSPECTOR_CAPTURE_DIR.
     - name: Execute app tests
-      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 254 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 286 --results-directory TestResults -- --report-trx
 
     - name: Upload test results
       if: failure()
