@@ -1,8 +1,9 @@
 name: Inspector
 
-# NexNet Inspector (src/NexNet.Inspector.*): builds src, runs the inspector tests, and publishes the nexnet-tap CLI with
-# Native AOT for win-x64 and linux-x64. Each published binary is smoke-run on a checked-in fixture recording
-# (src/NexNet.Inspector.Tests/Fixtures) and uploaded as a workflow artifact. Nothing is released from here.
+# NexNet Inspector (src/NexNet.Inspector.*): builds src, runs the inspector and app tests, and publishes the nexnet-tap
+# CLI and the nexnet-inspector app with Native AOT for win-x64 and linux-x64. nexnet-tap is smoke-run on a checked-in
+# fixture recording (src/NexNet.Inspector.Tests/Fixtures); the app runs its headless self-check (window, render, themes,
+# fonts, AvaloniaEdit) with no display. Both are uploaded as workflow artifacts. Nothing is released from here.
 
 on:
   push:
@@ -40,9 +41,11 @@ jobs:
           - os: ubuntu-26.04
             rid: linux-x64
             exe: nexnet-tap
+            app: nexnet-inspector
           - os: windows-latest
             rid: win-x64
             exe: nexnet-tap.exe
+            app: nexnet-inspector.exe
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -67,6 +70,10 @@ jobs:
     # Microsoft.Testing.Platform (global.json); raise --minimum-expected-tests when tests are added.
     - name: Execute inspector tests
       run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 115 --results-directory TestResults -- --report-trx
+
+    # Headless Avalonia drawn by Skia: no display needed. The capture tests skip without NEXNET_INSPECTOR_CAPTURE_DIR.
+    - name: Execute app tests
+      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 51 --results-directory TestResults -- --report-trx
 
     - name: Upload test results
       if: failure()
@@ -99,4 +106,29 @@ jobs:
         name: nexnet-tap-${{ matrix.rid }}
         path: |
           publish/nexnet-tap/${{ matrix.exe }}
+        if-no-files-found: error
+
+    - name: Native AOT publish of nexnet-inspector (zero trim/AOT warnings)
+      # The same gate as nexnet-tap's: Avalonia, AvaloniaEdit and the compiled XAML must trim cleanly.
+      shell: bash
+      run: |
+        dotnet publish src/NexNet.Inspector.App -c Release -r ${{ matrix.rid }} -o ./publish/nexnet-inspector \
+          -p:WarningsAsErrors=IL2026%3BIL2046%3BIL2055%3BIL2057%3BIL2067%3BIL2070%3BIL2072%3BIL2075%3BIL2080%3BIL2087%3BIL2091%3BIL2104%3BIL3050%3BIL3051%3BIL3053 \
+          2>&1 | tee aot-app.log
+        ! grep -E "warning IL[0-9]+" aot-app.log
+
+    - name: Smoke run (nexnet-inspector --headless --self-check)
+      shell: bash
+      run: ./publish/nexnet-inspector/${{ matrix.app }} --headless --self-check
+
+    - name: Upload nexnet-inspector
+      uses: actions/upload-artifact@v7
+      with:
+        name: nexnet-inspector-${{ matrix.rid }}
+        # The exe, its native Skia/HarfBuzz (and ANGLE on Windows) libraries and the font licences; no symbols.
+        path: |
+          publish/nexnet-inspector/
+          !publish/nexnet-inspector/*.pdb
+          !publish/nexnet-inspector/*.dbg
+          !publish/nexnet-inspector/*.xml
         if-no-files-found: error
