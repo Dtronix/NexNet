@@ -30,6 +30,8 @@
         <ResourceInclude Source="/Themes/PropertyTree.axaml" />
         <!-- The inspector's Message trace tab (I25). -->
         <ResourceInclude Source="/Themes/MessageTrace.axaml" />
+        <!-- The Compare workspace's Entities sidebar (I31). -->
+        <ResourceInclude Source="/Themes/Compare.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

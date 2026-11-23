@@ -46,6 +46,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Ended = new SessionEndedViewModel(Documents, () => Chrome.Session.IsPopoverOpen = true);
         Chrome.Requested += OnShellRequested;
         Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset };
+        Compare = new CompareWorkspaceViewModel(Documents, Chrome);
+        Documents.SessionComparer ??= Compare.CompareRecordingAsync;
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
         Palette = new CommandPaletteViewModel(Documents, Commands);
         BindCommands();
@@ -119,6 +121,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The Inspect workspace: timeline, stream panes and inspector over the active document.</summary>
     public InspectWorkspaceViewModel Inspect { get; }
+
+    /// <summary>The Compare workspace: the two ticked documents aligned, their entity union and differences.</summary>
+    public CompareWorkspaceViewModel Compare { get; }
 
     /// <summary>The session-ended strip under the title bar (screens/session-ended).</summary>
     public SessionEndedViewModel Ended { get; }
@@ -433,6 +438,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.Connect, () => ShowConnect(null), () => Dialog is null);
         Commands.Bind(AppCommand.GoToTime, () => ShowPalette(":"), () => Dialog is null && Documents.Active?.Session is not null);
         Commands.Bind(AppCommand.ToggleSplit, () => Inspect.ToggleSplitCommand.Execute(null), () => Inspect.IsShown && Inspect.CanSplit);
+        Commands.Bind(AppCommand.OpenInCompare, Compare.Show, () => Dialog is null && Documents.Documents.Count >= DocumentsViewModel.MaxCompared);
         Commands.Bind(AppCommand.NextDocument, () => Documents.Cycle(backwards: false), () => Documents.Documents.Count > 1);
         Commands.Bind(AppCommand.PreviousDocument, () => Documents.Cycle(backwards: true), () => Documents.Documents.Count > 1);
         Commands.Bind(AppCommand.ThemeDark, () => Theme = AppTheme.Dark);

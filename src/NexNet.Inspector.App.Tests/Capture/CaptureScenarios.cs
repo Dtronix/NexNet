@@ -43,6 +43,9 @@ public enum CaptureScenario
 
     /// <summary>session-ended: a live session that disconnected, its strip under the title bar, Events and Ladder still navigable.</summary>
     SessionEnded,
+
+    /// <summary>compare: a client-side and a server-side Chat capture aligned on session ready, SendAttachment selected.</summary>
+    Compare,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -76,6 +79,7 @@ public static class CaptureScenarios
         [CaptureScenario.CommandPalette] = new("command-palette", CommandPaletteScreen.Create),
         [CaptureScenario.InspectAppMenu] = new("inspect-app-menu", InspectAppMenuScreen.Create),
         [CaptureScenario.SessionEnded] = new("session-ended", SessionEndedScreen.Create),
+        [CaptureScenario.Compare] = new("compare", CompareScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

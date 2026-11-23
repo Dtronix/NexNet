@@ -8,6 +8,7 @@
         xmlns:recording="using:NexNet.Inspector.App.Views.OpenRecording"
         xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
         xmlns:palette="using:NexNet.Inspector.App.Views.Palette"
+        xmlns:compare="using:NexNet.Inspector.App.Views.Compare"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
@@ -49,6 +50,11 @@
       <shell:SessionEndedBanner x:Name="EndedBanner" DockPanel.Dock="Top" DataContext="{Binding Ended}" />
       <inspect:InspectView x:Name="Inspect" DataContext="{Binding Inspect}" />
     </DockPanel>
+
+    <!-- The Compare workspace over the two documents ticked in the tabs. -->
+    <Panel Grid.Row="1" IsVisible="{Binding Compare.IsShown}">
+      <compare:CompareView x:Name="Compare" DataContext="{Binding Compare}" />
+    </Panel>
 
     <!-- The empty window: hero, action cards, recents; dropping a .nntl on it opens the file. -->
     <Panel Grid.Row="1" IsVisible="{Binding !Documents.HasDocuments}">
