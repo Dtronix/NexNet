@@ -5,7 +5,7 @@
     layer (the layer starts under the title bar, which stays visible and draggable).
   - DialogFrame: panel fill, 1 px border.default, 10 px radius, shadow.dialog. Title row 36 px on chrome with a bottom
     border (13 px bold title, mono subtitle, 28 px close button); body padded 14; footer on chrome with a top border,
-    padded 10 14: mono 10.5 px tertiary hint left, buttons right.
+    padded 10 14: mono 10.5 px tertiary hint left (after the FooterLead content when there is one), buttons right.
   The title row and footer round their outer corners by 9 (10 less the 1 px border) instead of clipping the panel, so the
   shadow is not clipped with it.
 -->
@@ -119,6 +119,10 @@
                 <ContentPresenter Name="PART_FooterPresenter" DockPanel.Dock="Right"
                                   Content="{TemplateBinding Footer}"
                                   VerticalAlignment="Center" />
+                <ContentPresenter Name="PART_FooterLead" DockPanel.Dock="Left"
+                                  Content="{TemplateBinding FooterLead}"
+                                  VerticalAlignment="Center" Margin="0,0,8,0"
+                                  IsVisible="{TemplateBinding FooterLead, Converter={x:Static ObjectConverters.IsNotNull}}" />
                 <TextBlock Name="PART_Hint" Text="{TemplateBinding Hint}"
                            FontFamily="{DynamicResource Font.Mono}"
                            FontSize="{DynamicResource FontSize.Meta}"

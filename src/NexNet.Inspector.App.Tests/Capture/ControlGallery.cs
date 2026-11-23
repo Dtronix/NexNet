@@ -19,7 +19,7 @@ public sealed record GallerySection(string Title, Func<Control> Build);
 public static class ControlGallery
 {
     /// <summary>Tall enough for many sections; raise it when the gallery outgrows it.</summary>
-    public const double Height = 10450 + DataTableGallery.Height;
+    public const double Height = 10450 + DataTableGallery.Height + SessionListGallery.Height;
 
     /// <summary>The sections, in display order. Add new controls here.</summary>
     public static readonly List<GallerySection> Sections =
@@ -34,6 +34,7 @@ public static class ControlGallery
         .. HomeGallery.Sections(),
         new("Timeline", TimelineGallery.Build),
         new("Data table", DataTableGallery.Build),
+        new("Data table · session list", SessionListGallery.Build),
         new("Ladder", LadderGallery.Build),
         new("Hex view", HexGallery.Build),
         .. InspectGallery.Sections(),

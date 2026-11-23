@@ -5,6 +5,7 @@
         xmlns:c="using:NexNet.Inspector.App.Controls"
         xmlns:home="using:NexNet.Inspector.App.Views.Home"
         xmlns:connect="using:NexNet.Inspector.App.Views.Connect"
+        xmlns:recording="using:NexNet.Inspector.App.Views.OpenRecording"
         xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -24,6 +25,9 @@
   <Window.DataTemplates>
     <DataTemplate DataType="vm:ConnectDialogViewModel">
       <connect:ConnectDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:OpenRecordingDialogViewModel">
+      <recording:OpenRecordingDialog />
     </DataTemplate>
   </Window.DataTemplates>
   <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window

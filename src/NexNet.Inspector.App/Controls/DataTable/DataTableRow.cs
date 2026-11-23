@@ -62,7 +62,7 @@ public sealed class DataTableRow : ListBoxItem
         if (Background is { } background) context.FillRectangle(background, new Rect(0, 0, size.Width, body));
         context.FillRectangle(palette[ThemeBrush.BorderRow], new Rect(0, body, size.Width, size.Height - body));
         if (IsSelected && !ShowsFocusRing)
-            context.FillRectangle(palette[ThemeBrush.AccentTrace], new Rect(0, 0, SelectionBarWidth, body));
+            context.FillRectangle(palette[Table?.SelectionBar ?? ThemeBrush.AccentTrace], new Rect(0, 0, SelectionBarWidth, body));
 
         if (Visual is { } visual && Table is { } table)
             visual.Render(context, palette, table.ColumnSlots, new Size(size.Width, body));

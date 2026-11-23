@@ -63,6 +63,9 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     /// <summary>The workspace schema the user set; new documents compare their embedded schema with it.</summary>
     public NexusSchema? WorkspaceSchema { get; set; }
 
+    /// <summary>Where the workspace schema came from (its path), as the open-recording dialog names it.</summary>
+    public string? WorkspaceSchemaName { get; set; }
+
     /// <summary>
     /// Asked before closing a document with unsaved data (OQ5); I29 shows Save .nntl… / Discard / Cancel. Without it a
     /// dirty document closes as if discarded.
@@ -73,10 +76,30 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     public Func<DocumentViewModel, Task<bool>>? SaveHandler { get; set; }
 
     /// <summary>
-    /// Picks the session (and schema) of a multi-session recording; I24's open-recording dialog. Null answers cancel.
-    /// Without it the first session opens with its embedded schema.
+    /// Picks the session (and schema) of a recording that needs asking (<see cref="NeedsPicker"/>); the open-recording
+    /// dialog (I24). Null answers cancel. Without it the first session opens with its embedded schema.
     /// </summary>
     public Func<RecordingFile, Task<RecordingOpenChoice?>>? SessionPicker { get; set; }
+
+    /// <summary>
+    /// The open-recording dialog's "Compare two sessions…" (P4 binds it): true when Compare took over. The recording is
+    /// disposed once the dialog closes, so Compare opens the sessions it compares from the file's path.
+    /// </summary>
+    public Func<RecordingFile, Task<bool>>? SessionComparer { get; set; }
+
+    /// <summary>
+    /// True when opening <paramref name="recording"/> asks <see cref="SessionPicker"/> (flow 4, Open a recording): it
+    /// holds several sessions, it is damaged or was never closed (OQ3), or its first session's schema does not simply
+    /// decode it (differs from the workspace schema, is unreadable, or is missing).
+    /// </summary>
+    public bool NeedsPicker(RecordingFile recording)
+    {
+        ArgumentNullException.ThrowIfNull(recording);
+        return recording.Sessions.Count > 1
+               || recording.Warnings != RecordingWarnings.None
+               || (recording.Sessions.Count == 1
+                   && recording.ResolveSchema(recording.Sessions[0], WorkspaceSchema, SchemaChoice.Embedded).Status != SchemaStatus.Embedded);
+    }
 
     /// <summary>The Connect dialog's model, starting from the saved defaults and recent endpoints.</summary>
     public ConnectViewModel CreateConnect()
@@ -90,7 +113,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     /// read (header, index) on the thread pool.
     /// </summary>
     /// <param name="path">The recording.</param>
-    /// <param name="choice">The session and schema; null asks <see cref="SessionPicker"/> when the file has several sessions.</param>
+    /// <param name="choice">The session and schema; null asks <see cref="SessionPicker"/> when <see cref="NeedsPicker"/>.</param>
     /// <param name="cancellationToken">Cancels opening.</param>
     /// <returns>The document; null when the picker was canceled.</returns>
     /// <exception cref="NntlFormatException">Not a recording.</exception>
@@ -105,7 +128,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
             if (recording.Sessions.Count == 0)
                 throw new NntlFormatException("The recording holds no session.");
 
-            if (choice is null && recording.Sessions.Count > 1 && SessionPicker is { } picker)
+            if (choice is null && SessionPicker is { } picker && NeedsPicker(recording))
                 choice = await picker(recording).ConfigureAwait(true);
             else
                 choice ??= new RecordingOpenChoice(recording.Sessions[0].SessionId, SchemaChoice.Embedded);

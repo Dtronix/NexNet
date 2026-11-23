@@ -8,7 +8,7 @@ namespace NexNet.Inspector.App.Controls;
 /// <summary>
 /// A dialog's panel (controls/dialog): the 36 px title row (title, optional mono subtitle such as a file name, the
 /// 28 px close ✕), the body (<see cref="ContentControl.Content"/>, 14 px padding) and the footer (mono hint on the
-/// left, <see cref="Footer"/> buttons on the right). Enter runs <see cref="PrimaryCommand"/> and Esc
+/// left, or <see cref="FooterLead"/>; <see cref="Footer"/> buttons on the right). Enter runs <see cref="PrimaryCommand"/> and Esc
 /// <see cref="CancelCommand"/> from anywhere inside, unless a control there used the key itself (a focused button
 /// presses on Enter, an open select closes on Esc). The width is the caller's (connect 540, open-recording 720).
 /// </summary>
@@ -27,6 +27,10 @@ public sealed class DialogFrame : ContentControl
     /// <summary>The footer's right side: secondary then primary button, 8 px apart.</summary>
     public static readonly StyledProperty<object?> FooterProperty =
         AvaloniaProperty.Register<DialogFrame, object?>(nameof(Footer));
+
+    /// <summary>The footer's left side, in place of the hint (open-recording: "Compare two sessions…").</summary>
+    public static readonly StyledProperty<object?> FooterLeadProperty =
+        AvaloniaProperty.Register<DialogFrame, object?>(nameof(FooterLead));
 
     public static readonly StyledProperty<ICommand?> PrimaryCommandProperty =
         AvaloniaProperty.Register<DialogFrame, ICommand?>(nameof(PrimaryCommand));
@@ -56,6 +60,12 @@ public sealed class DialogFrame : ContentControl
     {
         get => GetValue(FooterProperty);
         set => SetValue(FooterProperty, value);
+    }
+
+    public object? FooterLead
+    {
+        get => GetValue(FooterLeadProperty);
+        set => SetValue(FooterLeadProperty, value);
     }
 
     public ICommand? PrimaryCommand

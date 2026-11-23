@@ -179,7 +179,8 @@ public sealed partial class HomeViewModel : ObservableObject
         }
         catch (Exception e) when (e is NntlFormatException or IOException or UnauthorizedAccessException)
         {
-            // The corrupt-file presentation is the open-recording dialog's (I24); until then the home says why.
+            // The window shows an unreadable file in the open-recording dialog and never throws here; a host without
+            // one (a test, a custom open) still gets the reason under the cards.
             OpenError = $"Could not open {System.IO.Path.GetFileName(path)}: {e.Message}";
         }
     }

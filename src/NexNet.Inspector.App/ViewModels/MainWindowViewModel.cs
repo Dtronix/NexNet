@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.Input;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
 using NexNet.Inspector.App.Settings;
+using NexNet.Inspector.Core.Format;
+using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.ViewModels;
 
@@ -16,6 +18,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private readonly ThemeService _themes;
     private readonly SettingsStore? _store;
+    private readonly TimeProvider _time;
     private readonly bool _ready;
 
     /// <param name="themes">Applies the theme choice.</param>
@@ -27,11 +30,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(themes);
         _themes = themes;
         _store = store;
+        _time = time ?? TimeProvider.System;
         Documents = documents ?? new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store);
+        Documents.SessionPicker ??= PickSession;
         Chrome = new ShellChromeViewModel(Documents);
         Chrome.Requested += OnShellRequested;
         Inspect = new InspectWorkspaceViewModel(Documents, Chrome);
-        Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), time ?? TimeProvider.System, recent => ShowConnect(recent), OpenRecordingAsync);
+        Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
         Documents.PropertyChanged += (_, e) =>
         {
             // Back to the empty window: the recents may have grown while documents were open.
@@ -105,8 +110,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Opens a recording as a document (the drop target, the recents, the picker).</summary>
-    public Task OpenRecordingAsync(string path) => Documents.OpenRecordingAsync(path);
+    /// <summary>
+    /// Opens a recording as a document (the drop target, the recents, the picker). One that needs a choice asks the
+    /// open-recording dialog (<see cref="DocumentsViewModel.NeedsPicker"/>); one that cannot be read at all shows that
+    /// dialog's error state.
+    /// </summary>
+    public async Task OpenRecordingAsync(string path)
+    {
+        try
+        {
+            await Documents.OpenRecordingAsync(path).ConfigureAwait(true);
+        }
+        catch (Exception e) when (e is NntlFormatException or IOException or UnauthorizedAccessException)
+        {
+            if (Dialog is null) Dialog = OpenRecordingDialogViewModel.Failed(path, e.Message, CloseDialog);
+            else throw;
+        }
+    }
+
+    /// <summary>The open-recording dialog as the documents' session picker; another open dialog answers cancel.</summary>
+    private Task<RecordingOpenChoice?> PickSession(RecordingFile recording)
+    {
+        if (Dialog is not null) return Task.FromResult<RecordingOpenChoice?>(null);
+        OpenRecordingDialogViewModel dialog = new(recording, Documents.WorkspaceSchema, Documents.WorkspaceSchemaName, _time.LocalTimeZone,
+            CloseDialog, Documents.SessionComparer);
+        Dialog = dialog;
+        return dialog.Result;
+    }
+
+    private void CloseDialog(OpenRecordingDialogViewModel dialog)
+    {
+        if (ReferenceEquals(Dialog, dialog)) Dialog = null;
+    }
 
     private async void CloseDialog(ConnectDialogViewModel dialog)
     {

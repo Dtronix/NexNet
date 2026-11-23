@@ -8,6 +8,7 @@ using Avalonia.Data;
 using Avalonia.Controls.Metadata;
 using Avalonia.Input;
 using Avalonia.Threading;
+using NexNet.Inspector.App.Controls.Primitives;
 
 namespace NexNet.Inspector.App.Controls.DataTable;
 
@@ -36,6 +37,10 @@ public sealed class DataTableControl : ListBox
     public static readonly StyledProperty<double> RowHeightProperty =
         AvaloniaProperty.Register<DataTableControl, double>(nameof(RowHeight), 20);
 
+    /// <summary>The header row's height above its border; NaN (the default) follows <see cref="RowHeight"/>.</summary>
+    public static readonly StyledProperty<double> HeaderHeightProperty =
+        AvaloniaProperty.Register<DataTableControl, double>(nameof(HeaderHeight), double.NaN);
+
     /// <summary>Space before the first column and after the last; the right side leaves room for the scroll rail.</summary>
     public static readonly StyledProperty<Thickness> CellPaddingProperty =
         AvaloniaProperty.Register<DataTableControl, Thickness>(nameof(CellPadding), new Thickness(8, 0, 16, 0));
@@ -55,6 +60,13 @@ public sealed class DataTableControl : ListBox
     /// <summary>Run by Enter or a double-click on a row (Events: trace the message), with no parameter.</summary>
     public static readonly StyledProperty<ICommand?> ActivateCommandProperty =
         AvaloniaProperty.Register<DataTableControl, ICommand?>(nameof(ActivateCommand));
+
+    /// <summary>
+    /// The selected row's 3 px left bar: accent.trace in Events (the selection is the trace's), direction.inbound in a
+    /// session list (the open-recording table, like its radios).
+    /// </summary>
+    public static readonly StyledProperty<ThemeBrush> SelectionBarProperty =
+        AvaloniaProperty.Register<DataTableControl, ThemeBrush>(nameof(SelectionBar), ThemeBrush.AccentTrace);
 
     /// <summary>What the table shows below its header.</summary>
     public static readonly DirectProperty<DataTableControl, DataTableState> StateProperty =
@@ -76,6 +88,11 @@ public sealed class DataTableControl : ListBox
         SelectionModeProperty.OverrideDefaultValue<DataTableControl>(SelectionMode.Single);
     }
 
+    public DataTableControl()
+    {
+        AddHandler(KeyDownEvent, OnKeyDownTunnel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
     public IReadOnlyList<DataTableColumn>? Columns
     {
         get => GetValue(ColumnsProperty);
@@ -86,6 +103,12 @@ public sealed class DataTableControl : ListBox
     {
         get => GetValue(RowHeightProperty);
         set => SetValue(RowHeightProperty, value);
+    }
+
+    public double HeaderHeight
+    {
+        get => GetValue(HeaderHeightProperty);
+        set => SetValue(HeaderHeightProperty, value);
     }
 
     public Thickness CellPadding
@@ -104,6 +127,12 @@ public sealed class DataTableControl : ListBox
     {
         get => GetValue(EmptyTextProperty);
         set => SetValue(EmptyTextProperty, value);
+    }
+
+    public ThemeBrush SelectionBar
+    {
+        get => GetValue(SelectionBarProperty);
+        set => SetValue(SelectionBarProperty, value);
     }
 
     public bool FollowTail
@@ -189,7 +218,7 @@ public sealed class DataTableControl : ListBox
         if (_header is not null)
         {
             _header.Table = this;
-            _header.RowHeight = RowHeight;
+            _header.RowHeight = HeaderRowHeight;
         }
 
         if (_skeleton is not null) _skeleton.BarHeight = RowHeight;
@@ -230,9 +259,14 @@ public sealed class DataTableControl : ListBox
             _columns = Columns is { } columns ? [.. columns] : [];
             if (_slotsWidth >= 0) Relayout(_slotsWidth);
         }
-        else if (change.Property == RowHeightProperty)
+        else if (change.Property == RowHeightProperty || change.Property == HeaderHeightProperty)
         {
-            if (_header is not null) _header.RowHeight = RowHeight;
+            if (_header is not null)
+            {
+                _header.RowHeight = HeaderRowHeight;
+                _header.InvalidateMeasure();
+            }
+
             if (_skeleton is not null) _skeleton.BarHeight = RowHeight;
             foreach (Control container in GetRealizedContainers()) container.Height = RowHeight + 1;
         }
@@ -246,16 +280,15 @@ public sealed class DataTableControl : ListBox
         }
     }
 
-    protected override void OnKeyDown(KeyEventArgs e)
+    // Tunnelling: a focused row (ListBoxItem) takes Enter for itself before it would bubble up to the table.
+    private void OnKeyDownTunnel(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && SelectedIndex >= 0 && ActivateCommand is { } command && command.CanExecute(null))
+        if (e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None) return;
+        if (SelectedIndex >= 0 && ActivateCommand is { } command && command.CanExecute(null))
         {
             command.Execute(null);
             e.Handled = true;
-            return;
         }
-
-        base.OnKeyDown(e);
     }
 
     protected override void OnDoubleTapped(TappedEventArgs e)
@@ -269,6 +302,8 @@ public sealed class DataTableControl : ListBox
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new TableAutomationPeer(this);
+
+    private double HeaderRowHeight => double.IsNaN(HeaderHeight) ? RowHeight : HeaderHeight;
 
     private void PrepareRow(DataTableRow row, int index)
     {

@@ -106,7 +106,7 @@ public static class InspectLiveScreen
     }
 
     // The recording opens and indexes on background threads that post back to the UI thread: run its jobs until done.
-    private static void Pump(Func<bool> done)
+    internal static void Pump(Func<bool> done)
     {
         long deadline = Environment.TickCount64 + 30_000;
         do

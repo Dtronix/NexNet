@@ -23,6 +23,9 @@ public enum CaptureScenario
 
     /// <summary>inspect-live: the Chat fixture's SendAttachment traced, chunk 2 decoded, FileUpload pinned, the gap in view.</summary>
     InspectLive,
+
+    /// <summary>open-recording: the empty window behind the dialog on a two-session recording whose schema differs.</summary>
+    OpenRecording,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -50,6 +53,7 @@ public static class CaptureScenarios
         [CaptureScenario.ControlGallery] = new("control-gallery", ControlGallery.CreateWindow, ControlGallery.Height),
         [CaptureScenario.Connect] = new("connect", ConnectScreen.Create),
         [CaptureScenario.InspectLive] = new("inspect-live", InspectLiveScreen.Create),
+        [CaptureScenario.OpenRecording] = new("open-recording", OpenRecordingScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

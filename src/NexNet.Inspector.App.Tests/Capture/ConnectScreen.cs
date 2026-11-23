@@ -38,12 +38,7 @@ public static class ConnectScreen
 
     public static Window Create(CaptureContext context)
     {
-        // The store keeps what it last saved in memory; the file is only its backing and is removed at once.
-        string path = Path.Combine(Path.GetTempPath(), "nexnet-inspector-capture-" + Guid.NewGuid().ToString("N") + ".json");
-        SettingsStore store = new(path);
-        store.Save(Settings());
-        File.Delete(path);
-
+        SettingsStore store = Store();
         FixedTime time = new(Now);
         MainWindowViewModel viewModel = new(context.Themes, store, new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store, time), time);
         ConnectDialogViewModel dialog = viewModel.ShowConnect(null)!;
@@ -51,6 +46,17 @@ public static class ConnectScreen
         dialog.Connect.Token = "secret-token";
         dialog.Connect.ProbeNow();
         return new MainWindow { DataContext = viewModel };
+    }
+
+    /// <summary>A settings store holding <see cref="Settings"/>, as the empty window behind a dialog reads them.</summary>
+    public static SettingsStore Store()
+    {
+        // The store keeps what it last saved in memory; the file is only its backing and is removed at once.
+        string path = Path.Combine(Path.GetTempPath(), "nexnet-inspector-capture-" + Guid.NewGuid().ToString("N") + ".json");
+        SettingsStore store = new(path);
+        store.Save(Settings());
+        File.Delete(path);
+        return store;
     }
 }
 
