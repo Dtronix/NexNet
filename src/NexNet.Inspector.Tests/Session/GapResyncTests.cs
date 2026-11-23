@@ -110,7 +110,7 @@ public class GapResyncTests
             at += frame.Length;
         }
 
-        for (var run = 0; run < 100; run++)
+        for (var run = 0; run < 200; run++)
         {
             var frames = new List<FrameRecord>();
             var parser = new FrameParser(TapDirection.Inbound, expectPreamble: false);

@@ -41,10 +41,10 @@ public sealed class FrameParser
         Resync,
     }
 
-    // Evidence a resync candidate needs (see BodyEvidence): at an op's first byte, one frame whose envelope checks out
-    // and ends with the op; inside an op, more of them, since a start found by sliding over arbitrary bytes is likelier
-    // to be chance; anywhere, a long chain however the op ends.
-    private const int ResyncOpStartEvidence = 2;
+    // Evidence a resync candidate needs (see BodyEvidence): at an op's first byte, one frame with a length field that
+    // ends exactly with the op (a read of one whole frame is the common case); inside an op, more, since a start found
+    // by sliding over arbitrary bytes is likelier to be chance; anywhere, a long chain however the op ends.
+    private const int ResyncOpStartEvidence = 1;
     private const int ResyncInsideEvidence = 4;
     private const int ResyncStrongEvidence = 12;
 

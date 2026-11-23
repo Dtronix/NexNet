@@ -18,5 +18,11 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet.Inspector.App\NexNet.Inspector.App.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <!-- The Chat sample: the tapped in-process server the live attach tests inspect, and its schema. -->
+    <ProjectReference Include="..\NexNet.Inspector.Sample\NexNet.Inspector.Sample.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The checked-in recordings of the inspector tests, opened by the document tests. -->
+    <None Include="..\NexNet.Inspector.Tests\Fixtures\*.nntl" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

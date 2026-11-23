@@ -5,7 +5,10 @@ using NexNet.Inspector.App.Settings;
 
 namespace NexNet.Inspector.App.ViewModels;
 
-/// <summary>The main window's state. For now the shell placeholder and the theme choice; I16/I17 add the chrome and documents.</summary>
+/// <summary>
+/// The main window's state: the theme choice and the open documents (with the sync bus every view follows). I16/I17
+/// add the chrome and dialogs on top.
+/// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     public const string AppName = "NexNet Inspector";
@@ -16,14 +19,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <param name="themes">Applies the theme choice.</param>
     /// <param name="store">Persists the choice; null keeps it for this run only (self-check, tests).</param>
-    public MainWindowViewModel(ThemeService themes, SettingsStore? store)
+    /// <param name="documents">The documents; by default a new set posting to Avalonia's UI thread and saving recents to <paramref name="store"/>.</param>
+    public MainWindowViewModel(ThemeService themes, SettingsStore? store, DocumentsViewModel? documents = null)
     {
         ArgumentNullException.ThrowIfNull(themes);
         _themes = themes;
         _store = store;
+        Documents = documents ?? new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store);
         Theme = themes.Theme;
         _ready = true;
     }
+
+    /// <summary>The open documents, the active one and the sync bus.</summary>
+    public DocumentsViewModel Documents { get; }
 
     public string Title => AppName;
 
