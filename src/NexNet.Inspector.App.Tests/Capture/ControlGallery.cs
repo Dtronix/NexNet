@@ -19,7 +19,7 @@ public sealed record GallerySection(string Title, Func<Control> Build);
 public static class ControlGallery
 {
     /// <summary>Tall enough for many sections; raise it when the gallery outgrows it.</summary>
-    public const double Height = 6900;
+    public const double Height = 8100;
 
     /// <summary>The sections, in display order. Add new controls here.</summary>
     public static readonly List<GallerySection> Sections =
@@ -32,6 +32,7 @@ public static class ControlGallery
         new("Scroll rail", ScrollRailGallery.Build),
         .. ChromeGallery.Sections(),
         .. HomeGallery.Sections(),
+        new("Timeline", TimelineGallery.Build),
     ];
 
     public static Window CreateWindow(CaptureContext context)
