@@ -1,0 +1,102 @@
+name: Inspector
+
+# NexNet Inspector (src/NexNet.Inspector.*): builds src, runs the inspector tests, and publishes the nexnet-tap CLI with
+# Native AOT for win-x64 and linux-x64. Each published binary is smoke-run on a checked-in fixture recording
+# (src/NexNet.Inspector.Tests/Fixtures) and uploaded as a workflow artifact. Nothing is released from here.
+
+on:
+  push:
+    branches:
+      - 'master'
+      - 'train/**'
+    paths:
+      - 'src/**'
+      - 'global.json'
+      - '.github/workflows/inspector.yml'
+  pull_request:
+    branches:
+      - '**'  # '*' does not match '/', so PRs into branches such as train/inspector would not run
+    paths:
+      - 'src/**'
+      - 'global.json'
+      - '.github/workflows/inspector.yml'
+  workflow_dispatch:
+
+concurrency:
+  # A new push to a PR cancels its older run; branch runs are never cancelled.
+  group: inspector-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  inspector:
+    name: inspector (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            rid: linux-x64
+            exe: nexnet-tap
+          - os: windows-latest
+            rid: win-x64
+            exe: nexnet-tap.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Install .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: '10.*'
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('src/**/*.csproj', 'src/*.props', 'src/*.targets', 'global.json') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Build
+      run: dotnet build src -c Release --maxcpucount:1
+
+    # Microsoft.Testing.Platform (global.json); raise --minimum-expected-tests when tests are added.
+    - name: Execute inspector tests
+      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 115 --results-directory TestResults -- --report-trx
+
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: inspector-test-results-${{ matrix.rid }}
+        path: TestResults/*.trx
+        if-no-files-found: ignore
+
+    - name: Native AOT publish of nexnet-tap (zero trim/AOT warnings)
+      # A real ILCompiler run: `dotnet build` does not run the AOT analysis. TreatWarningsAsErrors comes from
+      # src/Directory.Build.props; the grep is the dependable check, because some ILCompiler warnings bypass it.
+      # `shell: bash` runs with pipefail, so a failed publish is not hidden by tee.
+      shell: bash
+      run: |
+        dotnet publish src/NexNet.Inspector.Cli -c Release -r ${{ matrix.rid }} -o ./publish/nexnet-tap \
+          -p:WarningsAsErrors=IL2026%3BIL2046%3BIL2055%3BIL2057%3BIL2067%3BIL2070%3BIL2072%3BIL2075%3BIL2080%3BIL2087%3BIL2091%3BIL2104%3BIL3050%3BIL3051%3BIL3053 \
+          2>&1 | tee aot.log
+        ! grep -E "warning IL[0-9]+" aot.log
+
+    - name: Smoke run (nexnet-tap info on a fixture)
+      shell: bash
+      run: |
+        ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/chat-server.nntl
+        ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/server-all.nntl
+
+    - name: Upload nexnet-tap
+      uses: actions/upload-artifact@v7
+      with:
+        name: nexnet-tap-${{ matrix.rid }}
+        path: |
+          publish/nexnet-tap/${{ matrix.exe }}
+        if-no-files-found: error

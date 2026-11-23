@@ -31,6 +31,9 @@
     <ProjectReference Include="..\NexNet.TestNexus\NexNet.TestNexus.csproj" />
     <!-- The cross-language harness (IClientUnderTest, ClientMatrix, remote drivers) for client-matrix tests (P01). -->
     <ProjectReference Include="..\NexNet.Interop\NexNet.Interop.csproj" />
+    <!-- The inspector tap, parser and assembler for the server-side capture rows (InspectorCaptureTests). -->
+    <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 

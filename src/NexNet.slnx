@@ -1,6 +1,7 @@
 ﻿<Solution>
   <Folder Name="/github/">
     <File Path="..\.github\workflows\dotnet.yml" />
+    <File Path="..\.github\workflows\inspector.yml" />
     <File Path="..\README.md" />
   </Folder>
   <Folder Name="/Samples/">
