@@ -5,8 +5,8 @@ namespace NexNet.Inspector.App.ViewModels;
 /// <summary>Which documents take part in Compare (the tabs' checkboxes): exactly two at most (OQ11).</summary>
 public sealed partial class DocumentsViewModel
 {
-    /// <summary>How many documents Compare takes.</summary>
-    public const int MaxCompared = 2;
+    /// <summary>How many documents Compare takes: the compare engine's own limit.</summary>
+    public const int MaxCompared = Core.Compare.CompareSession.DocumentCount;
 
     private int _fileMarkers;
 
