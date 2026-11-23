@@ -1,0 +1,49 @@
+<!--
+  The Inspect workspace (screens inspect-*): the timeline across the top (its height is its lanes', up to a share of
+  the workspace), then the two lower stream panes side by side (equal widths, 1 px border.default between them) and
+  the inspector at the right (324 px, 280 px when narrowed; a border.default left edge). The right pane closes by its ✕,
+  by ◫ Single, or when the window is narrower than 1200 px (OQ10); the inspector narrows below 1150 px.
+  Each stream view comes from the data template keyed by its model type: Events (I20), Ladder (I21), Hex (I22).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:tl="using:NexNet.Inspector.App.Controls.Timeline"
+             xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
+             xmlns:ladder="using:NexNet.Inspector.App.Controls.Ladder"
+             x:Class="NexNet.Inspector.App.Views.Inspect.InspectView"
+             x:DataType="vm:InspectWorkspaceViewModel"
+             Background="{DynamicResource Brush.Surface.Panel}">
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="vm:EventsViewModel">
+      <inspect:EventsView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:LadderViewModel">
+      <ladder:LadderView Model="{Binding Model}" Sync="{Binding Sync}" Mode="{Binding Mode.Value}" IsSynced="{Binding IsSynced}" />
+    </DataTemplate>
+    <DataTemplate DataType="vm:HexViewModel">
+      <inspect:HexPane />
+    </DataTemplate>
+  </UserControl.DataTemplates>
+  <Grid Name="Layout" RowDefinitions="Auto,*">
+    <Border Name="TimelineArea" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,0,0,1"
+            Background="{DynamicResource Brush.Surface.Lane}">
+      <tl:TimelineControl Name="Timeline" Model="{Binding Timeline.Model}" Sync="{Binding Timeline.Sync}"
+                          PinCommand="{Binding Timeline.TogglePinCommand}" />
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+      <Grid Name="Panes" ColumnDefinitions="*,*">
+        <inspect:StreamPaneView Name="LeftPane" DataContext="{Binding Left}" />
+        <Border Name="RightPaneArea" Grid.Column="1" IsVisible="{Binding ShowsRightPane}"
+                BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1,0,0,0">
+          <inspect:StreamPaneView Name="RightPane" DataContext="{Binding Right}" />
+        </Border>
+      </Grid>
+      <Border Name="InspectorArea" Grid.Column="1" Width="{Binding InspectorWidth}"
+              BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1,0,0,0">
+        <inspect:InspectorPane Name="Inspector" DataContext="{Binding Inspector}" />
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

@@ -120,11 +120,11 @@ public sealed class HexLinker
                 AddFrame(assembler, selection.Frame, highlight, ringType: true);
                 break;
             case SelectionKind.Message:
-                AddMessageFrames(assembler, selection.Message, highlight);
+                AddMessageFrames(assembler, selection.Message, highlight, selection.Frame);
                 break;
             case SelectionKind.Entity when selection.Entity == EntityKind.Invocation
                                            && (uint)selection.EntityIndex < (uint)assembler.Invocations.Length:
-                AddMessageFrames(assembler, assembler.Invocations[selection.EntityIndex].Request, highlight);
+                AddMessageFrames(assembler, assembler.Invocations[selection.EntityIndex].Request, highlight, Selection.None.Frame);
                 break;
             case SelectionKind.ByteRange:
                 if (selection.Frame.Seq >= 0)
@@ -134,26 +134,61 @@ public sealed class HexLinker
         }
 
         if (!hover.IsNone)
-            AddStreamRanges(session, hover.Message, hover.Offset, hover.Length, highlight.Hovered);
+            AddHoverRanges(session, hover, highlight.Hovered);
         else if (localHover is { } local)
             highlight.Hovered.Add(local);
     }
 
-    private void AddMessageFrames(MessageAssembler assembler, in MessageRef message, HexHighlight highlight)
+    /// <summary>
+    /// The stream ranges of a hovered field. A field of a single-frame message (the property tree's frame header and
+    /// transport rows included) is in that frame's coordinates, offset 0 at its first body byte, so header bytes have
+    /// negative offsets: it maps straight onto the frame's bytes. Anything else goes through the message's fragments.
+    /// </summary>
+    public void AddHoverRanges(CaptureSession session, in FieldHover hover, List<HexRange> destination)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(destination);
+        if (hover.IsNone || hover.Length <= 0)
+            return;
+
+        if (hover.Message.Kind == MessageRefKind.Frame)
+        {
+            if (!session.Assembler.TryGetFrame(hover.Message.Direction, hover.Message.Seq, out FrameRecord frame))
+                return;
+            long start = Math.Max(frame.Offset, frame.BodyOffset + hover.Offset);
+            long end = Math.Min(frame.Offset + frame.Length, frame.BodyOffset + hover.Offset + hover.Length);
+            if (end > start)
+                destination.Add(new HexRange(frame.Direction, start, end));
+            return;
+        }
+
+        AddStreamRanges(session, hover.Message, hover.Offset, hover.Length, destination);
+    }
+
+    // The type byte ringed is the frame the message was picked from (a chunk), else its first frame's.
+    private void AddMessageFrames(MessageAssembler assembler, in MessageRef message, HexHighlight highlight, FrameKey pickedFrom)
     {
         if (message.IsNone)
             return;
 
         _fragments.Clear();
         assembler.GetFragments(message, _fragments);
+        bool picked = false;
+        if (pickedFrom.Seq >= 0)
+        {
+            foreach (TraceFragment fragment in _fragments)
+                picked |= fragment.Direction == pickedFrom.Direction && fragment.Seq == pickedFrom.Seq;
+        }
+
         bool ringed = false;
         foreach (TraceFragment fragment in _fragments)
         {
             FrameKey key = new(fragment.Direction, fragment.Seq);
             if (highlight.IsSelected(key.Direction, key.Seq))
                 continue;
-            AddFrame(assembler, key, highlight, ringType: !ringed);
-            ringed = true;
+            bool ring = picked ? key == pickedFrom : !ringed;
+            AddFrame(assembler, key, highlight, ringType: ring);
+            ringed |= ring;
         }
     }
 

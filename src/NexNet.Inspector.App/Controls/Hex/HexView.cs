@@ -71,6 +71,7 @@ public sealed class HexView : UserControl
     private bool _stickToEnd;
     private bool _attached;
     private bool _settingScroll;
+    private bool _revealPending;
     private HexLayout? _layout;
     private SyncBus? _sync;
     private HexRange? _localHover;
@@ -394,6 +395,7 @@ public sealed class HexView : UserControl
     {
         base.OnSizeChanged(e);
         Rebuild();
+        RevealPending();
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -439,6 +441,19 @@ public sealed class HexView : UserControl
             _sync.Changed += OnSyncChanged;
         _top = 0;
         Rebuild();
+        // A view placed after the selection was made (a pane switched to Hex, a document opened) shows it too, once
+        // it knows how many lines fit.
+        _revealPending = true;
+        RevealPending();
+    }
+
+    private void RevealPending()
+    {
+        if (!_revealPending || Bounds.Height <= 0 || _sync is not { } sync || _layout?.Session is null)
+            return;
+        _revealPending = false;
+        if (!sync.Selection.IsNone)
+            RevealSelection(sync.Selection);
     }
 
     private void Unsubscribe()
@@ -482,7 +497,8 @@ public sealed class HexView : UserControl
                 break;
             case SelectionKind.Frame:
             case SelectionKind.Message:
-                FrameKey key = selection.Kind == SelectionKind.Frame
+                // A message picked from one of its frames (a chunk) shows that frame; otherwise its first.
+                FrameKey key = selection.Kind == SelectionKind.Frame || selection.Frame.Seq >= 0
                     ? selection.Frame
                     : new FrameKey(selection.Message.Direction, selection.Message.Seq);
                 long offset;

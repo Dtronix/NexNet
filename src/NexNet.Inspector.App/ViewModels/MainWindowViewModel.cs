@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Documents = documents ?? new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store);
         Chrome = new ShellChromeViewModel(Documents);
         Chrome.Requested += OnShellRequested;
+        Inspect = new InspectWorkspaceViewModel(Documents, Chrome);
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), time ?? TimeProvider.System, recent => ShowConnect(recent), OpenRecordingAsync);
         Documents.PropertyChanged += (_, e) =>
         {
@@ -45,6 +46,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The title bar and the window's collapse state (OQ10).</summary>
     public ShellChromeViewModel Chrome { get; }
+
+    /// <summary>The Inspect workspace: timeline, stream panes and inspector over the active document.</summary>
+    public InspectWorkspaceViewModel Inspect { get; }
 
     /// <summary>The empty window: action cards, recents, the drop target.</summary>
     public HomeViewModel Home { get; }

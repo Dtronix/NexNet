@@ -25,6 +25,9 @@
         <ResourceInclude Source="/Themes/DataTable.axaml" />
         <!-- Hex view pane-header toggles (I22). -->
         <ResourceInclude Source="/Themes/HexView.axaml" />
+        <!-- Pane headers and the inspector's property tree (I23). -->
+        <ResourceInclude Source="/Themes/PaneHeader.axaml" />
+        <ResourceInclude Source="/Themes/PropertyTree.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>
@@ -34,4 +37,5 @@
   <StyleInclude Source="/Themes/Menus.axaml" />
   <StyleInclude Source="/Themes/ToolTip.axaml" />
   <StyleInclude Source="/Themes/ScrollRail.axaml" />
+  <StyleInclude Source="/Themes/PropertyTreeRows.axaml" />
 </Styles>

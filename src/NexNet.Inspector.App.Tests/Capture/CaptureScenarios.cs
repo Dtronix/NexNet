@@ -20,6 +20,9 @@ public enum CaptureScenario
 
     /// <summary>The connect screen: empty window and recents, the Connect dialog open, endpoint focused, probe reached.</summary>
     Connect,
+
+    /// <summary>inspect-live: the Chat fixture's SendAttachment traced, chunk 2 decoded, FileUpload pinned, the gap in view.</summary>
+    InspectLive,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -46,6 +49,7 @@ public static class CaptureScenarios
         [CaptureScenario.Main] = new("main", static c => new MainWindow { DataContext = new MainWindowViewModel(c.Themes, store: null) }),
         [CaptureScenario.ControlGallery] = new("control-gallery", ControlGallery.CreateWindow, ControlGallery.Height),
         [CaptureScenario.Connect] = new("connect", ConnectScreen.Create),
+        [CaptureScenario.InspectLive] = new("inspect-live", InspectLiveScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

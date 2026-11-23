@@ -1,0 +1,47 @@
+<!--
+  The inspector (controls/property-tree, right of every inspect screen): a pane header (Decoded | Message trace, or
+  Handshake at session start, with the selected frame's id at the right), then the Decoded tab: the property tree of
+  the selected frame and, for a message assembled from several frames, the assembly footer (bold title and secondary
+  summary 11 px, the 18 px bar, a 10.5 px note). Nothing selected: a tertiary hint. The Message trace / Handshake tab's
+  content is I25's.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:pt="using:NexNet.Inspector.App.Controls.PropertyTree"
+             x:Class="NexNet.Inspector.App.Views.Inspect.InspectorPane"
+             x:DataType="vm:InspectorViewModel"
+             Background="{DynamicResource Brush.Surface.Panel}"
+             AutomationProperties.Name="Inspector">
+  <DockPanel>
+    <c:PaneHeader DockPanel.Dock="Top" Variant="Inspector"
+                  Tabs="{Binding TabLabels}" SelectedIndex="{Binding TabIndex}"
+                  Trailing="{Binding FrameLabel}" />
+
+    <Border Name="AssemblyFooter" DockPanel.Dock="Bottom" IsVisible="{Binding ShowsAssembly}"
+            BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0" Padding="10,8,10,10">
+      <StackPanel>
+        <TextBlock FontSize="{DynamicResource FontSize.Data}" TextTrimming="CharacterEllipsis">
+          <Run Text="{Binding Assembly.Title}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Primary}" />
+          <Run Text=" " />
+          <Run Text="{Binding Assembly.Summary}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </TextBlock>
+        <pt:AssemblyBar Name="Bar" Margin="0,6" Segments="{Binding Assembly.Segments}" />
+        <TextBlock Text="{Binding Assembly.Note}" FontSize="{DynamicResource FontSize.Meta}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Text.Secondary}" />
+      </StackPanel>
+    </Border>
+
+    <Panel>
+      <pt:PropertyTreeView Name="Tree" IsVisible="{Binding ShowsTree}" Margin="0,0,0,0"
+                           ItemsSource="{Binding Rows}"
+                           SelectedItem="{Binding SelectedRow}"
+                           HoveredRow="{Binding HoveredRow}" />
+      <TextBlock Name="EmptyHint" IsVisible="{Binding ShowsHint}" Margin="10,16" TextWrapping="Wrap"
+                 Text="{x:Static vm:InspectorViewModel.EmptyHint}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+      <TextBlock Name="TraceHint" IsVisible="{Binding IsTrace}" Margin="10,16" TextWrapping="Wrap"
+                 Text="The message trace of the selected frame shows here." Foreground="{DynamicResource Brush.Text.Tertiary}" />
+    </Panel>
+  </DockPanel>
+</UserControl>

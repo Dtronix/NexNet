@@ -1,0 +1,50 @@
+<!--
+  One lower pane of the Inspect workspace: its pane header (Events | Ladder | Hex stream, the view's own controls, the
+  synced badge and the split button) over the view, which comes from the data template keyed by the view's model type
+  (InspectView's DataTemplates). The header's view controls come from this pane's own templates, so the same model
+  shows its view below and its controls above.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
+             x:Class="NexNet.Inspector.App.Views.Inspect.StreamPaneView"
+             x:DataType="vm:StreamPaneViewModel"
+             Background="{DynamicResource Brush.Surface.Panel}">
+  <DockPanel>
+    <c:PaneHeader Name="Header" DockPanel.Dock="Top" Variant="Tabbed"
+                  Tabs="{Binding View.Labels}" SelectedIndex="{Binding View.SelectedIndex}"
+                  SyncState="{Binding SyncState}" SplitAction="{Binding SplitAction}"
+                  SplitCommand="{Binding SplitCommand}" CanSplit="{Binding CanSplit}">
+      <c:PaneHeader.ViewControls>
+        <ContentControl Name="ViewControls" Content="{Binding Content}">
+          <ContentControl.DataTemplates>
+            <!-- Events: Filter ▾ · Follow live (the live edge; a recording has none to follow). -->
+            <DataTemplate DataType="vm:EventsViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="Filter ▾" VerticalAlignment="Center" />
+                <TextBlock Text="·" VerticalAlignment="Center" />
+                <ToggleButton Theme="{StaticResource HexDirectionToggle}" IsChecked="{Binding FollowLive}"
+                              FontSize="{DynamicResource FontSize.Data}" Padding="2,1"
+                              ToolTip.Tip="Keep the newest frame in view" AutomationProperties.Name="Follow live">
+                  <TextBlock Text="Follow live" />
+                </ToggleButton>
+              </StackPanel>
+            </DataTemplate>
+            <!-- Ladder: the row mode select ("18 px rows" | "Time-scaled", OQ6). -->
+            <DataTemplate DataType="vm:LadderViewModel">
+              <ComboBox Classes="sm" ItemsSource="{Binding Mode.Labels}" SelectedIndex="{Binding Mode.SelectedIndex}"
+                        AutomationProperties.Name="Ladder rows" />
+            </DataTemplate>
+            <!-- Hex: ▼ IN | ▲ OUT · 16 B/row. -->
+            <DataTemplate DataType="vm:HexViewModel">
+              <inspect:HexPaneHeader />
+            </DataTemplate>
+          </ContentControl.DataTemplates>
+        </ContentControl>
+      </c:PaneHeader.ViewControls>
+    </c:PaneHeader>
+    <ContentControl Name="View" Content="{Binding Content}" />
+  </DockPanel>
+</UserControl>

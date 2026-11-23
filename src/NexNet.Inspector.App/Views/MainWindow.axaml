@@ -5,6 +5,7 @@
         xmlns:c="using:NexNet.Inspector.App.Controls"
         xmlns:home="using:NexNet.Inspector.App.Views.Home"
         xmlns:connect="using:NexNet.Inspector.App.Views.Connect"
+        xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
@@ -30,6 +31,11 @@
        (MainWindow.axaml.cs). -->
   <Grid x:Name="Root" RowDefinitions="Auto,*">
     <shell:TitleBar x:Name="TitleBar" DataContext="{Binding Chrome}" />
+
+    <!-- The Inspect workspace over the active document. -->
+    <Panel Grid.Row="1" IsVisible="{Binding Inspect.IsShown}">
+      <inspect:InspectView x:Name="Inspect" DataContext="{Binding Inspect}" />
+    </Panel>
 
     <!-- The empty window: hero, action cards, recents; dropping a .nntl on it opens the file. -->
     <Panel Grid.Row="1" IsVisible="{Binding !Documents.HasDocuments}">

@@ -1,0 +1,44 @@
+<!--
+  The property tree's row text (Themes/PropertyTree.axaml): name secondary; value mono 11 px primary, coloured by tone
+  (transport, nexnet, muted); a section's title 600 weight primary and its summary in the UI font, secondary. A control
+  theme may not style into an item template, so these are plain styles scoped to the tree.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:pt="using:NexNet.Inspector.App.Controls.PropertyTree">
+  <Style Selector="pt|PropertyTreeView TextBlock.name">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView TextBlock.glyph">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView TextBlock.value">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Grid.transport TextBlock.value">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Split.Transport}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Grid.nexnet TextBlock.value">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Split.Nexnet}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Grid.muted TextBlock.value">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+  </Style>
+  <!-- Sections: "▾ Title" bold primary, the summary in the UI font, secondary. -->
+  <Style Selector="pt|PropertyTreeView Grid.section TextBlock.glyph">
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Grid.section TextBlock.name">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Grid.section TextBlock.value">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+</Styles>
