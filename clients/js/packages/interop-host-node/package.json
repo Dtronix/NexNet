@@ -1,6 +1,6 @@
 {
   "name": "@dtronix/nexnet-interop-host-node",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "description": "Node language host of the NexNet cross-language test harness (docs/internals/interop-control-protocol.md).",
   "license": "MIT",

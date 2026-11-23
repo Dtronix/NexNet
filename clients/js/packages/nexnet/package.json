@@ -1,6 +1,6 @@
 {
   "name": "@dtronix/nexnet",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "description": "NexNet client for JavaScript: browser (WebSocket) and Node (WebSocket, HttpSocket, TCP, TLS, UDS).",
   "license": "MIT",

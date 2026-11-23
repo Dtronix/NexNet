@@ -2,7 +2,7 @@
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
     <Description>Quic transport protocol for NexNet.</Description>
-    <Version>0.20.0</Version>
+    <Version>0.21.0</Version>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
