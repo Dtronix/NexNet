@@ -38,9 +38,14 @@ public enum LiveCaptureEvent : byte
 public sealed class LiveCapture
 {
     private readonly Dictionary<ulong, NexusSchema?> _schemas = [];
+    private readonly Dictionary<ulong, NntlSchema> _schemaBlocks = [];
     private readonly NexusSchema? _workspace;
     private readonly SchemaChoice _choice;
     private readonly long _maxRetainedBytes;
+
+    // The capture-order key of each block given to the session (see CaptureSession.AddOp): ops keep it, so a save
+    // interleaves both directions, gaps and the snapshot as they arrived.
+    private long _sequence;
 
     /// <summary>Creates a capture waiting for its stream's first block.</summary>
     /// <param name="workspace">The workspace schema, if the user set one.</param>
@@ -106,7 +111,11 @@ public sealed class LiveCapture
             {
                 var schema = NntlCodec.DecodeSchema(block.Body);
                 if (SchemaHash.TryRead(schema.Hash.Span, out var hash))
-                    _schemas[hash] = NexusSchema.TryRead(schema.Schema.ToArray(), out var parsed, out _) ? parsed : null;
+                {
+                    var bytes = schema.Schema.ToArray();
+                    _schemas[hash] = NexusSchema.TryRead(bytes, out var parsed, out _) ? parsed : null;
+                    _schemaBlocks[hash] = new NntlSchema(schema.Hash.ToArray(), bytes);
+                }
                 return LiveCaptureEvent.Prepared;
             }
 
@@ -117,11 +126,17 @@ public sealed class LiveCapture
                 var open = NntlCodec.DecodeSessionOpen(block.Body);
                 open = open with { SchemaHash = open.SchemaHash.ToArray() };
                 NexusSchema? embedded = null;
+                NntlSchema? schemaBlock = null;
                 if (SchemaHash.TryRead(open.SchemaHash.Span, out var hash))
+                {
                     _schemas.TryGetValue(hash, out embedded);
+                    if (_schemaBlocks.TryGetValue(hash, out var named))
+                        schemaBlock = named;
+                }
+
                 var resolution = SchemaResolution.Resolve(!open.SchemaHash.IsEmpty, embedded, _workspace, _choice);
                 Session = new CaptureSession(CaptureSource.Live, header, open, new LiveOpStore(_maxRetainedBytes),
-                    new LiveOpStore(_maxRetainedBytes), resolution);
+                    new LiveOpStore(_maxRetainedBytes), resolution) { SchemaBlock = schemaBlock };
                 return LiveCaptureEvent.SessionOpened;
             }
 
@@ -134,7 +149,7 @@ public sealed class LiveCapture
                 if (Session is not { } session || gap.SessionId != session.SessionId)
                     return LiveCaptureEvent.None;
                 lock (session.Gate)
-                    session.AddGap(gap);
+                    session.AddGap(gap, ++_sequence);
                 return LiveCaptureEvent.Changed;
             }
 
@@ -144,7 +159,7 @@ public sealed class LiveCapture
                 if (Session is not { } session || snapshot.SessionId != session.SessionId)
                     return LiveCaptureEvent.None;
                 lock (session.Gate)
-                    session.AddSnapshot(snapshot);
+                    session.AddSnapshot(snapshot, ++_sequence);
                 return LiveCaptureEvent.Changed;
             }
 
@@ -172,7 +187,7 @@ public sealed class LiveCapture
         if (Session is not { } session || op.SessionId != session.SessionId)
             return LiveCaptureEvent.None;
         lock (session.Gate)
-            session.AddOp(op, 0);
+            session.AddOp(op, ++_sequence);
         return LiveCaptureEvent.Changed;
     }
 }

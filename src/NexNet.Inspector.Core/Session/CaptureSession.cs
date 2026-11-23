@@ -12,6 +12,11 @@ namespace NexNet.Inspector.Core.Session;
 /// <param name="Seq">The frame's sequence number in its direction.</param>
 public readonly record struct FrameKey(TapDirection Direction, long Seq);
 
+/// <summary>Where a gap block sits: its capture-order key and the stream offset of the first byte it lost.</summary>
+/// <param name="Source">The gap's capture-order key (see <see cref="CaptureSession.AddOp"/>).</param>
+/// <param name="Offset">The direction's stream offset when the gap arrived.</param>
+public readonly record struct GapMark(long Source, long Offset);
+
 /// <summary>
 /// One captured session as the viewer holds it: the op stores of both directions, a frame parser per direction, the
 /// message assembler and the schema decoder over them, plus the session's time range, gaps, snapshot and close. A live
@@ -34,6 +39,7 @@ public sealed class CaptureSession
 {
     private readonly List<FrameKey> _order = [];
     private readonly List<NntlGap> _gaps = [];
+    private readonly List<GapMark> _gapMarks = [];
     private readonly bool[] _fromInception = new bool[2];
 
     // Per direction, the first redaction that can still overlap a later frame: frames complete in stream order, so the
@@ -132,6 +138,20 @@ public sealed class CaptureSession
     /// <summary>Snapshot sections that did not decode (left out of <see cref="Snapshot"/>).</summary>
     public int MalformedSnapshotSections { get; private set; }
 
+    /// <summary>
+    /// The attach snapshot block as it arrived (its sections copied), so a save writes it back; null without one.
+    /// </summary>
+    public NntlSnapshot? SnapshotBlock { get; private set; }
+
+    /// <summary>Capture-order key of the snapshot block (see <see cref="AddOp"/>'s source).</summary>
+    public long SnapshotSource { get; private set; }
+
+    /// <summary>
+    /// The schema block <see cref="NntlSessionOpen.SchemaHash"/> names, with its bytes, so a save embeds the same schema;
+    /// null when the session names none or it was not found.
+    /// </summary>
+    public NntlSchema? SchemaBlock { get; init; }
+
     /// <summary>The session-close block, once seen.</summary>
     public NntlSessionClose? Close { get; private set; }
 
@@ -161,9 +181,16 @@ public sealed class CaptureSession
     /// <returns>False for an unknown frame.</returns>
     public bool TryGetFrame(FrameKey key, out FrameRecord frame) => Assembler.TryGetFrame(key.Direction, key.Seq, out frame);
 
+    /// <summary>For each of <see cref="Gaps"/>, its capture-order key and the stream offset where its lost bytes begin.</summary>
+    public ReadOnlySpan<GapMark> GapMarks => CollectionsMarshal.AsSpan(_gapMarks);
+
     /// <summary>Adds a transport op. Call under <see cref="Gate"/>.</summary>
     /// <param name="op">The op. Its bytes need only be valid during the call (the store copies what it keeps).</param>
-    /// <param name="source">The op's block offset in a recording; 0 for a live stream.</param>
+    /// <param name="source">
+    /// The op's capture-order key, kept as <see cref="StreamOp.Source"/>: its block offset in a recording (which is where a
+    /// file store reads its bytes back), the block's sequence number in a live stream. Both rise in capture order, so a
+    /// save can interleave the two directions, gaps and the snapshot exactly as they arrived.
+    /// </param>
     public void AddOp(in NntlTransportOp op, long source)
     {
         if (_finished || op.SessionId != SessionId)
@@ -178,13 +205,15 @@ public sealed class CaptureSession
 
     /// <summary>Adds a gap block. Call under <see cref="Gate"/>.</summary>
     /// <param name="gap">The gap.</param>
-    public void AddGap(in NntlGap gap)
+    /// <param name="source">Its capture-order key; see <see cref="AddOp"/>.</param>
+    public void AddGap(in NntlGap gap, long source = 0)
     {
         if (_finished || gap.SessionId != SessionId)
             return;
 
         _gaps.Add(gap);
         var store = GetStore(gap.Direction);
+        _gapMarks.Add(new GapMark(source, store.EndOffset));
         var parser = GetParser(gap.Direction);
         if (parser is null)
         {
@@ -206,11 +235,19 @@ public sealed class CaptureSession
     /// Adds the attach snapshot. Call under <see cref="Gate"/>. Before any frame it seeds the assembler
     /// (<see cref="MessageAssembler.Seed"/>); later it is only kept for display.
     /// </summary>
-    /// <param name="snapshot">The snapshot block.</param>
-    public void AddSnapshot(in NntlSnapshot snapshot)
+    /// <param name="snapshot">The snapshot block; its sections need only be valid during the call.</param>
+    /// <param name="source">Its capture-order key; see <see cref="AddOp"/>.</param>
+    public void AddSnapshot(in NntlSnapshot snapshot, long source = 0)
     {
         if (_finished || snapshot.SessionId != SessionId)
             return;
+
+        // The reader's buffer is reused for the next block; a snapshot is one small block per attach.
+        var sections = snapshot.Sections.ToArray();
+        for (var i = 0; i < sections.Length; i++)
+            sections[i] = sections[i] with { Data = sections[i].Data.ToArray() };
+        SnapshotBlock = snapshot with { Sections = sections };
+        SnapshotSource = source;
 
         Snapshot = SnapshotSeed.FromSnapshot(snapshot, out var malformed);
         MalformedSnapshotSections = malformed;

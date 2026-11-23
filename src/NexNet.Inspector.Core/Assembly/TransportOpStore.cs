@@ -133,6 +133,25 @@ public abstract class TransportOpStore : IStreamBytes
         return true;
     }
 
+    /// <summary>The first op still held that starts at or after a stream offset.</summary>
+    /// <param name="offset">Absolute stream offset.</param>
+    /// <returns>Its index into <see cref="Ops"/>; <c>Ops.Length</c> when none does.</returns>
+    public int IndexAtOrAfter(long offset)
+    {
+        var lo = _head;
+        var hi = _count;
+        while (lo < hi)
+        {
+            var mid = lo + ((hi - lo) >> 1);
+            if (_ops[mid].Offset < offset)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+
+        return lo - _head;
+    }
+
     /// <inheritdoc/>
     public bool TryGetSegment(long offset, out ReadOnlyMemory<byte> segment)
     {

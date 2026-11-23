@@ -173,8 +173,11 @@ public sealed class RecordingFile : IDisposable
         {
             if (open.SessionId != sessionId)
                 continue;
+            NntlSchema? block = null;
+            if (!open.SchemaHash.IsEmpty && Reader.TryGetSchema(open.SchemaHash.Span, out var embedded))
+                block = new NntlSchema(embedded.Hash.ToArray(), embedded.Schema.ToArray());
             return new CaptureSession(CaptureSource.File, Header, open, new RecordingOpStore(Reader, cacheCapacity),
-                new RecordingOpStore(Reader, cacheCapacity), ResolveSchema(open, workspace, choice));
+                new RecordingOpStore(Reader, cacheCapacity), ResolveSchema(open, workspace, choice)) { SchemaBlock = block };
         }
 
         throw new ArgumentException($"The recording has no session {sessionId}.", nameof(sessionId));
@@ -270,10 +273,10 @@ public sealed class RecordingFile : IDisposable
                     session.AddOp(NntlCodec.DecodeTransportOp(block.Body), block.Offset);
                     break;
                 case NntlBlockKind.Gap:
-                    session.AddGap(NntlCodec.DecodeGap(block.Body));
+                    session.AddGap(NntlCodec.DecodeGap(block.Body), block.Offset);
                     break;
                 case NntlBlockKind.Snapshot:
-                    session.AddSnapshot(NntlCodec.DecodeSnapshot(block.Body));
+                    session.AddSnapshot(NntlCodec.DecodeSnapshot(block.Body), block.Offset);
                     break;
                 case NntlBlockKind.SessionClose:
                     session.AddClose(NntlCodec.DecodeSessionClose(block.Body));
