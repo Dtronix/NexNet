@@ -32,6 +32,8 @@ public enum CaptureScenario
 
     /// <summary>context-menus: inspect-live with the lane menu on the FileUpload pipe, the hex selection menu and its Decode-as submenu.</summary>
     ContextMenus,
+    /// <summary>command-palette: inspect-live with the palette open, queried for the traced invocation's id.</summary>
+    CommandPalette,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -62,6 +64,7 @@ public static class CaptureScenarios
         [CaptureScenario.OpenRecording] = new("open-recording", OpenRecordingScreen.Create),
         [CaptureScenario.InspectSessionStart] = new("inspect-session-start", InspectSessionStartScreen.Create),
         [CaptureScenario.ContextMenus] = new("context-menus", ContextMenusScreen.Create),
+        [CaptureScenario.CommandPalette] = new("command-palette", CommandPaletteScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

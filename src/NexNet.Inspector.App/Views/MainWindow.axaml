@@ -7,6 +7,7 @@
         xmlns:connect="using:NexNet.Inspector.App.Views.Connect"
         xmlns:recording="using:NexNet.Inspector.App.Views.OpenRecording"
         xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
+        xmlns:palette="using:NexNet.Inspector.App.Views.Palette"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
@@ -51,5 +52,10 @@
 
     <!-- The modal layer below the title bar: scrim and the open dialog (connect, open-recording). -->
     <c:DialogHost x:Name="Dialogs" Grid.Row="1" Dialog="{Binding Dialog}" />
+
+    <!-- The command palette over the whole window, title bar included (56 px from the window top). -->
+    <Panel Grid.RowSpan="2" IsVisible="{Binding Palette.IsOpen}">
+      <palette:CommandPalette x:Name="Palette" DataContext="{Binding Palette}" />
+    </Panel>
   </Grid>
 </Window>

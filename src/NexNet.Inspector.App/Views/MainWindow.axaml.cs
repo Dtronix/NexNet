@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Platform;
+using NexNet.Inspector.App.Services.Commands;
 using NexNet.Inspector.App.Settings;
 using NexNet.Inspector.App.ViewModels;
 using NexNet.Inspector.App.Views.Shell;
@@ -26,6 +27,7 @@ public sealed partial class MainWindow : Window
     private Size _normalSize;
     private TitleBarRecovery? _titleBarRecovery;
     private Panel? _resizeGrips;
+    private readonly List<KeyBinding> _commandBindings = [];
 
     public MainWindow()
         : this(WindowChromePolicy.Current)
@@ -83,6 +85,28 @@ public sealed partial class MainWindow : Window
     {
         base.OnDataContextChanged(e);
         ChromeModel?.UpdateWidth(Bounds.Width);
+        BindShortcuts((DataContext as MainWindowViewModel)?.Commands);
+    }
+
+    /// <summary>
+    /// Binds every command's window-wide shortcut (Ctrl+Shift+P, Ctrl+G, …) to the registry, so a shortcut runs exactly
+    /// when the palette and the menu show its command enabled. A gesture the window already binds keeps that binding.
+    /// </summary>
+    private void BindShortcuts(CommandRegistry? commands)
+    {
+        foreach (KeyBinding binding in _commandBindings) KeyBindings.Remove(binding);
+        _commandBindings.Clear();
+        if (commands is null) return;
+        foreach (CommandDefinition definition in CommandRegistry.Definitions)
+        {
+            if (!definition.IsWindowShortcut || definition.Gesture is not { } gesture) continue;
+            bool taken = false;
+            foreach (KeyBinding existing in KeyBindings) taken |= gesture.Equals(existing.Gesture);
+            if (taken) continue;
+            KeyBinding binding = new() { Gesture = gesture, Command = commands.CommandFor(definition.Command) };
+            KeyBindings.Add(binding);
+            _commandBindings.Add(binding);
+        }
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

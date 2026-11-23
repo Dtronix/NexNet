@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
+using NexNet.Inspector.App.Services.Commands;
 using NexNet.Inspector.App.Settings;
 using NexNet.Inspector.Core.Format;
 using NexNet.Inspector.Core.Session;
@@ -10,7 +11,7 @@ namespace NexNet.Inspector.App.ViewModels;
 
 /// <summary>
 /// The main window's state: the theme choice, the open documents (with the sync bus every view follows), the empty
-/// window's home, the title bar's chrome and the dialog shown over it.
+/// window's home, the title bar's chrome, the dialog shown over it, the app's commands and the command palette.
 /// </summary>
 public sealed partial class MainWindowViewModel : ObservableObject
 {
@@ -37,8 +38,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Chrome.Requested += OnShellRequested;
         Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset };
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
+        Palette = new CommandPaletteViewModel(Documents, Commands);
+        BindCommands();
         Documents.PropertyChanged += (_, e) =>
         {
+            // Document-dependent commands (go to time, next document) change state with the documents.
+            if (e.PropertyName is nameof(DocumentsViewModel.Active) or nameof(DocumentsViewModel.HasDocuments)) Commands.Refresh();
+
             // Back to the empty window: the recents may have grown while documents were open.
             if (e.PropertyName == nameof(DocumentsViewModel.HasDocuments) && !Documents.HasDocuments) Home.Refresh();
         };
@@ -60,6 +66,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string Title => AppName;
 
+    /// <summary>The app's commands, shared by the command palette and the app menu.</summary>
+    public CommandRegistry Commands { get; } = new();
+
+    /// <summary>The command palette (Ctrl+Shift+P).</summary>
+    public CommandPaletteViewModel Palette { get; }
+
     /// <summary>The dialog over the window (its view comes from the window's data templates); null when none is open.</summary>
     [ObservableProperty]
     public partial object? Dialog { get; private set; }
@@ -78,6 +90,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Ctrl+O: the file picker, then the recording.</summary>
     [RelayCommand]
     private Task Open() => Home.OpenFileCommand.ExecuteAsync(null);
+
+    /// <summary>Opens the command palette with <paramref name="query"/> (":" for Go to time), unless a dialog is open.</summary>
+    /// <returns>True when the palette is open.</returns>
+    public bool ShowPalette(string? query = null)
+    {
+        if (Dialog is not null) return false;
+        Palette.Open(query);
+        return true;
+    }
 
     /// <summary>Opens the Connect dialog (unless a dialog is already open), prefilled from a recent endpoint when given.</summary>
     /// <returns>The dialog's model; null when another dialog was open.</returns>
@@ -168,6 +189,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
             // A connection that fails while closing has nothing left to report to: the dialog is gone.
             System.Diagnostics.Debug.WriteLine("connect dialog close: " + e.Message);
         }
+    }
+
+    // The commands whose behaviour lives here; others are bound by their owners (the app menu, recording, compare).
+    private void BindCommands()
+    {
+        Commands.Bind(AppCommand.CommandPalette, () => ShowPalette(), () => Dialog is null);
+        Commands.Bind(AppCommand.OpenRecording, () => OpenCommand.Execute(null), () => Dialog is null);
+        Commands.Bind(AppCommand.Connect, () => ShowConnect(null), () => Dialog is null);
+        Commands.Bind(AppCommand.GoToTime, () => ShowPalette(":"), () => Dialog is null && Documents.Active?.Session is not null);
+        Commands.Bind(AppCommand.ToggleSplit, () => Inspect.ToggleSplitCommand.Execute(null), () => Inspect.IsShown && Inspect.CanSplit);
+        Commands.Bind(AppCommand.NextDocument, () => Documents.Cycle(backwards: false), () => Documents.Documents.Count > 1);
+        Commands.Bind(AppCommand.PreviousDocument, () => Documents.Cycle(backwards: true), () => Documents.Documents.Count > 1);
+        Commands.Bind(AppCommand.ThemeDark, () => Theme = AppTheme.Dark);
+        Commands.Bind(AppCommand.ThemeLight, () => Theme = AppTheme.Light);
+        Commands.Bind(AppCommand.ThemeSystem, () => Theme = AppTheme.System);
+    }
+
+    partial void OnDialogChanged(object? value)
+    {
+        // An open dialog owns the keyboard: the palette closes and the window's commands wait for it.
+        if (value is not null) Palette.Close();
+        Commands.Refresh();
     }
 
     partial void OnThemeChanged(AppTheme value)
