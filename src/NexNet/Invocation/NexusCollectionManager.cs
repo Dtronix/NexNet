@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Pipes;
@@ -85,6 +86,26 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         _collections = _collectionBuilder.ToFrozenDictionary();
         _collectionBuilder.Clear();
         _collectionBuilder = null;
+    }
+
+    /// <summary>
+    /// The configured collections as seen from <paramref name="session"/>, ordered by ID; empty when none are configured.
+    /// </summary>
+    public IReadOnlyList<NexusCollectionSnapshot> GetSnapshots(INexusSession session)
+    {
+        var collections = _collections;
+        if (collections == null || collections.Count == 0)
+            return [];
+
+        var snapshots = new List<NexusCollectionSnapshot>(collections.Count);
+        foreach (var collection in collections)
+        {
+            if (collection.Value is INexusCollectionSnapshotSource source)
+                snapshots.Add(source.GetSnapshot(session));
+        }
+
+        snapshots.Sort(static (a, b) => a.Id.CompareTo(b.Id));
+        return snapshots;
     }
 
     public void SetClientProxySession(ProxyInvocationBase proxy, INexusSession session)

@@ -186,6 +186,8 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `INexusCollection.cs` - Base interface for synchronized collections
 - `INexusList.cs` - List interface: Add, Remove, Insert, Clear, Count
 - `NexusCollectionAttribute.cs` - Decorates properties with sync mode
+- `NexusCollectionKind.cs` - Kind of a collection in snapshots (List)
+- `INexusCollectionSnapshotSource.cs` - Internal: a collection's `NexusCollectionSnapshot` for one session (see 1.14)
 
 **Lists (src/NexNet/Collections/Lists/):**
 - `NexusListServer.cs` - Server-side with VersionedList<T>; broadcasts via NexusBroadcastServer
@@ -260,7 +262,7 @@ Meter `NexNet` and session snapshots (docs/articles/metrics.md).
 - `MetricsSessionTable.cs` - Slot array + free list, shrinks when a quarter full; owner's lock only
 - `MetricsTagSet.cs` - One (role, transport) tag combination: precomputed tags, live sums, retired monotonic totals
 - `IMeteredSession.cs` / `SessionMetricsTotals.cs` - What a session gives a collection (lock-free reads only)
-- `NexusSessionSnapshot.cs` - Public snapshot records (session, budget, invocations, pipes, partial item, large messages, server)
+- `NexusSessionSnapshot.cs` - Public snapshot records (session, budget, invocations, pipes, partial item, large messages, collections, server). `NexusSessionSnapshot.Collections` (`NexusCollectionSnapshot`: ID as on the wire, `NexusCollectionKind`, mode, this session's state and pipe IDs, count, version) is built by `NexusCollectionManager.GetSnapshots(session)` from each collection's `INexusCollectionSnapshotSource`: one `Volatile.Read` of the `VersionedList` state (count and version together) and a lock-free walk of the broadcaster's session set; nothing is added to the change path. It is C#-only: `SnapshotFieldsExportTests.CSharpOnly` keeps it out of `tests/golden/snapshot-fields.json`, so the Java/JS snapshots do not carry it
 - `LogFormat.cs` - Byte and duration formatting for log messages
 - `INexusTap.cs` - Transport tap seam (opt-in `ConfigBase.Tap`): `INexusTap.SessionStarted(in NexusTapSessionInfo)` returns a per-session `INexusSessionTap` or null; it gets `OnRead` (only the bytes each read adds, never the unconsumed remainder again), `OnWrite` (the bytes committed since the last flush, once per flush), `OnConnected(final id)`, `OnClosed(reason)`. Bytes are post-TLS from the preamble on, borrowed (no copy) until the call or its returned task completes; Stopwatch timestamps. An incomplete `ValueTask` holds the read loop/flush (lossless back-pressure); a throwing tap is logged and stops tapping that direction. Recording, rings, redaction and endpoints live in NexNet.Inspector.Tap, not core. The wrappers (`Internals/Pipelines/TapPipeReader`/`TapPipeWriter`) allocate nothing per operation once warm; with no tap the session keeps the raw transport pipes, so the cost is one null check per session
 - `IInspectorSchemaSource.cs` - Static abstract `InspectorSchema` (MessagePack IR) + `InspectorSchemaHash`, implemented by generated nexuses when `NexNetEmitInspectorSchema=true` (see §2.3)

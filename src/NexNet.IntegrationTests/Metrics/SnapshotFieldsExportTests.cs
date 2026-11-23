@@ -24,6 +24,16 @@ internal class SnapshotFieldsExportTests
         typeof(NexusLargeMessageSnapshot),
     ];
 
+    /// <summary>
+    /// Members of the records that only the C# runtime reports, left out of the golden file so the Java and JavaScript
+    /// snapshots are not required to carry them. <see cref="NexusSessionSnapshot.Collections"/> serves the inspector's
+    /// attach snapshot, which reads C# sessions only.
+    /// </summary>
+    private static readonly (Type Record, string Property)[] CSharpOnly =
+    [
+        (typeof(NexusSessionSnapshot), nameof(NexusSessionSnapshot.Collections)),
+    ];
+
     [Test]
     public async Task SnapshotFields_MatchGoldenFile()
     {
@@ -41,7 +51,7 @@ internal class SnapshotFieldsExportTests
     }
 
     /// <summary>
-    /// The public instance properties of each record in declaration order, camelCased.
+    /// The public instance properties of each record in declaration order, camelCased, except the C#-only ones.
     /// </summary>
     private static string Render()
     {
@@ -57,6 +67,7 @@ internal class SnapshotFieldsExportTests
             {
                 writer.WriteStartArray(record.Name);
                 foreach (var property in record.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                             .Where(p => !CSharpOnly.Contains((record, p.Name)))
                              .OrderBy(p => p.MetadataToken))
                 {
                     writer.WriteStringValue(JsonNamingPolicy.CamelCase.ConvertName(property.Name));

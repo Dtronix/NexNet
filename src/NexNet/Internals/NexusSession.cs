@@ -767,6 +767,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             BytesSent = Volatile.Read(ref _bytesSent),
             FramesReceived = Volatile.Read(ref _framesReceived),
             BytesReceived = Volatile.Read(ref _bytesReceived),
+            Collections = CollectionManager.GetSnapshots(this),
         };
 
         static TimeSpan Since(long nowTicks, long ticks) => TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - ticks));
