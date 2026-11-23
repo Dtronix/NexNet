@@ -1,0 +1,78 @@
+<!--
+  data-table (PKG controls/data-table, data-table.html): the table is a panel-coloured ListBox whose template is the
+  20 px header row (c:DataTableHeader, drawn) over the rows' ScrollViewer (the app's scroll rail) and, in the same cell,
+  the skeleton bars (loading, OQ2) and the centred tertiary hint (empty, OQ2: padding 24px 10px, 12 px). Rows are drawn
+  c:DataTableRow containers; their state backgrounds are set here, least to most important: trace tint
+  (hex.body-selected), hover (surface.raised), selected (state.selected). The selection bar and the 1 px inbound focus
+  ring are drawn by the row (the ring replaces the bar, as .sel.foc does).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:dt="using:NexNet.Inspector.App.Controls.DataTable">
+
+  <ControlTheme x:Key="{x:Type dt:DataTableRow}" TargetType="dt:DataTableRow">
+    <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <!-- Drawn: no template (a ListBoxItem's presenter would paint its background over the cells). -->
+    <Setter Property="Template" Value="{x:Null}" />
+    <Style Selector="^[IsTraced=True]">
+      <Setter Property="Background" Value="{DynamicResource Brush.Hex.BodySelected}" />
+    </Style>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:focus-visible">
+      <Setter Property="ShowsFocusRing" Value="True" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="{x:Type dt:DataTableControl}" TargetType="dt:DataTableControl">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="RowHeight" Value="{DynamicResource Size.EventRow}" />
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <VirtualizingStackPanel />
+      </ItemsPanelTemplate>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                ClipToBounds="True">
+          <DockPanel>
+            <dt:DataTableHeader Name="PART_Header" DockPanel.Dock="Top" />
+            <Panel>
+              <ScrollViewer Name="PART_ScrollViewer"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+              </ScrollViewer>
+              <dt:DataTableSkeleton Name="PART_Skeleton" IsVisible="False" VerticalAlignment="Stretch" />
+              <TextBlock Name="PART_Empty"
+                         Text="{TemplateBinding EmptyText}"
+                         IsVisible="False"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Top"
+                         Margin="10,24"
+                         TextTrimming="CharacterEllipsis"
+                         FontFamily="{DynamicResource Font.Ui}"
+                         FontSize="{DynamicResource FontSize.Body}"
+                         Foreground="{DynamicResource Brush.Text.Tertiary}" />
+            </Panel>
+          </DockPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </ControlTheme>
+</ResourceDictionary>

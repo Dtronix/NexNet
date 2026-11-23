@@ -21,6 +21,8 @@
         <ResourceInclude Source="/Themes/Dialog.axaml" />
         <ResourceInclude Source="/Themes/Banner.axaml" />
         <ResourceInclude Source="/Themes/Card.axaml" />
+        <!-- Data table: header, drawn rows, skeleton and empty states (I20). -->
+        <ResourceInclude Source="/Themes/DataTable.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>
