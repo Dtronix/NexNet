@@ -25,6 +25,15 @@ public sealed class ChatScenarioOptions
     /// <summary>The user name the client joins with.</summary>
     public string User { get; init; } = "ada";
 
+    /// <summary>Text of the first SendMessage.</summary>
+    public string HelloText { get; init; } = "hello everyone";
+
+    /// <summary>
+    /// A SendMessage sent right after the first one; null sends none. The Compare variant fixture uses it to insert an
+    /// invocation in the middle of the SendMessage sequence.
+    /// </summary>
+    public string? ExtraMessage { get; init; }
+
     /// <summary>Attachment size: above 4 × 65,535 bytes it streams as five MessageChunks (spec §6.1).</summary>
     public int AttachmentBytes { get; init; } = 300_000;
 
@@ -54,7 +63,10 @@ public sealed class ChatScenarioOptions
 }
 
 /// <summary>Drives a connected Chat client through the screen scenarios.</summary>
-/// <remarks>The Full scenario makes four SendMessage calls (<see cref="FullMessages"/>), the second one canceled.</remarks>
+/// <remarks>
+/// The Full scenario makes four SendMessage calls (<see cref="FullMessages"/>), the second one canceled (one more, and
+/// the second, with <see cref="ChatScenarioOptions.ExtraMessage"/>).
+/// </remarks>
 public static class ChatScenario
 {
     /// <summary>
@@ -90,7 +102,9 @@ public static class ChatScenario
             throw new InvalidOperationException("The Users collection did not enable.");
         await proxy.Users.ReadyTask.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
         await proxy.Join(options.User).AsTask().WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
-        await SendAsync(proxy, options, "hello everyone", cancellationToken).ConfigureAwait(false);
+        await SendAsync(proxy, options, options.HelloText, cancellationToken).ConfigureAwait(false);
+        if (options.ExtraMessage != null)
+            await SendAsync(proxy, options, options.ExtraMessage, cancellationToken).ConfigureAwait(false);
 
         // The canceled call: the server holds it until the client's InvocationCancellation arrives.
         using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))

@@ -44,7 +44,7 @@ public class FixtureTests
 
         var expectedSessions = kind switch
         {
-            FixtureKind.ChatServer or FixtureKind.ChatClient => 1,
+            FixtureKind.ChatServer or FixtureKind.ChatClient or FixtureKind.ChatClientVariant => 1,
             FixtureKind.LegacySchema => 2,
             _ => 3,
         };

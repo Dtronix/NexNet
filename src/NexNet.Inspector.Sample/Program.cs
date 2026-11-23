@@ -54,8 +54,9 @@ internal static class Program
                    Connects a Chat client and runs the Full scenario (Users, Join, a canceled SendMessage, uploads, a
                    five-chunk SendAttachment interleaved with a FileUpload pipe and pings, the LogLine channel, then
                    --burst extra log lines), disconnects, waits --delay ms and repeats; 0 iterations repeats forever.
-          fixtures [DIRECTORY]   (default src/NexNet.Inspector.Tests/Fixtures)
-                   Records the checked-in fixture files and checks each one.
+          fixtures [DIRECTORY] [KIND...]   (default src/NexNet.Inspector.Tests/Fixtures)
+                   Records the checked-in fixture files and checks each one. KIND (ChatServer, ChatClient, ServerAll,
+                   LegacySchema, Truncated, ChatClientVariant) records only those and leaves the other files alone.
           check    FILE.nntl...
                    Reads recordings with the inspector core and prints what it found.
 
@@ -89,7 +90,8 @@ internal static class Program
             {
                 SampleCommand.Serve => await ServeAsync(Options.Parse(args.AsSpan(1)), cts.Token),
                 SampleCommand.Client => await ClientAsync(Options.Parse(args.AsSpan(1)), cts.Token),
-                SampleCommand.Fixtures => await FixturesAsync(args.Length > 1 ? args[1] : Path.Combine("src", "NexNet.Inspector.Tests", "Fixtures"), cts.Token),
+                SampleCommand.Fixtures => await FixturesAsync(args.Length > 1 ? args[1] : Path.Combine("src", "NexNet.Inspector.Tests", "Fixtures"),
+                    args.Skip(2).ToArray(), cts.Token),
                 _ => Check(args.AsSpan(1)),
             };
         }
@@ -189,9 +191,17 @@ internal static class Program
         return 0;
     }
 
-    private static async Task<int> FixturesAsync(string directory, CancellationToken cancellationToken)
+    private static async Task<int> FixturesAsync(string directory, string[] kindNames, CancellationToken cancellationToken)
     {
-        await FixtureGenerator.WriteAsync(directory, Console.Out, cancellationToken);
+        var kinds = new List<FixtureKind>();
+        foreach (var name in kindNames)
+        {
+            if (!Enum.TryParse<FixtureKind>(name, ignoreCase: true, out var kind) || !Enum.IsDefined(kind))
+                throw new ArgumentException($"Unknown fixture {name}.");
+            kinds.Add(kind);
+        }
+
+        await FixtureGenerator.WriteAsync(directory, Console.Out, kinds.Count > 0 ? kinds : Fixtures.All, cancellationToken);
         return 0;
     }
 

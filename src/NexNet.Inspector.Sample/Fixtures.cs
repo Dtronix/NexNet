@@ -27,6 +27,12 @@ public enum FixtureKind : byte
 
     /// <summary><see cref="ServerAll"/> cut inside its last block, without footer: a crashed recording.</summary>
     Truncated = 4,
+
+    /// <summary>
+    /// Another run of the Full scenario recorded on the client, with a changed first message and one extra SendMessage:
+    /// the Compare pair with real differences against <see cref="ChatClient"/>.
+    /// </summary>
+    ChatClientVariant = 5,
 }
 
 /// <summary>Names and checks of the fixture recordings.</summary>
@@ -34,7 +40,16 @@ public static class Fixtures
 {
     /// <summary>Every fixture, in generation order.</summary>
     public static readonly FixtureKind[] All =
-        [FixtureKind.ChatServer, FixtureKind.ChatClient, FixtureKind.ServerAll, FixtureKind.LegacySchema, FixtureKind.Truncated];
+    [
+        FixtureKind.ChatServer, FixtureKind.ChatClient, FixtureKind.ServerAll, FixtureKind.LegacySchema, FixtureKind.Truncated,
+        FixtureKind.ChatClientVariant,
+    ];
+
+    /// <summary>The first message of the variant run (the Full scenario's is "hello everyone").</summary>
+    public const string VariantHelloText = "hello everyone!";
+
+    /// <summary>The SendMessage the variant run inserts after its first one.</summary>
+    public const string VariantExtraMessage = "one more thing";
 
     /// <summary>Attachment size of the Full scenario in the fixtures.</summary>
     public const int AttachmentBytes = 300_000;
@@ -75,6 +90,7 @@ public static class Fixtures
         FixtureKind.ServerAll => "server-all.nntl",
         FixtureKind.LegacySchema => "legacy-schema.nntl",
         FixtureKind.Truncated => "server-all-truncated.nntl",
+        FixtureKind.ChatClientVariant => "chat-client-variant.nntl",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -99,9 +115,14 @@ public static class Fixtures
         {
             case FixtureKind.ChatServer:
             case FixtureKind.ChatClient:
+            case FixtureKind.ChatClientVariant:
                 Expect(problems, recording.Sessions.Count == 1, $"{recording.Sessions.Count} sessions");
                 if (recording.Sessions.Count == 1)
-                    CheckFullSession(problems, recording.Sessions[0], kind == FixtureKind.ChatServer, recording.Header.StopwatchFrequency);
+                {
+                    CheckFullSession(problems, recording.Sessions[0], kind == FixtureKind.ChatServer, kind == FixtureKind.ChatClientVariant,
+                        recording.Header.StopwatchFrequency);
+                }
+
                 break;
             case FixtureKind.ServerAll:
             case FixtureKind.Truncated:
@@ -133,7 +154,7 @@ public static class Fixtures
         return problems;
     }
 
-    private static void CheckFullSession(List<string> problems, SessionAnalysis session, bool serverSide, long frequency)
+    private static void CheckFullSession(List<string> problems, SessionAnalysis session, bool serverSide, bool variant, long frequency)
     {
         var role = serverSide ? NntlSessionRole.Server : NntlSessionRole.Client;
         CheckCommon(problems, session, role, serverSide ? SchemaHashOf<ChatServerNexus>() : SchemaHashOf<ChatClientNexus>());
@@ -142,8 +163,20 @@ public static class Fixtures
         var decoder = session.Decoder;
 
         // Handshake + cancel.
-        Expect(problems, session.ClientCalls("SendMessage").Length == ChatScenario.FullMessages,
-            $"{session.ClientCalls("SendMessage").Length} SendMessage calls");
+        var sends = session.ClientCalls("SendMessage");
+        Expect(problems, sends.Length == ChatScenario.FullMessages + (variant ? 1 : 0), $"{sends.Length} SendMessage calls");
+        if (sends.Length > 1)
+        {
+            var hello = decoder.DecodeArguments(sends[0]);
+            Expect(problems, SessionAnalysis.TryFindField(hello, "Text", out var helloText)
+                             && hello.GetText(helloText) == (variant ? VariantHelloText : "hello everyone"), "the first message's text");
+            if (variant)
+            {
+                var extra = decoder.DecodeArguments(sends[1]);
+                Expect(problems, SessionAnalysis.TryFindField(extra, "Text", out var extraText) && extra.GetText(extraText) == VariantExtraMessage,
+                    "the variant's extra message");
+            }
+        }
         var cancelled = session.ClientCalls("SendMessage").Where(i => i.CancellationSeq >= 0).ToArray();
         Expect(problems, cancelled.Length == 1, $"{cancelled.Length} canceled SendMessage calls");
         if (cancelled.Length == 1)

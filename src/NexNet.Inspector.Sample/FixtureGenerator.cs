@@ -30,50 +30,88 @@ public static class FixtureGenerator
     /// <summary>Records every fixture.</summary>
     /// <param name="log">Progress output.</param>
     /// <param name="cancellationToken">Stops the runs.</param>
-    public static async Task<Dictionary<FixtureKind, byte[]>> GenerateAsync(TextWriter log, CancellationToken cancellationToken = default)
+    public static Task<Dictionary<FixtureKind, byte[]>> GenerateAsync(TextWriter log, CancellationToken cancellationToken = default)
+        => GenerateAsync(log, Fixtures.All, cancellationToken);
+
+    /// <summary>Records some fixtures; the others keep their checked-in bytes.</summary>
+    /// <param name="log">Progress output.</param>
+    /// <param name="kinds">The fixtures to record (the truncated copy records server-all too).</param>
+    /// <param name="cancellationToken">Stops the runs.</param>
+    public static async Task<Dictionary<FixtureKind, byte[]>> GenerateAsync(TextWriter log, IReadOnlyCollection<FixtureKind> kinds,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(kinds);
         var files = new Dictionary<FixtureKind, byte[]>();
+        var chat = kinds.Contains(FixtureKind.ChatServer) || kinds.Contains(FixtureKind.ChatClient);
+        var variant = kinds.Contains(FixtureKind.ChatClientVariant);
 
         // A first run JITs the whole stack, which would stretch the recorded handshake to tens of milliseconds; the
         // inspect-session-start screen shows a warm connection's first 50 ms.
-        await RecordChatAsync(cancellationToken).ConfigureAwait(false);
+        if (chat || variant)
+            await RecordChatAsync(cancellationToken).ConfigureAwait(false);
 
-        var (server, client) = await RetryAsync(log, "chat", async () =>
+        if (chat)
         {
-            var run = await RecordChatAsync(cancellationToken).ConfigureAwait(false);
-            return (run, Problems(FixtureKind.ChatServer, run.Server).Concat(Problems(FixtureKind.ChatClient, run.Client)).ToList());
-        }).ConfigureAwait(false);
-        files[FixtureKind.ChatServer] = server;
-        files[FixtureKind.ChatClient] = client;
+            var (server, client) = await RetryAsync(log, "chat", async () =>
+            {
+                var run = await RecordChatAsync(cancellationToken).ConfigureAwait(false);
+                return (run, Problems(FixtureKind.ChatServer, run.Server).Concat(Problems(FixtureKind.ChatClient, run.Client)).ToList());
+            }).ConfigureAwait(false);
+            files[FixtureKind.ChatServer] = server;
+            files[FixtureKind.ChatClient] = client;
+        }
 
-        files[FixtureKind.ServerAll] = await RetryAsync(log, "server-all", async () =>
+        if (kinds.Contains(FixtureKind.ServerAll) || kinds.Contains(FixtureKind.Truncated))
         {
-            var bytes = await RecordServerAllAsync(cancellationToken).ConfigureAwait(false);
-            return (bytes, Problems(FixtureKind.ServerAll, bytes));
-        }).ConfigureAwait(false);
+            files[FixtureKind.ServerAll] = await RetryAsync(log, "server-all", async () =>
+            {
+                var bytes = await RecordServerAllAsync(cancellationToken).ConfigureAwait(false);
+                return (bytes, Problems(FixtureKind.ServerAll, bytes));
+            }).ConfigureAwait(false);
 
-        files[FixtureKind.LegacySchema] = await RetryAsync(log, "legacy-schema", async () =>
+            var truncated = Truncate(files[FixtureKind.ServerAll]);
+            var truncatedProblems = Problems(FixtureKind.Truncated, truncated);
+            if (truncatedProblems.Count > 0)
+                throw new InvalidOperationException("The truncated fixture fails its checks: " + string.Join("; ", truncatedProblems));
+            files[FixtureKind.Truncated] = truncated;
+        }
+
+        if (kinds.Contains(FixtureKind.LegacySchema))
         {
-            var bytes = await RecordLegacyAsync(cancellationToken).ConfigureAwait(false);
-            return (bytes, Problems(FixtureKind.LegacySchema, bytes));
-        }).ConfigureAwait(false);
+            files[FixtureKind.LegacySchema] = await RetryAsync(log, "legacy-schema", async () =>
+            {
+                var bytes = await RecordLegacyAsync(cancellationToken).ConfigureAwait(false);
+                return (bytes, Problems(FixtureKind.LegacySchema, bytes));
+            }).ConfigureAwait(false);
+        }
 
-        var truncated = Truncate(files[FixtureKind.ServerAll]);
-        var truncatedProblems = Problems(FixtureKind.Truncated, truncated);
-        if (truncatedProblems.Count > 0)
-            throw new InvalidOperationException("The truncated fixture fails its checks: " + string.Join("; ", truncatedProblems));
-        files[FixtureKind.Truncated] = truncated;
+        if (variant)
+        {
+            files[FixtureKind.ChatClientVariant] = await RetryAsync(log, "chat-variant", async () =>
+            {
+                var run = await RecordChatAsync(cancellationToken, variant: true).ConfigureAwait(false);
+                return (run.Client, Problems(FixtureKind.ChatClientVariant, run.Client));
+            }).ConfigureAwait(false);
+        }
+
         return files;
     }
 
     /// <summary>Records every fixture into <paramref name="directory"/>.</summary>
-    public static async Task WriteAsync(string directory, TextWriter log, CancellationToken cancellationToken = default)
+    public static Task WriteAsync(string directory, TextWriter log, CancellationToken cancellationToken = default)
+        => WriteAsync(directory, log, Fixtures.All, cancellationToken);
+
+    /// <summary>Records some fixtures into <paramref name="directory"/>, leaving the other files as they are.</summary>
+    public static async Task WriteAsync(string directory, TextWriter log, IReadOnlyCollection<FixtureKind> kinds,
+        CancellationToken cancellationToken = default)
     {
-        var files = await GenerateAsync(log, cancellationToken).ConfigureAwait(false);
+        var files = await GenerateAsync(log, kinds, cancellationToken).ConfigureAwait(false);
         Directory.CreateDirectory(directory);
         foreach (var kind in Fixtures.All)
         {
+            if (!kinds.Contains(kind))
+                continue;
             var path = Path.Combine(directory, Fixtures.FileName(kind));
             await File.WriteAllBytesAsync(path, files[kind], cancellationToken).ConfigureAwait(false);
             log.WriteLine($"{path}: {files[kind].Length:N0} bytes");
@@ -96,7 +134,12 @@ public static class FixtureGenerator
     /// The Full scenario with both sides recording: the server into a Drop-mode recording that is stalled during the
     /// burst (the gap), the client into a Block-mode recording (lossless, for Compare).
     /// </summary>
-    public static async Task<(byte[] Server, byte[] Client)> RecordChatAsync(CancellationToken cancellationToken = default)
+    /// <param name="cancellationToken">Stops the run.</param>
+    /// <param name="variant">
+    /// Runs the Compare variant: the first message reads <see cref="Fixtures.VariantHelloText"/> and
+    /// <see cref="Fixtures.VariantExtraMessage"/> follows it.
+    /// </param>
+    public static async Task<(byte[] Server, byte[] Client)> RecordChatAsync(CancellationToken cancellationToken = default, bool variant = false)
     {
         var address = SampleAddress.Loopback(SampleTransport.Tcp);
         var serverConfig = address.CreateServerConfig();
@@ -125,6 +168,8 @@ public static class FixtureGenerator
             await ChatScenario.RunAsync(client, pacer, new ChatScenarioOptions
             {
                 Kind = ChatScenarioKind.Full,
+                HelloText = variant ? Fixtures.VariantHelloText : "hello everyone",
+                ExtraMessage = variant ? Fixtures.VariantExtraMessage : null,
                 AttachmentBytes = Fixtures.AttachmentBytes,
                 UploadInterval = UploadInterval,
                 LogLines = Fixtures.LogLines,
