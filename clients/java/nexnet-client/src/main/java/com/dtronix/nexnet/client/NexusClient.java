@@ -84,6 +84,8 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     private final @Nullable ReconnectController reconnection;
     /** Test hold point (K56): runs after a lost session was handed to the reconnection controller. */
     volatile @Nullable Runnable afterSessionLost;
+    /** Test hold point (K61): runs when the reconnection controller asks for an attempt, before it starts. */
+    volatile @Nullable Runnable beforeReconnectAttempt;
 
     private final Object lock = new Object();
     private ConnectionState state = ConnectionState.DISCONNECTED;
@@ -320,6 +322,13 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             if (attempt != null || session != null) {
                 throw new IllegalStateException("The client is already " + (attempt != null ? "connecting." : "connected."));
             }
+            // K61: a reconnection attempt starts only while its loop runs. disconnect() stops the loop before it looks
+            // for an attempt to cancel, so an attempt the loop asked for just before is either seen and canceled there
+            // or refused here. (Lock order: client, then controller; the controller never calls the client under its
+            // lock.)
+            if (reconnecting && !reconnectLoopRunning()) {
+                throw new IllegalStateException("The reconnection loop was stopped.");
+            }
             attempt = a;
             disconnected = a.disconnected;
         }
@@ -551,7 +560,19 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             // and before the loop's first step is scheduled, so a fast attempt cannot connect before it.
             // A loop that is still ending (its attempt has just connected this session) remembers the loss and starts
             // a new loop for it as it ends (K56).
-            boolean reconnecting = controller.onSessionLost(reason, () -> setState(ConnectionState.RECONNECTING));
+            // A disconnect() made after the check above stops the loop as it starts (K61): either it marked the attempt
+            // before beforeStart reads the mark, or it cancels the loop after the loop has started.
+            boolean reconnecting = controller.onSessionLost(reason, () -> {
+                boolean stop;
+                synchronized (lock) {
+                    stop = closed || a.userDisconnect;
+                }
+                if (stop) {
+                    controller.cancel();
+                } else {
+                    setState(ConnectionState.RECONNECTING);
+                }
+            });
             Runnable hook = afterSessionLost;
             if (hook != null) {
                 hook.run();
@@ -677,6 +698,12 @@ public final class NexusClient<TProxy> implements AutoCloseable {
      * @return a future that completes when disconnected
      */
     public CompletableFuture<Void> disconnect() {
+        // The loop stops first (K61): a reconnection attempt it starts after this is refused, and one it started
+        // before is found below and canceled.
+        ReconnectController controller = reconnection;
+        if (controller != null) {
+            controller.cancel();
+        }
         NexusSession s;
         Attempt a;
         CompletableFuture<Void> done;
@@ -687,11 +714,14 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             if (a != null) {
                 a.userDisconnect = true;
             }
-            if (s != null && established != null) {
+            // Also when the session is already lost and the client is still handling the loss (K61): its loop must
+            // not start.
+            if (established != null) {
                 established.userDisconnect = true;
             }
         }
-        ReconnectController controller = reconnection;
+        // A loop started for a loss between the cancel above and the marks (K61) checks the marks as it starts, or is
+        // stopped here.
         if (controller != null) {
             controller.cancel();
         }
@@ -908,6 +938,10 @@ public final class NexusClient<TProxy> implements AutoCloseable {
 
         @Override
         public CompletableFuture<ConnectionResult> reconnect() {
+            Runnable hook = beforeReconnectAttempt;
+            if (hook != null) {
+                hook.run();
+            }
             Attempt started;
             try {
                 started = begin(true, CancellationToken.NONE);
