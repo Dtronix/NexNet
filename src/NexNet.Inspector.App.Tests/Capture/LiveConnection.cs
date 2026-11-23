@@ -17,6 +17,9 @@ internal sealed class LiveConnection
 
     private LiveConnection(ChatServerHarness harness) => _harness = harness;
 
+    /// <summary>The live document attached (set by <see cref="AttachAndEnd"/>).</summary>
+    public LiveDocumentViewModel? Document { get; private set; }
+
     /// <summary>Starts the server and clients and attaches <paramref name="viewModel"/>'s documents to the first session. UI thread.</summary>
     public static LiveConnection Attach(MainWindowViewModel viewModel, int clients = 3)
     {
@@ -36,6 +39,49 @@ internal sealed class LiveConnection
         if (connect.Document is null) throw new InvalidOperationException("the attach failed: " + connect.ConnectError);
         Run(connect.DisposeAsync().AsTask());
         return live;
+    }
+
+    /// <summary>
+    /// session-ended: attaches <paramref name="viewModel"/>'s documents to a Chat client's session, connects
+    /// <paramref name="others"/> more clients (the sessions Attach to another session lists), lets the attached client
+    /// join, chat and send an 18 KB attachment (a chunked invocation), then disconnects it gracefully and waits for the
+    /// session-ended state. UI thread.
+    /// </summary>
+    public static LiveConnection AttachAndEnd(MainWindowViewModel viewModel, int others = 2)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        ChatServerHarness harness = Run(ChatServerHarness.StartAsync(allowRecording: true));
+        LiveConnection live = new(harness);
+        viewModel.Chrome.Session.RecordingDirectory = () => live._recordings.Path;
+        var client = Run(harness.ConnectClientAsync());
+        Run(harness.WaitForSessionAsync(1));
+
+        ConnectViewModel connect = viewModel.Documents.CreateConnect();
+        connect.Endpoint = harness.EndpointAddress;
+        connect.Token = ChatServerHarness.Token;
+        Run(connect.ConnectCommand.ExecuteAsync(null));
+        if (connect.Sessions.Count != 1) throw new InvalidOperationException("the endpoint listed no session: " + connect.ConnectError);
+        Run(connect.AttachCommand.ExecuteAsync(connect.Sessions[0]));
+        live.Document = connect.Document ?? throw new InvalidOperationException("the attach failed: " + connect.ConnectError);
+        Run(connect.DisposeAsync().AsTask());
+        for (int i = 0; i < others; i++) Run(harness.ConnectClientAsync());
+        Run(harness.WaitForSessionAsync(1 + others));
+
+        Run(Converse(client));
+        Run(client.DisconnectAsync());
+        LiveDocumentViewModel document = live.Document;
+        InspectLiveScreen.Pump(() => document.State == Model.LiveState.Ended);
+        return live;
+    }
+
+    private static async Task Converse(NexNet.NexusClient<NexNet.Inspector.Sample.ChatClientNexus, NexNet.Inspector.Sample.ChatClientNexus.ServerProxy> client)
+    {
+        await client.Proxy.Join("ada");
+        await client.Proxy.SendMessage(new NexNet.Inspector.Sample.ChatMessage { Room = "general", Author = "ada", Text = "hello" }, CancellationToken.None);
+        byte[] data = new byte[18_382];
+        for (int i = 0; i < data.Length; i++) data[i] = (byte)(i * 31);
+        await client.Proxy.SendAttachment(new NexNet.Inspector.Sample.Attachment { Room = "general", FileName = "trace-dump.bin", ContentType = "application/octet-stream", Data = data });
+        await client.Proxy.SendMessage(new NexNet.Inspector.Sample.ChatMessage { Room = "general", Author = "ada", Text = "see attached" }, CancellationToken.None);
     }
 
     /// <summary>Starts Record all on the live connection (the title bar's ALL · n).</summary>

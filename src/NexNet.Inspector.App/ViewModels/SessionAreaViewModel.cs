@@ -242,7 +242,11 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
         }
 
         IsPopoverOpen = false;
-        if (Live is not { } live || live.AttachedSession?.Id == choice.Info.Id)
+        if (Live is not { } live || (live.AttachedSession?.Id == choice.Info.Id && live.IsStreaming))
+            return;
+
+        // Attaching elsewhere drops what the document holds: unsaved data asks first, as closing it does (OQ5).
+        if (!await _documents.ConfirmDiscardAsync(live).ConfigureAwait(true))
             return;
 
         // Detach first: the endpoint streams one attach per connection and only frees it once the old stream finished.

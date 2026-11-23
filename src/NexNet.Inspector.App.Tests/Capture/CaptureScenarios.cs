@@ -40,6 +40,9 @@ public enum CaptureScenario
 
     /// <summary>inspect-app-menu: inspect-live with a live connection and the logo's application menu open.</summary>
     InspectAppMenu,
+
+    /// <summary>session-ended: a live session that disconnected, its strip under the title bar, Events and Ladder still navigable.</summary>
+    SessionEnded,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -72,6 +75,7 @@ public static class CaptureScenarios
         [CaptureScenario.ContextMenus] = new("context-menus", ContextMenusScreen.Create),
         [CaptureScenario.CommandPalette] = new("command-palette", CommandPaletteScreen.Create),
         [CaptureScenario.InspectAppMenu] = new("inspect-app-menu", InspectAppMenuScreen.Create),
+        [CaptureScenario.SessionEnded] = new("session-ended", SessionEndedScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

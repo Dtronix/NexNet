@@ -218,8 +218,8 @@ public sealed class AppMenuTests
         await Assert.That(shown.header).IsEqualTo("Overflow mode · Block");
         await Assert.That(shown.saved).IsEqualTo(InspectorOverflow.Block);
         await Assert.That(shown.blockChecked).IsTrue();
-        // Saving is I29's handler; without one the item is disabled.
-        await Assert.That(shown.Save).IsFalse();
+        // The open recording's session can be saved as a .nntl of its own (I29's save handler).
+        await Assert.That(shown.Save).IsTrue();
     }
 
     [Test]

@@ -33,6 +33,9 @@
     <DataTemplate DataType="vm:GoToOffsetDialogViewModel">
       <inspect:GoToOffsetDialog />
     </DataTemplate>
+    <DataTemplate DataType="vm:UnsavedCloseDialogViewModel">
+      <shell:UnsavedCloseDialog />
+    </DataTemplate>
   </Window.DataTemplates>
   <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window
        draws its own title bar: the OS frame with the client area extended under it, or no frame at all on Linux
@@ -40,10 +43,12 @@
   <Grid x:Name="Root" RowDefinitions="Auto,*">
     <shell:TitleBar x:Name="TitleBar" DataContext="{Binding Chrome}" />
 
-    <!-- The Inspect workspace over the active document. -->
-    <Panel Grid.Row="1" IsVisible="{Binding Inspect.IsShown}">
+    <!-- The Inspect workspace over the active document, under the session-ended strip while its live session has ended
+         (the data stays navigable beneath it). -->
+    <DockPanel Grid.Row="1" IsVisible="{Binding Inspect.IsShown}">
+      <shell:SessionEndedBanner x:Name="EndedBanner" DockPanel.Dock="Top" DataContext="{Binding Ended}" />
       <inspect:InspectView x:Name="Inspect" DataContext="{Binding Inspect}" />
-    </Panel>
+    </DockPanel>
 
     <!-- The empty window: hero, action cards, recents; dropping a .nntl on it opens the file. -->
     <Panel Grid.Row="1" IsVisible="{Binding !Documents.HasDocuments}">

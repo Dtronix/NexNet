@@ -97,7 +97,11 @@ public sealed partial class MainWindow : Window
         base.OnDataContextChanged(e);
         ChromeModel?.UpdateWidth(Bounds.Width);
         BindShortcuts((DataContext as MainWindowViewModel)?.Commands);
-        if (DataContext is MainWindowViewModel model) model.PickSchemaFile ??= PickSchemaAsync;
+        if (DataContext is MainWindowViewModel model)
+        {
+            model.PickSchemaFile ??= PickSchemaAsync;
+            model.Documents.SavePicker ??= PickSavePathAsync;
+        }
     }
 
     /// <summary>
@@ -133,6 +137,22 @@ public sealed partial class MainWindow : Window
             FileTypeFilter = [Schemas],
         });
         return picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
+    }
+
+    private static readonly FilePickerFileType Recordings = new("NexNet recordings") { Patterns = ["*.nntl"] };
+
+    private async Task<string?> PickSavePathAsync(string suggestedName)
+    {
+        if (StorageProvider is not { CanSave: true } storage) return null;
+        IStorageFile? picked = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save timeline as .nntl",
+            SuggestedFileName = suggestedName,
+            DefaultExtension = "nntl",
+            FileTypeChoices = [Recordings],
+            ShowOverwritePrompt = true,
+        });
+        return picked?.TryGetLocalPath();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

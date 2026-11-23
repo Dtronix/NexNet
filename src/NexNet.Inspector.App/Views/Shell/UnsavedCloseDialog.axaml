@@ -1,0 +1,28 @@
+<!--
+  The unsaved-close prompt (OQ5): 420 px. What would be lost in secondary text; footer hint, then Cancel, Discard and
+  the primary Save .nntl… (Enter). Esc cancels. Initial focus on Save, the safe default.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             x:Class="NexNet.Inspector.App.Views.Shell.UnsavedCloseDialog"
+             x:DataType="vm:UnsavedCloseDialogViewModel">
+  <c:DialogFrame x:Name="Frame" Width="420"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding SaveCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="Cancel" Command="{Binding CancelCommand}" />
+        <Button x:Name="DiscardButton" Classes="md" Content="Discard" Command="{Binding DiscardCommand}" />
+        <Button x:Name="SaveButton" Classes="md primary" Content="Save .nntl…" Command="{Binding SaveCommand}"
+                c:DialogHost.InitialFocus="True" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <TextBlock x:Name="BodyText" Text="{Binding Body}" TextWrapping="Wrap"
+               Foreground="{DynamicResource Brush.Text.Secondary}" />
+  </c:DialogFrame>
+</UserControl>

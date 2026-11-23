@@ -24,7 +24,9 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     private readonly NexusSchema? _workspace;
     private readonly TimeProvider _time;
     private AttachRun? _run;
-    private bool _saved;
+
+    // The session version a save covered: the document is dirty again once the session changes past it.
+    private long _savedVersion = -1;
 
     internal LiveDocumentViewModel(InspectorConnection connection, IUiDispatcher ui, NexusSchema? workspace, TimeProvider? time = null)
         : base(DocumentKind.Live, ui)
@@ -52,6 +54,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
 
     /// <summary>Where the attach stands.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStreaming))]
     public partial LiveState State { get; private set; } = LiveState.Detached;
 
     /// <summary>The attached session as the endpoint listed it; null for a client target or before attaching.</summary>
@@ -69,6 +72,24 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     /// <summary>Why the session ended, once it did (the banner's "DisconnectGraceful (21)").</summary>
     [ObservableProperty]
     public partial DisconnectReason? EndReason { get; private set; }
+
+    /// <summary>When the session ended (the banner's attached time runs from <see cref="AttachedAt"/> to it); null while live.</summary>
+    [ObservableProperty]
+    public partial DateTimeOffset? EndedAt { get; private set; }
+
+    /// <summary>
+    /// Which side sent the disconnect that ended the session ("client" or "server", the banner's "from client"); null when
+    /// no disconnect frame was captured (the connection simply dropped).
+    /// </summary>
+    [ObservableProperty]
+    public partial string? EndedBy { get; private set; }
+
+    /// <summary>Where the data was last saved (Save .nntl…); null before a save.</summary>
+    [ObservableProperty]
+    public partial string? SavedPath { get; private set; }
+
+    /// <summary>True while the attach streams: a save then covers only what arrived so far.</summary>
+    public bool IsStreaming => State is LiveState.Live or LiveState.Attaching;
 
     /// <summary>Why the attach failed or the stream broke.</summary>
     [ObservableProperty]
@@ -145,13 +166,21 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         Reset();
         AttachedAt = null;
         State = LiveState.Detached;
+
+        // The views and the sync bus learn of the reset like any other change.
+        SignalChanged();
     }
 
-    /// <summary>Marks the data saved (I29's Save .nntl), so closing no longer asks.</summary>
-    internal void MarkSaved()
+    /// <summary>
+    /// Marks the data saved (Save .nntl…), so closing no longer asks until more arrives after the save.
+    /// </summary>
+    /// <param name="path">Where it was saved.</param>
+    /// <param name="version">The session's <see cref="CaptureSession.Version"/> when the save began.</param>
+    internal void MarkSaved(string path, long version)
     {
-        _saved = true;
-        IsDirty = false;
+        SavedPath = path;
+        _savedVersion = version;
+        IsDirty = Session is { } s && s.Version != version;
     }
 
     /// <inheritdoc/>
@@ -176,6 +205,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
             if (session?.Close is { Kind: NntlCloseKind.Disconnected } close)
             {
                 EndReason = close.DisconnectReason;
+                EndedBy = FindDisconnectSide(session);
                 State = LiveState.Ended;
             }
             else
@@ -183,9 +213,11 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
                 Error ??= run.Error ?? "The inspector endpoint stopped streaming.";
                 State = session is null ? LiveState.Failed : LiveState.Ended;
             }
+
+            EndedAt ??= _time.GetUtcNow();
         }
 
-        IsDirty = !_saved && Session is { } s && s.OpCount > 0;
+        IsDirty = Session is { } s && s.OpCount > 0 && s.Version != _savedVersion;
     }
 
     private async Task PumpAsync(AttachRun run)
@@ -242,14 +274,36 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         run.Cancel.Dispose();
     }
 
+    // The side whose disconnect frame ended the session: a disconnect the tapped endpoint read came from its peer.
+    private static string? FindDisconnectSide(CaptureSession session)
+    {
+        lock (session.Gate)
+        {
+            var order = session.FrameOrder;
+            // The disconnect is among the last frames; a few back covers a ping or write that raced it.
+            for (int i = order.Length - 1, seen = 0; i >= 0 && seen < 16; i--, seen++)
+            {
+                if (!session.TryGetFrame(order[i], out var frame) || (byte)frame.Type is < 20 or > 39)
+                    continue;
+                var peer = frame.Direction == Core.Model.TapDirection.Inbound;
+                return (session.Role == NntlSessionRole.Server) == peer ? "client" : "server";
+            }
+        }
+
+        return null;
+    }
+
     private void Reset()
     {
         Session = null;
         ResetCounts();
         EndReason = null;
+        EndedAt = null;
+        EndedBy = null;
+        SavedPath = null;
         Error = null;
         IsDirty = false;
-        _saved = false;
+        _savedVersion = -1;
         SavedSelection = Selection.None;
     }
 

@@ -79,8 +79,21 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     /// </summary>
     public Func<DocumentViewModel, Task<CloseDecision>>? ClosePrompt { get; set; }
 
-    /// <summary>Saves a live document before it closes (I29); called when the prompt answers Save.</summary>
+    /// <summary>
+    /// Saves a document (Ctrl+S, the close prompt's Save, the session-ended banner); true when it was saved. The window
+    /// binds it to <see cref="SaveAsync(DocumentViewModel, CancellationToken)"/>.
+    /// </summary>
     public Func<DocumentViewModel, Task<bool>>? SaveHandler { get; set; }
+
+    /// <summary>
+    /// Asks where to save (the window's save picker), given a suggested file name; null answers cancel. Without it
+    /// nothing can be saved.
+    /// </summary>
+    public Func<string, Task<string?>>? SavePicker { get; set; }
+
+    /// <summary>Why the last save failed; null when it did not (or none was tried).</summary>
+    [ObservableProperty]
+    public partial string? SaveError { get; private set; }
 
     /// <summary>
     /// Picks the session (and schema) of a recording that needs asking (<see cref="NeedsPicker"/>); the open-recording
@@ -250,28 +263,183 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     }
 
     /// <summary>
-    /// Closes a document. One with unsaved data asks <see cref="ClosePrompt"/> first (OQ5).
+    /// Closes a document. One with unsaved data asks <see cref="ClosePrompt"/> first (OQ5), unless
+    /// <paramref name="ask"/> is false (the session-ended banner's Discard, which is the answer already).
     /// </summary>
     /// <returns>False when the user canceled.</returns>
-    public async Task<bool> CloseAsync(DocumentViewModel document)
+    public async Task<bool> CloseAsync(DocumentViewModel document, bool ask = true)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (!Documents.Contains(document))
             return true;
 
-        if (document.IsDirty && ClosePrompt is { } prompt)
+        if (ask && !await ConfirmDiscardAsync(document).ConfigureAwait(true))
+            return false;
+
+        Remove(document);
+        await document.DisposeAsync().ConfigureAwait(true);
+        return true;
+    }
+
+    /// <summary>
+    /// Before dropping a document's unsaved data (closing it, attaching it to another session): asks
+    /// <see cref="ClosePrompt"/> Save .nntl… / Discard / Cancel, and saves on Save. A clean document needs no answer.
+    /// </summary>
+    /// <returns>True when the data may go: it was saved, discarded, or there was nothing to lose.</returns>
+    public async Task<bool> ConfirmDiscardAsync(DocumentViewModel document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (!document.IsDirty || ClosePrompt is not { } prompt)
+            return true;
+
+        switch (await prompt(document).ConfigureAwait(true))
         {
-            switch (await prompt(document).ConfigureAwait(true))
+            case CloseDecision.Cancel:
+                return false;
+            case CloseDecision.Save when SaveHandler is { } save:
+                return await save(document).ConfigureAwait(true);
+            default:
+                return true;
+        }
+    }
+
+    /// <summary>
+    /// Save .nntl…: asks <see cref="SavePicker"/> where, then writes the document's session there as a one-session
+    /// recording (<see cref="SaveToAsync"/>). A failure is reported in <see cref="SaveError"/>.
+    /// </summary>
+    /// <returns>The path saved to; null when canceled, failed, or there is nothing to save.</returns>
+    public async Task<string?> SaveAsync(DocumentViewModel document, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        SaveError = null;
+        if (document.Session is not { } session || SavePicker is not { } pick)
+            return null;
+        if (await pick(SuggestedFileName(document, session, _time.GetLocalNow())).ConfigureAwait(true) is not { Length: > 0 } path)
+            return null;
+
+        try
+        {
+            await SaveToAsync(document, path, cancellationToken).ConfigureAwait(true);
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NntlFormatException or ArgumentException)
+        {
+            SaveError = "Could not save " + Path.GetFileName(path) + ": " + e.Message;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Writes a document's session to <paramref name="path"/> as a one-session <c>.nntl</c> recording, on the thread
+    /// pool (a file still indexing is saved once its index completes). The file appears whole or not at all: it is
+    /// written beside the target and moved over it. A live document is marked saved and the file goes first in the
+    /// recents.
+    /// </summary>
+    /// <exception cref="IOException">The file could not be written.</exception>
+    public async Task SaveToAsync(DocumentViewModel document, string path, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (document.Session is not { } session)
+            throw new InvalidOperationException("The document holds no session.");
+        if (document is FileDocumentViewModel file)
+            await file.Indexing.ConfigureAwait(true);
+
+        var full = Path.GetFullPath(path);
+        var version = session.Version;
+        await Task.Run(() =>
+        {
+            var partial = full + ".partial";
+            try
             {
-                case CloseDecision.Cancel:
-                    return false;
-                case CloseDecision.Save when SaveHandler is { } save:
-                    if (!await save(document).ConfigureAwait(true))
-                        return false;
-                    break;
+                using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024))
+                    CaptureExport.Write(session, output, cancellationToken);
+                File.Move(partial, full, overwrite: true);
             }
+            catch
+            {
+                File.Delete(partial);
+                throw;
+            }
+        }, cancellationToken).ConfigureAwait(true);
+
+        if (document is LiveDocumentViewModel live)
+            live.MarkSaved(full, version);
+        _store?.Update(s => s.WithRecentFile(full, 1, _time.GetUtcNow()));
+    }
+
+    /// <summary>"server-0x3A21-20261123-120400.nntl": the side, the session and when it was saved.</summary>
+    public static string SuggestedFileName(DocumentViewModel document, CaptureSession session, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(session);
+        if (document is FileDocumentViewModel { Path: { } source })
+            return Path.GetFileNameWithoutExtension(source) + "-" + LiveDocumentViewModel.SessionHex(session.SessionId) + ".nntl";
+        var side = session.Role == NntlSessionRole.Client ? "client" : "server";
+        return side + "-" + LiveDocumentViewModel.SessionHex(session.SessionId) + "-"
+               + now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture) + ".nntl";
+    }
+
+    /// <summary>
+    /// "File saved, tab becomes file" (session-ended flow): opens the recording a live document was saved to in its tab,
+    /// with its selection and playhead, and closes the live document (its connection too). The view keeps its window:
+    /// the file starts on the same clock.
+    /// </summary>
+    /// <returns>The file document.</returns>
+    /// <exception cref="NntlFormatException">The file is not a recording.</exception>
+    /// <exception cref="IOException">The file cannot be read.</exception>
+    public async Task<FileDocumentViewModel> ReplaceWithRecordingAsync(LiveDocumentViewModel live, string path)
+    {
+        ArgumentNullException.ThrowIfNull(live);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var index = Documents.IndexOf(live);
+        if (index < 0)
+            throw new ArgumentException("The document is not open.", nameof(live));
+
+        var recording = await Task.Run(() => RecordingFile.Open(path)).ConfigureAwait(true);
+        FileDocumentViewModel document;
+        try
+        {
+            if (recording.Sessions.Count == 0)
+                throw new NntlFormatException("The recording holds no session.");
+            var choice = live.Session?.Schema.Source switch
+            {
+                SchemaSource.Workspace => SchemaChoice.Workspace,
+                SchemaSource.None when live.Session?.Schema.Embedded is not null => SchemaChoice.Raw,
+                _ => SchemaChoice.Embedded,
+            };
+            document = new FileDocumentViewModel(recording, recording.CreateSession(recording.Sessions[0].SessionId, WorkspaceSchema, choice), _ui);
+        }
+        catch
+        {
+            recording.Dispose();
+            throw;
         }
 
+        var wasActive = Active == live;
+        if (wasActive)
+            SaveViewState(live);
+        document.SavedSelection = live.SavedSelection;
+        document.SavedPlayhead = live.SavedPlayhead;
+
+        document.DataChanged += OnDocumentChanged;
+        Documents.Insert(index, document);
+        OnDocumentAdded(document);
+        OnPropertyChanged(nameof(HasDocuments));
+        if (wasActive)
+            Activate(document);
+        else
+            _recent.Insert(Math.Max(0, _recent.IndexOf(live)), document);
+
+        Remove(live);
+        document.StartIndexing();
+        await live.DisposeAsync().ConfigureAwait(true);
+        return document;
+    }
+
+    // Takes a document out of the tabs; the next most recent becomes active when it was.
+    private void Remove(DocumentViewModel document)
+    {
         Documents.Remove(document);
         _recent.Remove(document);
         document.DataChanged -= OnDocumentChanged;
@@ -285,9 +453,6 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
             else
                 Sync.Restore(default, default, 0, Selection.None, false);
         }
-
-        await document.DisposeAsync().ConfigureAwait(true);
-        return true;
     }
 
     /// <summary>The tab close button and Ctrl+W.</summary>
@@ -330,6 +495,15 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     {
         if (document != Active)
             return;
+
+        if (document.Kind == DocumentKind.Live && document.Session is null)
+        {
+            // A detach dropped everything: no window, playhead or selection carries into the next attach, which starts
+            // on its own live edge.
+            if (!Sync.Window.IsEmpty || !Sync.Selection.IsNone || Sync.Playhead != 0)
+                Sync.Restore(default, default, 0, Selection.None, followLive: true);
+            return;
+        }
 
         // A traced message still arriving (chunks, its result) grows with the data.
         Sync.RefreshTrace();

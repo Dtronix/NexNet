@@ -40,7 +40,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _time = time ?? TimeProvider.System;
         Documents = documents ?? new DocumentsViewModel(AvaloniaUiDispatcher.Instance, store);
         Documents.SessionPicker ??= PickSession;
+        Documents.ClosePrompt ??= PromptUnsaved;
+        Documents.SaveHandler ??= SaveDocumentAsync;
         Chrome = new ShellChromeViewModel(Documents);
+        Ended = new SessionEndedViewModel(Documents, () => Chrome.Session.IsPopoverOpen = true);
         Chrome.Requested += OnShellRequested;
         Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset };
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
@@ -116,6 +119,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The Inspect workspace: timeline, stream panes and inspector over the active document.</summary>
     public InspectWorkspaceViewModel Inspect { get; }
+
+    /// <summary>The session-ended strip under the title bar (screens/session-ended).</summary>
+    public SessionEndedViewModel Ended { get; }
 
     /// <summary>The empty window: action cards, recents, the drop target.</summary>
     public HomeViewModel Home { get; }
@@ -200,6 +206,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
             // An async void command must not throw into the dispatcher; the save handler reports its own failures.
             System.Diagnostics.Debug.WriteLine("save failed: " + e.Message);
         }
+    }
+
+    /// <summary>Save .nntl… through the window's save picker (the documents' save handler).</summary>
+    private async Task<bool> SaveDocumentAsync(DocumentViewModel document) => await Documents.SaveAsync(document).ConfigureAwait(true) is not null;
+
+    /// <summary>
+    /// The unsaved-data prompt (OQ5) as the documents' close prompt: the tab in question comes to the front, then Save
+    /// .nntl… / Discard / Cancel. Another open dialog answers Cancel, so nothing is lost behind it.
+    /// </summary>
+    private Task<CloseDecision> PromptUnsaved(DocumentViewModel document)
+    {
+        if (Dialog is not null) return Task.FromResult(CloseDecision.Cancel);
+        if (Documents.Documents.Contains(document)) Documents.Activate(document);
+        UnsavedCloseDialogViewModel dialog = new(document);
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return dialog.Result;
     }
 
     /// <summary>File › Recent ▸ item: opens the recording.</summary>
@@ -412,7 +438,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.ThemeDark, () => Theme = AppTheme.Dark);
         Commands.Bind(AppCommand.ThemeLight, () => Theme = AppTheme.Light);
         Commands.Bind(AppCommand.ThemeSystem, () => Theme = AppTheme.System);
-        Commands.Bind(AppCommand.SaveTimeline, Save, () => Dialog is null && Documents.Active is not null && Documents.SaveHandler is not null);
+        Commands.Bind(AppCommand.SaveTimeline, Save, () => Dialog is null && Documents.Active?.Session is not null && Documents.SaveHandler is not null);
         SessionAreaViewModel session = Chrome.Session;
         Commands.Bind(AppCommand.RecordAll, () => session.RecordAllCommand.Execute(null), () => session.RecordAllCommand.CanExecute(null));
         session.RecordAllCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
