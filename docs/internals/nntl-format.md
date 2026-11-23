@@ -109,6 +109,10 @@ SessionOpen if the recording started mid-session; readers must not assume one ex
 
 The writer embeds each distinct hash once per file. SessionOpen blocks refer to a schema by hash.
 
+Every producer in this repository stores the generator's 64-bit FNV-1a schema hash (`IInspectorSchemaSource.InspectorSchemaHash`)
+as **8 bytes, little-endian** (`NexNet.Inspector.Core.Schema.SchemaHash.ToBytes`), both here and in SessionOpen field 7, so a
+reader can turn the bytes back into the `ulong` the generated nexus reports.
+
 ### 4.4 TransportOp (7 fields)
 
 | # | Field | Type |
@@ -149,8 +153,53 @@ Written when the tap's Drop overflow mode discards ops.
 
 Each section is an array `[kind, data]` (at least 2 fields): kind 1 = open pipes, 2 = pending invocations,
 3 = collection state; data is bytes holding a MessagePack payload whose layout belongs to the section kind. Readers
-skip section kinds they do not know. The section payload layouts are defined by the snapshot producer (I05) and bump
-the snapshot version only when an existing layout changes incompatibly.
+skip section kinds they do not know. The section payload layouts are defined below; they bump the snapshot version
+only when an existing layout changes incompatibly.
+
+#### 4.6.1 Section payloads
+
+The tap builds the sections from NexNet's `INexusSession.GetSnapshot()` (`NntlSnapshotSections.Create`; decoded by
+`NntlSnapshotSections.Decode*`). Each payload is one MessagePack value; every array may gain trailing elements in a
+later revision, so readers read the elements they know and skip the rest. Directions are seen from the tapped side.
+
+**Kind 1, open pipes**: an array with one 6-element array per pipe that holds a receive window (open, or closing until
+both sides confirmed):
+
+| # | Field | Type |
+|---|---|---|
+| 0 | pipe id | int (u16, as on the wire; only this side's half is set until the peer acknowledges) |
+| 1 | flags | bit 0 ready, bit 1 reader completed, bit 2 writer completed, bit 3 closing (Complete sent, not confirmed) |
+| 2 | window | int: receive window in bytes |
+| 3 | receive credit | int: bytes the peer may still send |
+| 4 | buffered | int: bytes received and not yet read by the application |
+| 5 | send credit | int: bytes this side may still send |
+
+**Kind 2, pending invocations**: one 9-element array. NexNet's snapshot counts invocations but does not list their
+ids, so the section carries the counts plus the large messages in transfer, which do carry invocation ids:
+
+| # | Field | Type |
+|---|---|---|
+| 0 | queued | int: received, waiting for an execution slot |
+| 1 | executing | int |
+| 2 | awaiting results | int: calls this side made, waiting for their result |
+| 3 | inbound credits | int |
+| 4 | outbound credits | int |
+| 5 | credit waits | int |
+| 6 | separate-pool queued | int |
+| 7 | separate-pool executing | int |
+| 8 | large messages | array of `[direction (TapDirection), is result (bool), invocation id (u16), length, transferred]` |
+
+**Kind 3, collection state**: an array with one 7-element array per synchronized collection:
+
+| # | Field | Type |
+|---|---|---|
+| 0 | collection id | int (u16, the method id of the invocation that opens its pipe) |
+| 1 | kind | NexNet `NexusCollectionKind` (0 = list) |
+| 2 | mode | NexNet `NexusCollectionMode` |
+| 3 | state | NexNet `NexusCollectionState` for this session |
+| 4 | count | int: items |
+| 5 | version | int: the version the next change is based on |
+| 6 | pipe ids | array of int (u16): pipes carrying the collection on this session |
 
 ### 4.7 SessionClose (4 fields)
 
@@ -258,3 +307,24 @@ regions in the middle stay in the file; the new index does not point at them.
   format version.
 - The index version (§5.1) and the snapshot version (§4.6) version their own payloads. An unknown index version makes
   the footer invalid and the reader falls back to a scan.
+
+## 9. Live tap streams
+
+An inspector endpoint (NexNet.Inspector.Tap) streams an attach or a record-all over a NexNet duplex pipe as exactly the
+bytes of a `.nntl` file being written: header, schema (when the inspected side has one), SessionOpen and Snapshot for
+each session it starts with, then TransportOp, Gap, SessionOpen (sessions that connect during a record-all, from their
+first byte) and SessionClose blocks in arrival order, and, when the stream ends cleanly (detach, session closed), the
+index footer and trailer. A stream cut short (the endpoint or viewer went away) simply lacks the footer, like a crashed
+recording. So a client can copy the stream verbatim into a file, or read it block by block with `NntlPipeReader`,
+which verifies each checksum and consumes bytes as they arrive (a block larger than the pipe's flow-control window
+still completes).
+
+Tap streams use these conventions:
+
+- **Session ids**: a server session is keyed by its NexNet session id. A client learns its id from the server's
+  greeting, after the session started, so a client session is keyed by its connection number on that client (1, 2, …).
+- **Op ids** count per session and direction from the first op any viewer or recorder of the session saw; viewers
+  and recorders attached at the same time see the same ids, so a Drop-mode viewer's missing ids are its gaps.
+- **Redaction**: the ClientGreeting (or reconnection greeting) token is replaced by a marker of the same length: the
+  lowercase hex digits of SHA-256(token), as many as fit (at most 64), then `*` for any further bytes. Each op holding
+  part of it carries the range in its redactions array. A greeting body that does not parse is redacted whole.

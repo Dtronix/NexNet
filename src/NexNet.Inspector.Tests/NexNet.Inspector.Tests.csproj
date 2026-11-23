@@ -12,6 +12,8 @@
   </PropertyGroup>
   <ItemGroup>
     <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+    <!-- Test-only server certificate shared with the integration tests (see NexNet.IntegrationTests/certs/README.md). -->
+    <None Include="..\NexNet.IntegrationTests\certs\server.pfx" Link="certs\server.pfx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" Version="$(TUnitVersion)" />

@@ -67,6 +67,42 @@ public static class NntlFormat
         TrailerMarker.CopyTo(trailer.Slice(12));
     }
 
+    /// <summary>
+    /// Checks the fixed parts of a block header read from a forward-only stream (a live tap stream), where the bytes
+    /// that follow are not known yet.
+    /// </summary>
+    /// <param name="header">The first <see cref="BlockHeaderSize"/> bytes of the block.</param>
+    /// <param name="kind">The block kind.</param>
+    /// <param name="bodyLength">Length of the body that follows the header.</param>
+    /// <returns>False when the bytes are not a block header.</returns>
+    public static bool TryParseBlockHeader(ReadOnlySpan<byte> header, out NntlBlockKind kind, out int bodyLength)
+    {
+        kind = default;
+        bodyLength = header.Length < BlockHeaderSize ? -1 : ParseBlockHeader(header, MaxBodyLength);
+        if (bodyLength < 0)
+            return false;
+
+        kind = (NntlBlockKind)header[4];
+        return true;
+    }
+
+    /// <summary>True when the checksum in <paramref name="header"/> matches the header fields and <paramref name="body"/>.</summary>
+    /// <param name="header">The block header (<see cref="BlockHeaderSize"/> bytes).</param>
+    /// <param name="body">The block body.</param>
+    public static bool IsChecksumValid(ReadOnlySpan<byte> header, ReadOnlySpan<byte> body) =>
+        header.Length >= BlockHeaderSize
+        && BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(12)) == ComputeChecksum(header.Slice(4, 8), body);
+
+    /// <summary>Reads the index offset from a trailer.</summary>
+    /// <param name="trailer">The last <see cref="TrailerSize"/> bytes of a file or stream.</param>
+    /// <param name="indexOffset">Offset of the index block the trailer points to.</param>
+    /// <returns>False when the bytes are not a valid trailer.</returns>
+    public static bool TryParseTrailerOffset(ReadOnlySpan<byte> trailer, out long indexOffset)
+    {
+        indexOffset = ParseTrailer(trailer);
+        return indexOffset >= 0;
+    }
+
     /// <summary>Returns the index offset a trailer points to, or -1 when the bytes are not a trailer.</summary>
     internal static long ParseTrailer(ReadOnlySpan<byte> trailer)
     {
