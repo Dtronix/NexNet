@@ -1,0 +1,132 @@
+<!--
+  Radio choices (controls/radio-card), as two keyed RadioButton themes:
+  - RadioCard: an option card (connect: Server | Client), title with its radio, ControlHint.Text as the 11 px
+    secondary description. Selected = 1.5 px direction.inbound border on state.selected.
+  - RadioRow: a 24 px stacked row (open-recording schema choice): radio, label (bold when selected), secondary hint.
+  The radio is a 12 px ring: 1.5 px border.strong, or a 4 px direction.inbound ring when selected.
+  Hover = strong border on an unselected card (the row's radio turns inbound), keyboard focus = 2 px inbound ring 1 px
+  outside the card (the row: outside the radio), disabled = 50 % (OQ1). Arrow keys move within a group (RadioButton).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:p="using:NexNet.Inspector.App.Controls.Primitives">
+
+  <ControlTheme x:Key="RadioCard" TargetType="RadioButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Lg}" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <!-- The focus ring is drawn outside the card. -->
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="9"
+                  BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+          <Border Name="PART_Card"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <StackPanel Spacing="2">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Border Name="PART_Radio" Width="12" Height="12" CornerRadius="6" BorderThickness="1.5"
+                        BorderBrush="{DynamicResource Brush.Border.Strong}" VerticalAlignment="Center" />
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  FontWeight="Bold"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True" />
+              </StackPanel>
+              <TextBlock Name="PART_Hint"
+                         FontSize="{DynamicResource FontSize.Data}"
+                         Foreground="{DynamicResource Brush.Text.Secondary}"
+                         TextWrapping="Wrap"
+                         Text="{TemplateBinding (p:ControlHint.Text)}"
+                         IsVisible="{TemplateBinding (p:ControlHint.Text), Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </Border>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+    </Style>
+    <Style Selector="^:checked">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+    <Style Selector="^:checked /template/ Border#PART_Radio">
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="RadioRow" TargetType="RadioButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Grid ColumnDefinitions="Auto,Auto,Auto" Background="{TemplateBinding Background}">
+          <Panel Width="12" Height="12" VerticalAlignment="Center">
+            <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="9"
+                    BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+            <Border Name="PART_Radio" CornerRadius="6" BorderThickness="1.5"
+                    BorderBrush="{DynamicResource Brush.Border.Strong}" />
+          </Panel>
+          <ContentPresenter Name="PART_ContentPresenter" Grid.Column="1" Margin="8,0,0,0"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            VerticalAlignment="Center"
+                            RecognizesAccessKey="True" />
+          <TextBlock Name="PART_Hint" Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center"
+                     Foreground="{DynamicResource Brush.Text.Secondary}"
+                     Text="{TemplateBinding (p:ControlHint.Text)}"
+                     IsVisible="{TemplateBinding (p:ControlHint.Text), Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#PART_Radio">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:checked /template/ Border#PART_Radio">
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

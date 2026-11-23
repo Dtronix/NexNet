@@ -34,8 +34,12 @@ public sealed partial class ThemeTokenTests
     /// <summary>The CSS stripe tokens: a tiled Brush.X per theme, no Color.</summary>
     private static readonly string[] Stripes = ["Timeline.Gap", "Hex.Redacted"];
 
-    /// <summary>PLAN §5's added brushes (no design token).</summary>
-    private static readonly string[] AddedBrushes = ["Scroll.ThumbHover", "Scroll.ThumbDrag", "Caption.CloseHover"];
+    /// <summary>PLAN §5's added brushes (no design token), and the button theme's (I14).</summary>
+    private static readonly string[] AddedBrushes =
+    [
+        "Scroll.ThumbHover", "Scroll.ThumbDrag", "Caption.CloseHover", "Caption.CloseGlyphHover", "Button.PrimaryHover",
+        "Button.PrimaryPressed",
+    ];
 
     /// <summary>The only translucent colours (tokens.json $description).</summary>
     private static readonly string[] Translucent = ["Accent.TraceBand", "Diff.Band"];
@@ -80,7 +84,16 @@ public sealed partial class ThemeTokenTests
         ("SystemControlHighlightAccentBrush", "Direction.Inbound"), ("SystemControlBackgroundAccentBrush", "Direction.Inbound"),
         ("SystemControlForegroundAccentBrush", "Direction.Inbound"), ("SystemControlHyperlinkTextBrush", "Direction.Inbound"),
         ("SystemControlFocusVisualPrimaryBrush", "Direction.Inbound"), ("SystemControlHighlightListAccentLowBrush", "State.Selected"),
-        ("SystemControlErrorTextForegroundBrush", "Status.Error"),
+        ("SystemControlErrorTextForegroundBrush", "Status.Error"), ("SystemControlFocusVisualSecondaryBrush", "Surface.App"),
+        ("TextControlBackground", "Surface.Raised"), ("TextControlBackgroundPointerOver", "Surface.Raised"),
+        ("TextControlBackgroundFocused", "Surface.Raised"), ("TextControlBackgroundDisabled", "Surface.Raised"),
+        ("TextControlBorderBrush", "Border.Default"), ("TextControlBorderBrushPointerOver", "Border.Strong"),
+        ("TextControlBorderBrushFocused", "Direction.Inbound"), ("TextControlBorderBrushDisabled", "Border.Default"),
+        ("TextControlForeground", "Text.Primary"), ("TextControlForegroundPointerOver", "Text.Primary"),
+        ("TextControlForegroundFocused", "Text.Primary"), ("TextControlForegroundDisabled", "Text.Tertiary"),
+        ("TextControlPlaceholderForeground", "Text.Tertiary"), ("TextControlPlaceholderForegroundPointerOver", "Text.Tertiary"),
+        ("TextControlPlaceholderForegroundFocused", "Text.Tertiary"), ("TextControlPlaceholderForegroundDisabled", "Text.Tertiary"),
+        ("TextControlSelectionHighlightColor", "State.Selected"),
     ];
 
     private static readonly ThemeVariant[] Variants = [ThemeVariant.Light, ThemeVariant.Dark];

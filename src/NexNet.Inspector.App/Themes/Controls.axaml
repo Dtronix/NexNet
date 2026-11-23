@@ -1,6 +1,7 @@
 <!--
   The app's style merge point, included after Fluent and AvaloniaEdit (App.axaml) so its keys and control themes win.
-  Tokens first; the control themes of later work orders (buttons, menus, scroll rail, ...) are merged below them.
+  Tokens first; the control themes of later work orders (buttons, menus, scroll rail, ...) are merged below them, one
+  file per control so parallel work orders do not edit the same file.
 -->
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -8,7 +9,16 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="/Themes/Tokens.axaml" />
+        <!-- Primitive control themes (I14). -->
+        <ResourceInclude Source="/Themes/Button.axaml" />
+        <ResourceInclude Source="/Themes/SegmentedControl.axaml" />
+        <ResourceInclude Source="/Themes/Select.axaml" />
+        <ResourceInclude Source="/Themes/CheckBox.axaml" />
+        <ResourceInclude Source="/Themes/RadioCard.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>
+
+  <!-- Fluent's TextBox, re-keyed and sized (I14). -->
+  <StyleInclude Source="/Themes/TextInput.axaml" />
 </Styles>

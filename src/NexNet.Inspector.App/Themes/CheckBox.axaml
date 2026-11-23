@@ -1,0 +1,76 @@
+<!--
+  Checkbox (controls/checkbox): a 14 px box, 3 px radius, 1.5 px border.strong on the panel fill; checked fills it
+  direction.inbound with an on-accent check. The label follows 8 px after the box (part of the hit target, so the fill
+  behind it is Transparent rather than null) and ControlHint.Text adds a tertiary note after the label.
+  Hover = inbound border, keyboard focus = 2 px inbound ring 1 px outside the box, disabled = 50 % (OQ1).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:p="using:NexNet.Inspector.App.Controls.Primitives">
+
+  <ControlTheme x:Key="{x:Type CheckBox}" TargetType="CheckBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="MinHeight" Value="18" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Grid ColumnDefinitions="Auto,Auto,Auto" Background="{TemplateBinding Background}">
+          <Panel Width="14" Height="14" VerticalAlignment="Center">
+            <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="6"
+                    BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+            <Border Name="PART_Box" Width="14" Height="14" BorderThickness="1.5"
+                    CornerRadius="{DynamicResource Radius.Sm}"
+                    Background="{DynamicResource Brush.Surface.Panel}"
+                    BorderBrush="{DynamicResource Brush.Border.Strong}">
+              <Panel>
+                <!-- Inside the 1.5 px border: the check spans the 11 px interior. -->
+                <Path Name="PART_Check" Data="M2,5.5 L4.5,8 L9,3" StrokeThickness="1.5"
+                      StrokeLineCap="Round" StrokeJoin="Round"
+                      Stroke="{DynamicResource Brush.Text.OnAccent}" IsVisible="False" />
+                <Rectangle Name="PART_Dash" Width="6" Height="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Fill="{DynamicResource Brush.Text.OnAccent}" IsVisible="False" />
+              </Panel>
+            </Border>
+          </Panel>
+          <ContentPresenter Name="PART_ContentPresenter" Grid.Column="1" Margin="8,0,0,0"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            RecognizesAccessKey="True" />
+          <TextBlock Name="PART_Hint" Grid.Column="2" Margin="6,0,0,0" VerticalAlignment="Center"
+                     Foreground="{DynamicResource Brush.Text.Tertiary}"
+                     Text="{TemplateBinding (p:ControlHint.Text)}"
+                     IsVisible="{TemplateBinding (p:ControlHint.Text), Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Grid>
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:pointerover /template/ Border#PART_Box">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:checked /template/ Border#PART_Box, ^:indeterminate /template/ Border#PART_Box">
+      <Setter Property="Background" Value="{DynamicResource Brush.Direction.Inbound}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^:checked /template/ Path#PART_Check">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:indeterminate /template/ Rectangle#PART_Dash">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

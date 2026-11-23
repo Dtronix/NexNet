@@ -186,6 +186,12 @@
       <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="{StaticResource Color.Text.Secondary}" />
       <SolidColorBrush x:Key="Brush.Scroll.ThumbDrag" Color="{StaticResource Color.Direction.Inbound}" />
       <SolidColorBrush x:Key="Brush.Caption.CloseHover" Color="#C42B1C" />
+      <!-- Added for the button theme (I14): the close glyph on that red (white in both themes, as Windows draws it),
+           and the primary button's hover and pressed fills: button.html's filter brightness(1.08) and (.92) applied to
+           direction.inbound, so the brighter/darker primary needs no colour outside the tokens. -->
+      <SolidColorBrush x:Key="Brush.Caption.CloseGlyphHover" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryHover" Color="#4156FF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryPressed" Color="#374AE4" />
 
       <!-- The CSS stripes (color.timeline.gap, color.hex.redacted: repeating-linear-gradient(135deg, a 0 w, b w 2w)) as a
            tile of two vertical bands turned 45 degrees, so the tile itself stays a whole number of pixels and seamless. -->
@@ -224,8 +230,8 @@
       <!-- Fluent re-keyed, so stock controls and the window take the tokens without a control theme of their own. Fluent's
            brushes resolve their palette colours inside FluentTheme, so overriding a System*Color here does not reach them:
            the app-wide brushes are overridden by key. The accent colours are for DynamicResource users outside Fluent; every
-           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*,
-           ComboBox*, ...) belong to each control's theme. -->
+           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*)
+           follow at the end of this dictionary. -->
       <Color x:Key="SystemAccentColor">#3C50F8</Color>
       <Color x:Key="SystemAccentColorLight1">#3C50F8</Color>
       <Color x:Key="SystemAccentColorLight2">#3C50F8</Color>
@@ -248,6 +254,28 @@
       <!-- A selected list item. -->
       <SolidColorBrush x:Key="SystemControlHighlightListAccentLowBrush" Color="{StaticResource Color.State.Selected}" />
       <SolidColorBrush x:Key="SystemControlErrorTextForegroundBrush" Color="{StaticResource Color.Status.Error}" />
+      <!-- Fluent's inner focus ring is translucent by default; opaque here, so no colour outside the tokens shows. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="{StaticResource Color.Surface.App}" />
+      <!-- Fluent's TextBox (controls/text-input, I14; sizes and the 1.5 px borders are in Themes/TextInput.axaml). These
+           sit here rather than in the control's own file because only a theme dictionary beside the colours can take
+           each theme's Color.* statically. -->
+      <SolidColorBrush x:Key="TextControlBackground" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="{StaticResource Color.State.Selected}" />
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Dark">
@@ -337,6 +365,12 @@
       <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="{StaticResource Color.Text.Secondary}" />
       <SolidColorBrush x:Key="Brush.Scroll.ThumbDrag" Color="{StaticResource Color.Direction.Inbound}" />
       <SolidColorBrush x:Key="Brush.Caption.CloseHover" Color="#C42B1C" />
+      <!-- Added for the button theme (I14): the close glyph on that red (white in both themes, as Windows draws it),
+           and the primary button's hover and pressed fills: button.html's filter brightness(1.08) and (.92) applied to
+           direction.inbound, so the brighter/darker primary needs no colour outside the tokens. -->
+      <SolidColorBrush x:Key="Brush.Caption.CloseGlyphHover" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryHover" Color="#7C90FF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryPressed" Color="#6A7AEB" />
 
       <!-- The CSS stripes (color.timeline.gap, color.hex.redacted: repeating-linear-gradient(135deg, a 0 w, b w 2w)) as a
            tile of two vertical bands turned 45 degrees, so the tile itself stays a whole number of pixels and seamless. -->
@@ -375,8 +409,8 @@
       <!-- Fluent re-keyed, so stock controls and the window take the tokens without a control theme of their own. Fluent's
            brushes resolve their palette colours inside FluentTheme, so overriding a System*Color here does not reach them:
            the app-wide brushes are overridden by key. The accent colours are for DynamicResource users outside Fluent; every
-           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*,
-           ComboBox*, ...) belong to each control's theme. -->
+           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*)
+           follow at the end of this dictionary. -->
       <Color x:Key="SystemAccentColor">#7385FF</Color>
       <Color x:Key="SystemAccentColorLight1">#7385FF</Color>
       <Color x:Key="SystemAccentColorLight2">#7385FF</Color>
@@ -399,6 +433,28 @@
       <!-- A selected list item. -->
       <SolidColorBrush x:Key="SystemControlHighlightListAccentLowBrush" Color="{StaticResource Color.State.Selected}" />
       <SolidColorBrush x:Key="SystemControlErrorTextForegroundBrush" Color="{StaticResource Color.Status.Error}" />
+      <!-- Fluent's inner focus ring is translucent by default; opaque here, so no colour outside the tokens shows. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="{StaticResource Color.Surface.App}" />
+      <!-- Fluent's TextBox (controls/text-input, I14; sizes and the 1.5 px borders are in Themes/TextInput.axaml). These
+           sit here rather than in the control's own file because only a theme dictionary beside the colours can take
+           each theme's Color.* statically. -->
+      <SolidColorBrush x:Key="TextControlBackground" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="{StaticResource Color.State.Selected}" />
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>
