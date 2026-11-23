@@ -23,6 +23,8 @@
         <ResourceInclude Source="/Themes/Card.axaml" />
         <!-- Data table: header, drawn rows, skeleton and empty states (I20). -->
         <ResourceInclude Source="/Themes/DataTable.axaml" />
+        <!-- Hex view pane-header toggles (I22). -->
+        <ResourceInclude Source="/Themes/HexView.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

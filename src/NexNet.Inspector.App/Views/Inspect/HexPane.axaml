@@ -1,0 +1,12 @@
+<!--
+  The Hex stream pane's body (PKG controls/hex-view): the hex view over HexViewModel's layout and the shared sync bus.
+  I23 places it in the Inspect layout under a pane header that hosts HexPaneHeader.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:hex="using:NexNet.Inspector.App.Controls.Hex"
+             x:Class="NexNet.Inspector.App.Views.Inspect.HexPane"
+             x:DataType="vm:HexViewModel">
+  <hex:HexView x:Name="View" Layout="{Binding Layout}" Sync="{Binding Sync}" />
+</UserControl>
