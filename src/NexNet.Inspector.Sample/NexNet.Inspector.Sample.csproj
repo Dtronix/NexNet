@@ -7,7 +7,13 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- Recordings embed the Chat schema. The generator is a ProjectReference analyzer, so its props are not imported:
+         the property is made compiler visible here. -->
+    <NexNetEmitInspectorSchema>true</NexNetEmitInspectorSchema>
   </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
