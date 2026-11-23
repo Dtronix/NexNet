@@ -146,6 +146,34 @@ public class FixtureTests
     }
 
     [Test]
+    public async Task Chat_attachment_fits_the_inspect_live_window_with_a_pipe_write_and_a_ping_between_its_chunks()
+    {
+        var recording = Analyses.Value[FixtureKind.ChatServer];
+        var session = recording.Sessions.Single();
+        var assembler = session.Assembler;
+        var attachment = session.ClientCalls("SendAttachment").Single();
+        var frequency = recording.Header.StopwatchFrequency;
+
+        // The chunks are paced a few milliseconds apart, not a quarter second: the whole call fits the screen's 50 ms.
+        var span = Sample.Fixtures.AttachmentMilliseconds(assembler, attachment, frequency);
+        await Assert.That(span).IsLessThanOrEqualTo(Sample.Fixtures.MaxAttachmentMilliseconds);
+
+        // Between two chunks: a FileUpload write and a ping (the client pings every 15 ms while recording).
+        var fragments = new List<TraceFragment>();
+        assembler.GetFragments(attachment.Request, fragments);
+        var chunks = fragments.Where(f => f.Length > 0).Select(f => f.Seq).ToArray();
+        var between = new List<FrameRecord>();
+        assembler.GetInterleaved(attachment.Request, between);
+        await Assert.That(between.Any(f => f.Target == FrameTarget.Pipe && f.Seq > chunks[0] && f.Seq < chunks[^1])).IsTrue();
+        await Assert.That(between.Any(f => f.Type == MessageType.Ping && f.Seq > chunks[0] && f.Seq < chunks[^1])).IsTrue();
+
+        // The dropped-events gap follows the call closely enough to share its window.
+        assembler.TryGetFrame(attachment.Request.Direction, attachment.Request.Seq, out var start);
+        var gap = session.Gaps.Where(g => g.FromTicks >= start.StartTicks).Min(g => g.FromTicks);
+        await Assert.That((gap - start.StartTicks) * 1000.0 / frequency).IsLessThan(50);
+    }
+
+    [Test]
     public async Task Chat_client_recording_is_the_same_session_from_the_other_side()
     {
         var client = Analyses.Value[FixtureKind.ChatClient].Sessions.Single();

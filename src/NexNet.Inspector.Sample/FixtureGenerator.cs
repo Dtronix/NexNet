@@ -18,6 +18,13 @@ public static class FixtureGenerator
     private const int ServerRingCapacity = 96 * 1024;
     private const int BurstLines = 768;
     private const int Attempts = 5;
+
+    // The inspect-live screen shows a 50 ms window: the five chunks are held 5 ms each, the FileUpload writes 3 ms
+    // apart, and the chat client pings every 15 ms (one OS timer tick), so a pipe write and a ping land between the
+    // chunks while the whole message takes some 25 ms.
+    private static readonly TimeSpan ChunkHold = TimeSpan.FromMilliseconds(5);
+    private static readonly TimeSpan UploadInterval = TimeSpan.FromMilliseconds(3);
+    private const int ChatPingInterval = 15;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
 
     /// <summary>Records every fixture.</summary>
@@ -27,6 +34,10 @@ public static class FixtureGenerator
     {
         ArgumentNullException.ThrowIfNull(log);
         var files = new Dictionary<FixtureKind, byte[]>();
+
+        // A first run JITs the whole stack, which would stretch the recorded handshake to tens of milliseconds; the
+        // inspect-session-start screen shows a warm connection's first 50 ms.
+        await RecordChatAsync(cancellationToken).ConfigureAwait(false);
 
         var (server, client) = await RetryAsync(log, "chat", async () =>
         {
@@ -98,8 +109,9 @@ public static class FixtureGenerator
         var serverRecording = serverInspector.RecordTo(serverFile, leaveOpen: true, InspectorOverflow.Drop);
 
         var clientConfig = CreateClientConfig(address);
+        clientConfig.PingInterval = ChatPingInterval;
         var clientInspector = clientConfig.UseInspector<ChatClientNexus>(new InspectorOptions { AllowRecording = true });
-        var pacer = new ChunkPacer(clientInspector);
+        var pacer = new ChunkPacer(clientInspector) { Delay = ChunkHold };
         clientConfig.Tap = pacer;
         var client = ChatClientNexus.CreateClient(clientConfig, new ChatClientNexus());
         clientInspector.UseSnapshotsOf(client);
@@ -114,6 +126,7 @@ public static class FixtureGenerator
             {
                 Kind = ChatScenarioKind.Full,
                 AttachmentBytes = Fixtures.AttachmentBytes,
+                UploadInterval = UploadInterval,
                 LogLines = Fixtures.LogLines,
                 BurstLines = BurstLines,
                 BeforeBurst = () =>
@@ -121,7 +134,8 @@ public static class FixtureGenerator
                     serverFile.Hold();
                     return Task.CompletedTask;
                 },
-                AfterBurst = () => serverFile.ReleaseAndDrainAsync(TimeSpan.FromMilliseconds(100), cancellationToken),
+                // The client pings every 15 ms, so "drained" allows a few small ping blocks per 100 ms.
+                AfterBurst = () => serverFile.ReleaseAndDrainAsync(TimeSpan.FromMilliseconds(100), idleBytes: 2048, cancellationToken),
             }, cancellationToken).ConfigureAwait(false);
 
             await client.DisconnectAsync().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);

@@ -11,7 +11,9 @@ namespace NexNet.Inspector.Sample;
 /// <remarks>
 /// On loopback a 300 KB attachment goes out in well under a millisecond, so nothing could interleave with its chunks.
 /// Holding each chunk's flush emulates a slow link: the session gives up its write lock between chunks (spec §6.1),
-/// so the FileUpload pipe's frames and the ping timer's Ping land between them, as in the inspect-live screen.
+/// so the FileUpload pipe's frames and the ping timer's Ping land between them, as in the inspect-live screen. A hold
+/// shorter than the OS timer tick (about 15.6 ms on Windows) is spun out, so a few milliseconds per chunk really is a
+/// few milliseconds and the whole message fits the screen's 50 ms window.
 /// </remarks>
 public sealed class ChunkPacer(INexusTap? inner = null) : INexusTap
 {
@@ -50,7 +52,7 @@ public sealed class ChunkPacer(INexusTap? inner = null) : INexusTap
         private static async ValueTask HoldAsync(ValueTask forwarded, TimeSpan delay)
         {
             await forwarded.ConfigureAwait(false);
-            await Task.Delay(delay).ConfigureAwait(false);
+            await PreciseDelay.WaitAsync(delay).ConfigureAwait(false);
         }
     }
 }

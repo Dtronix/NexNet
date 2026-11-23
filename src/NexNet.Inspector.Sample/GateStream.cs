@@ -28,14 +28,15 @@ public sealed class GateStream : Stream
     }
 
     /// <summary>
-    /// Releases held writes and waits until nothing has been written for <paramref name="quiet"/>: the recorder has
-    /// drained its ring, so the ops that follow fit again instead of extending the gap.
+    /// Releases held writes and waits until no more than <paramref name="idleBytes"/> have been written in
+    /// <paramref name="quiet"/>: the recorder has drained its ring, so the ops that follow fit again instead of
+    /// extending the gap. A session that keeps pinging never goes fully quiet, hence the allowance.
     /// </summary>
-    public async Task ReleaseAndDrainAsync(TimeSpan quiet, CancellationToken cancellationToken = default)
+    public async Task ReleaseAndDrainAsync(TimeSpan quiet, long idleBytes = 0, CancellationToken cancellationToken = default)
     {
         Release();
         var last = -1L;
-        while (Written != last)
+        while (last < 0 || Written - last > idleBytes)
         {
             last = Written;
             await Task.Delay(quiet, cancellationToken).ConfigureAwait(false);

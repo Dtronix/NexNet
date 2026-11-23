@@ -42,6 +42,31 @@ public static class Fixtures
     /// <summary>Log lines of the Full scenario's TailLogs channel.</summary>
     public const int LogLines = 12;
 
+    /// <summary>
+    /// The longest the SendAttachment call may take, from its MessageStart to its result: the inspect-live screen shows
+    /// it whole in a 50 ms window. A run on a loaded machine that took longer is recorded again.
+    /// </summary>
+    public const double MaxAttachmentMilliseconds = 80;
+
+    /// <summary>How long an invocation took on the wire: its request's first frame to its result's last.</summary>
+    public static double AttachmentMilliseconds(MessageAssembler assembler, in InvocationRow invocation, long frequency)
+    {
+        ArgumentNullException.ThrowIfNull(assembler);
+        if (invocation.Request.IsNone || invocation.Result.IsNone
+            || !assembler.TryGetFrame(invocation.Request.Direction, invocation.Request.Seq, out var first))
+            return double.PositiveInfinity;
+        var result = new List<TraceFragment>();
+        assembler.GetFragments(invocation.Result, result);
+        long end = first.EndTicks;
+        foreach (var fragment in result)
+        {
+            if (assembler.TryGetFrame(fragment.Direction, fragment.Seq, out var frame))
+                end = Math.Max(end, frame.EndTicks);
+        }
+
+        return (end - first.StartTicks) * 1000.0 / Math.Max(1, frequency);
+    }
+
     /// <summary>File name of a fixture.</summary>
     public static string FileName(FixtureKind kind) => kind switch
     {
@@ -76,7 +101,7 @@ public static class Fixtures
             case FixtureKind.ChatClient:
                 Expect(problems, recording.Sessions.Count == 1, $"{recording.Sessions.Count} sessions");
                 if (recording.Sessions.Count == 1)
-                    CheckFullSession(problems, recording.Sessions[0], kind == FixtureKind.ChatServer);
+                    CheckFullSession(problems, recording.Sessions[0], kind == FixtureKind.ChatServer, recording.Header.StopwatchFrequency);
                 break;
             case FixtureKind.ServerAll:
             case FixtureKind.Truncated:
@@ -108,7 +133,7 @@ public static class Fixtures
         return problems;
     }
 
-    private static void CheckFullSession(List<string> problems, SessionAnalysis session, bool serverSide)
+    private static void CheckFullSession(List<string> problems, SessionAnalysis session, bool serverSide, long frequency)
     {
         var role = serverSide ? NntlSessionRole.Server : NntlSessionRole.Client;
         CheckCommon(problems, session, role, serverSide ? SchemaHashOf<ChatServerNexus>() : SchemaHashOf<ChatClientNexus>());
@@ -151,6 +176,8 @@ public static class Fixtures
                 assembler.GetInterleaved(request, between);
                 Expect(problems, between.Any(f => f.Target == FrameTarget.Pipe), "no pipe frame between the chunks");
                 Expect(problems, between.Any(f => f.Type == MessageType.Ping), "no ping between the chunks");
+                var span = AttachmentMilliseconds(assembler, attachments[0], frequency);
+                Expect(problems, span <= MaxAttachmentMilliseconds, $"SendAttachment took {span:N1} ms");
                 var args = decoder.DecodeArguments(attachments[0]);
                 Expect(problems, args.Problem == DecodeProblem.None && SessionAnalysis.TryFindField(args, "Data", out var data)
                                  && data.ContentLength == Fixtures.AttachmentBytes, "the attachment does not decode");

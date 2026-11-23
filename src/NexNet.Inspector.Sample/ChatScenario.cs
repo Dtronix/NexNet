@@ -148,12 +148,14 @@ public static class ChatScenario
         return data;
     }
 
-    // Pipe 3 streams while the attachment's chunks go out, paced so the two interleave on the wire.
+    // Pipe 3 streams while the attachment's chunks go out, paced so the two interleave on the wire. The pipe opens
+    // first, so its writes, not its open handshake, are what lands between the chunks.
     private static async Task AttachmentAsync(NexusClient<ChatClientNexus, ChatClientNexus.ServerProxy> client,
         ChunkPacer? pacer, ChatScenarioOptions options, CancellationToken cancellationToken)
     {
-        var upload = UploadAsync(client, options, "trace.bin", options.UploadWrites, options.UploadWriteBytes,
-            options.UploadInterval, cancellationToken);
+        await using var pipe = await OpenUploadAsync(client, options, "trace.bin", cancellationToken).ConfigureAwait(false);
+        var upload = WriteUploadAsync(pipe, options, options.UploadWrites, options.UploadWriteBytes, options.UploadInterval,
+            cancellationToken);
         if (pacer != null)
             pacer.Enabled = true;
         try
@@ -183,17 +185,39 @@ public static class ChatScenario
         ChatScenarioOptions options, string fileName, int writes, int bytesPerWrite, TimeSpan interval,
         CancellationToken cancellationToken)
     {
+        await using var pipe = await OpenUploadAsync(client, options, fileName, cancellationToken).ConfigureAwait(false);
+        await WriteUploadAsync(pipe, options, writes, bytesPerWrite, interval, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IRentedNexusDuplexPipe> OpenUploadAsync(NexusClient<ChatClientNexus, ChatClientNexus.ServerProxy> client,
+        ChatScenarioOptions options, string fileName, CancellationToken cancellationToken)
+    {
         var timeout = options.StepTimeout;
-        await using var pipe = client.CreatePipe();
-        await client.Proxy.UploadFile(fileName, pipe).AsTask().WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
-        await pipe.ReadyTask.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+        var pipe = client.CreatePipe();
+        try
+        {
+            await client.Proxy.UploadFile(fileName, pipe).AsTask().WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            await pipe.ReadyTask.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            return pipe;
+        }
+        catch
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async Task WriteUploadAsync(IRentedNexusDuplexPipe pipe, ChatScenarioOptions options, int writes, int bytesPerWrite,
+        TimeSpan interval, CancellationToken cancellationToken)
+    {
+        var timeout = options.StepTimeout;
         var chunk = new byte[bytesPerWrite];
         for (var i = 0; i < writes; i++)
         {
             chunk.AsSpan().Fill((byte)('a' + (i % 26)));
             await pipe.Output.WriteAsync(chunk, cancellationToken).AsTask().WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
             if (interval > TimeSpan.Zero && i < writes - 1)
-                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                await PreciseDelay.WaitAsync(interval, cancellationToken).ConfigureAwait(false);
         }
 
         await pipe.Output.CompleteAsync().ConfigureAwait(false);
