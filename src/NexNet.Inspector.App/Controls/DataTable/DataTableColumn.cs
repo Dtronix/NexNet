@@ -1,3 +1,5 @@
+using NexNet.Inspector.App.Controls.Primitives;
+
 namespace NexNet.Inspector.App.Controls.DataTable;
 
 /// <summary>How a column places its text (and drawn content) within its slot.</summary>
@@ -35,7 +37,10 @@ public enum DataTableState : byte
 /// <param name="Width">Pixels for a fixed column; the star weight for a <paramref name="IsStar"/> column.</param>
 /// <param name="IsStar">True when the column shares the width the fixed columns leave, by weight.</param>
 /// <param name="Alignment">How the header and the cells align.</param>
-public readonly record struct DataTableColumn(string Header, double Width, bool IsStar, DataTableAlignment Alignment)
+/// <param name="Swatch">
+/// A colour square drawn before the header label (the field diff's file columns carry their file's colour); null for none.
+/// </param>
+public readonly record struct DataTableColumn(string Header, double Width, bool IsStar, DataTableAlignment Alignment, ThemeBrush? Swatch = null)
 {
     /// <summary>A column of <paramref name="width"/> pixels.</summary>
     public static DataTableColumn Fixed(string header, double width, DataTableAlignment alignment = DataTableAlignment.Left) =>

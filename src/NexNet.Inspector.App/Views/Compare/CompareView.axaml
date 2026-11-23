@@ -99,7 +99,7 @@
         </Border>
 
         <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0">
-          <views:CompareDetailView Name="Detail" />
+          <views:CompareDetailView Name="Detail" DataContext="{Binding DetailPanel}" />
         </Border>
       </Grid>
     </Grid>

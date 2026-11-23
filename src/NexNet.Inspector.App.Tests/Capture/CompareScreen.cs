@@ -13,13 +13,14 @@ namespace NexNet.Inspector.App.Tests.Capture;
 /// The compare screen (PLAN §8): a client-side and a server-side Chat capture in Compare, aligned On event (session
 /// ready). The package pairs the client side with server-all › 0x3A21; server-all's sessions run the light scenario, so
 /// the full-scenario server capture stands in for it, against the variant client run (its first message changed and
-/// one message added), which gives the Δ strip real differences. The SendAttachment invocation is selected: pinned
-/// under Invocations in both files, the diff band around it, its detail below.
+/// one message added), which gives the Δ strip real differences. The changed SendMessage invocation (its text differs) is
+/// selected: pinned under Invocations in both files, the diff band around it, and below it the field diff (differing rows
+/// tinted) and the A ⇄ B hex with its Text field picked (ringed in both rows, differing bytes marked).
 /// </summary>
 public static class CompareScreen
 {
     /// <summary>What the scenario opened and picked, for tests.</summary>
-    public sealed record Picks(FileDocumentViewModel A, FileDocumentViewModel B, int Attachment);
+    public sealed record Picks(FileDocumentViewModel A, FileDocumentViewModel B, int Message);
 
     public static Window Create(CaptureContext context)
     {
@@ -28,7 +29,7 @@ public static class CompareScreen
         return new MainWindow { DataContext = viewModel };
     }
 
-    /// <summary>Opens both fixtures, ticks them, shows Compare and selects SendAttachment. Pumps the UI thread while they load.</summary>
+    /// <summary>Opens both fixtures, ticks them, shows Compare and selects the changed SendMessage. Pumps the UI thread while they load.</summary>
     public static Picks Open(MainWindowViewModel viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
@@ -41,11 +42,24 @@ public static class CompareScreen
         InspectLiveScreen.Pump(() => viewModel.Compare.Session is not null);
 
         CompareWorkspaceViewModel compare = viewModel.Compare;
-        int attachment = FindInvocation(compare.Session!, "SendAttachment");
-        compare.Select(attachment);
+        int message = FindInvocation(compare.Session!, "SendMessage");
+        compare.Select(message);
+        FieldDiffViewModel fields = compare.DetailPanel.FieldDiff;
+        if (fields.Rows.Diff is { } diff)
+        {
+            for (int row = 0; row < diff.Rows.Length; row++)
+            {
+                if (diff.Rows[row].Kind == FieldDiffKind.Changed && diff.Rows[row].Path.EndsWith(".Text", StringComparison.Ordinal))
+                {
+                    fields.SelectRow(row);
+                    break;
+                }
+            }
+        }
+
         compare.Rows.SetPlayhead(compare.Session!.Clock.AnchorTime);
         InspectLiveScreen.Pump(static () => true);
-        return new Picks(a, b, attachment);
+        return new Picks(a, b, message);
     }
 
     /// <summary>The first invocation of a method, preferring one whose sides differ.</summary>

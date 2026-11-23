@@ -41,6 +41,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     private DocumentViewModel? _b;
     private long _lastBuild;
     private bool _selecting;
+    private CompareSession? _shownSession;
+    private int _shownMatch = -1;
 
     /// <param name="documents">The open documents (the tabs' Compare checkboxes pick the pair).</param>
     /// <param name="chrome">The shell: the Inspect | Compare switch.</param>
@@ -113,6 +115,12 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     /// </summary>
     [ObservableProperty]
     public partial EntityMatch? Detail { get; private set; }
+
+    /// <summary>
+    /// The bottom panel (I32): the field diff and A ⇄ B hex of <see cref="Detail"/>, re-shown when the selected entity or
+    /// the compare changes (not on a re-alignment, which leaves field content alone and keeps the picked field).
+    /// </summary>
+    public CompareDetailViewModel DetailPanel { get; } = new();
 
     /// <summary>The bottom panel's subtitle: "Invocation #812 SendAttachment".</summary>
     [ObservableProperty]
@@ -202,7 +210,19 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
             DetailSubtitle = "";
         }
 
+        ShowDetail();
         RebuildEntities();
+    }
+
+    private void ShowDetail()
+    {
+        CompareSession? session = Detail is null ? null : Session;
+        int match = Detail?.Index ?? -1;
+        if (ReferenceEquals(session, _shownSession) && match == _shownMatch)
+            return;
+        _shownSession = session;
+        _shownMatch = match;
+        DetailPanel.Show(session, match, DetailSubtitle);
     }
 
     /// <summary>
@@ -279,6 +299,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         CompareDensity? densityB = session is null ? null : CompareDensity.Build(session.B);
         Rows.SetSession(session, densityA, densityB, keep);
         Session = session;
+        // A refreshed compare rebuilt its union (and dropped its field diffs): the panel shows the entity again.
+        _shownMatch = int.MinValue;
         UpdateFiles();
         DeltaCount = session?.Deltas.Count ?? 0;
         int match = session is not null && selected is { } key ? session.FindMatch(key) : -1;
@@ -306,6 +328,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
             Rows.SetFiles("", "", ThemeBrush.DirectionInbound, "", "", ThemeBrush.DirectionOutbound);
             return;
         }
+
+        DetailPanel.SetFiles(_a.Title, _b.Title);
 
         CompareClock clock = session.Clock;
         Rows.SetFiles(_a.Title, FileDetail(_a, session.A, 0), BrushOf(_a.Marker),

@@ -146,6 +146,12 @@ public abstract class DataTableRowVisual
     /// <summary>True when the row belongs to the traced message (the trace tint).</summary>
     public bool IsTraced { get; protected set; }
 
+    /// <summary>
+    /// A tint laid over the row's state background (the field diff's differing rows: diff.band); null for none. It is
+    /// translucent, so hover and selection still show through it.
+    /// </summary>
+    public virtual ThemeBrush? Band => null;
+
     /// <summary>Draws the cells; <paramref name="size"/> excludes the row's bottom border.</summary>
     public abstract void Render(DrawingContext context, ThemePalette palette, ReadOnlySpan<DataTableColumnSlot> columns, Size size);
 

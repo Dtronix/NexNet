@@ -60,6 +60,7 @@ public sealed class DataTableRow : ListBoxItem
 
         // The theme's background is transparent at rest, still filled so the whole row takes the pointer.
         if (Background is { } background) context.FillRectangle(background, new Rect(0, 0, size.Width, body));
+        if (Visual?.Band is { } band) context.FillRectangle(palette[band], new Rect(0, 0, size.Width, body));
         context.FillRectangle(palette[ThemeBrush.BorderRow], new Rect(0, body, size.Width, size.Height - body));
         if (IsSelected && !ShowsFocusRing)
             context.FillRectangle(palette[Table?.SelectionBar ?? ThemeBrush.AccentTrace], new Rect(0, 0, SelectionBarWidth, body));

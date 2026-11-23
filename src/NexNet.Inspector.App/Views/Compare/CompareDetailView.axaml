@@ -1,26 +1,16 @@
 <!--
-  The Compare workspace's bottom panel (200 px): the selected entity's "Field diff" (Field | file A | file B, differing
-  rows tinted) at 58 % and "Hex · A ⇄ B" (interleaved A/B rows) at 42 %. I32 fills both panes from
-  CompareWorkspaceViewModel.Detail; until then each shows its header and what selecting an entity will show.
+  The Compare workspace's bottom panel (PKG compare: 200 px, Field diff with the hex pane at 42 % width, a 1 px
+  border.default between them), over CompareWorkspaceViewModel.DetailPanel, which follows the selected entity.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:NexNet.Inspector.App.ViewModels"
-             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:cmp="using:NexNet.Inspector.App.Views.Compare"
              x:Class="NexNet.Inspector.App.Views.Compare.CompareDetailView"
-             x:DataType="vm:CompareWorkspaceViewModel">
-  <Grid ColumnDefinitions="58*,42*">
-    <DockPanel Name="FieldDiffSlot">
-      <c:PaneHeader DockPanel.Dock="Top" Variant="Titled" Title="Field diff" Subtitle="{Binding DetailSubtitle}" />
-      <TextBlock Text="Select an entity to compare its fields." HorizontalAlignment="Center" VerticalAlignment="Center"
-                 FontSize="{DynamicResource FontSize.Data}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
-    </DockPanel>
-    <Border Grid.Column="1" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1,0,0,0">
-      <DockPanel Name="HexSlot">
-        <c:PaneHeader DockPanel.Dock="Top" Variant="Titled" Title="Hex · A ⇄ B" />
-        <TextBlock Text="Select an entity to compare its bytes." HorizontalAlignment="Center" VerticalAlignment="Center"
-                   FontSize="{DynamicResource FontSize.Data}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
-      </DockPanel>
-    </Border>
+             x:DataType="vm:CompareDetailViewModel">
+  <Grid ColumnDefinitions="58*,Auto,42*">
+    <cmp:FieldDiffPane x:Name="FieldDiffView" DataContext="{Binding FieldDiff}" />
+    <Border Grid.Column="1" Width="1" Background="{DynamicResource Brush.Border.Default}" />
+    <cmp:CompareHexPane x:Name="HexView" Grid.Column="2" DataContext="{Binding Hex}" />
   </Grid>
 </UserControl>

@@ -79,4 +79,7 @@ public enum HexCellMarks : byte
 
     /// <summary>The byte is no longer held (a live capture trimmed it, or a recording failed to read): drawn blank.</summary>
     Unavailable = 1 << 4,
+
+    /// <summary>The A ⇄ B hex view only: the other document's byte at this position differs (or is missing).</summary>
+    Differs = 1 << 5,
 }
