@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using AvaloniaEdit;
+using NexNet.Inspector.App.Controls.Primitives;
 
 namespace NexNet.Inspector.App.Tests.Capture;
 
@@ -24,6 +25,7 @@ public static class ControlGallery
     public static readonly List<GallerySection> Sections =
     [
         new("Type", Typography),
+        new("Colour tokens", Swatches),
         new("Editor (AvaloniaEdit)", Editor),
     ];
 
@@ -69,6 +71,25 @@ public static class ControlGallery
         panel.Children.Add(Text("Recent endpoints · meta 10.5 bold", "FontSize.Meta", "Brush.Text.Secondary", FontWeight.Bold));
         panel.Children.Add(Text("tcp://10.0.4.12:7711 · 00:00:01.250 · 0x2A · mono data 11", "FontSize.Data", "Brush.Text.Secondary", fontKey: "Font.Mono"));
         panel.Children.Add(Text("Tertiary hint text", "FontSize.Small", "Brush.Text.Tertiary"));
+        return panel;
+    }
+
+    /// <summary>Every brush a drawn control can use (ThemeBrush), as a labelled swatch on a panel.</summary>
+    private static Control Swatches()
+    {
+        WrapPanel panel = new() { ItemSpacing = 8, LineSpacing = 8 };
+        foreach (ThemeBrush brush in Enum.GetValues<ThemeBrush>())
+        {
+            string key = ThemeBrushes.Key(brush);
+            Border swatch = new() { Width = 128, Height = 28, BorderThickness = new Thickness(1) };
+            Bind(swatch, Border.BackgroundProperty, key);
+            Bind(swatch, Border.BorderBrushProperty, "Brush.Border.Default");
+            StackPanel cell = new() { Spacing = 2, Width = 128 };
+            cell.Children.Add(swatch);
+            cell.Children.Add(Text(key["Brush.".Length..], "FontSize.Meta", "Brush.Text.Secondary", fontKey: "Font.Mono"));
+            panel.Children.Add(cell);
+        }
+
         return panel;
     }
 
