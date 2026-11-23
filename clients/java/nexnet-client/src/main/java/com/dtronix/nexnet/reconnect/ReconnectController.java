@@ -186,7 +186,8 @@ public final class ReconnectController implements AutoCloseable {
      * Called by the client when an established session closed. Starts a loop unless the controller is stopped or the
      * policy declines. {@code beforeStart} runs once the loop is decided and before its first step is scheduled, so
      * the client can report {@code RECONNECTING} only when a loop starts and before an attempt can connect (K55). It
-     * does not run when no loop starts.
+     * does not run when no loop starts. It may {@link #cancel()} the loop (the user disconnected while the client
+     * handled the loss, K61): no step of the loop runs then, not even the listeners' {@code onReconnecting}.
      *
      * &lt;p&gt;When a loop already runs (for example its attempt has just connected and it has not ended yet), the loss is
      * remembered instead (K56, C# parity): if that loop ends because its attempt connected and the client is not
@@ -251,6 +252,12 @@ public final class ReconnectController implements AutoCloseable {
             }
         }
         executor.execute(() -> {
+            synchronized (lock) {
+                // Canceled as it started (for example from beforeStart, K61): no listener or hook runs.
+                if (!live(gen)) {
+                    return;
+                }
+            }
             notify(l -> l.onReconnecting(reason));
             CompletableFuture<Void> hook;
             try {

@@ -11,12 +11,18 @@ import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectController;
 import com.dtronix.nexnet.reconnect.ReconnectListener;
+import com.dtronix.nexnet.serialization.MsgPackReader;
+import com.dtronix.nexnet.spi.ClientNexusBase;
+import com.dtronix.nexnet.spi.InvocationContext;
+import com.dtronix.nexnet.spi.ProxyBase;
+import com.dtronix.nexnet.spi.ProxyInvoker;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -288,6 +294,90 @@ class NexusClientReconnectTest {
             client.disconnect().get(5, TimeUnit.SECONDS);
             disconnected.get(5, TimeUnit.SECONDS);
             assertEquals(ConnectionState.DISCONNECTED, client.state());
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    @Test
+    void aDisconnectAsTheLoopStartsAnAttemptStopsTheAttempt() throws Exception {
+        // K61: the loop decided to make an attempt and the user disconnected before the attempt started. Before, the
+        // disconnect found no attempt to cancel, the attempt started after it, and the client reconnected.
+        TestClients.Server server = new TestClients.Server();
+        NexusClient<TestProxy> client = TestClients.client(ClientConfig.tcp("h", 1)
+            .reconnectionPolicy(new DefaultReconnectionPolicy(new long[] {0, 50}, true)).build(), server);
+        try {
+            ReconnectController controller = client.reconnection();
+            assertNotNull(controller);
+            List<ConnectionState> states = connectAndRecord(client);
+            AtomicBoolean once = new AtomicBoolean();
+            CountDownLatch disconnected = new CountDownLatch(1);
+            client.beforeReconnectAttempt = () -> {
+                if (once.compareAndSet(false, true)) {
+                    client.disconnect();
+                    disconnected.countDown();
+                }
+            };
+
+            server.disconnect(0, 30);
+            assertTrue(disconnected.await(5, TimeUnit.SECONDS));
+            controller.idle().get(5, TimeUnit.SECONDS);
+            TestClients.waitFor(() -> client.state() == ConnectionState.DISCONNECTED);
+            Thread.sleep(200);
+            assertEquals(ConnectionState.DISCONNECTED, client.state());
+            assertNull(client.session());
+            assertEquals(1, server.transports.size(), "The stopped loop opened no session.");
+            assertFalse(controller.isReconnecting());
+            assertEquals(ConnectionState.DISCONNECTED, states.get(states.size() - 1), "States: " + states);
+        } finally {
+            client.close();
+        }
+        TestClients.awaitIdle();
+    }
+
+    /** A proxy with no methods, for a nexus of the test's own. */
+    private static final class Proxy extends ProxyBase {
+        Proxy(ProxyInvoker invoker) {
+            super(invoker);
+        }
+    }
+
+    @Test
+    void aDisconnectFromOnDisconnectedOfALostSessionStartsNoLoop() throws Exception {
+        // K61: the user disconnects while the client handles the loss of its session (here from onDisconnected, which
+        // runs before the client hands the loss to the controller). Before, the lost session was no longer the
+        // client's, so the disconnect did not mark it, and the loop started and reconnected.
+        TestClients.Server server = new TestClients.Server();
+        AtomicReference<NexusClient<Proxy>> ref = new AtomicReference<>();
+        ClientNexusBase<Proxy> nexus = new ClientNexusBase<Proxy>() {
+            @Override
+            protected CompletableFuture<Void> onDisconnected() {
+                ref.get().disconnect();
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            protected CompletableFuture<Void> dispatch(int methodId, MsgPackReader arguments,
+                                                       InvocationContext context) {
+                throw new IllegalArgumentException("Unknown method id " + methodId);
+            }
+        };
+        NexusClient<Proxy> client = NexusClient.create(config(), TestClients.HANDSHAKE, nexus, Proxy::new, server);
+        ref.set(client);
+        try {
+            ReconnectController controller = client.reconnection();
+            assertNotNull(controller);
+            client.connect().get(5, TimeUnit.SECONDS);
+            CompletableFuture<Void> disconnected = client.disconnected();
+
+            server.disconnect(0, 30);
+            disconnected.get(5, TimeUnit.SECONDS);
+            Thread.sleep(200);
+            assertEquals(ConnectionState.DISCONNECTED, client.state());
+            assertEquals(1, server.transports.size(), "No loop started after the disconnect.");
+            assertEquals(0, controller.attempts());
+            assertFalse(controller.isReconnecting());
         } finally {
             client.close();
         }

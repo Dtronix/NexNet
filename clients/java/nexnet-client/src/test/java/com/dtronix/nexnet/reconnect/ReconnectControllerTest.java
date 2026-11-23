@@ -202,6 +202,22 @@ class ReconnectControllerTest {
     }
 
     @Test
+    void aLoopCanceledFromBeforeStartRunsNoStep() {
+        // K61: the client cancels a loop from beforeStart when the user disconnected while it handled the loss.
+        ReconnectController c = controller(new DefaultReconnectionPolicy(new long[] {0}, true));
+        List<CompletableFuture<Void>> idle = new ArrayList<>();
+        assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> {
+            idle.add(c.idle());
+            assertTrue(c.cancel());
+        }));
+        assertTrue(idle.get(0).isDone());
+        assertFalse(c.isReconnecting());
+        timers.advance(10);
+        assertEquals(List.of(), client.events);
+        assertEquals(List.of(), events.list);
+    }
+
+    @Test
     void aThrowingBeforeStartIsLoggedAndTheLoopStillStarts() {
         ReconnectController c = controller(new DefaultReconnectionPolicy());
         assertTrue(c.onSessionLost(DisconnectReason.SOCKET_ERROR, () -> {
