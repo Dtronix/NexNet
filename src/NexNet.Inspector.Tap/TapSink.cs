@@ -128,6 +128,8 @@ internal sealed class TapSink
     private int _blocked;
     private bool _senderWaiting;
     private bool _stopping;
+    private bool _deadlineArmed;
+    private bool _outputGone;
     private NntlWriter? _writer;
     private byte[] _scratch = [];
 
@@ -290,10 +292,25 @@ internal sealed class TapSink
             link.Session.RemoveLink(link);
         _inspector.Forget(this);
 
-        // Unblocks a flush waiting on a viewer that stopped reading; the final flush has its own timeout.
-        _stop.Cancel();
+        // A flush waiting on a viewer is not canceled at once: a NexNet pipe drops what a canceled flush had not sent,
+        // which would cut the stream mid-block (the viewer may just be slow, and is about to read). It gets until the
+        // deadline to drain what the ring holds and the closing blocks.
+        ArmDeadline();
         if (wake)
             _wake.Set();
+    }
+
+    /// <summary>Cancels any flush still waiting on the output once <see cref="FinalFlushTimeout"/> has passed. Once only.</summary>
+    private void ArmDeadline()
+    {
+        lock (_gate)
+        {
+            if (_deadlineArmed)
+                return;
+            _deadlineArmed = true;
+        }
+
+        _stop.CancelAfter(FinalFlushTimeout);
     }
 
     private async Task RunAsync(InitialSession[] initial)
@@ -362,6 +379,8 @@ internal sealed class TapSink
                 }
                 alive = await _output.FlushAsync(idle: false, _stop.Token).ConfigureAwait(false);
             }
+
+            _outputGone = !alive;
         }
         catch (Exception e)
         {
@@ -615,7 +634,9 @@ internal sealed class TapSink
             link.Session.RemoveLink(link);
         _inspector.Forget(this);
 
-        if (_writer != null && Fault == null)
+        // A gone output may have lost the tail of what was written (a canceled flush drops it), so nothing more is
+        // appended: the stream ends where it broke and reads as truncated, never as a block cut by later ones.
+        if (_writer != null && Fault == null && !_outputGone)
         {
             try
             {
@@ -630,8 +651,8 @@ internal sealed class TapSink
                 }
 
                 _writer.Close();
-                using var timeout = new CancellationTokenSource(FinalFlushTimeout);
-                await _output.FlushAsync(idle: true, timeout.Token).ConfigureAwait(false);
+                ArmDeadline();
+                await _output.FlushAsync(idle: true, _stop.Token).ConfigureAwait(false);
             }
             catch (Exception e)
             {

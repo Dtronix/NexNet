@@ -10,8 +10,8 @@ internal abstract class SinkOutput
 
     /// <summary>Pushes what was written. Waiting here is what slows a sink down when its destination is slow.</summary>
     /// <param name="idle">True when the sink has nothing more to write for now.</param>
-    /// <param name="cancellationToken">Canceled when the sink stops; a canceled flush is not an error.</param>
-    /// <returns>False when the destination is gone and the sink should stop.</returns>
+    /// <param name="cancellationToken">Canceled when a stopping sink's deadline passes; a canceled flush ends the output.</param>
+    /// <returns>False when the destination is gone (or a flush was canceled) and nothing more may be written.</returns>
     public abstract ValueTask<bool> FlushAsync(bool idle, CancellationToken cancellationToken);
 
     /// <summary>Ends the output after the last write.</summary>
@@ -29,12 +29,14 @@ internal sealed class PipeSinkOutput(PipeWriter writer) : SinkOutput
     {
         try
         {
+            // A NexNet pipe writer drops what a canceled flush had not sent yet, possibly part of a block: the stream
+            // cannot go on after one.
             var result = await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
-            return !result.IsCompleted;
+            return !result.IsCompleted && !result.IsCanceled;
         }
         catch (OperationCanceledException)
         {
-            return true;
+            return false;
         }
         catch (Exception)
         {

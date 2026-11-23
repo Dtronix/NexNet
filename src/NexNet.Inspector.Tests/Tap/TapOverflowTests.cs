@@ -61,6 +61,78 @@ public class TapOverflowTests
         }
     }
 
+    /// <summary>
+    /// Regression for I09b. Many inspectors at once, each with a tiny ring and a tiny stream window, so every attach
+    /// overflows and every flush waits on its viewer. Half the viewers are stalled when they detach (the sender is
+    /// waiting for window credit at that moment), half are already reading. Every stream must stay checksum-clean
+    /// and end with its footer, and per direction recorded ops plus dropped ops must equal what the session moved.
+    /// </summary>
+    [Test]
+    public async Task Concurrent_viewers_on_tiny_windows_lose_no_op_and_keep_the_stream_intact()
+    {
+        const int inspectors = 8;
+        var runs = new Task[inspectors];
+        for (var i = 0; i < inspectors; i++)
+        {
+            var stalledAtDetach = i % 2 == 0;
+            runs[i] = Task.Run(() => DetachUnderPressure(stalledAtDetach));
+        }
+
+        await Task.WhenAll(runs).WaitAsync(Wait);
+    }
+
+    private static async Task DetachUnderPressure(bool stalledAtDetach)
+    {
+        const int window = 4 * 1024;
+        await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 });
+        await h.StartAsync();
+        await h.StartEndpointAsync(pipeWindow: window);
+        var client = await h.ConnectClientAsync();
+        var session = await h.WaitForSessionAsync();
+        var viewer = await h.ConnectViewerAsync(pipeWindow: window);
+        var tapped = h.Inspector.FindSession(session.Id)!;
+        var before = await QuietCounters(h, tapped, client);
+
+        await using var stream = await viewer.AttachAsync(new InspectorAttachRequest(InspectorTargetKind.Session, session.Id,
+            InspectorOverflow.Drop, Snapshot: false, Record: false));
+
+        // Far more than the ring and the window hold, so the sender ends up waiting for credit with blocks unsent.
+        var data = new byte[4 * 1024];
+        for (var i = 0; i < 40; i++)
+            await client.Proxy.Echo(data).AsTask().WaitAsync(Wait);
+        var after = await QuietCounters(h, tapped, client);
+
+        Task detach;
+        Task<TapCapture> reading;
+        if (stalledAtDetach)
+        {
+            // The detach reaches the sink while its flush waits on the stalled viewer; the viewer reads only after.
+            detach = viewer.DetachAsync();
+            await Task.Delay(50);
+            reading = TapCapture.ReadAllAsync(stream);
+        }
+        else
+        {
+            reading = TapCapture.ReadAllAsync(stream);
+            detach = viewer.DetachAsync();
+        }
+
+        var capture = await reading.WaitAsync(Wait);
+        await detach.WaitAsync(Wait);
+        await Assert.That(capture.Complete).IsTrue();
+
+        foreach (var direction in new[] { TapDirection.Inbound, TapDirection.Outbound })
+        {
+            var d = (int)direction;
+            var ops = capture.Ops(session.Id, direction).ToArray();
+            var gaps = capture.Gaps(session.Id, direction).ToArray();
+            await Assert.That(ops.Select(o => o.OpId).Distinct().Count()).IsEqualTo(ops.Length);
+            await Assert.That(ops.Length + gaps.Sum(g => g.DroppedOps)).IsEqualTo(after.Ops[d] - before.Ops[d]);
+            await Assert.That(ops.Sum(o => (long)o.Bytes.Length) + gaps.Sum(g => g.DroppedBytes))
+                .IsEqualTo(after.Bytes[d] - before.Bytes[d]);
+        }
+    }
+
     [Test]
     public async Task Block_is_lossless_and_holds_the_session_back()
     {

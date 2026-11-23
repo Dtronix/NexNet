@@ -59,7 +59,9 @@ internal sealed class TapHarness : IAsyncDisposable
     /// <summary>The endpoint's address in nexnet-tap form (tcp://, tls:// or uds:).</summary>
     public string? EndpointAddress { get; private set; }
 
-    public async Task<InspectorEndpoint> StartEndpointAsync(TapTransport transport = TapTransport.Uds)
+    /// <param name="transport">The endpoint's transport.</param>
+    /// <param name="pipeWindow">The endpoint's pipe window; null for NexNet's default.</param>
+    public async Task<InspectorEndpoint> StartEndpointAsync(TapTransport transport = TapTransport.Uds, int? pipeWindow = null)
     {
         ServerConfig config;
         switch (transport)
@@ -85,16 +87,22 @@ internal sealed class TapHarness : IAsyncDisposable
                 break;
         }
 
+        if (pipeWindow is { } window)
+            config.PipeWindow = window;
         Endpoint = await Inspector.StartEndpointAsync(config, EndpointToken);
         return Endpoint;
     }
 
-    public async Task<InspectorClient> ConnectViewerAsync(byte[]? token = null)
+    /// <param name="token">The token to present; null for the endpoint's.</param>
+    /// <param name="pipeWindow">The viewer's receive window for the stream; null for NexNet's default.</param>
+    public async Task<InspectorClient> ConnectViewerAsync(byte[]? token = null, int? pipeWindow = null)
     {
         if (_endpointPath is null)
             throw new InvalidOperationException("ConnectViewerAsync needs a UDS endpoint.");
-        var viewer = await InspectorClient.ConnectAsync(
-            new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath) }, token ?? EndpointToken);
+        var config = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(_endpointPath) };
+        if (pipeWindow is { } window)
+            config.PipeWindow = window;
+        var viewer = await InspectorClient.ConnectAsync(config, token ?? EndpointToken);
         _owned.Add(viewer);
         return viewer;
     }

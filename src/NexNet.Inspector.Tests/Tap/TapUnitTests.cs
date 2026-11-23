@@ -103,19 +103,25 @@ public class TapUnitTests
             await tap.OnWrite(data, i);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 100_000; i++)
+        // The least of a few rounds: a per-op allocation shows in every round (200 000 ops would be megabytes), while
+        // the runtime's occasional work on this thread under load (tiering, on-stack replacement of the loop) shows in
+        // some. A small constant is still tolerated for that work landing in every round.
+        var least = long.MaxValue;
+        for (var round = 0; round < 5; round++)
         {
-            var read = tap.OnRead(data, i);
-            var write = tap.OnWrite(data, i);
-            if (!read.IsCompletedSuccessfully || !write.IsCompletedSuccessfully)
-                throw new InvalidOperationException("An unwatched session must never wait.");
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 100_000; i++)
+            {
+                var read = tap.OnRead(data, i);
+                var write = tap.OnWrite(data, i);
+                if (!read.IsCompletedSuccessfully || !write.IsCompletedSuccessfully)
+                    throw new InvalidOperationException("An unwatched session must never wait.");
+            }
+
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        // 200 000 ops: any per-op allocation would be megabytes. The runtime itself may allocate a few bytes once
-        // (tiering, on-stack replacement of the loop), so a small constant is tolerated.
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        await Assert.That(allocated).IsLessThan(1024);
+        await Assert.That(least).IsLessThan(1024);
         await inspector.DisposeAsync();
     }
 
