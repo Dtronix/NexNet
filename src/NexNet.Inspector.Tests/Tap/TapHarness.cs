@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using NexNet.Diagnostics;
 using NexNet.Inspector.Core.Format;
 using NexNet.Inspector.Tap;
 using NexNet.Transports;
@@ -30,12 +31,19 @@ internal sealed class TapHarness : IAsyncDisposable
     private string? _udsPath;
     private string? _endpointPath;
 
-    public TapHarness(TapTransport transport, InspectorOptions? options = null, bool authenticate = false)
+    /// <param name="transport">The inspected server's transport.</param>
+    /// <param name="options">The inspector's options.</param>
+    /// <param name="authenticate">True to make clients authenticate.</param>
+    /// <param name="wrapTap">Puts a test's own tap in front of the inspector, to watch what the session gets back from it.</param>
+    public TapHarness(TapTransport transport, InspectorOptions? options = null, bool authenticate = false,
+        Func<INexusTap, INexusTap>? wrapTap = null)
     {
         _transport = transport;
         _serverConfig = CreateServerConfig();
         _serverConfig.Authenticate = authenticate;
         Inspector = _serverConfig.UseInspector<TapServerNexus>(options);
+        if (wrapTap != null)
+            _serverConfig.Tap = wrapTap(Inspector);
         Server = TapServerNexus.CreateServer(_serverConfig, () => new TapServerNexus());
         Inspector.UseSnapshotsOf(Server);
     }
