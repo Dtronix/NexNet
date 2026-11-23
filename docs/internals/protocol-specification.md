@@ -1458,8 +1458,14 @@ The server checks, in order:
 | a `3xx` | A redirect. The client does not follow it | `ProtocolError` |
 
 Redirects are never followed, as in §13.6: a `3xx` fails the connect with `ProtocolError` and no second request is
-made. Browsers already fail a WebSocket handshake that answers with a redirect (the WHATWG WebSocket handshake uses
-redirect mode `error`).
+made. A browser client cannot enforce this, because the browser runs the handshake. Chromium and Firefox fail a
+handshake that answers with a redirect, but WebKit may follow it (observed on Linux), and page JavaScript cannot stop
+it. If the redirect target is a NexNet WebSocket endpoint, a WebKit client connects there, and a query-string token
+(§13.6) goes with it when the `Location` keeps the query string. Otherwise no session forms and the connect fails.
+
+NexNet.Asp never answers an upgrade with a `3xx`: it accepts it, refuses it (the table above), or passes the request
+to the next middleware. Deployments must not redirect a NexNet WebSocket path either (a reverse proxy, or an HTTP to
+HTTPS redirect such as `UseHttpsRedirection` running before the NexNet middleware); serve `wss` directly.
 
 A browser cannot read the status of a failed handshake: it reports a generic error and close code 1006, so it cannot
 tell a refused upgrade (the `403` above) from any other connect failure. This is why a failed ASP.NET authentication

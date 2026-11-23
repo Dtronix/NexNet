@@ -140,6 +140,16 @@ c.NexusConfig.AccessTokenQueryParameter = "access_token";
 - The scheme is evaluated again with the promoted header, even if `UseAuthentication` already ran for the request.
 - The parameter is removed from the request's query string, and NexNet never logs its value. Proxies and ASP.NET request logging can still record full URLs, so keep such tokens short-lived.
 
+### Do not redirect NexNet paths
+
+NexNet clients never follow a redirect of the upgrade: a `3xx` answer fails the connect with `ProtocolError`. A browser, though, runs the WebSocket handshake itself. Chromium and Firefox fail it on a redirect, but WebKit may follow the redirect (observed on Linux), and page JavaScript cannot stop it. If the redirect points at another NexNet WebSocket endpoint, a WebKit client connects there, and a query-string token (`webSocket.queryToken`) goes with it when the redirect keeps the query string, as HTTP to HTTPS redirects do.
+
+NexNet.Asp itself never answers an upgrade with a redirect. It accepts the upgrade, refuses it (`403` for a disallowed origin; `401` for a failed HttpSocket authentication), or passes the request to the next middleware. With `AspEnableAuthentication` it only authenticates the request and never issues an authentication challenge, so a cookie scheme's login redirect does not apply. The rest of the deployment must not redirect the NexNet paths either:
+
+- Serve `wss://` directly at the URL clients use. Do not rely on an HTTP to HTTPS redirect for the NexNet path: `UseHttpsRedirection` (or a proxy's `return 301 https://…`) answers a `ws://` upgrade with a redirect, and a token in its query string has already crossed the network in clear text.
+- Do not let a reverse proxy, load balancer or CDN redirect the path (a moved path, a trailing slash, host canonicalization). Proxy it as in [Reverse Proxy Configuration](#reverse-proxy-configuration).
+- Middleware that runs before the NexNet middleware answers first. An authentication challenge or authorization policy there that redirects to a login page answers the upgrade with a `302`.
+
 ## Client Certificates
 
 When Kestrel terminates TLS and accepts client certificates, the certificate reaches the nexus as `Context.RemoteCertificate` for both WebSocket and HttpSocket sessions:
