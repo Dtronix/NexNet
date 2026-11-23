@@ -1,0 +1,35 @@
+<!--
+  The app's tooltip (OQ9): the menu surface — surface.panel in a 1 px border.strong outline, 8 px corners, shadow.menu —
+  with 11 px primary text, wrapping at 320 px, shown after the pointer rests 400 ms. That delay is Avalonia's own
+  ToolTip.ShowDelay default (an attached property that does not inherit, so no app-wide setter could reach every control
+  without a style on every Control); ToolTipThemeTests pins it to MenuMetrics.ToolTipDelay. Used for disabled-control
+  reasons (OQ4) and truncated values.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:NexNet.Inspector.App.Controls">
+
+  <Styles.Resources>
+    <ControlTheme x:Key="{x:Type ToolTip}" TargetType="ToolTip">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xl}" />
+      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+      <Setter Property="MaxWidth" Value="{x:Static c:MenuMetrics.ToolTipMaxWidth}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}" BoxShadow="{DynamicResource Shadow.Menu}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" TextWrapping="Wrap" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </Styles.Resources>
+</Styles>

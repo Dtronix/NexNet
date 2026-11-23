@@ -21,4 +21,7 @@
 
   <!-- Fluent's TextBox, re-keyed and sized (I14). -->
   <StyleInclude Source="/Themes/TextInput.axaml" />
+  <StyleInclude Source="/Themes/Menus.axaml" />
+  <StyleInclude Source="/Themes/ToolTip.axaml" />
+  <StyleInclude Source="/Themes/ScrollRail.axaml" />
 </Styles>

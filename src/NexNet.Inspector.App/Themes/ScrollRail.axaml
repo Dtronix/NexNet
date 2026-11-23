@@ -1,0 +1,138 @@
+<!--
+  Every ScrollBar is the rail (PKG controls/scroll-rail): at rest a 2 px pill line in scroll.thumb-rest, 2 px from the
+  viewport's edge and 3 px from its ends, laid over the content; while the mouse is within 16 px of the edge (class .near,
+  set by c:ScrollRail) a 12 px pill rail on scroll.rail with a 1 px border.default outline and an 8 px thumb 2 px in, never
+  under 28 px long. The thumb is scroll.thumb-near near, Brush.Scroll.ThumbHover (text.secondary) under the pointer and
+  Brush.Scroll.ThumbDrag (direction.inbound) pressed (OQ7). No arrow buttons; the track's page buttons page 0.9 × viewport
+  (c:RailPageButton). Widths move over 160 ms, the rail's chrome fades in by opacity over 120 ms (80 ms when the OS's
+  animations are off), eased by cubic-bezier(.2,0,0,1). The numbers are RailScrollMath's (ported from Foreman).
+  The menu is a ContextMenu c:ScrollRail makes, drawn by Themes/Menus.axaml.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:NexNet.Inspector.App.Controls">
+
+  <Styles.Resources>
+    <ControlTheme x:Key="RailPageButton" TargetType="c:RailPageButton">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="IsTabStop" Value="False" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel Background="{TemplateBinding Background}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="RailThumb" TargetType="Thumb">
+      <Setter Property="Background" Value="{DynamicResource Brush.Scroll.ThumbRest}" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <!-- The thumb's colour changes at once: a colour-only transition draws nothing new in its first frame, and
+               Avalonia's clock can then wait on a timer the headless checks never run. The rail fades by opacity with its width. -->
+          <Border Background="{TemplateBinding Background}" CornerRadius="{DynamicResource Radius.Pill}" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type ScrollBar}" TargetType="ScrollBar">
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Width" Duration="{x:Static c:ScrollRail.WidthMotion}" Easing="{x:Static c:ScrollRail.Ease}" />
+          <DoubleTransition Property="Height" Duration="{x:Static c:ScrollRail.WidthMotion}" Easing="{x:Static c:ScrollRail.Ease}" />
+        </Transitions>
+      </Setter>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel>
+            <!-- The rail's chrome: scroll.rail in a border.default outline, faded in by opacity near and out at rest. Fading the
+                 brushes from Transparent (#00FFFFFF) drew light greys in between. -->
+            <Border Name="PART_Rail" Background="{DynamicResource Brush.Scroll.Rail}" BorderBrush="{DynamicResource Brush.Border.Default}"
+                    BorderThickness="1" CornerRadius="{DynamicResource Radius.Pill}" Opacity="0">
+              <Border.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity" Duration="{x:Static c:ScrollRail.ColourMotion}" Easing="{x:Static c:ScrollRail.Ease}" />
+                </Transitions>
+              </Border.Transitions>
+            </Border>
+            <Track Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}" ViewportSize="{TemplateBinding ViewportSize}"
+                   Orientation="{TemplateBinding Orientation}"
+                   DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}">
+              <Track.Transitions>
+                <Transitions>
+                  <ThicknessTransition Property="Margin" Duration="{x:Static c:ScrollRail.WidthMotion}" Easing="{x:Static c:ScrollRail.Ease}" />
+                </Transitions>
+              </Track.Transitions>
+              <Track.DecreaseButton>
+                <c:RailPageButton Name="PART_PageUpButton" Theme="{StaticResource RailPageButton}" />
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <c:RailPageButton Name="PART_PageDownButton" Theme="{StaticResource RailPageButton}" />
+              </Track.IncreaseButton>
+              <Thumb Name="PART_Thumb" Theme="{StaticResource RailThumb}" />
+            </Track>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+
+      <Style Selector="^:vertical">
+        <Setter Property="Width" Value="{x:Static c:RailScrollMath.RestWidth}" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="Margin" Value="0,3,2,3" />
+      </Style>
+      <Style Selector="^:vertical /template/ Track#PART_Track">
+        <Setter Property="IsDirectionReversed" Value="True" />
+      </Style>
+      <Style Selector="^:vertical /template/ Thumb#PART_Thumb">
+        <Setter Property="MinHeight" Value="{x:Static c:RailScrollMath.MinThumb}" />
+      </Style>
+      <Style Selector="^:vertical.near">
+        <Setter Property="Width" Value="{x:Static c:RailScrollMath.NearWidth}" />
+      </Style>
+
+      <Style Selector="^:horizontal">
+        <Setter Property="Height" Value="{x:Static c:RailScrollMath.RestWidth}" />
+        <Setter Property="VerticalAlignment" Value="Bottom" />
+        <Setter Property="Margin" Value="3,0,3,2" />
+      </Style>
+      <Style Selector="^:horizontal /template/ Thumb#PART_Thumb">
+        <Setter Property="MinWidth" Value="{x:Static c:RailScrollMath.MinThumb}" />
+      </Style>
+      <Style Selector="^:horizontal.near">
+        <Setter Property="Height" Value="{x:Static c:RailScrollMath.NearWidth}" />
+      </Style>
+
+      <Style Selector="^.near /template/ Border#PART_Rail">
+        <Setter Property="Opacity" Value="1" />
+      </Style>
+      <Style Selector="^.near /template/ Track#PART_Track">
+        <Setter Property="Margin" Value="{x:Static c:ScrollRail.ThumbInset}" />
+      </Style>
+      <Style Selector="^.near /template/ Thumb#PART_Thumb">
+        <Setter Property="Background" Value="{DynamicResource Brush.Scroll.ThumbNear}" />
+      </Style>
+      <Style Selector="^ /template/ Thumb#PART_Thumb:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Brush.Scroll.ThumbHover}" />
+      </Style>
+      <Style Selector="^ /template/ Thumb#PART_Thumb:pressed">
+        <Setter Property="Background" Value="{DynamicResource Brush.Scroll.ThumbDrag}" />
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <!-- Every ScrollViewer takes the rail's behaviour, and its bars run the viewport's full length (Fluent stops each short
+       of the other's row and column); they stay overlaid, so the content keeps its width (AllowAutoHide stays on). -->
+  <Style Selector="ScrollViewer">
+    <Setter Property="c:ScrollRail.IsEnabled" Value="True" />
+  </Style>
+  <Style Selector="ScrollViewer /template/ ScrollBar#PART_VerticalScrollBar">
+    <Setter Property="Grid.RowSpan" Value="2" />
+  </Style>
+  <Style Selector="ScrollViewer /template/ ScrollBar#PART_HorizontalScrollBar">
+    <Setter Property="Grid.ColumnSpan" Value="2" />
+  </Style>
+</Styles>

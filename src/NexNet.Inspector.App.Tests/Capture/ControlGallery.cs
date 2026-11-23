@@ -19,7 +19,7 @@ public sealed record GallerySection(string Title, Func<Control> Build);
 public static class ControlGallery
 {
     /// <summary>Tall enough for many sections; raise it when the gallery outgrows it.</summary>
-    public const double Height = 2600;
+    public const double Height = 3000;
 
     /// <summary>The sections, in display order. Add new controls here.</summary>
     public static readonly List<GallerySection> Sections =
@@ -28,6 +28,8 @@ public static class ControlGallery
         new("Colour tokens", Swatches),
         new("Editor (AvaloniaEdit)", Editor),
         .. PrimitiveGallery.Sections(),
+        new("Menu", MenuGallery.Build),
+        new("Scroll rail", ScrollRailGallery.Build),
     ];
 
     public static Window CreateWindow(CaptureContext context)
