@@ -1,0 +1,2 @@
+# Recordings are binary: never normalize their line endings.
+*.nntl binary

@@ -14,6 +14,8 @@
     <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
     <!-- Test-only server certificate shared with the integration tests (see NexNet.IntegrationTests/certs/README.md). -->
     <None Include="..\NexNet.IntegrationTests\certs\server.pfx" Link="certs\server.pfx" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Checked-in recordings; the Sample's "fixtures" command regenerates them (see FixtureTests). -->
+    <None Include="Fixtures\*.nntl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
@@ -23,6 +25,8 @@
     <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
     <ProjectReference Include="..\NexNet.Inspector.Cli\NexNet.Inspector.Cli.csproj" />
+    <!-- The Chat sample: its nexus schema, scenario checks and fixture generator. -->
+    <ProjectReference Include="..\NexNet.Inspector.Sample\NexNet.Inspector.Sample.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 </Project>
