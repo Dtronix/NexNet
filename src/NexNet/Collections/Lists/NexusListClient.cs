@@ -272,7 +272,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                 $"The collection is read-only (mode {Mode}): only a BiDirectional collection accepts changes from a client.");
     }
 
-NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
+    NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
     {
         // One read of the immutable state, so the count and version belong together.
         var state = Volatile.Read(ref _itemList.State);

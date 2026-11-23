@@ -493,14 +493,14 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
 
     #region INexusList<T> - Read Operations
 
-    /// <inheritdoc />
-NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
+    NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
     {
         // One read of the immutable state, so the count and version belong together.
         var state = Volatile.Read(ref _itemList.State);
         return CreateSnapshot(session, NexusCollectionKind.List, state.List.Count, state.Version);
     }
 
+    /// <inheritdoc />
     public bool Contains(T item) => _itemList.Contains(item);
 
     /// <inheritdoc />
