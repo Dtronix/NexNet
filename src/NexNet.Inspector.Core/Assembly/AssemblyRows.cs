@@ -106,7 +106,7 @@ public readonly record struct AssembledMessage
     /// <summary>Bytes assembled so far.</summary>
     public long Length { get; init; }
 
-    /// <summary>Sequence number of the first frame.</summary>
+    /// <summary>Sequence number of the first frame; -1 for a message seeded from a snapshot (it began before the capture).</summary>
     public long FirstSeq { get; init; }
 
     /// <summary>Sequence number of the latest frame of the message's direction.</summary>
@@ -237,9 +237,12 @@ public readonly record struct PipeRow
 
     /// <summary>
     /// True when channel items cannot be split: the pipe opened before the capture (no known item boundary), its bytes
-    /// were trimmed before splitting, or a length prefix was invalid.
+    /// were trimmed before splitting or lost in a gap, or a length prefix was invalid.
     /// </summary>
     public bool ChannelUnavailable { get; init; }
+
+    /// <summary>True when the pipe was already open when the capture attached, known from the attach snapshot.</summary>
+    public bool FromSnapshot { get; init; }
 }
 
 /// <summary>A state change or credit grant of a pipe.</summary>

@@ -182,7 +182,12 @@ public sealed partial class MessageAssembler
         AddFrameFlags(frame.Direction, frame.Seq, FrameFlags.NexNetSplit);
 
         if (row.State == AssemblyState.Orphan)
+        {
+            // A stream seeded from a snapshot knows its length, so its end is known even without its start.
+            if (row.TotalLength >= 0 && row.Length >= row.TotalLength)
+                _activeStreams.Remove(key);
             return;
+        }
 
         if (row.LargeKind == LargeMessageKind.Argument && row.Invocation >= 0 && !_invocations[row.Invocation].RequestParsed)
             TryParseArgumentEnvelope(message);

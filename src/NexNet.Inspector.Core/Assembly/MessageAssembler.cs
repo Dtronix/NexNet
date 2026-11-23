@@ -203,6 +203,145 @@ public sealed partial class MessageAssembler : IFrameSink
         Version++;
     }
 
+    /// <summary>
+    /// Reports that the capture lost ops of one direction (a Drop-mode gap). What was in flight in that direction can
+    /// no longer complete: its large messages become <see cref="AssemblyState.Truncated"/> (chunks after the gap start
+    /// orphan messages), its pipe runs end there, and channel items stop being split on its pipes, since no item
+    /// boundary is known after lost bytes. Call it when the gap is reached in capture order, after the parser of that
+    /// direction was told (<see cref="FrameParser.Gap{TSink}"/>), so the frame the gap cut is already added.
+    /// </summary>
+    /// <param name="direction">The direction that lost ops.</param>
+    public void Gap(TapDirection direction)
+    {
+        // Removing while enumerating is allowed for Dictionary since .NET Core 3.0.
+        foreach (var (key, message) in _activeStreams)
+        {
+            if ((TapDirection)(key >> 17) != direction)
+                continue;
+
+            _activeStreams.Remove(key);
+            if (_messages[message].State is AssemblyState.Assembling or AssemblyState.Orphan)
+                SetMessageState(message, AssemblyState.Truncated);
+        }
+
+        var d = (int)direction;
+        for (var pipe = 0; pipe < _pipeTrackers.Count; pipe++)
+        {
+            var tracker = _pipeTrackers[pipe];
+            var run = tracker.CurrentRun[d];
+            if (run >= 0 && _messages[run].State == AssemblyState.Assembling)
+                SetMessageState(run, AssemblyState.Truncated);
+            tracker.CurrentRun[d] = -1;
+            tracker.LastFull[d] = false;
+
+            ref var splitter = ref tracker.Splitters[d];
+            if (splitter.Active && !splitter.Faulted)
+                FaultChannel(pipe, ref splitter, AssemblyState.Truncated);
+        }
+
+        GapCount++;
+        Version++;
+    }
+
+    /// <summary>Gaps reported through <see cref="Gap"/>.</summary>
+    public int GapCount { get; private set; }
+
+    /// <summary>
+    /// Seeds the assembler from the snapshot taken when a capture attached to a running session, so frames of what was
+    /// already open resolve from the first one: open pipes are known (and a collection's pipes carry it), and a large
+    /// message that was in transfer collects its remaining chunks at their true offsets, linked to its invocation.
+    /// </summary>
+    /// <param name="seed">The decoded snapshot.</param>
+    /// <exception cref="InvalidOperationException">A frame was already added.</exception>
+    /// <remarks>
+    /// The snapshot counts pending invocations but does not list their IDs, so results of ordinary pending calls still
+    /// arrive as orphans. A pipe seeded this way has no known item boundary, so it is
+    /// <see cref="PipeRow.ChannelUnavailable"/> when it carries a channel or collection.
+    /// </remarks>
+    public void Seed(SnapshotSeed seed)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        if (_inboundFrames.Count + _outboundFrames.Count > 0)
+            throw new InvalidOperationException("A snapshot seeds the assembler before its first frame.");
+
+        foreach (var state in seed.Pipes)
+        {
+            // Without Ready only this side's half of the ID is set; the peer's Ready frame will open it.
+            if ((state.Flags & NntlPipeStateFlags.Ready) == 0 || _openPipes.ContainsKey(state.Id))
+                continue;
+
+            var lifecycle = (state.Flags & NntlPipeStateFlags.Closing) != 0 ? PipeLifecycle.Closing : PipeLifecycle.Open;
+            var pipe = NewPipe(state.Id, lifecycle, -1, null);
+            CollectionsMarshal.AsSpan(_pipes)[pipe] = _pipes[pipe] with { FromSnapshot = true };
+            _openPipes[state.Id] = pipe;
+        }
+
+        foreach (var collection in seed.Collections)
+        {
+            foreach (var pipeId in collection.PipeIds)
+            {
+                if (!_openPipes.TryGetValue(pipeId, out var pipe) || _pipes[pipe].Content != PipeContent.Raw)
+                    continue;
+
+                SetPipeContent(pipe, PipeContent.Collection, collection.Id);
+                ref var row = ref CollectionsMarshal.AsSpan(_collections)[_pipes[pipe].Collection];
+                row = row with { LastVersion = collection.Version };
+            }
+        }
+
+        if (seed.Invocations is { } invocations)
+        {
+            foreach (var large in invocations.LargeMessages)
+                SeedLargeMessage(large);
+        }
+
+        Version++;
+    }
+
+    private void SeedLargeMessage(in NntlLargeMessageState large)
+    {
+        // The snapshot sees from the tapped endpoint, as frame directions do: Inbound is a stream it receives.
+        var kind = large.IsResult ? LargeMessageKind.Result : LargeMessageKind.Argument;
+        var key = StreamKey(large.Direction, kind, large.InvocationId);
+        if (_activeStreams.ContainsKey(key))
+            return;
+
+        // Orphan with a known total: chunks land at their true offsets, and the bytes before the capture are a hole
+        // TryGetPayload refuses to read across.
+        var message = NewMessage(new AssembledMessage
+        {
+            Kind = AssembledMessageKind.Large,
+            Direction = large.Direction,
+            State = AssemblyState.Orphan,
+            LargeKind = kind,
+            InvocationId = large.InvocationId,
+            InnerType = kind == LargeMessageKind.Argument ? MessageType.Invocation : MessageType.InvocationResult,
+            TotalLength = large.Length,
+            Length = large.Transferred,
+            FirstSeq = -1,
+            LastSeq = -1,
+            Invocation = -1,
+            Pipe = -1,
+            AbortReason = MessageAbortReason.None,
+        });
+        _activeStreams[key] = message;
+        var messageRef = _messages[message].Ref;
+
+        int invocation;
+        if (kind == LargeMessageKind.Argument)
+        {
+            invocation = NewInvocation(large.Direction, large.InvocationId, messageRef, keyed: true);
+        }
+        else
+        {
+            invocation = FindOrAddForResult(Opposite(large.Direction), large.InvocationId, out _);
+            ref var row = ref CollectionsMarshal.AsSpan(_invocations)[invocation];
+            row = row with { Result = messageRef };
+        }
+
+        CollectionsMarshal.AsSpan(_messages)[message] = _messages[message] with { Invocation = invocation };
+    }
+
     /// <summary>Gets bytes of a message: a <see cref="PayloadRange"/> from a row.</summary>
     /// <param name="range">The range.</param>
     /// <param name="bytes">The bytes, over the stream's buffers; one allocation per extra buffer they span.</param>
@@ -226,6 +365,7 @@ public sealed partial class MessageAssembler : IFrameSink
 
         var builder = new SequenceBuilder();
         var end = range.Offset + range.Length;
+        var cursor = range.Offset;
         for (var f = first; f >= 0; f = _fragments[f].Next)
         {
             var fragment = _fragments[f];
@@ -235,11 +375,18 @@ public sealed partial class MessageAssembler : IFrameSink
             if (fragment.MessageOffset >= end)
                 break;
 
+            // A message seeded mid-transfer has no fragments for the bytes sent before the capture.
             var from = Math.Max(range.Offset, fragment.MessageOffset);
+            if (from > cursor)
+                return false;
             var to = Math.Min(end, fragmentEnd);
             if (!builder.Append(Store(fragment.Direction), fragment.StreamOffset + (from - fragment.MessageOffset), to - from))
                 return false;
+            cursor = to;
         }
+
+        if (cursor < end)
+            return false;
 
         bytes = builder.Build();
         return true;

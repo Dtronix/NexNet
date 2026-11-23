@@ -21,6 +21,12 @@ namespace NexNet.Inspector.Core.Framing;
 /// advance <see cref="StreamOffset"/> and <see cref="UnframedBytes"/>. It never throws for bad bytes, so every record
 /// emitted before the fault stands. A preamble's version byte is not checked; the viewer reports it, it does not judge.
 /// </para>
+/// <para>
+/// Gaps: a capture in Drop mode loses whole ops, and an attach starts at whatever op comes next. Either way the next
+/// byte need not start a frame, so the parser resynchronises (see <see cref="Gap{TSink}"/> and
+/// <see cref="FrameParserStart.Resync"/>): it passes over ops until one holds a run of frame headers that chain to the
+/// op's end, and frames again from there.
+/// </para>
 /// <para>Not thread-safe: one parser per direction, fed from one thread.</para>
 /// </remarks>
 public sealed class FrameParser
@@ -32,7 +38,19 @@ public sealed class FrameParser
         Body,
         Faulted,
         Completed,
+        Resync,
     }
+
+    // Evidence a resync candidate needs (see BodyEvidence): at an op's first byte, one frame whose envelope checks out
+    // and ends with the op; inside an op, more of them, since a start found by sliding over arbitrary bytes is likelier
+    // to be chance; anywhere, a long chain however the op ends.
+    private const int ResyncOpStartEvidence = 2;
+    private const int ResyncInsideEvidence = 4;
+    private const int ResyncStrongEvidence = 12;
+
+    // Frames framed after a resync that are still on probation: an impossible type byte among them means the resync
+    // picked a wrong start, so the parser resynchronises again instead of faulting.
+    private const int ResyncProbation = 32;
 
     // Large enough for the preamble, which is longer than any header plus post-header (6 bytes).
     private readonly byte[] _carry = new byte[FrameLayout.PreambleLength];
@@ -55,6 +73,9 @@ public sealed class FrameParser
     private bool _split;
 
     private long _faultOffset = -1;
+    private long _gapBytes;
+    private long _skippedBytes;
+    private int _probation;
 
     /// <summary>Creates a parser for one direction.</summary>
     /// <param name="direction">The direction every record is stamped with.</param>
@@ -64,12 +85,26 @@ public sealed class FrameParser
     /// </param>
     /// <param name="startOffset">Absolute stream offset of the first byte that will be pushed.</param>
     public FrameParser(TapDirection direction, bool expectPreamble, long startOffset = 0)
+        : this(direction, expectPreamble ? FrameParserStart.Preamble : FrameParserStart.FrameBoundary, startOffset)
+    {
+    }
+
+    /// <summary>Creates a parser for one direction.</summary>
+    /// <param name="direction">The direction every record is stamped with.</param>
+    /// <param name="start">What the first pushed byte is known to be.</param>
+    /// <param name="startOffset">Absolute stream offset of the first byte that will be pushed.</param>
+    public FrameParser(TapDirection direction, FrameParserStart start, long startOffset = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(startOffset);
         Direction = direction;
         _streamOffset = startOffset;
-        _state = expectPreamble ? State.Preamble : State.Header;
-        _carryNeeded = expectPreamble ? FrameLayout.PreambleLength : 0;
+        _state = start switch
+        {
+            FrameParserStart.Preamble => State.Preamble,
+            FrameParserStart.Resync => State.Resync,
+            _ => State.Header,
+        };
+        _carryNeeded = start == FrameParserStart.Preamble ? FrameLayout.PreambleLength : 0;
     }
 
     /// <summary>The direction stamped on every record.</summary>
@@ -89,6 +124,15 @@ public sealed class FrameParser
 
     /// <summary>Bytes from <see cref="FaultOffset"/> on (all of them unframed); 0 while not faulted.</summary>
     public long UnframedBytes => _faultOffset < 0 ? 0 : _streamOffset - _faultOffset;
+
+    /// <summary>True while the parser looks for a frame start after a gap (or an attach mid-stream).</summary>
+    public bool IsResyncing => _state == State.Resync;
+
+    /// <summary>Bytes reported lost through <see cref="Gap{TSink}"/>; they advanced <see cref="StreamOffset"/> unseen.</summary>
+    public long GapBytes => _gapBytes;
+
+    /// <summary>Bytes pushed while resynchronising that belong to no record: the tails of frames cut by a gap.</summary>
+    public long SkippedBytes => _skippedBytes;
 
     /// <summary>True while the stream has delivered part of a frame (or preamble) and not yet its end.</summary>
     public bool HasPending => _state == State.Body || (_state is State.Header or State.Preamble && _carryCount > 0);
@@ -124,6 +168,26 @@ public sealed class FrameParser
                     pos = bytes.Length;
                     break;
 
+                case State.Resync:
+                {
+                    // Only ever entered at an op's first byte: Gap and the constructor are the only ways in.
+                    var start = FindFrameStart(bytes.Slice(pos));
+                    if (start < 0)
+                    {
+                        _skippedBytes += bytes.Length - pos;
+                        pos = bytes.Length;
+                        break;
+                    }
+
+                    _skippedBytes += start;
+                    pos += start;
+                    _carryCount = 0;
+                    _carryNeeded = 0;
+                    _probation = ResyncProbation;
+                    _state = State.Header;
+                    break;
+                }
+
                 case State.Preamble:
                 {
                     if (_carryCount == 0)
@@ -154,6 +218,16 @@ public sealed class FrameParser
                         var type = bytes[pos];
                         if (!FrameLayout.TryGetLayout(type, out _headerLength, out _postHeaderLength))
                         {
+                            if (_probation > 0)
+                            {
+                                // The resync started at a wrong offset: look again from the next op.
+                                _skippedBytes += bytes.Length - pos;
+                                _probation = 0;
+                                _state = State.Resync;
+                                pos = bytes.Length;
+                                break;
+                            }
+
                             emitted += Fault(sink, (MessageType)type, bytes.Length);
                             pos = bytes.Length;
                             break;
@@ -206,6 +280,45 @@ public sealed class FrameParser
         return emitted;
     }
 
+    /// <summary>
+    /// Reports ops of this direction that the capture lost (a Drop-mode gap). The frame in progress, if any, is emitted
+    /// flagged <see cref="FrameFlags.Incomplete"/>: its tail was among the lost bytes. The lost bytes advance
+    /// <see cref="StreamOffset"/>, and the parser resynchronises on the ops that follow.
+    /// </summary>
+    /// <param name="droppedBytes">Bytes the lost ops carried.</param>
+    /// <param name="sink">Receives the incomplete record.</param>
+    /// <returns>The number of records emitted (0 or 1).</returns>
+    /// <exception cref="InvalidOperationException"><see cref="Complete{TSink}"/> was already called.</exception>
+    /// <remarks>A faulted parser stays faulted: a gap explains missing bytes, not malformed ones.</remarks>
+    public int Gap<TSink>(long droppedBytes, TSink sink)
+        where TSink : IFrameSink
+    {
+        if (_state == State.Completed)
+            throw new InvalidOperationException("The parser was completed; no more ops can be pushed.");
+        ArgumentOutOfRangeException.ThrowIfNegative(droppedBytes);
+
+        var emitted = 0;
+        if (HasPending)
+        {
+            sink.Add(BuildPending());
+            _nextSeq++;
+            emitted = 1;
+        }
+
+        _carryCount = 0;
+        _carryNeeded = 0;
+        _split = false;
+        _streamOffset += droppedBytes;
+        _gapBytes += droppedBytes;
+        if (_state != State.Faulted)
+            _state = State.Resync;
+        return emitted;
+    }
+
+    /// <summary>Reports lost ops, appending the incomplete record, if any, to a list.</summary>
+    /// <inheritdoc cref="Gap{TSink}(long, TSink)"/>
+    public int Gap(long droppedBytes, List<FrameRecord> sink) => Gap(droppedBytes, new ListSink(sink));
+
     /// <summary>Feeds one transport op, appending the completed records to a list.</summary>
     /// <inheritdoc cref="Push{TSink}(long, long, ReadOnlySpan{byte}, TSink)"/>
     public int Push(long opId, long ticks, ReadOnlySpan<byte> bytes, List<FrameRecord> sink)
@@ -254,6 +367,127 @@ public sealed class FrameParser
     /// <inheritdoc cref="Complete{TSink}(TSink)"/>
     public bool Complete(List<FrameRecord> sink) => Complete(new ListSink(sink));
 
+    // The first offset in an op where frames plausibly start: a chain of headers that ends exactly with the op and
+    // carries enough evidence, or a long chain. Each whole frame adds evidence by how much of it could be checked. An op
+    // written by the tapped endpoint is one flush of whole frames, so its first byte is accepted on one plausible
+    // header; a read can start anywhere.
+    private int FindFrameStart(ReadOnlySpan<byte> op)
+    {
+        for (var p = 0; p < op.Length; p++)
+        {
+            if (!TryWalkFrames(op.Slice(p), out var evidence, out var exact))
+                continue;
+
+            var accept = evidence >= ResyncStrongEvidence
+                         || (exact && evidence >= (p == 0 ? ResyncOpStartEvidence : ResyncInsideEvidence))
+                         || (p == 0 && Direction == TapDirection.Outbound);
+            if (accept)
+                return p;
+        }
+
+        return -1;
+    }
+
+    // Walks frame headers from the start of 'bytes'. False when a header is impossible; otherwise the evidence the
+    // whole frames gave and whether the last one ends exactly at the end of 'bytes'.
+    private static bool TryWalkFrames(ReadOnlySpan<byte> bytes, out int evidence, out bool exact)
+    {
+        evidence = 0;
+        exact = false;
+        var pos = 0;
+        while (pos < bytes.Length)
+        {
+            var type = bytes[pos];
+            if (!FrameLayout.TryGetLayout(type, out var headerLength, out var postHeaderLength))
+                return false;
+
+            if (headerLength == 1)
+            {
+                // A disconnect is the last thing a stream carries. A Ping is a single common byte value: no evidence.
+                if (FrameLayout.IsDisconnect(type) && pos + 1 != bytes.Length)
+                    return false;
+                pos++;
+            }
+            else
+            {
+                if (pos + 3 > bytes.Length)
+                    return true;
+
+                var bodyLength = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(pos + 1));
+                var body = pos + 3 + postHeaderLength;
+                var weight = BodyEvidence((MessageType)type, bytes, body, bodyLength);
+                if (weight < 0)
+                    return false;
+
+                var end = body + bodyLength;
+                if (end > bytes.Length)
+                    return true;
+                pos = end;
+                evidence += weight;
+            }
+
+            if (evidence >= ResyncStrongEvidence)
+                return true;
+        }
+
+        exact = true;
+        return true;
+    }
+
+    // What the bytes at hand say about a body: -1 impossible, 1 nothing contradicts it, 2 its envelope's MessagePack
+    // array header is exactly the one its type writes (spec §4).
+    private static int BodyEvidence(MessageType type, ReadOnlySpan<byte> bytes, int body, int bodyLength)
+    {
+        int expected;
+        switch (type)
+        {
+            case MessageType.MessageChunk:
+                return body - 1 >= bytes.Length || bytes[body - 1] <= 1 ? 1 : -1;
+            case MessageType.PipeWindowUpdate:
+                return bodyLength == 4 ? 1 : -1;
+            case MessageType.DuplexPipeWrite:
+                return 1;
+            case MessageType.ClientGreeting:
+            case MessageType.ClientGreetingReconnection:
+                expected = 0x96;
+                break;
+            case MessageType.Invocation:
+            case MessageType.MessageStart:
+                expected = 0x94;
+                break;
+            case MessageType.InvocationCancellation:
+                expected = 0x91;
+                break;
+            case MessageType.MessageAbort:
+            case MessageType.DuplexPipeUpdateState:
+                expected = 0x93;
+                break;
+            case MessageType.InvocationResult:
+                // Two elements, or three with a value.
+                if (bodyLength == 0)
+                    return -1;
+                if (body >= bytes.Length)
+                    return 1;
+                return bytes[body] is 0x92 or 0x93 ? 2 : -1;
+            case MessageType.ServerGreeting:
+                if (bodyLength == 0)
+                    return -1;
+                if (body >= bytes.Length)
+                    return 1;
+                return bytes[body] is >= 0x94 and <= 0x9F ? 2 : -1;
+            default:
+                if (bodyLength == 0)
+                    return -1;
+                return body >= bytes.Length || (bytes[body] & 0xF0) == 0x90 ? 1 : -1;
+        }
+
+        if (bodyLength == 0)
+            return -1;
+        if (body >= bytes.Length)
+            return 1;
+        return bytes[body] == expected ? 2 : -1;
+    }
+
     private void BeginFrame(long opId, long ticks, int pos)
     {
         _frameOffset = _streamOffset + pos;
@@ -280,6 +514,8 @@ public sealed class FrameParser
         var frame = Build(kind, _headerLength + _postHeaderLength + _bodyLength, headerComplete: true);
         sink.Add(frame);
         _nextSeq++;
+        if (_probation > 0)
+            _probation--;
         _carryCount = 0;
         _carryNeeded = 0;
         _state = State.Header;
