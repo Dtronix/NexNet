@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\NexNet.props" />
+  <PropertyGroup>
+    <Description>NexNet Inspector core: frame parser, message assembly, .nntl recording format, schema decoder and compare engine.</Description>
+    <Version>0.1.0</Version>
+    <IsAotCompatible>true</IsAotCompatible>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NexNet.Inspector.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

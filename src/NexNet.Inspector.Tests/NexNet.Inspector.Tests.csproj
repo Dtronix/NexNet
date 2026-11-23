@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+</Project>
