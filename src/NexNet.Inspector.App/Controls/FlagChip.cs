@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.Core.Framing;
 
@@ -33,8 +33,9 @@ public sealed class FlagChip : Control
 
     private static readonly FrameFlags[] Order = [FrameFlags.TransportSplit, FrameFlags.NexNetSplit, FrameFlags.Cancel, FrameFlags.Redacted, FrameFlags.Incomplete];
 
-    // A letter per flag per palette: the text is measured once per theme, never per frame.
-    private static readonly ConditionalWeakTable<ThemePalette, FormattedText?[]> Letters = new();
+    // A letter per flag per palette: the text is shaped once per theme, never per frame (drawing a FormattedText
+    // shapes it again on every call, which a dense row of chips cannot afford).
+    private static readonly ConditionalWeakTable<ThemePalette, TextLayout?[]> Letters = new();
 
     static FlagChip()
     {
@@ -95,10 +96,10 @@ public sealed class FlagChip : Control
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(palette);
-        FormattedText letter = LetterOf(palette, flag);
+        TextLayout letter = LetterOf(palette, flag);
         double width = Math.Max(MinChipWidth, Math.Ceiling(letter.Width) + (2 * HorizontalPadding));
         context.DrawRectangle(palette[Fill(flag)], null, new RoundedRect(new Rect(origin, new Size(width, ChipHeight)), CornerRadius));
-        context.DrawText(letter, new Point(origin.X + ((width - letter.Width) / 2), origin.Y + ((ChipHeight - letter.Height) / 2)));
+        letter.Draw(context, new Point(origin.X + ((width - letter.Width) / 2), origin.Y + ((ChipHeight - letter.Height) / 2)));
         return width;
     }
 
@@ -124,12 +125,12 @@ public sealed class FlagChip : Control
         ToolTip.SetTip(this, description);
     }
 
-    private static FormattedText LetterOf(ThemePalette palette, FrameFlags flag)
+    private static TextLayout LetterOf(ThemePalette palette, FrameFlags flag)
     {
-        FormattedText?[] letters = Letters.GetValue(palette, static _ => new FormattedText?[Order.Length]);
+        TextLayout?[] letters = Letters.GetValue(palette, static _ => new TextLayout?[Order.Length]);
         int slot = Array.IndexOf(Order, flag);
         if (slot < 0) throw new ArgumentOutOfRangeException(nameof(flag), flag, "a chip shows exactly one flag");
-        return letters[slot] ??= new FormattedText(Letter(flag), CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            new Typeface(palette.Ui, FontStyle.Normal, FontWeight.Bold), LetterSize, palette[ThemeBrush.TextOnAccent]);
+        return letters[slot] ??= new TextLayout(Letter(flag), new Typeface(palette.Ui, FontStyle.Normal, FontWeight.Bold), LetterSize,
+            palette[ThemeBrush.TextOnAccent]);
     }
 }

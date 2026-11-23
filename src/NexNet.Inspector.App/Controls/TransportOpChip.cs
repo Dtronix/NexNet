@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.Core.Model;
 
@@ -69,6 +70,38 @@ public sealed class TransportOpChip : Control
         isSplit ? (ThemeBrush.SplitTransport, ThemeBrush.SplitTransport)
         : direction == TapDirection.Outbound ? (ThemeBrush.BorderDefault, ThemeBrush.DirectionOutbound)
         : (ThemeBrush.BorderDefault, ThemeBrush.TextSecondary);
+
+    /// <summary>
+    /// The shaped label of a chip, for dense rows (the ladder) that draw chips with <see cref="Draw"/> and keep the
+    /// label while the row shows the same op, so a redraw shapes nothing.
+    /// </summary>
+    public static TextLayout CreateLabel(ThemePalette palette, long opId, TapDirection direction, bool isSplit)
+    {
+        ArgumentNullException.ThrowIfNull(palette);
+        (_, ThemeBrush ink) = Inks(direction, isSplit);
+        return new TextLayout(Label(opId, direction), new Typeface(palette.Mono), TextSize, palette[ink]);
+    }
+
+    /// <summary>The width of a chip showing <paramref name="label"/>.</summary>
+    public static double MeasureWidth(TextLayout label)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        return Math.Ceiling(label.Width + (2 * HorizontalPadding) + 2);
+    }
+
+    /// <summary>Paints a chip with its top-left at <paramref name="origin"/>; returns its width.</summary>
+    public static double Draw(DrawingContext context, ThemePalette palette, TextLayout label, TapDirection direction, bool isSplit, Point origin)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(palette);
+        double width = MeasureWidth(label);
+        (ThemeBrush border, _) = Inks(direction, isSplit);
+        // Inset half a pixel so the 1 px border lands on whole pixels.
+        Rect outline = new Rect(origin, new Size(width, ChipHeight)).Deflate(0.5);
+        context.DrawRectangle(null, palette.Pen(border, 1), new RoundedRect(outline, 3));
+        label.Draw(context, new Point(origin.X + ((width - label.Width) / 2), origin.Y + ((ChipHeight - label.Height) / 2)));
+        return width;
+    }
 
     protected override Size MeasureOverride(Size availableSize) =>
         new(Math.Ceiling(Measured(ThemeBrushes.For(this)).Width + (2 * HorizontalPadding) + 2), ChipHeight);
