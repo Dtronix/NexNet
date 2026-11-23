@@ -19,6 +19,15 @@
     <_NexNetGeneratorPropsImported>true</_NexNetGeneratorPropsImported>
   </PropertyGroup>
 
+  <!--
+    NexNetEmitInspectorSchema=true: every generated nexus also implements NexNet.Diagnostics.IInspectorSchemaSource (its
+    IR as MessagePack, docs/internals/nexnet-ir.md §5), independent of the targets above. A project that references the
+    generator as a ProjectReference analyzer does not import this file and must add the CompilerVisibleProperty itself.
+  -->
+  <ItemGroup Condition="'$(NexNetEmitInspectorSchema)' == 'true'">
+    <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+  </ItemGroup>
+
   <ItemGroup>
     <NexNetTarget Include="java" Condition="'$(NexNetJavaOutputDir)' != ''"
                   OutputDir="$(NexNetJavaOutputDir)" Package="$(NexNetJavaPackage)"

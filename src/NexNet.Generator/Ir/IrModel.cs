@@ -14,7 +14,7 @@ namespace NexNet.Generator.Ir;
 /// <param name="Types">Every serialized declared type reachable from the exports or other producers, ordered by id (ordinal).</param>
 internal sealed record NexusIr(int IrVersion, EquatableArray<ExportIr> Exports, EquatableArray<TypeDeclIr> Types)
 {
-    /// <summary>Current schema version. Bump on any breaking change to the IR or its JSON form.</summary>
+    /// <summary>Current schema version. Bump on any breaking change to the IR or its JSON or MessagePack form.</summary>
     public const int CurrentVersion = 1;
 }
 

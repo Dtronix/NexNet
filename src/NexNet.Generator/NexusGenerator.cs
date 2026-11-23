@@ -44,6 +44,12 @@ internal partial class NexusGenerator : IIncrementalGenerator
     /// </summary>
     public const string TestScaffoldingTrackingName = "NexusTestScaffolding";
 
+    /// <summary>
+    /// Incremental step name of the per-nexus inspector schema (<see cref="InspectorSchemaOutput"/>, null when not
+    /// generated). Used by tests.
+    /// </summary>
+    public const string InspectorSchemaTrackingName = "NexusInspectorSchema";
+
     /// <summary>MSBuild property telling the generator it runs in a design-time (IDE) build.</summary>
     public const string DesignTimeBuildProperty = "build_property.DesignTimeBuild";
 
@@ -135,6 +141,8 @@ internal partial class NexusGenerator : IIncrementalGenerator
                 ctx.AddSource(FormattersFileName, code);
         });
 
+        CreateInspectorSchemaPipeline(context, nexusProducts);
+
         var ir = CreateIrPipeline(context, nexusProducts);
 
         // The target configuration (build_property.NexNetTargets and NexNetTarget_<id>_<Option>), as an equatable value.
@@ -182,6 +190,33 @@ internal partial class NexusGenerator : IIncrementalGenerator
             ReportTargetDiagnostics(output.Diagnostics, ctx);
             foreach (var file in output.Files)
                 ctx.AddSource(file.Path, file.Content);
+        });
+    }
+
+    /// <summary>
+    /// The opt-in inspector schema (NexNetEmitInspectorSchema): each nexus class gets its IR as MessagePack behind
+    /// IInspectorSchemaSource, independent of Targets. With the property off the filter empties the pipeline before it
+    /// meets the compilation, so nothing beyond reading the option runs.
+    /// </summary>
+    private static void CreateInspectorSchemaPipeline(
+        IncrementalGeneratorInitializationContext context,
+        IncrementalValuesProvider<NexusProduct> nexusProducts)
+    {
+        var enabled = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) => InspectorSchemaEmitter.IsEnabled(provider.GlobalOptions));
+
+        var schemas = nexusProducts
+            .Combine(enabled)
+            .Where(static source => source.Right)
+            .Select(static (source, _) => source.Left.Data)
+            .Combine(context.CompilationProvider)
+            .Select(static (source, ct) => InspectorSchemaEmitter.Build(source.Left, source.Right, ct))
+            .WithTrackingName(InspectorSchemaTrackingName);
+
+        context.RegisterSourceOutput(schemas, static (ctx, schema) =>
+        {
+            if (schema != null)
+                ctx.AddSource(schema.HintName, schema.Source);
         });
     }
 
