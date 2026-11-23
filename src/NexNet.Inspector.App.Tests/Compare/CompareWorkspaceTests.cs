@@ -4,6 +4,7 @@ using NexNet.Inspector.App.Tests.Documents;
 using NexNet.Inspector.App.ViewModels;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Compare;
+using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.Tests.Compare;
@@ -185,5 +186,56 @@ public sealed class CompareWorkspaceTests
 
         using RecordingFile single = RecordingFile.Open(Wait.Fixture("chat-client.nntl"));
         await Assert.That(await compare.CompareRecordingAsync(single)).IsFalse();
+    }
+
+    [Test]
+    public async Task The_title_bars_range_follows_the_compare_window_while_Compare_shows()
+    {
+        await using CompareFixture f = await CompareFixture.OpenAsync();
+        TimeWindowReadoutViewModel readout = f.Chrome.TimeWindow;
+        CompareRowsModel rows = f.Compare.Rows;
+        await Assert.That(readout.Text).IsEqualTo(TimeWindowReadoutViewModel.Format(rows.Window, 0, CompareClock.Frequency));
+        await Assert.That(readout.Text).StartsWith("0.0 – ");
+
+        rows.SetWindow(TimeWindow.FromDuration(rows.Window.Start + (rows.Window.Duration / 4), rows.Window.Duration / 2));
+        await Assert.That(readout.Text).IsEqualTo(TimeWindowReadoutViewModel.Format(rows.Window, 0, CompareClock.Frequency));
+
+        // − and + zoom the compare's window, not the documents' shared one.
+        TimeWindow shared = f.Documents.Sync.Window;
+        long duration = rows.Window.Duration;
+        readout.ZoomInCommand.Execute(null);
+        await Assert.That(rows.Window.Duration).IsEqualTo(duration / 2);
+        await Assert.That(f.Documents.Sync.Window).IsEqualTo(shared);
+
+        // Back in Inspect it reads the active document's window again.
+        f.Chrome.Workspace.Value = Workspace.Inspect;
+        string inspect = f.Documents.Sync.Window.IsEmpty || f.Documents.Active is not { Session: { } session } active
+            ? ""
+            : TimeWindowReadoutViewModel.Format(f.Documents.Sync.Window, session.StartTicks, active.Frequency);
+        await Assert.That(readout.Text).IsEqualTo(inspect);
+    }
+
+    [Test]
+    public async Task Open_in_Compare_selects_the_entity_selected_in_Inspect()
+    {
+        await using CompareFixture f = await CompareFixture.OpenAsync(show: false);
+        f.Documents.Activate(f.A);
+        int invocation = f.A.Session!.Assembler.Invocations.Length - 1;
+        f.Documents.Sync.Select(Selection.OfEntity(EntityKind.Invocation, invocation));
+
+        f.Compare.Show();
+        CompareSession session = f.Compare.Session!;
+        int expected = -1;
+        for (int i = 0; i < session.Matches.Length; i++)
+        {
+            if (session.Matches[i].Key.Kind == CompareEntityKind.Invocation && session.Matches[i].A.Index == invocation) expected = i;
+        }
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(expected).IsGreaterThanOrEqualTo(0);
+            await Assert.That(f.Compare.Rows.Selected).IsEqualTo(expected);
+            await Assert.That(f.Compare.Detail?.Index).IsEqualTo(expected);
+        }
     }
 }

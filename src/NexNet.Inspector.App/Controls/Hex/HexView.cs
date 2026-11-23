@@ -55,6 +55,10 @@ public sealed class HexView : UserControl
     public static readonly StyledProperty<SyncBus?> SyncProperty =
         AvaloniaProperty.Register<HexView, SyncBus?>(nameof(Sync));
 
+    /// <summary>The bookmarked bytes, marked in the offset gutter of the rows that hold them.</summary>
+    public static readonly StyledProperty<IReadOnlyList<HexRange>?> BookmarksProperty =
+        AvaloniaProperty.Register<HexView, IReadOnlyList<HexRange>?>(nameof(Bookmarks));
+
     private readonly TextView _textView;
     private readonly TextDocument _document;
     private readonly ScrollBar _scrollBar;
@@ -158,6 +162,13 @@ public sealed class HexView : UserControl
     {
         get => GetValue(SyncProperty);
         set => SetValue(SyncProperty, value);
+    }
+
+    /// <summary>The bookmarked bytes (gutter markers); null or empty for none.</summary>
+    public IReadOnlyList<HexRange>? Bookmarks
+    {
+        get => GetValue(BookmarksProperty);
+        set => SetValue(BookmarksProperty, value);
     }
 
     /// <summary>The first line of the window.</summary>
@@ -378,6 +389,10 @@ public sealed class HexView : UserControl
         else if (change.Property == ThemeVariantScope.ActualThemeVariantProperty)
         {
             ApplyLineHeight();
+            Redraw();
+        }
+        else if (change.Property == BookmarksProperty)
+        {
             Redraw();
         }
         else if (change.Property == FontFamilyProperty || change.Property == FontSizeProperty)

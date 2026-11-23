@@ -154,6 +154,30 @@ public class SessionAreaTests
     }
 
     [Test]
+    public async Task The_REC_timer_stops_at_the_attached_duration_once_the_session_ends()
+    {
+        await using var harness = await ChatServerHarness.StartAsync(allowRecording: true);
+        var client = await harness.ConnectClientAsync();
+        await harness.WaitForSessionAsync();
+        var time = new ManualTime();
+        await using var documents = new DocumentsViewModel(new TestUi(), null, time);
+        var area = new SessionAreaViewModel(documents);
+        var live = await AttachAsync(documents, harness);
+
+        time.Advance(TimeSpan.FromSeconds(42));
+        await Assert.That(area.RecordText).IsEqualTo("00:42");
+        await client.DisconnectAsync();
+        await Wait.UntilAsync(() => live.State == LiveState.Ended, "the session to end");
+        await Assert.That(live.EndedAt).IsEqualTo(time.GetUtcNow());
+
+        // Minutes later the timer still reads the attached duration, as the session-ended strip does.
+        time.Advance(TimeSpan.FromMinutes(5));
+        await Assert.That(area.RecordText).IsEqualTo("00:42");
+        await Assert.That(area.ElapsedText).IsEqualTo("00:42");
+        await area.DisposeAsync();
+    }
+
+    [Test]
     public async Task A_connect_picks_its_session_in_the_popover()
     {
         await using var documents = new DocumentsViewModel(new TestUi(), null);

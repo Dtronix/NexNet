@@ -82,7 +82,7 @@ public enum PaletteGlyph : byte
 
 /// <summary>Where a palette item leads.</summary>
 /// <param name="Kind">What choosing it does.</param>
-/// <param name="Entity">The entity list, for <see cref="PaletteTargetKind.Entity"/>.</param>
+/// <param name="Entity">The entity list, for <see cref="PaletteTargetKind.Entity"/>; for a command, the entity it is about (selected before it runs).</param>
 /// <param name="Index">The entity's index, or the document's position in the open documents.</param>
 /// <param name="Frame">The frame, for <see cref="PaletteTargetKind.Frame"/>.</param>
 /// <param name="Start">Where it starts (ticks); the time of a time jump.</param>

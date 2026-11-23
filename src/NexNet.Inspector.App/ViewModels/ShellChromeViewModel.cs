@@ -18,9 +18,13 @@ public sealed partial class ShellChromeViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(documents);
         Documents = documents;
         Workspace = new EnumChoice<Workspace>([(Model.Workspace.Inspect, "Inspect"), (Model.Workspace.Compare, "Compare")], Model.Workspace.Inspect);
-        Workspace.ValueChanged += (_, _) => OnPropertyChanged(nameof(IsCompare));
         Session = new SessionAreaViewModel(documents);
         TimeWindow = new TimeWindowReadoutViewModel(documents);
+        Workspace.ValueChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsCompare));
+            TimeWindow.OnWorkspaceChanged();
+        };
     }
 
     /// <summary>The connection group, record button and session popover.</summary>

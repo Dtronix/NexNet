@@ -72,7 +72,7 @@ public sealed partial class App : Application
         PlatformThemeSource os = new(PlatformSettings);
         ThemeService themes = new(this, os, settings.Theme);
         MainWindowViewModel viewModel = new(themes, store);
-        MainWindow window = new() { DataContext = viewModel };
+        MainWindow window = new() { DataContext = viewModel, ConfirmsUnsavedClose = true };
         window.Restore(settings.Window);
         if (store is not null) window.Closing += (_, _) => store.Update(s => s with { Window = window.Placement });
 

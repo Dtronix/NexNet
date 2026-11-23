@@ -1,3 +1,4 @@
+using NexNet.Inspector.App.Controls.Compare;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Tests.Documents;
 using NexNet.Inspector.App.ViewModels;
@@ -48,6 +49,13 @@ internal sealed record CompareFixture(DocumentsViewModel Documents, ShellChromeV
     {
         Compare.Dispose();
         await Documents.DisposeAsync();
+    }
+
+    /// <summary>Ticks every group of a category in the sidebar (invocation groups start unticked).</summary>
+    public static void ShowGroups(CompareRowsModel rows, CompareCategory category)
+    {
+        (int first, int count) = rows.GroupsOf(category);
+        for (int g = first; g < first + count; g++) rows.SetGroupShown(g, true);
     }
 
     /// <summary>The first session of a fixture file, indexed.</summary>

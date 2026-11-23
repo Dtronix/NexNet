@@ -72,6 +72,13 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
     /// <summary>The bookmarked offsets ("Bookmark offset"), in the order they were added.</summary>
     public IReadOnlyList<HexPosition> Bookmarks => _bookmarks;
 
+    /// <summary>
+    /// The bookmarks as one-byte ranges, for the hex view's gutter markers: a new array per change, so a binding sees
+    /// the change.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<HexRange> BookmarkMarks { get; private set; } = [];
+
     /// <summary>The directions shown.</summary>
     public HexDirections Directions =>
         (ShowsInbound ? HexDirections.Inbound : HexDirections.None) | (ShowsOutbound ? HexDirections.Outbound : HexDirections.None);
@@ -102,6 +109,9 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
         bool added = !_bookmarks.Remove(position);
         if (added) _bookmarks.Add(position);
         OnPropertyChanged(nameof(Bookmarks));
+        HexRange[] marks = new HexRange[_bookmarks.Count];
+        for (int i = 0; i < marks.Length; i++) marks[i] = new HexRange(_bookmarks[i].Direction, _bookmarks[i].Offset, _bookmarks[i].Offset + 1);
+        BookmarkMarks = marks;
         return added;
     }
 

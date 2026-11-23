@@ -1,0 +1,46 @@
+<!--
+  Help & shortcuts (F1): 480 px. The registry's commands by app-menu section and the views' own gestures, each with its
+  keys in mono on the right; caps section headings as the app menu has them. Footer hint and Close (Enter / Esc).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             x:Class="NexNet.Inspector.App.Views.Shell.HelpDialog"
+             x:DataType="vm:HelpDialogViewModel">
+  <c:DialogFrame x:Name="Frame" Width="480"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding CloseCommand}"
+                 CancelCommand="{Binding CloseCommand}">
+    <c:DialogFrame.Footer>
+      <Button x:Name="CloseButton" Classes="md primary" Content="Close" Command="{Binding CloseCommand}"
+              c:DialogHost.InitialFocus="True" />
+    </c:DialogFrame.Footer>
+
+    <ScrollViewer MaxHeight="440" HorizontalScrollBarVisibility="Disabled">
+      <ItemsControl x:Name="RowList" ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HelpRow">
+            <Panel>
+              <TextBlock IsVisible="{Binding IsHeading}" Text="{Binding Text, Converter={x:Static c:MenuText.Upper}}"
+                         FontSize="{DynamicResource FontSize.CapsLabel}" FontWeight="{DynamicResource FontWeight.SemiBold}"
+                         Foreground="{DynamicResource Brush.Text.Tertiary}" Margin="0,10,0,4" />
+              <DockPanel IsVisible="{Binding !IsHeading}" Height="24">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Keys}" VerticalAlignment="Center"
+                           FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Meta}"
+                           Foreground="{DynamicResource Brush.Text.Secondary}" />
+                <TextBlock Text="{Binding Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+              </DockPanel>
+            </Panel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </c:DialogFrame>
+</UserControl>

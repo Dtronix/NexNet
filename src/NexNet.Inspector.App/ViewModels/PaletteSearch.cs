@@ -44,6 +44,8 @@ public sealed class PaletteSearch
     private readonly char[] _key = new char[256];
     private readonly TopHits _hits = new(ScopeLimit);
     private readonly List<TraceFragment> _fragments = [];
+    // The best entity hit when it is an invocation: what "Open … in Compare" opens on.
+    private PaletteTarget _subjectTarget = PaletteTarget.None;
 
     /// <summary>Runs <paramref name="query"/> and returns its rows, group headings included.</summary>
     /// <param name="query">The parsed query.</param>
@@ -60,6 +62,7 @@ public sealed class PaletteSearch
         int limit = all ? GroupLimit : ScopeLimit;
         string? subject = null;
         FrameLink best = FrameLink.None;
+        _subjectTarget = PaletteTarget.None;
 
         if (query.Scope == PaletteScope.Time)
         {
@@ -137,6 +140,7 @@ public sealed class PaletteSearch
             {
                 subject = "invocation #" + assembler.Invocations[index].InvocationId.ToString(Invariant);
                 best = FrameLink.None with { Entity = EntityKind.Invocation, EntityIndex = index };
+                _subjectTarget = row.Target;
             }
             else if (h == 0 && id >> 24 == Pipe)
             {
@@ -239,18 +243,23 @@ public sealed class PaletteSearch
         rows.Add(PaletteRow.Header(PaletteGroup.Commands));
         if (_hits.Count == 0)
         {
-            foreach (AppCommand command in CommandRegistry.Suggestions) rows.Add(CommandItem(CommandRegistry.Get(command), commands, subject));
+            foreach (AppCommand command in CommandRegistry.Suggestions) rows.Add(CommandItem(CommandRegistry.Get(command), commands, subject, _subjectTarget));
             return;
         }
 
-        for (int h = 0; h < _hits.Count; h++) rows.Add(CommandItem(definitions[_hits.IdAt(h)], commands, subject));
+        for (int h = 0; h < _hits.Count; h++) rows.Add(CommandItem(definitions[_hits.IdAt(h)], commands, subject, _subjectTarget));
     }
 
-    private static PaletteRow CommandItem(CommandDefinition definition, CommandRegistry commands, string? subject)
+    private static PaletteRow CommandItem(CommandDefinition definition, CommandRegistry commands, string? subject, PaletteTarget subjectTarget)
     {
-        // Compare names what it would open when the best entity hit is an invocation ("Open invocation #812 in Compare").
-        string title = definition.Command == AppCommand.OpenInCompare && subject is not null ? "Open " + subject + " in Compare" : definition.Title;
-        return PaletteRow.Item(PaletteGroup.Commands, title, definition.Hint, PaletteGlyph.Command, PaletteTarget.OfCommand(definition.Command),
+        // Compare names what it would open when the best entity hit is an invocation ("Open invocation #812 in Compare"),
+        // and carries that entity, so running it selects the entity first and Compare opens on it.
+        bool aboutSubject = definition.Command == AppCommand.OpenInCompare && subject is not null;
+        string title = aboutSubject ? "Open " + subject + " in Compare" : definition.Title;
+        PaletteTarget target = aboutSubject
+            ? subjectTarget with { Kind = PaletteTargetKind.Command, Command = definition.Command }
+            : PaletteTarget.OfCommand(definition.Command);
+        return PaletteRow.Item(PaletteGroup.Commands, title, definition.Hint, PaletteGlyph.Command, target,
             definition.ShortcutText, commands.CanExecute(definition.Command));
     }
 

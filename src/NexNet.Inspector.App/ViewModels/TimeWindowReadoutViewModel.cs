@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using NexNet.Inspector.App.Controls.Compare;
 using NexNet.Inspector.App.Services;
+using NexNet.Inspector.Core.Compare;
 using NexNet.Inspector.Core.Model;
 
 namespace NexNet.Inspector.App.ViewModels;
@@ -10,7 +12,8 @@ namespace NexNet.Inspector.App.ViewModels;
 /// <summary>
 /// The title bar's time window (controls/window-title-bar item 8): − · the visible range from the active capture's start
 /// ("1,240.0 – 1,290.0 ms", in seconds once the range reaches 10 s) · +. The buttons zoom the shared window around its
-/// centre by a factor of two, as Ctrl+Wheel does around the pointer.
+/// centre by a factor of two, as Ctrl+Wheel does around the pointer. In Compare it reads and zooms the compare's own
+/// window (compare time, 0 = the earlier aligned start) instead of the active document's.
 /// </summary>
 public sealed partial class TimeWindowReadoutViewModel : ObservableObject
 {
@@ -18,6 +21,8 @@ public sealed partial class TimeWindowReadoutViewModel : ObservableObject
     public const double ZoomStep = 2;
 
     private readonly DocumentsViewModel _documents;
+    private CompareRowsModel? _compare;
+    private Func<bool>? _isCompare;
 
     /// <param name="documents">The documents and their shared sync bus.</param>
     public TimeWindowReadoutViewModel(DocumentsViewModel documents)
@@ -48,6 +53,29 @@ public sealed partial class TimeWindowReadoutViewModel : ObservableObject
             : from.ToString("N1", CultureInfo.InvariantCulture) + " – " + to.ToString("N1", CultureInfo.InvariantCulture) + " ms";
     }
 
+    /// <summary>
+    /// Follows the Compare workspace while &lt;paramref name="isCompare"/&gt; holds: the readout shows and zooms the compare's
+    /// window. The caller raises &lt;see cref="OnWorkspaceChanged"/&gt; when the workspace switches.
+    /// </summary>
+    internal void FollowCompare(CompareRowsModel rows, Func<bool> isCompare)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(isCompare);
+        _compare = rows;
+        _isCompare = isCompare;
+        rows.Changed += changes =>
+        {
+            if ((changes & (CompareChanges.Window | CompareChanges.Rows)) != 0) Update();
+        };
+        Update();
+    }
+
+    /// <summary>The Inspect | Compare switch moved: the readout follows the shown workspace's window.</summary>
+    internal void OnWorkspaceChanged() => Update();
+
+    // The compare's rows when Compare shows and has a session; null otherwise.
+    private CompareRowsModel? ShownCompare => _isCompare?.Invoke() == true && _compare is { Session: not null } rows ? rows : null;
+
     /// <summary>+: half the range, around its centre.</summary>
     [RelayCommand(CanExecute = nameof(HasWindow))]
     private void ZoomIn() => Zoom(1 / ZoomStep);
@@ -58,6 +86,12 @@ public sealed partial class TimeWindowReadoutViewModel : ObservableObject
 
     private void Zoom(double factor)
     {
+        if (ShownCompare is { } compare)
+        {
+            if (!compare.Window.IsEmpty) compare.ZoomAround(compare.Window.Center, factor);
+            return;
+        }
+
         SyncBus sync = _documents.Sync;
         if (sync.Window.IsEmpty) return;
         sync.ZoomAround(sync.Window.Center, factor);
@@ -75,6 +109,12 @@ public sealed partial class TimeWindowReadoutViewModel : ObservableObject
 
     private void Update()
     {
+        if (_isCompare?.Invoke() == true)
+        {
+            Text = ShownCompare is { Window.IsEmpty: false } compare ? Format(compare.Window, 0, CompareClock.Frequency) : "";
+            return;
+        }
+
         TimeWindow window = _documents.Sync.Window;
         Text = _documents.Active is { Session: { } session } document && !window.IsEmpty
             ? Format(window, session.StartTicks, document.Frequency)

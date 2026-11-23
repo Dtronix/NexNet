@@ -28,6 +28,65 @@ public sealed class EventsTableTests
     }
 
     [Test]
+    public async Task The_direction_filter_keeps_one_directions_frames_with_their_capture_numbers()
+    {
+        (RecordingFile file, CaptureSession session) = Open("chat-server.nntl");
+        using (file)
+        {
+            EventsTableSource rows = new();
+            rows.Attach(session);
+            FrameKey[] order = session.FrameOrder.ToArray();
+            int outbound = order.Count(k => k.Direction == TapDirection.Outbound);
+            int resets = 0;
+            rows.CollectionChanged += (_, e) => resets += e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset ? 1 : 0;
+
+            rows.Filter = EventsFilter.Outbound;
+            await Assert.That(resets).IsEqualTo(1);
+            await Assert.That(rows.Count).IsEqualTo(outbound).And.IsGreaterThan(0).And.IsLessThan(order.Length);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                await Assert.That(rows.TryGetRow(i, out EventRow row)).IsTrue();
+                await Assert.That(row.Frame.Direction).IsEqualTo(TapDirection.Outbound);
+                // The number stays the frame's place in the whole capture.
+                await Assert.That(row.Number).IsEqualTo(Array.IndexOf(order, row.Frame) + 1L);
+                await Assert.That(rows.IndexOf(row.Frame)).IsEqualTo(i);
+            }
+
+            await Assert.That(rows.IndexOf(order.First(k => k.Direction == TapDirection.Inbound))).IsEqualTo(-1);
+
+            rows.Filter = EventsFilter.Inbound;
+            await Assert.That(rows.Count).IsEqualTo(order.Length - outbound);
+            rows.Filter = EventsFilter.All;
+            await Assert.That(rows.Count).IsEqualTo(order.Length);
+            await Assert.That(rows.IndexOf(order[^1])).IsEqualTo(order.Length - 1);
+        }
+    }
+
+    [Test]
+    public async Task The_panes_filter_choice_filters_the_rows_and_keeps_the_selection_when_it_still_shows()
+    {
+        (RecordingFile file, CaptureSession session) = Open("chat-server.nntl");
+        using (file)
+        {
+            SyncBus sync = new(new TestUi());
+            using EventsViewModel events = new(sync);
+            events.Rows.Attach(session);
+            FrameKey outbound = session.FrameOrder.ToArray().Last(k => k.Direction == TapDirection.Outbound);
+            sync.Select(Selection.OfFrame(outbound));
+            await Assert.That(events.Filter.Labels.ToArray()).IsEquivalentTo(new[] { "Filter", "▼ IN only", "▲ OUT only" },
+                TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+            events.Filter.Value = EventsFilter.Outbound;
+            await Assert.That(events.Rows.Filter).IsEqualTo(EventsFilter.Outbound);
+            await Assert.That(events.SelectedIndex).IsEqualTo(events.Rows.IndexOf(outbound)).And.IsGreaterThanOrEqualTo(0);
+
+            events.Filter.Value = EventsFilter.Inbound;
+            await Assert.That(events.SelectedIndex).IsEqualTo(-1).Because("the selected frame is filtered out");
+            await Assert.That(sync.Selection).IsEqualTo(Selection.OfFrame(outbound)).Because("the selection itself stays");
+        }
+    }
+
+    [Test]
     public async Task Every_frame_is_one_row_in_capture_order_and_found_again_by_its_key()
     {
         (RecordingFile file, CaptureSession session) = Open("chat-server.nntl");

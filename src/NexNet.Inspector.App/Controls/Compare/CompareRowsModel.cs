@@ -165,6 +165,8 @@ public sealed class CompareRowsModel
     /// <param name="keepWindow">True to keep the window (clamped to the new range).</param>
     public void SetSession(CompareSession? session, CompareDensity? densityA, CompareDensity? densityB, bool keepWindow)
     {
+        // Another compare's ticks do not carry over; a refresh of the same one keeps them.
+        if (!keepWindow) _groupHidden = [];
         Session = session;
         DensityA = densityA ?? CompareDensity.Empty;
         DensityB = densityB ?? CompareDensity.Empty;
@@ -285,7 +287,8 @@ public sealed class CompareRowsModel
     /// <summary>A category's name in the gutter and the sidebar.</summary>
     public static string CategoryLabel(CompareCategory category) => category switch
     {
-        CompareCategory.Transport => "Transport",
+        // Both directions' transport ops in one heat row.
+        CompareCategory.Transport => "Transport ▼▲",
         CompareCategory.Invocations => "Invocations",
         CompareCategory.Pipes => "Pipes · channels",
         CompareCategory.Collections => "Collections",
@@ -364,7 +367,13 @@ public sealed class CompareRowsModel
 
         ReadOnlySpan<EntityGroupRow> groups = session.Groups;
         ReadOnlySpan<EntityMatch> matches = session.Matches;
-        if (_groupHidden.Length != groups.Length) _groupHidden = new bool[groups.Length];
+        if (_groupHidden.Length != groups.Length)
+        {
+            // A new union starts with its invocation groups unticked (screens/compare): calls are many and short, so
+            // they read best as the category's heat row and the pinned entity; pipes and the rest get rows.
+            _groupHidden = new bool[groups.Length];
+            for (int g = 0; g < groups.Length; g++) _groupHidden[g] = groups[g].Key.Kind == CompareEntityKind.Invocation;
+        }
         if (_groupLabelA.Length != groups.Length)
         {
             _groupLabelA = new string[groups.Length];

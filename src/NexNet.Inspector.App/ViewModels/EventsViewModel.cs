@@ -2,6 +2,7 @@ using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NexNet.Inspector.App.Controls.DataTable;
+using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.App.Controls.DataTable.Events;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
@@ -44,7 +45,19 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(sync);
         Sync = sync;
         sync.Changed += OnSyncChanged;
+        Filter = new EnumChoice<EventsFilter>(
+            [(EventsFilter.All, "Filter"), (EventsFilter.Inbound, "▼ IN only"), (EventsFilter.Outbound, "▲ OUT only")], EventsFilter.All);
+        Filter.ValueChanged += (_, value) =>
+        {
+            Rows.Filter = value;
+            // The rows were renumbered: the selection finds its row again, or none when its frame is filtered out.
+            ApplySelection(Sync.Selection);
+            ApplyTrace();
+        };
     }
+
+    /// <summary>The pane header's Filter ▾: all frames (shown as "Filter"), or one direction's.</summary>
+    public EnumChoice<EventsFilter> Filter { get; }
 
     /// <summary>The window, playhead and selection every view follows.</summary>
     public SyncBus Sync { get; }

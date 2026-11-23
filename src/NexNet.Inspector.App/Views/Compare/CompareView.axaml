@@ -37,8 +37,8 @@
                   <TextBlock Text="{Binding Caret}" IsVisible="{Binding IsCategory}" VerticalAlignment="Center"
                              FontSize="{DynamicResource FontSize.CapsLabel}" FontWeight="Bold"
                              Foreground="{DynamicResource Brush.Text.Secondary}" />
-                  <CheckBox Grid.Column="1" IsVisible="{Binding IsGroup}" IsChecked="{Binding IsShown}" Margin="0,0,0,0"
-                            MinHeight="14" VerticalAlignment="Center" AutomationProperties.Name="Show as a row" />
+                  <CheckBox Grid.Column="1" Classes="outline" IsVisible="{Binding IsGroup}" IsChecked="{Binding IsShown}" Margin="2,0,2,0"
+                            MinHeight="11" VerticalAlignment="Center" AutomationProperties.Name="Show as a row" />
                   <Path Grid.Column="1" IsVisible="{Binding IsPinned}" Data="{StaticResource Glyph.Compare.Pinned}"
                         Fill="{DynamicResource Brush.Direction.Inbound}" Width="8" Height="8" Margin="3,0,3,0" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="2" Text="{Binding Label}" IsVisible="{Binding IsCategory}" VerticalAlignment="Center"

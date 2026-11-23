@@ -8,5 +8,5 @@
              xmlns:hex="using:NexNet.Inspector.App.Controls.Hex"
              x:Class="NexNet.Inspector.App.Views.Inspect.HexPane"
              x:DataType="vm:HexViewModel">
-  <hex:HexView x:Name="View" Layout="{Binding Layout}" Sync="{Binding Sync}" />
+  <hex:HexView x:Name="View" Layout="{Binding Layout}" Sync="{Binding Sync}" Bookmarks="{Binding BookmarkMarks}" />
 </UserControl>

@@ -13,9 +13,3 @@ namespace NexNet.Inspector.App.ViewModels;
 /// <param name="IsEnabled">False greys the item out.</param>
 public sealed record MenuChoice(string Header, ICommand Command, object? Parameter = null, bool IsChecked = false, bool IsEnabled = true);
 
-/// <summary>What the app menu asks another part of the shell for (the registry's command has no view of its own yet).</summary>
-public enum MenuRequest : byte
-{
-    /// <summary>Help &amp; shortcuts (F1).</summary>
-    Help = 0,
-}

@@ -110,9 +110,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>The window's .nnschema file picker; null where there is none (tests, headless).</summary>
     public Func<Task<string?>>? PickSchemaFile { get; set; }
 
-    /// <summary>Raised for what another part of the shell provides: Help &amp; shortcuts (F1), which has no view of its own yet.</summary>
-    public event Action<MenuRequest>? MenuRequested;
-
     /// <summary>The open documents, the active one and the sync bus.</summary>
     public DocumentsViewModel Documents { get; }
 
@@ -185,6 +182,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return dialog;
     }
 
+    /// <summary>F1, Help › Help &amp; shortcuts: the command and gesture list (unless a dialog is already open).</summary>
+    /// <returns>The dialog; null when another dialog was open.</returns>
+    public HelpDialogViewModel? ShowHelp()
+    {
+        if (Dialog is not null) return null;
+        HelpDialogViewModel dialog = new();
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return dialog;
+    }
+
     /// <summary>Opens the hex view's "Go to offset…" dialog (unless a dialog is already open); it closes itself.</summary>
     public bool ShowGoToOffset(GoToOffsetDialogViewModel dialog)
     {
@@ -231,6 +242,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
         };
         Dialog = dialog;
         return dialog.Result;
+    }
+
+    /// <summary>True when a tab holds captured data that is not saved (closing the window asks first).</summary>
+    public bool HasUnsavedDocuments
+    {
+        get
+        {
+            foreach (DocumentViewModel document in Documents.Documents)
+            {
+                if (document.IsDirty) return true;
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Before the window closes (OQ5): each tab with unsaved data in turn comes to the front and asks Save .nntl… /
+    /// Discard / Cancel (&lt;see cref="DocumentsViewModel.ConfirmDiscardAsync"/&gt;). A dialog already open keeps the window:
+    /// it is answered first, so nothing is lost behind it.
+    /// </summary>
+    /// <returns>True when the window may close: every unsaved tab was saved or discarded.</returns>
+    public async Task<bool> ConfirmCloseAsync()
+    {
+        if (!HasUnsavedDocuments) return true;
+        if (Dialog is not null) return false;
+        foreach (DocumentViewModel document in Documents.Documents.ToArray())
+        {
+            if (document.IsDirty && !await Documents.ConfirmDiscardAsync(document).ConfigureAwait(true)) return false;
+        }
+
+        return true;
     }
 
     /// <summary>File › Recent ▸ item: opens the recording.</summary>
@@ -448,7 +491,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SessionAreaViewModel session = Chrome.Session;
         Commands.Bind(AppCommand.RecordAll, () => session.RecordAllCommand.Execute(null), () => session.RecordAllCommand.CanExecute(null));
         session.RecordAllCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
-        Commands.Bind(AppCommand.HelpShortcuts, () => MenuRequested?.Invoke(MenuRequest.Help));
+        Commands.Bind(AppCommand.HelpShortcuts, () => ShowHelp(), () => Dialog is null);
     }
 
     partial void OnDialogChanged(object? value)

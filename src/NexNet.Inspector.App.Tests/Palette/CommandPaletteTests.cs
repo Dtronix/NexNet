@@ -84,6 +84,10 @@ public sealed class CommandPaletteTests
         {
             "Trace message under cursor", "Go to time…", "Open invocation #" + s.Id + " in Compare", "Export selection as .nntl",
         }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
+
+        // Compare's item carries the invocation, so running it selects that entity before Compare opens on it.
+        PaletteTarget compare = Items(s.Palette, PaletteGroup.Commands).Single(r => r.Command == AppCommand.OpenInCompare).Target;
+        await Assert.That(compare).IsEqualTo(first.Target with { Kind = PaletteTargetKind.Command, Command = AppCommand.OpenInCompare });
     }
 
     [Test]

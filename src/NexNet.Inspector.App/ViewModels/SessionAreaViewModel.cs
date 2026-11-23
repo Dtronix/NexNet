@@ -150,7 +150,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     [NotifyPropertyChangedFor(nameof(RecordText), nameof(RecordAllDetail))]
     public partial int RecordedCount { get; private set; }
 
-    /// <summary>The REC timer: time since the attach ("00:42"), or how long Record all has run.</summary>
+    /// <summary>The REC timer: time since the attach ("00:42"), frozen at the attached duration once the session ended, or how long Record all has run.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RecordText), nameof(RecordAllDetail))]
     public partial string ElapsedText { get; private set; } = "00:00";
@@ -366,7 +366,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
                 OnPropertyChanged(nameof(SessionDetail));
                 OnPropertyChanged(nameof(IsOnline));
                 break;
-            case nameof(LiveDocumentViewModel.AttachedAt):
+            case nameof(LiveDocumentViewModel.AttachedAt) or nameof(LiveDocumentViewModel.EndedAt):
                 Tick();
                 break;
         }
@@ -567,7 +567,8 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     {
         var now = _time.GetUtcNow();
         if (_recording is { } run) ElapsedText = Clock(now - run.Started);
-        else ElapsedText = Live?.AttachedAt is { } at ? Clock(now - at) : "00:00";
+        // An ended session's timer stops at the attached duration, the same span the session-ended strip reports.
+        else ElapsedText = Live?.AttachedAt is { } at ? Clock((Live.EndedAt ?? now) - at) : "00:00";
     }
 
     private void RaiseConnection()

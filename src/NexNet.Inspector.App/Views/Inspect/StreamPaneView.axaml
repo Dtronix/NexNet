@@ -20,10 +20,11 @@
       <c:PaneHeader.ViewControls>
         <ContentControl Name="ViewControls" Content="{Binding Content}">
           <ContentControl.DataTemplates>
-            <!-- Events: Filter ▾ · Follow live (the live edge; a recording has none to follow). -->
+            <!-- Events: Filter ▾ (all frames, or one direction's) · Follow live (the live edge; a recording has none to follow). -->
             <DataTemplate DataType="vm:EventsViewModel">
               <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                <TextBlock Text="Filter ▾" VerticalAlignment="Center" />
+                <ComboBox Name="EventsFilter" Classes="sm" ItemsSource="{Binding Filter.Labels}" SelectedIndex="{Binding Filter.SelectedIndex}"
+                          ToolTip.Tip="Show the frames of one direction" AutomationProperties.Name="Filter frames" />
                 <TextBlock Text="·" VerticalAlignment="Center" />
                 <ToggleButton Theme="{StaticResource HexDirectionToggle}" IsChecked="{Binding FollowLive}"
                               FontSize="{DynamicResource FontSize.Data}" Padding="2,1"

@@ -90,6 +90,47 @@ public sealed partial class MainWindow : Window
     /// <summary>How the window draws its frame.</summary>
     public ChromeMode Chrome { get; }
 
+    /// <summary>
+    /// True when closing the window first asks about each tab with unsaved captured data (OQ5: Save .nntl… / Discard /
+    /// Cancel). The app sets it; tests and captures that close windows holding live data leave it off.
+    /// </summary>
+    public bool ConfirmsUnsavedClose { get; set; }
+
+    private bool _closeConfirmed;
+    private bool _confirmingClose;
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        // The OS ending the session cannot wait for an answer.
+        if (e.Cancel || !ConfirmsUnsavedClose || _closeConfirmed || e.CloseReason == WindowCloseReason.OSShutdown) return;
+        if (DataContext is not MainWindowViewModel { HasUnsavedDocuments: true } model) return;
+
+        // The answers come asynchronously: hold the close, ask, then close again once every tab is settled.
+        e.Cancel = true;
+        if (!_confirmingClose) _ = ConfirmCloseAsync(model);
+    }
+
+    private async Task ConfirmCloseAsync(MainWindowViewModel model)
+    {
+        _confirmingClose = true;
+        try
+        {
+            if (!await model.ConfirmCloseAsync().ConfigureAwait(true)) return;
+            _closeConfirmed = true;
+            Close();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // A failed save keeps the window open: the tab still holds the data and its error.
+            Trace.TraceWarning("close: " + e.Message);
+        }
+        finally
+        {
+            _confirmingClose = false;
+        }
+    }
+
     private ShellChromeViewModel? ChromeModel => (DataContext as MainWindowViewModel)?.Chrome;
 
     protected override void OnDataContextChanged(EventArgs e)

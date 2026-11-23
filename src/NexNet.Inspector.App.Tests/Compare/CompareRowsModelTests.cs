@@ -51,6 +51,9 @@ public sealed class CompareRowsModelTests
         await Assert.That(rows.Rows.ToArray().Any(r => r.Kind == CompareRowKind.Group)).IsFalse();
 
         rows.SetExpanded(CompareCategory.Invocations, true);
+        await Assert.That(rows.Rows.ToArray().Any(r => r is { Kind: CompareRowKind.Group, Category: CompareCategory.Invocations }))
+            .IsFalse().Because("invocation groups start unticked");
+        CompareFixture.ShowGroups(rows, CompareCategory.Invocations);
         int invocationGroups = rows.GroupsOf(CompareCategory.Invocations).Count;
         await Assert.That(rows.Rows.ToArray().Count(r => r is { Kind: CompareRowKind.Group, Category: CompareCategory.Invocations }))
             .IsEqualTo(invocationGroups * 2);
@@ -62,7 +65,8 @@ public sealed class CompareRowsModelTests
             await Assert.That(packed.Where(r => r is { Kind: CompareRowKind.Collapsed, Category: not CompareCategory.Transport }).All(r => r.Height == CompareRowsModel.PackedHeight)).IsTrue();
             // Transport stays the session at a glance.
             await Assert.That(packed.Where(r => r.Category == CompareCategory.Transport && r.Kind == CompareRowKind.Collapsed).All(r => r.Height == CompareRowsModel.HeatHeight)).IsTrue();
-            await Assert.That(changes).IsEqualTo(3);
+            // Fold, expand, one per group ticked, pack.
+            await Assert.That(changes).IsEqualTo(3 + invocationGroups);
         }
     }
 
@@ -99,6 +103,7 @@ public sealed class CompareRowsModelTests
         CompareRowsModel rows = f.Compare.Rows;
         CompareSession session = f.Compare.Session!;
         rows.SetExpanded(CompareCategory.Invocations, true);
+        CompareFixture.ShowGroups(rows, CompareCategory.Invocations);
         int before = rows.Rows.Length;
 
         f.Compare.OnlyDifferences = true;

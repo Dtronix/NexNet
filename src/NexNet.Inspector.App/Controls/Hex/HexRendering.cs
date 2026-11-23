@@ -152,13 +152,15 @@ internal sealed class HexAnnotationElement(string text, Typeface typeface, doubl
 /// <summary>
 /// The hex view's background renderer: per byte line the cell fills by role (2 px corners, three characters wide so
 /// neighbours abut), redacted stripes, the 2 px transport border on a read's first cell, and the 1.5 px inset rings of
-/// the selected (accent.trace) and hovered (direction.inbound) cells; per read-rule line the 1.5 px split.transport rule.
+/// the selected (accent.trace) and hovered (direction.inbound) cells; per read-rule line the 1.5 px split.transport rule;
+/// a bookmarked byte's row gets an accent.trace diamond in the gap between its offset and its first cell.
 /// </summary>
 internal sealed class HexBackgroundRenderer(HexView view) : IBackgroundRenderer
 {
     private const double Ring = 1.5;
     private const double Radius = 2;
     private const double ReadBorder = 2;
+    private const double BookmarkSize = 7;
 
     public KnownLayer Layer => KnownLayer.Background;
 
@@ -192,6 +194,13 @@ internal sealed class HexBackgroundRenderer(HexView view) : IBackgroundRenderer
             double stride = x1 - x0;
             double left = x0 - (stride / (2 * HexText.CellStride));
             ref readonly HexRow row = ref view.RowAt(index);
+            if (HasBookmark(view.Bookmarks, row))
+            {
+                // Centred in the gap between the offset digits and the first cell.
+                double gutter = visual.GetVisualPosition(digits, VisualYPosition.LineTop).X - textView.HorizontalOffset;
+                DrawDiamond(drawingContext, palette[ThemeBrush.AccentTrace], (gutter + left) / 2, top + (height / 2), BookmarkSize);
+            }
+
             ReadOnlySpan<HexCellRole> roles = row.Roles;
             ReadOnlySpan<HexCellMarks> marks = row.Marks;
             for (int cell = row.First; cell < row.First + row.Count; cell++)
@@ -213,6 +222,26 @@ internal sealed class HexBackgroundRenderer(HexView view) : IBackgroundRenderer
                     drawingContext.DrawRectangle(null, palette.Pen(ThemeBrush.DirectionInbound, Ring), rect.Deflate(Ring / 2), Radius, Radius);
             }
         }
+    }
+
+    private static bool HasBookmark(IReadOnlyList<HexRange>? bookmarks, in HexRow row)
+    {
+        if (bookmarks is null || row.Count == 0) return false;
+        long start = row.Row + row.First, end = start + row.Count;
+        for (int i = 0; i < bookmarks.Count; i++)
+        {
+            HexRange mark = bookmarks[i];
+            if (mark.Direction == row.Direction && mark.Start < end && mark.End > start) return true;
+        }
+
+        return false;
+    }
+
+    private static void DrawDiamond(DrawingContext context, IBrush brush, double x, double y, double size)
+    {
+        double r = size / 2;
+        using (context.PushTransform(Matrix.CreateTranslation(-x, -y) * Matrix.CreateRotation(Math.PI / 4) * Matrix.CreateTranslation(x, y)))
+            context.FillRectangle(brush, new Rect(x - (r * 0.75), y - (r * 0.75), r * 1.5, r * 1.5));
     }
 
     /// <summary>The token brush a role fills with; null for none.</summary>

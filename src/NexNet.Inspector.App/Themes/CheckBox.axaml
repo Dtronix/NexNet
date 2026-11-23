@@ -21,7 +21,7 @@
     <Setter Property="Template">
       <ControlTemplate>
         <Grid ColumnDefinitions="Auto,Auto,Auto" Background="{TemplateBinding Background}">
-          <Panel Width="14" Height="14" VerticalAlignment="Center">
+          <Panel Name="PART_BoxHost" Width="14" Height="14" VerticalAlignment="Center">
             <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="6"
                     BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
             <Border Name="PART_Box" Width="14" Height="14" BorderThickness="1.5"
@@ -71,6 +71,33 @@
     <Style Selector="^:disabled">
       <Setter Property="Opacity" Value="0.5" />
       <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <!-- Class outline (the Compare sidebar's group ticks, screens/compare): an 11 px box with a 1 px outline and no fill;
+         checked, the outline and the check take direction.inbound. -->
+    <Style Selector="^.outline /template/ Panel#PART_BoxHost">
+      <Setter Property="Width" Value="11" />
+      <Setter Property="Height" Value="11" />
+    </Style>
+    <Style Selector="^.outline /template/ Border#PART_Box">
+      <Setter Property="Width" Value="11" />
+      <Setter Property="Height" Value="11" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="1.5" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Text.Tertiary}" />
+    </Style>
+    <Style Selector="^.outline:checked /template/ Border#PART_Box">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^.outline:pointerover /template/ Border#PART_Box">
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="^.outline /template/ Path#PART_Check">
+      <Setter Property="Data" Value="M1.5,4.5 L3.5,6.5 L7.5,2.5" />
+      <Setter Property="StrokeThickness" Value="1.25" />
+      <Setter Property="Stroke" Value="{DynamicResource Brush.Direction.Inbound}" />
     </Style>
   </ControlTheme>
 </ResourceDictionary>

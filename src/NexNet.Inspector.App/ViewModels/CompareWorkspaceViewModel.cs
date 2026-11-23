@@ -74,6 +74,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         documents.PropertyChanged += OnDocumentsChanged;
         documents.Documents.CollectionChanged += OnTabsChanged;
         chrome.PropertyChanged += OnChromeChanged;
+        // The title bar's range readout reads this window while Compare shows.
+        chrome.TimeWindow.FollowCompare(Rows, () => chrome.IsCompare);
         UpdateEmptyText();
     }
 
@@ -156,6 +158,9 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     /// </summary>
     public void Show()
     {
+        // The entity selected in Inspect (or picked in the palette's "Open invocation #812 in Compare") opens selected.
+        DocumentViewModel? from = _documents.Active;
+        Selection selection = _documents.Sync.Selection;
         if (_documents.ComparedCount < DocumentsViewModel.MaxCompared && _documents.Active is { IsIncludedInCompare: false } active)
             active.IsIncludedInCompare = true;
         foreach (DocumentViewModel document in _documents.Documents)
@@ -166,6 +171,44 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
 
         _chrome.Workspace.Value = Workspace.Compare;
         Refresh(force: true);
+        if (Session is { } session && from is not null && MatchOf(session, from, selection) is var match and >= 0) Select(match);
+    }
+
+    /// <summary>The compare row of an entity selected in one of the two documents; -1 when it has none.</summary>
+    private int MatchOf(CompareSession session, DocumentViewModel document, in Selection selection)
+    {
+        if (selection.Kind != SelectionKind.Entity) return -1;
+        CompareSide side;
+        if (ReferenceEquals(document, _a)) side = CompareSide.A;
+        else if (ReferenceEquals(document, _b)) side = CompareSide.B;
+        else return -1;
+
+        CompareEntityKind kind;
+        switch (selection.Entity)
+        {
+            case EntityKind.Invocation:
+                kind = CompareEntityKind.Invocation;
+                break;
+            case EntityKind.Pipe:
+                kind = CompareEntityKind.Pipe;
+                break;
+            case EntityKind.Greeting:
+                kind = CompareEntityKind.Handshake;
+                break;
+            default:
+                return -1;
+        }
+
+        ReadOnlySpan<EntityMatch> matches = session.Matches;
+        for (int i = 0; i < matches.Length; i++)
+        {
+            ref readonly EntityMatch match = ref matches[i];
+            if (match.Key.Kind != kind || (kind == CompareEntityKind.Handshake && match.Key.Id == (ushort)HandshakeItem.Preamble)) continue;
+            EntitySide entity = match.Get(side);
+            if (entity.IsPresent && entity.Index == selection.EntityIndex) return i;
+        }
+
+        return -1;
     }
 
     /// <summary>

@@ -52,4 +52,23 @@ public class HexViewModelTests
         await Assert.That(hex.IsEmpty).IsTrue();
         await Assert.That(hex.Layout.Session).IsNull();
     }
+
+    [Test]
+    public async Task Bookmarks_become_gutter_marks_a_binding_sees_change()
+    {
+        using HexViewModel hex = new(new SyncBus(new TestUi()));
+        List<string?> changed = [];
+        hex.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        HexPosition position = new(NexNet.Inspector.Core.Model.TapDirection.Outbound, 0x40);
+
+        await Assert.That(hex.ToggleBookmark(position)).IsTrue();
+        IReadOnlyList<HexRange> marks = hex.BookmarkMarks;
+        await Assert.That(marks.ToArray()).IsEquivalentTo(new[] { new HexRange(NexNet.Inspector.Core.Model.TapDirection.Outbound, 0x40, 0x41) },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(changed).Contains(nameof(HexViewModel.BookmarkMarks));
+
+        await Assert.That(hex.ToggleBookmark(position)).IsFalse();
+        await Assert.That(hex.BookmarkMarks.Count).IsEqualTo(0);
+        await Assert.That(hex.BookmarkMarks).IsNotSameReferenceAs(marks);
+    }
 }

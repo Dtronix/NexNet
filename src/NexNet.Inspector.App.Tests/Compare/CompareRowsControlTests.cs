@@ -77,6 +77,7 @@ public sealed class CompareRowsControlTests
 
             // Expand Invocations and click the middle of a group's first span in file B.
             model.SetExpanded(CompareCategory.Invocations, true);
+            CompareFixture.ShowGroups(model, CompareCategory.Invocations);
             UiPump.Frames();
             CompareSession session = model.Session!;
             CompareRow group = model.Rows.ToArray().First(r => r is { Kind: CompareRowKind.Group, Side: CompareSide.B, Category: CompareCategory.Invocations }
@@ -134,6 +135,7 @@ public sealed class CompareRowsControlTests
         {
             CompareRowsModel model = p.Rows.Model!;
             model.SetExpanded(CompareCategory.Invocations, true);
+            CompareFixture.ShowGroups(model, CompareCategory.Invocations);
             UiPump.Frames();
             Point point = new(CompareRowsControl.GutterWidth + 300, CompareRowsControl.RowsTop + 40);
             long at = p.Rows.TimeAt(point.X);

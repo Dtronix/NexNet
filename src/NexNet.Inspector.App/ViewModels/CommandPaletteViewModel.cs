@@ -156,6 +156,8 @@ public sealed partial class CommandPaletteViewModel : ObservableObject
         switch (target.Kind)
         {
             case PaletteTargetKind.Command:
+                // "Open invocation #812 in Compare": the entity becomes the selection first, so the command acts on it.
+                if (target.Entity != EntityKind.None) Navigate(Selection.OfEntity(target.Entity, target.Index), target.Start, target.End);
                 return _commands.Execute(target.Command);
             case PaletteTargetKind.Session:
                 if ((uint)target.Index >= (uint)_documents.Documents.Count) return false;

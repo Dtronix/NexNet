@@ -20,8 +20,12 @@ public sealed class EventsTableSource : DataTableSource
     private readonly List<int>[] _rowBySeq = [[], []];
     private readonly long[] _firstSeq = [-1, -1];
     private readonly List<TraceFragment> _fragments = [];
+    // While filtered: the frame-order index of each row.
+    private readonly List<int> _filtered = [];
     private CaptureSession? _session;
+    private EventsFilter _filter;
     private int _count;
+    private int _scanned;
     private long _version = -1;
     private MessageRef _trace = MessageRef.None;
     private MessageTrace? _members;
@@ -62,14 +66,36 @@ public sealed class EventsTableSource : DataTableSource
         }
     }
 
+    /// <summary>
+    /// Which frames get rows: all, or one direction's (the pane header's Filter ▾). A row keeps its frame's number in
+    /// the whole capture, so a filtered table still reads #812 for frame 812.
+    /// </summary>
+    public EventsFilter Filter
+    {
+        get => _filter;
+        set
+        {
+            if (value == _filter) return;
+            _filter = value;
+            Reset();
+        }
+    }
+
     /// <summary>Shows <paramref name="session"/> (null: nothing), replacing every row.</summary>
     public void Attach(CaptureSession? session)
     {
         if (ReferenceEquals(session, _session)) return;
         _session = session;
-        _count = 0;
-        _version = -1;
         _trace = MessageRef.None;
+        Reset();
+    }
+
+    private void Reset()
+    {
+        _count = 0;
+        _scanned = 0;
+        _version = -1;
+        _filtered.Clear();
         _rowBySeq[0].Clear();
         _rowBySeq[1].Clear();
         _firstSeq[0] = _firstSeq[1] = -1;
@@ -89,9 +115,22 @@ public sealed class EventsTableSource : DataTableSource
         lock (session.Gate)
         {
             ReadOnlySpan<FrameKey> order = session.FrameOrder;
-            for (int i = start; i < order.Length; i++)
-                Remember(order[i], i);
-            _count = order.Length;
+            for (int i = _scanned; i < order.Length; i++)
+            {
+                FrameKey frame = order[i];
+                if (_filter == EventsFilter.All)
+                {
+                    Remember(frame, i);
+                }
+                else if ((_filter == EventsFilter.Inbound) == (frame.Direction == TapDirection.Inbound))
+                {
+                    Remember(frame, _filtered.Count);
+                    _filtered.Add(i);
+                }
+            }
+
+            _scanned = order.Length;
+            _count = _filter == EventsFilter.All ? order.Length : _filtered.Count;
         }
 
         NotifyAdded(start, _count - start);
@@ -114,7 +153,7 @@ public sealed class EventsTableSource : DataTableSource
     {
         frame = default;
         if (_session is not { } session || (uint)index >= (uint)_count) return false;
-        lock (session.Gate) frame = session.FrameOrder[index];
+        lock (session.Gate) frame = session.FrameOrder[OrderIndex(index)];
         return true;
     }
 
@@ -149,10 +188,14 @@ public sealed class EventsTableSource : DataTableSource
         else rows[(int)offset] = index;
     }
 
+    // A row's index in the session's frame order.
+    private int OrderIndex(int row) => _filter == EventsFilter.All ? row : _filtered[row];
+
     private bool TryRead(CaptureSession session, int index, out EventRow row)
     {
         row = default;
-        FrameKey key = session.FrameOrder[index];
+        int order = OrderIndex(index);
+        FrameKey key = session.FrameOrder[order];
         MessageAssembler assembler = session.Assembler;
         if (!assembler.TryGetFrame(key.Direction, key.Seq, out FrameRecord frame)) return false;
 
@@ -196,7 +239,7 @@ public sealed class EventsTableSource : DataTableSource
 
         row = new EventRow
         {
-            Number = index + 1L,
+            Number = order + 1L,
             Frame = key,
             Ticks = frame.StartTicks,
             TimeMs = (frame.StartTicks - session.StartTicks) * 1000.0 / frequency,
