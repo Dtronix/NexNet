@@ -310,6 +310,12 @@ server `INexusList<T>` (protocol specification section 12):
   longer `CONNECTED`, the controller starts a new loop for it (its `beforeStart` runs then, on the controller's
   executor) before the old loop's `idle()` completes. A loop that ends otherwise (the policy gave up, `cancel()`,
   `close()`) forgets the loss. The client keeps the lost session's `disconnected()` pending until no loop runs.
+- **`disconnect()` stops reconnection wherever it is (K61).** It cancels the loop first, then cancels the attempt in
+  flight, if any; the client starts a reconnection attempt only while its loop runs (checked under the client's lock,
+  so an attempt the loop asked for as `disconnect()` ran is either canceled or refused). A `disconnect()` made while
+  the client handles a lost session (for example from `onDisconnected`) marks that session, and a loop started for
+  it is canceled from `beforeStart` (the controller then runs none of its steps, not even `onReconnecting`) or by
+  the `disconnect()` itself. The client ends `DISCONNECTED` and opens no session.
 - **Clock and session options ([#279](https://github.com/Dtronix/NexNet/pull/279)).** `NexusClient.create(config, handshake, nexus, proxyFactory, connector,
   timers, sessionOptions)` is public. `timers` is the session clock and timer scheduler (`SessionTimers.system()`
   by default; a test passes a manual clock, as the JVM interop host does for `ClientSpec.fakeTime`), and

@@ -378,6 +378,11 @@ The C#, Java and JavaScript clients behave the same unless listed here. The full
   called) and was then disconnected, a brief reconnect after a graceful disconnect. `disconnect()` (and
   `ReconnectController.stop()`) now aborts the attempt; it opens no session and `disconnect()` returns without
   waiting for the server.
+- **Java client: `disconnect()` while reconnecting no longer lets an attempt through.** A `disconnect()` made just as
+  the reconnection loop started an attempt found no attempt to cancel, and the attempt then started and connected; a
+  `disconnect()` made while the client handled the loss of its session (for example from `onDisconnected`) did not
+  stop the loop that started for it. In both cases the client reconnected after a graceful disconnect. It now ends
+  `DISCONNECTED` and opens no session.
 
 ## Documentation
 
