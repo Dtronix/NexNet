@@ -60,6 +60,11 @@ public static class InspectorProjection
                 HandshakeAssembly(session, key), (frame.Flags & FrameFlags.Incomplete) == 0 && HandshakeComplete(assembler));
         }
 
+        // A channel or collection frame opens with what it carried (its items, decoded), then the frame and the pipe.
+        if (link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length
+            && assembler.Pipes[link.EntityIndex].Content != PipeContent.Raw)
+            Items(tree, session, frame, assembler.Pipes[link.EntityIndex]);
+
         Header(tree, session, frame, store, frameMap);
         Transport(tree, frame, store, frameMap);
 
@@ -468,7 +473,23 @@ public static class InspectorProjection
     {
         MessageAssembler assembler = session.Assembler;
         PipeRow pipe = assembler.Pipes[link.EntityIndex];
-        tree.Section("Pipe " + PipeName(pipe.PipeId), Lower(pipe.Content.ToString()) + " · " + Lower(pipe.Lifecycle.ToString()));
+        // A channel or collection is named first ("Channel<LogLine> 36·36", badged), the duplex pipe under it second.
+        string title = PipeText.Title(pipe.Content, pipe.PipeId, session.Decoder.GetPipeLabel(link.EntityIndex));
+        string lifecycle = Lower(pipe.Lifecycle.ToString());
+        switch (pipe.Content)
+        {
+            case PipeContent.Channel:
+                tree.Section(title, lifecycle, PropertyBadge.Channel);
+                tree.Field("Carried by", PipeText.CarriedBy(pipe.PipeId));
+                break;
+            case PipeContent.Collection:
+                tree.Section(title, lifecycle, PropertyBadge.Collection);
+                tree.Field("Carried by", PipeText.CarriedBy(pipe.PipeId));
+                break;
+            default:
+                tree.Section(title, "raw · " + lifecycle);
+                break;
+        }
 
         if (link.Message >= 0 && fragments.Length > 1)
             tree.Field("NexNet split", fragments.Length.ToString(Invariant) + " writes", PropertyTone.NexNet);
@@ -481,17 +502,38 @@ public static class InspectorProjection
 
         tree.Field("Received", pipe.InboundBytes.ToString("N0", Invariant) + " B · " + pipe.InboundRuns.ToString(Invariant) + " runs");
         tree.Field("Sent", pipe.OutboundBytes.ToString("N0", Invariant) + " B · " + pipe.OutboundRuns.ToString(Invariant) + " runs");
+    }
 
-        if (pipe.Content == PipeContent.Raw) return;
+    // The items (or collection messages) whose bytes a channel frame carried, each a section of its decoded fields:
+    // "Item #10 · LogLine", "Message #3 · Insert". Their rows map to the item's own bytes, so hover and hex follow them.
+    private static void Items(PropertyTreeModel tree, CaptureSession session, in FrameRecord frame, in PipeRow pipe)
+    {
+        MessageAssembler assembler = session.Assembler;
+        FrameItems found = PipeText.Find(assembler, pipe.Index, frame.Direction, frame.Seq);
+        if (found.Count == 0) return;
 
-        // A typed channel or collection: the items whose bytes this frame carried.
-        ReadOnlySpan<ChannelItemRow> items = assembler.ChannelItems;
-        for (int i = 0; i < items.Length; i++)
+        ReadOnlySpan<int> order = assembler.GetPipeItems(pipe.Index, frame.Direction);
+        int at = order.BinarySearch(found.First);
+        if (at < 0) return;
+        string? label = session.Decoder.GetPipeLabel(pipe.Index);
+        for (int i = at; i < at + found.Count; i++)
         {
-            ChannelItemRow item = items[i];
-            if (item.Pipe != pipe.Index || item.Direction != frame.Direction || frame.Seq < item.FirstSeq || frame.Seq > item.LastSeq) continue;
+            ChannelItemRow item = assembler.ChannelItems[order[i]];
+            string name = pipe.Content == PipeContent.Collection && (uint)item.CollectionMessage < (uint)assembler.CollectionMessages.Length
+                ? "Message #" + (i + 1).ToString(Invariant) + " · " + assembler.CollectionMessages[item.CollectionMessage].Kind
+                : "Item #" + (i + 1).ToString(Invariant) + (label is null ? "" : " · " + label);
+            string summary = Arrow(item.Direction) + " " + item.Length.ToString("N0", Invariant) + " B"
+                             + (item.FragmentCount > 1 ? " · " + item.FragmentCount.ToString(Invariant) + " frames" : "")
+                             + (item.State == AssemblyState.Complete ? "" : " · " + Lower(item.State.ToString()));
+            tree.Section(name, summary);
+
             DecodedValue value = session.Decoder.DecodeChannelItem(item);
-            if (value.Fields.IsEmpty) continue;
+            if (value.Fields.IsEmpty)
+            {
+                tree.Field("Value", item.State == AssemblyState.Assembling ? "still arriving" : "not decoded", PropertyTone.Muted);
+                continue;
+            }
+
             List<TraceFragment> parts = [];
             assembler.GetFragments(item.Ref, parts);
             tree.Decoded(value, PayloadMap.ForFragments(item.Ref, [.. parts]), "Item");
@@ -600,7 +642,7 @@ public static class InspectorProjection
         }
         else if (message.Pipe >= 0)
         {
-            title = "Pipe " + PipeName(assembler.Pipes[message.Pipe].PipeId) + " write";
+            title = PipeText.Title(session, message.Pipe) + " write";
         }
         else
         {

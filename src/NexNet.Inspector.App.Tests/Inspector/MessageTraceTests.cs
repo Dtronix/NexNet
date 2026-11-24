@@ -112,7 +112,7 @@ public class MessageTraceTests
 
         MessageTrace trace = Resolve(session, Selection.OfMessage(item, new FrameKey(item.Direction, item.Seq)));
         await Assert.That(trace.Kind).IsEqualTo(TraceKind.Message);
-        await Assert.That(trace.Title).EndsWith(" item");
+        await Assert.That(trace.Title).Contains(" item #");
         await Assert.That(trace.MemberCount).IsEqualTo(fragments);
         await Assert.That(trace.Contains(new FrameKey(item.Direction, item.Seq))).IsTrue();
     }

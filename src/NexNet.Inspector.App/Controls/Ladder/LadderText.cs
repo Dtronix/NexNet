@@ -1,5 +1,6 @@
 using System.Globalization;
 using NexNet.Inspector.App.Model;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 using NexNet.Messages;
@@ -64,15 +65,25 @@ public static class LadderText
         string target = row.Target switch
         {
             LadderTarget.Invocation => "inv " + row.TargetId.ToString(CultureInfo.InvariantCulture),
-            LadderTarget.Pipe => "pipe " + PipeIds(row.TargetId),
-            LadderTarget.Channel => "chan " + PipeIds(row.TargetId),
+            LadderTarget.Pipe or LadderTarget.Channel or LadderTarget.Collection => PipeText.Noun(PipeKind(row) ?? PipeContent.Raw) + " " + PipeIds(row.TargetId),
             _ => "",
         };
+        // "chan 36·36 LogLine ×2": what of the channel the frame carried.
+        if (row.Target is LadderTarget.Channel or LadderTarget.Collection) name = PipeText.WithItems(name, row.Items, row.ItemPartial);
         if (name is not null) target = target.Length == 0 ? name : target + " " + name;
         string? note = Note(row.Note);
         if (note is not null) target = target.Length == 0 ? note : target + " · " + note;
         return FrameDetailText.Join(target, null, FrameDetailText.Words(row.Detail, row.Flags));
     }
+
+    /// <summary>What the row's pipe carries: the chip after the title and the glyph before the target; null for a row without a pipe.</summary>
+    public static PipeContent? PipeKind(in LadderRow row) => row.Target switch
+    {
+        LadderTarget.Pipe => PipeContent.Raw,
+        LadderTarget.Channel => PipeContent.Channel,
+        LadderTarget.Collection => PipeContent.Collection,
+        _ => null,
+    };
 
     /// <summary>The byte count ("4,096 B"); null when the row shows none.</summary>
     public static string? Bytes(in LadderRow row) =>
@@ -108,6 +119,7 @@ public static class LadderText
             LadderTarget.Invocation => " invocation " + row.TargetId.ToString(CultureInfo.InvariantCulture),
             LadderTarget.Pipe => " pipe " + PipeIds(row.TargetId),
             LadderTarget.Channel => " channel " + PipeIds(row.TargetId),
+            LadderTarget.Collection => " collection " + PipeIds(row.TargetId),
             _ => "",
         };
         if (name is not null) text += " " + name;

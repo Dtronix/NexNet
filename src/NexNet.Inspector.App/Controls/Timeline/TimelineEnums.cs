@@ -68,10 +68,10 @@ public enum LaneGlyph : byte
     /// <summary>▲ outbound.</summary>
     Outbound = 2,
 
-    /// <summary>⇄ pipe or channel.</summary>
+    /// <summary>⇄ raw duplex pipe.</summary>
     Pipe = 3,
 
-    /// <summary>≡ collection.</summary>
+    /// <summary>☰ collection.</summary>
     Collection = 4,
 
     /// <summary>◆ session.</summary>
@@ -79,6 +79,9 @@ public enum LaneGlyph : byte
 
     /// <summary>· control.</summary>
     Control = 6,
+
+    /// <summary>≋ a channel riding on a duplex pipe.</summary>
+    Channel = 7,
 }
 
 /// <summary>How a <see cref="TimelineMark"/> is drawn.</summary>

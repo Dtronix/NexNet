@@ -18,8 +18,11 @@ public enum EventTargetKind : byte
     /// <summary>A byte pipe: <c>pipe 3·1</c>.</summary>
     Pipe = 2,
 
-    /// <summary>A pipe carrying a channel: <c>chan 4·2</c>.</summary>
+    /// <summary>A pipe carrying a channel: <c>chan 4·2</c>, with the CH chip.</summary>
     Channel = 3,
+
+    /// <summary>A pipe carrying a synchronized collection: <c>coll 1·1</c>, with the CO chip.</summary>
+    Collection = 4,
 }
 
 /// <summary>
@@ -76,6 +79,12 @@ public readonly record struct EventRow
 
     /// <summary>What a pipe or channel carries ("Users", "LogLine"), from the schema; null when unknown or raw.</summary>
     public string? PipeLabel { get; init; }
+
+    /// <summary>For a channel or collection frame, how many of its items the frame carried bytes of; 0 otherwise.</summary>
+    public int ItemCount { get; init; }
+
+    /// <summary>True when the frame carried part of one item only (the item crosses frames).</summary>
+    public bool ItemPartial { get; init; }
 
     /// <summary>What the body says beyond the target (preamble version, greeting token or ID, credits, pipe state, result).</summary>
     public FrameDetail Detail { get; init; }

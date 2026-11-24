@@ -175,6 +175,29 @@ public class MessageAssemblerTests
     }
 
     [Test]
+    public async Task Pipe_items_list_each_direction_in_stream_order_with_rising_frames()
+    {
+        var assembler = AssemblyHarness.Run(Scenarios.Channel(), resolver: Resolver);
+        var items = assembler.ChannelItems.ToArray();
+        foreach (var direction in new[] { Outbound, Inbound })
+        {
+            var listed = assembler.GetPipeItems(0, direction).ToArray();
+            await Assert.That(listed).IsEquivalentTo(items.Where(i => i.Direction == direction).Select(i => i.Index).ToArray());
+            for (var i = 1; i < listed.Length; i++)
+            {
+                await Assert.That(items[listed[i]].FirstSeq).IsGreaterThanOrEqualTo(items[listed[i - 1]].LastSeq);
+                await Assert.That(items[listed[i]].PipeOffset).IsGreaterThan(items[listed[i - 1]].PipeOffset);
+            }
+        }
+
+        // A raw pipe lists none, and replaying data into a channel lists the same items.
+        await Assert.That(AssemblyHarness.Run(Scenarios.Channel()).GetPipeItems(0, Outbound).Length).IsEqualTo(0);
+        var late = AssemblyHarness.Run(Scenarios.Channel(), beforeComplete: a => a.SetPipeContent(0, PipeContent.Channel));
+        long[] Offsets(MessageAssembler a) => a.GetPipeItems(0, Outbound).ToArray().Select(i => a.ChannelItems[i].PipeOffset).ToArray();
+        await Assert.That(Offsets(late)).IsEquivalentTo(Offsets(assembler));
+    }
+
+    [Test]
     public async Task Channel_switched_on_after_the_data_replays_to_the_same_items()
     {
         var live = AssemblyHarness.Run(Scenarios.Channel(), resolver: Resolver);

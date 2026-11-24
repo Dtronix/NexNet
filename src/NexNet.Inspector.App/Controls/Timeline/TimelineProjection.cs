@@ -1,4 +1,5 @@
 using System.Globalization;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
@@ -240,8 +241,9 @@ public sealed class TimelineProjection
         }
 
         lane.Group = LaneGroupKind.Pipes;
-        lane.Glyph = LaneGlyph.Pipe;
-        lane.Label = (row.Content == PipeContent.Channel ? "Chan " : "Pipe ") + ids;
+        lane.Glyph = row.Content == PipeContent.Channel ? LaneGlyph.Channel : LaneGlyph.Pipe;
+        // A channel is named by what it carries, not by the pipe under it: "Channel<LogLine> 36·36".
+        lane.Label = PipeText.Title(row.Content, row.PipeId, row.Content == PipeContent.Channel ? session.Decoder.GetPipeLabel(row.Index) : null);
         string state = row.Lifecycle switch
         {
             PipeLifecycle.Closed => "closed",

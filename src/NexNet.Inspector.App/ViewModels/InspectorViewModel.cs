@@ -304,12 +304,14 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
             string summary = "";
             if (trace.IsActive && _document?.Session is { } session)
             {
-                long origin;
                 long frequency = session.Header.StopwatchFrequency;
-                lock (session.Gate) origin = session.StartTicks;
                 ReadOnlySpan<TraceStep> steps = trace.Steps;
                 rows = new TraceStepRow[steps.Length];
-                for (int i = 0; i < steps.Length; i++) rows[i] = new TraceStepRow(steps[i], origin, frequency);
+                lock (session.Gate)
+                {
+                    long origin = session.StartTicks;
+                    for (int i = 0; i < steps.Length; i++) rows[i] = new TraceStepRow(steps[i], origin, frequency, TraceStepRow.PipeKindOf(session, steps[i]));
+                }
                 CultureInfo invariant = CultureInfo.InvariantCulture;
                 int members = trace.MemberCount;
                 int interleaved = trace.InterleavedCount;

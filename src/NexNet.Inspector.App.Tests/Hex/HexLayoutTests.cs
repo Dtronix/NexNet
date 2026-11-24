@@ -188,11 +188,11 @@ public class HexLayoutTests
         HexLine[] lines = All(layout);
 
         string frames = HexText.Frames(layout, lines[0]);
-        await Assert.That(frames).IsEqualTo("▸ Preamble #0 @0   ▸ DuplexPipeWrite #1 @8");
+        await Assert.That(frames).IsEqualTo("▸ Preamble #0 @0   ▸ DuplexPipeWrite #1 ⇄ 2·1 @8");
         string rule = HexText.Rule(layout, lines[3]);
         await Assert.That(rule).StartsWith("┃ read #1 → #2 · 35 B");
         await Assert.That(rule).EndsWith(" ms");
-        await Assert.That(HexText.Frames(layout, lines[4])).IsEqualTo("▸ DuplexPipeWrite #2 @21");
+        await Assert.That(HexText.Frames(layout, lines[4])).IsEqualTo("▸ DuplexPipeWrite #2 ⇄ 2·1 @21");
 
         // A switch of direction names the direction instead of the previous op.
         CaptureSession mixed = new HexCaptureBuilder()

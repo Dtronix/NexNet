@@ -50,15 +50,16 @@ public sealed class PropertyTreeModel
     /// <summary>Adds a section (expanded); following fields belong to it until the next section.</summary>
     /// <param name="title">"Frame header", "Transport", "Invocation #812", ….</param>
     /// <param name="summary">The secondary text beside the title.</param>
+    /// <param name="badge">The kind badge after the title (CHANNEL, COLLECTION).</param>
     /// <returns>The node index.</returns>
-    public int Section(string title, string? summary)
+    public int Section(string title, string? summary, PropertyBadge badge = PropertyBadge.None)
     {
         ThrowIfComplete();
         _sectionDepth = 0;
         _nodes.Add(new PropertyNode
         {
             Kind = PropertyRowKind.Section, Depth = 0, Name = title, Value = summary ?? "", Decoded = -1, FieldIndex = -1,
-            Tone = PropertyTone.Normal, Bytes = PropertyBytes.None, Expanded = true,
+            Tone = PropertyTone.Normal, Bytes = PropertyBytes.None, Expanded = true, Badge = badge,
         });
         return _nodes.Count - 1;
     }
@@ -451,6 +452,12 @@ public sealed class PropertyRow : INotifyPropertyChanged
         Name = n.Name;
         Tone = n.Tone;
         Bytes = n.Bytes;
+        Badge = n.Badge switch
+        {
+            PropertyBadge.Channel => "CHANNEL",
+            PropertyBadge.Collection => "COLLECTION",
+            _ => null,
+        };
         HasChildren = n.HasChildren(node);
         // Sections sit at the left edge; fields start one step in, children a step further per level.
         Indent = n.Kind == PropertyRowKind.Section ? 0 : Math.Max(0, n.Depth - 1) * PropertyTreeModel.IndentStep;
@@ -478,6 +485,12 @@ public sealed class PropertyRow : INotifyPropertyChanged
 
     /// <summary>The value's colour.</summary>
     public PropertyTone Tone { get; }
+
+    /// <summary>A section's kind badge ("CHANNEL", "COLLECTION"); null for none.</summary>
+    public string? Badge { get; }
+
+    /// <summary>True when the row shows a kind badge.</summary>
+    public bool HasBadge => Badge is not null;
 
     /// <summary>True for a transport range.</summary>
     public bool IsTransport => Tone == PropertyTone.Transport;

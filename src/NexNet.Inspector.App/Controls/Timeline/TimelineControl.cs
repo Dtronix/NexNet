@@ -913,7 +913,13 @@ public sealed class TimelineControl : Control
             return;
         }
 
-        if (Glyph(lane.Glyph) is { } glyph)
+        if (PipeGlyphOf(lane.Glyph) is { } kind)
+        {
+            // Pipe kinds are drawn shapes (the bundled fonts lack ⇄ and ☰), on the text glyphs' centre line.
+            PipeGlyph.Draw(context, palette, kind, ThemeBrush.TextPrimary, new Point(x, Math.Round(middle - (PipeGlyph.Size / 2))));
+            x += PipeGlyph.Size + 4;
+        }
+        else if (Glyph(lane.Glyph) is { } glyph)
         {
             TextLayout g = _text.Get(palette, glyph.Text, glyph.Style);
             DrawText(context, g, new Point(x, middle - (g.Height / 2)));
@@ -933,7 +939,10 @@ public sealed class TimelineControl : Control
         TimelineTextStyle style = expanded
             ? strong ? TimelineTextStyle.LaneLabelExpandedStrong : TimelineTextStyle.LaneLabelExpanded
             : strong ? TimelineTextStyle.LaneLabelStrong : TimelineTextStyle.LaneLabel;
-        TextLayout name = _text.Get(palette, lane.Label, style, Math.Min(LabelMaxWidth, Math.Max(0, right - x)));
+        // A channel's name ("Channel<LogLine> 36·36") is what tells it from its pipe, so it keeps its room and the
+        // secondary text after it is what shortens.
+        double labelMax = lane.Glyph == LaneGlyph.Channel ? right - x : LabelMaxWidth;
+        TextLayout name = _text.Get(palette, lane.Label, style, Math.Min(labelMax, Math.Max(0, right - x)));
         DrawText(context, name, new Point(x, middle - (name.Height / 2)));
         x += Math.Ceiling(name.WidthIncludingTrailingWhitespace) + 4;
         if (lane.SubLabel is { } sub && right - x > 8)
@@ -947,10 +956,17 @@ public sealed class TimelineControl : Control
     {
         LaneGlyph.Inbound => ("▼", TimelineTextStyle.GlyphInbound),
         LaneGlyph.Outbound => ("▲", TimelineTextStyle.GlyphOutbound),
-        LaneGlyph.Pipe => ("⇄", TimelineTextStyle.GlyphNeutral),
-        LaneGlyph.Collection => ("≡", TimelineTextStyle.GlyphNeutral),
         LaneGlyph.Session => ("◆", TimelineTextStyle.GlyphSession),
         LaneGlyph.Control => ("·", TimelineTextStyle.GlyphControl),
+        _ => null,
+    };
+
+    /// <summary>The pipe kind a lane's glyph draws; null for the text glyphs.</summary>
+    public static PipeContent? PipeGlyphOf(LaneGlyph glyph) => glyph switch
+    {
+        LaneGlyph.Pipe => PipeContent.Raw,
+        LaneGlyph.Channel => PipeContent.Channel,
+        LaneGlyph.Collection => PipeContent.Collection,
         _ => null,
     };
 

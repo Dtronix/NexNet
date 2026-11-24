@@ -1,6 +1,8 @@
 using System.Globalization;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
+using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.Model;
 
@@ -16,8 +18,10 @@ public sealed class TraceStepRow
     /// <param name="step">The step.</param>
     /// <param name="origin">The capture's first tick (the time column counts from it).</param>
     /// <param name="frequency">Ticks per second.</param>
-    public TraceStepRow(in TraceStep step, long origin, long frequency)
+    /// <param name="pipe">What the step's pipe carries (the CH / CO chip); <see cref="PipeContent.Raw"/> for none.</param>
+    public TraceStepRow(in TraceStep step, long origin, long frequency, PipeContent pipe = PipeContent.Raw)
     {
+        PipeKind = step.IsInterleaved ? PipeContent.Raw : pipe;
         Step = step;
         Label = step.Label;
         Time = ((step.Ticks - origin) * 1000.0 / Math.Max(1, frequency)).ToString("N3", Invariant);
@@ -53,6 +57,12 @@ public sealed class TraceStepRow
     /// <summary>True when the frame came in more than one transport op (the T chip).</summary>
     public bool IsTransportSplit { get; }
 
+    /// <summary>What the step's pipe carries: a channel or collection shows its chip beside the step.</summary>
+    public PipeContent PipeKind { get; }
+
+    /// <summary>True when the step shows the CH / CO chip.</summary>
+    public bool HasPipeChip => PipeKind != PipeContent.Raw;
+
     /// <summary>The tooltip: frame, offset in the message, stream offset, length, transport ops.</summary>
     public string Detail { get; }
 
@@ -61,6 +71,17 @@ public sealed class TraceStepRow
 
     /// <summary>The label's indent: 12 px for interleaved frames.</summary>
     public Avalonia.Thickness LabelMargin => new(IsInterleaved ? 12 : 0, 0, 0, 0);
+
+    /// <summary>What the pipe of a step's frame carries; <see cref="PipeContent.Raw"/> when it is no pipe's. Call under the session's gate.</summary>
+    public static PipeContent PipeKindOf(CaptureSession session, in TraceStep step)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        MessageAssembler assembler = session.Assembler;
+        FrameLink link = assembler.GetLink(step.Frame.Direction, step.Frame.Seq);
+        return link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length
+            ? assembler.Pipes[link.EntityIndex].Content
+            : PipeContent.Raw;
+    }
 
     private static string DetailOf(in TraceStep step)
     {

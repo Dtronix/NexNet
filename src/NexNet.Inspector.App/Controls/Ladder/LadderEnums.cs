@@ -22,8 +22,11 @@ public enum LadderTarget : byte
     /// <summary>A raw duplex pipe: "pipe 3·1".</summary>
     Pipe = 2,
 
-    /// <summary>A typed channel or a collection's pipe: "chan 4·2".</summary>
+    /// <summary>A pipe carrying a typed channel: "chan 4·2", with the CH chip.</summary>
     Channel = 3,
+
+    /// <summary>A pipe carrying a synchronized collection: "coll 1·1", with the CO chip.</summary>
+    Collection = 4,
 }
 
 /// <summary>The short note after a row's target ("inv 812 · Completed").</summary>

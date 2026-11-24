@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using NexNet.Inspector.App.Controls.Primitives;
+using NexNet.Inspector.App.Model;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 
@@ -75,7 +77,10 @@ public sealed class EventRowVisual : DataTableRowVisual
         if (_type is null || _typeWidth != typeSlot.Width)
         {
             _type?.Dispose();
-            _type = Text(_typeText, new Typeface(palette.Ui), TypeSize, palette[ThemeBrush.TextPrimary], typeSlot.Width);
+            // A channel or collection frame keeps room for its chip after the wire type.
+            double chip = PipeChip.MeasureWidth(palette, EventText.PipeKind(row));
+            double typeWidth = chip > 0 ? Math.Max(0, typeSlot.Width - chip - ChipGap - 2) : typeSlot.Width;
+            _type = Text(_typeText, new Typeface(palette.Ui), TypeSize, palette[ThemeBrush.TextPrimary], typeWidth);
             _typeWidth = typeSlot.Width;
         }
 
@@ -90,7 +95,11 @@ public sealed class EventRowVisual : DataTableRowVisual
         double height = size.Height;
         DrawLeft(context, _seq, columns[EventColumns.Seq], height);
         DrawLeft(context, _time, columns[EventColumns.Time], height);
-        if (typeSlot.Width > 0) DrawLeft(context, _type, typeSlot, height);
+        if (typeSlot.Width > 0)
+        {
+            DrawLeft(context, _type, typeSlot, height);
+            DrawPipeChip(context, palette, row, typeSlot, height);
+        }
         if (targetSlot.Width > 0 && _targetText.Length > 0) DrawLeft(context, _target, targetSlot, height);
         DataTableColumnSlot bytesSlot = columns[EventColumns.Bytes];
         _bytes.Draw(context, new Point(bytesSlot.Right - _bytes.WidthIncludingTrailingWhitespace, Middle(_bytes, height)));
@@ -105,13 +114,25 @@ public sealed class EventRowVisual : DataTableRowVisual
 
     public override string? ToolTipAt(int column) => column switch
     {
-        EventColumns.Type => _typeText ?? EventText.Type(Row),
+        EventColumns.Type => EventText.PipeKind(Row) is var kind && kind != PipeContent.Raw
+            ? (_typeText ?? EventText.Type(Row)) + " · " + PipeText.Describe(kind)
+            : _typeText ?? EventText.Type(Row),
         EventColumns.Target => (_targetText ?? EventText.Target(Row)) is { Length: > 0 } target ? target : null,
         EventColumns.Flags => DescribeFlags(Row.Flags),
         _ => null,
     };
 
     public override string? AccessibleName => Index < 0 ? null : EventText.Accessible(Row);
+
+    // The CH / CO chip right after the type's text (the wire type stays; the chip says what rides on the pipe).
+    private void DrawPipeChip(DrawingContext context, ThemePalette palette, in EventRow row, DataTableColumnSlot slot, double height)
+    {
+        PipeContent kind = EventText.PipeKind(row);
+        if (kind == PipeContent.Raw || _type is null) return;
+        double x = slot.X + Math.Ceiling(_type.WidthIncludingTrailingWhitespace) + ChipGap + 2;
+        if (x + PipeChip.MeasureWidth(palette, kind) > slot.Right) return;
+        PipeChip.Draw(context, palette, kind, new Point(x, Math.Round((height - FlagChip.ChipHeight) / 2)));
+    }
 
     /// <summary>The width the row's flag chips take, gaps included.</summary>
     public static double FlagsWidth(ThemePalette palette, FrameFlags flags)

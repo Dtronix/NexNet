@@ -223,6 +223,8 @@ The app's **Legend & symbols** dialog (logo menu › View, or F2) draws each of 
 
 **Inspector assembly bar**: `S` is the MessageStart, `1 … n` the chunks sized by their bytes (the selected frame's is filled), `A` a MessageAbort; a tick in a wider gap means other messages' frames arrived in between. For the handshake, `Pre` and `Greet` with ▼ ▲ are the preambles and greetings.
 
+**Channels and pipes**: a typed channel (`Channel<T>`) or a synchronized collection is not a wire concept of its own: its items travel as length-prefixed bytes in `DuplexPipeWrite` frames on a duplex pipe. The views name what rides on the pipe first and the pipe second. ≋ marks a channel, ☰ a collection and ⇄ a raw byte pipe, on timeline lanes ("≋ Channel<LogLine> 36·36 · TailLogs"), ladder targets, hex frame annotations ("▸ DuplexPipeWrite #15,734 ≋ LogLine @EB6BA") and Compare's entities. Events, ladder, Message trace and palette rows keep the true wire type and add a **CH** (channel) or **CO** (collection) chip beside it, and the target counts the items the frame carried ("chan 36·36 LogLine ×2", or "LogLine (part)" for an item that crosses frames). Selecting such a frame opens the inspector on its items, decoded, then the frame header and transport, then a "Channel<LogLine> 36·36" section badged CHANNEL whose first row says which duplex pipe carries it.
+
 **Compare**: file A is blue and file B orange. Heat is frame density of a collapsed group, a packed span an entity's lifetime in an expanded group; a pink mark means the entity differs from its match. The Δ strip marks where matched entities differ, the diff band is the selected match's time range in both files, and the pinned entity gets a row of its own per file.
 
 ## Recordings and schemas

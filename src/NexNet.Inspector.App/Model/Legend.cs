@@ -1,5 +1,6 @@
 using NexNet.Inspector.App.Controls.Hex;
 using NexNet.Inspector.App.Controls.Timeline;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 
 namespace NexNet.Inspector.App.Model;
@@ -33,6 +34,9 @@ public enum LegendSection : byte
 
     /// <summary>The Compare workspace.</summary>
     Compare = 8,
+
+    /// <summary>Channels, collections and the duplex pipes that carry them.</summary>
+    Pipes = 9,
 }
 
 /// <summary>One symbol the legend explains; <see cref="Controls.LegendSwatch"/> draws each with the views' own tokens and draw paths.</summary>
@@ -107,6 +111,12 @@ public enum LegendSymbol : byte
     DeltaStrip,
     DiffBand,
     PinnedEntity,
+
+    PipeChannel,
+    PipeRaw,
+    PipeCollection,
+    ChipChannel,
+    ChipCollection,
 }
 
 /// <summary>One legend line: a symbol, its section, its name and one short sentence.</summary>
@@ -195,13 +205,21 @@ public static class Legend
         new(LegendSymbol.DeltaStrip, LegendSection.Compare, "Δ strip", "Where matched entities differ, across the session."),
         new(LegendSymbol.DiffBand, LegendSection.Compare, "Diff band", "The selected match's time range in both files."),
         new(LegendSymbol.PinnedEntity, LegendSection.Compare, "Pinned entity", "The selected entity, shown as its own row per file."),
+
+        new(LegendSymbol.PipeChannel, LegendSection.Pipes, "≋  Channel", "A typed channel (Channel<T>): items carried by a duplex pipe, named by their type."),
+        new(LegendSymbol.PipeRaw, LegendSection.Pipes, "⇄  Raw pipe", "A duplex pipe carrying bytes without item framing."),
+        new(LegendSymbol.PipeCollection, LegendSection.Pipes, "☰  Collection", "A synchronized collection: its messages ride on a duplex pipe."),
+        new(LegendSymbol.ChipChannel, LegendSection.Pipes, "CH  Channel frame",
+            "Beside the wire type (DuplexPipeWrite …): the frame's pipe carries a channel; the target counts its items (×2, part)."),
+        new(LegendSymbol.ChipCollection, LegendSection.Pipes, "CO  Collection frame", "Beside the wire type: the frame's pipe carries a collection."),
     ];
 
     private static readonly string[] Titles =
-        ["Frame flags", "Direction", "Transport ops", "Badges", "Timeline", "Ladder", "Hex stream", "Inspector · assembly bar", "Compare"];
+        ["Frame flags", "Direction", "Transport ops", "Badges", "Timeline", "Ladder", "Hex stream", "Inspector · assembly bar", "Compare",
+            "Channels and pipes"];
 
     /// <summary>Sections in reading order.</summary>
-    public const int SectionCount = (int)LegendSection.Compare + 1;
+    public const int SectionCount = (int)LegendSection.Pipes + 1;
 
     /// <summary>Every line, by section, in reading order.</summary>
     public static IReadOnlyList<LegendEntry> Entries => Table;
@@ -239,6 +257,40 @@ public static class Legend
         LegendSymbol.FlagCancel => FrameFlags.Cancel,
         LegendSymbol.FlagRedacted => FrameFlags.Redacted,
         LegendSymbol.FlagIncomplete => FrameFlags.Incomplete,
+        _ => null,
+    };
+
+    /// <summary>The line explaining the glyph of a pipe that carries <paramref name="content"/>.</summary>
+    public static LegendSymbol For(PipeContent content) => content switch
+    {
+        PipeContent.Channel => LegendSymbol.PipeChannel,
+        PipeContent.Collection => LegendSymbol.PipeCollection,
+        PipeContent.Raw => LegendSymbol.PipeRaw,
+        _ => throw new ArgumentOutOfRangeException(nameof(content), content, "no legend line"),
+    };
+
+    /// <summary>The line explaining the CH / CO chip of <paramref name="content"/>; null for a raw pipe, which has none.</summary>
+    public static LegendSymbol? ChipFor(PipeContent content) => content switch
+    {
+        PipeContent.Channel => LegendSymbol.ChipChannel,
+        PipeContent.Collection => LegendSymbol.ChipCollection,
+        _ => null,
+    };
+
+    /// <summary>The pipe kind a glyph line draws; null for any other line.</summary>
+    public static PipeContent? PipeOf(LegendSymbol symbol) => symbol switch
+    {
+        LegendSymbol.PipeChannel => PipeContent.Channel,
+        LegendSymbol.PipeRaw => PipeContent.Raw,
+        LegendSymbol.PipeCollection => PipeContent.Collection,
+        _ => null,
+    };
+
+    /// <summary>The pipe kind a chip line draws; null for any other line.</summary>
+    public static PipeContent? ChipOf(LegendSymbol symbol) => symbol switch
+    {
+        LegendSymbol.ChipChannel => PipeContent.Channel,
+        LegendSymbol.ChipCollection => PipeContent.Collection,
         _ => null,
     };
 

@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using NexNet.Inspector.App.Controls.Primitives;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 
@@ -55,6 +56,7 @@ public sealed class LadderRowControl : Control
     private const double HeadHeight = 8;
     private const double LabelPadding = 5;
     private const double LabelGap = 5;
+    private const double GlyphGap = 3;
     private const double ChipTop = 3;
     private const double OpTop = 1.5;
     private const double OpGap = 2;
@@ -199,7 +201,9 @@ public sealed class LadderRowControl : Control
     private double LabelWidth(ThemePalette palette)
     {
         double width = LabelPadding + _title!.Width;
-        if (_detail is not null) width += LabelGap + _detail.Width;
+        PipeContent? pipe = LadderText.PipeKind(Row);
+        if (pipe is { } chip && chip != PipeContent.Raw) width += LabelGap + PipeChip.MeasureWidth(palette, chip);
+        if (_detail is not null) width += LabelGap + (pipe is null ? 0 : PipeGlyph.Size + GlyphGap) + _detail.Width;
         if (_bytes is not null) width += LabelGap + _bytes.Width;
         foreach (FrameFlags flag in FlagChip.DisplayOrder)
         {
@@ -221,9 +225,23 @@ public sealed class LadderRowControl : Control
             x += LabelPadding;
             title.Draw(context, new Point(x, top + ((rowHeight - title.Height) / 2)));
             x += title.Width;
+            PipeContent? pipe = LadderText.PipeKind(Row);
+            if (pipe is { } chip && chip != PipeContent.Raw)
+            {
+                // The wire type stays the title; the chip after it says a channel or collection rides on the pipe.
+                x += LabelGap;
+                x += PipeChip.Draw(context, palette, chip, new Point(x, top + ChipTop));
+            }
+
             if (_detail is { } detail)
             {
                 x += LabelGap;
+                if (pipe is { } kind)
+                {
+                    PipeGlyph.Draw(context, palette, kind, ThemeBrush.TextSecondary, new Point(x, Math.Round(top + ((rowHeight - PipeGlyph.Size) / 2))));
+                    x += PipeGlyph.Size + GlyphGap;
+                }
+
                 detail.Draw(context, new Point(x, top + ((rowHeight - detail.Height) / 2)));
                 x += detail.Width;
             }

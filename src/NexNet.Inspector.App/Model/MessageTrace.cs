@@ -297,13 +297,13 @@ public sealed class MessageTrace
         if (message.Kind == MessageRefKind.Assembled)
         {
             AssembledMessage assembled = assembler.Messages[message.Index];
-            if (assembled.Pipe >= 0) title = "Pipe " + PipeName(assembler.Pipes[assembled.Pipe].PipeId) + " write";
+            if (assembled.Pipe >= 0) title = PipeText.Title(session, assembled.Pipe) + " write";
             else if (assembled.Kind == AssembledMessageKind.Large) title = "Large message · " + assembled.State.ToString().ToLowerInvariant();
         }
         else if (message.Kind == MessageRefKind.ChannelItem && (uint)message.Index < (uint)assembler.ChannelItems.Length)
         {
             ChannelItemRow item = assembler.ChannelItems[message.Index];
-            title = "Pipe " + PipeName(assembler.Pipes[item.Pipe].PipeId) + " item";
+            title = PipeText.Title(session, item.Pipe) + " item #" + PipeText.Ordinal(assembler, item).ToString(Invariant);
         }
 
         return builder.Build(TraceKind.Message, message, EntityKind.None, -1, title);
@@ -345,7 +345,7 @@ public sealed class MessageTrace
 
         if (builder.IsEmpty) return None;
         builder.SortByTime();
-        return builder.Build(TraceKind.Pipe, MessageRef.None, EntityKind.Pipe, index, "Pipe " + PipeName(assembler.Pipes[index].PipeId));
+        return builder.Build(TraceKind.Pipe, MessageRef.None, EntityKind.Pipe, index, PipeText.Title(session, index));
     }
 
     /// <summary>"3·1": the client's then the server's local pipe id.</summary>

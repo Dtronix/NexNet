@@ -63,6 +63,28 @@ public sealed class LegendTests
     }
 
     [Test]
+    public async Task Every_pipe_kind_has_a_glyph_line_and_every_carried_kind_a_chip_line()
+    {
+        foreach (Core.Assembly.PipeContent content in Enum.GetValues<Core.Assembly.PipeContent>())
+        {
+            LegendSymbol glyph = Legend.For(content);
+            await Assert.That(Legend.Get(glyph).Section).IsEqualTo(LegendSection.Pipes);
+            await Assert.That(Legend.PipeOf(glyph)).IsEqualTo(content);
+            await Assert.That(Legend.Get(glyph).Name).StartsWith(PipeText.Glyph(content)).Because("the line names the glyph");
+            if (PipeText.Chip(content) is { } letters)
+            {
+                LegendSymbol chip = Legend.ChipFor(content)!.Value;
+                await Assert.That(Legend.ChipOf(chip)).IsEqualTo(content);
+                await Assert.That(Legend.Get(chip).Name).StartsWith(letters);
+            }
+            else
+            {
+                await Assert.That(Legend.ChipFor(content)).IsNull();
+            }
+        }
+    }
+
+    [Test]
     public async Task Every_hex_fill_has_a_line_whose_swatch_draws_that_fill()
     {
         foreach (HexCellRole role in Enum.GetValues<HexCellRole>())

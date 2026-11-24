@@ -54,6 +54,15 @@ public sealed partial class MessageAssembler
         => CollectionsMarshal.AsSpan(_pipeTrackers[pipe].Runs[(int)direction]);
 
     /// <summary>
+    /// The items of a channel or collection pipe in one direction, as indices into <see cref="ChannelItems"/>, in stream
+    /// order: their first and last frames both rise, so the items a frame carried are found by binary search.
+    /// </summary>
+    /// <param name="pipe">Index into <see cref="Pipes"/>.</param>
+    /// <param name="direction">The direction.</param>
+    public ReadOnlySpan<int> GetPipeItems(int pipe, TapDirection direction)
+        => CollectionsMarshal.AsSpan(_pipeTrackers[pipe].Items[(int)direction]);
+
+    /// <summary>
     /// Says what a pipe carries. Switching a pipe to <see cref="PipeContent.Channel"/> or
     /// <see cref="PipeContent.Collection"/> splits its data into items, first replaying the data already seen.
     /// </summary>
@@ -519,6 +528,7 @@ public sealed partial class MessageAssembler
     private int NewItem(int pipe, TapDirection direction, long pipeOffset, long seq)
     {
         var index = _items.Count;
+        _pipeTrackers[pipe].Items[(int)direction].Add(index);
         _items.Add(new ChannelItemRow
         {
             Index = index,
@@ -662,6 +672,7 @@ public sealed partial class MessageAssembler
     private sealed class PipeTracker
     {
         public readonly List<int>[] Runs = [[], []];
+        public readonly List<int>[] Items = [[], []];
         public readonly int[] CurrentRun = [-1, -1];
         public readonly bool[] LastFull = new bool[2];
         public readonly long[] Bytes = new long[2];

@@ -41,23 +41,37 @@ public static class EventText
         string target = row.Target switch
         {
             EventTargetKind.Invocation => "inv " + row.TargetId.ToString(CultureInfo.InvariantCulture),
-            EventTargetKind.Pipe => "pipe " + PipeIds(row.TargetId),
-            EventTargetKind.Channel => "chan " + PipeIds(row.TargetId),
+            EventTargetKind.Pipe or EventTargetKind.Channel or EventTargetKind.Collection => PipeText.Noun(PipeKind(row)) + " " + PipeIds(row.TargetId),
             _ => "",
         };
         string? name = row.Target switch
         {
             // A result or a large message's start names its state or kind instead, as the package's rows do.
             EventTargetKind.Invocation => row.Detail.Kind == FrameDetailKind.None ? row.MethodName : null,
-            EventTargetKind.Pipe or EventTargetKind.Channel => row.PipeLabel,
+            EventTargetKind.Pipe => row.PipeLabel,
+            // "LogLine ×2", "LogLine (part)": what of the channel the frame carried.
+            EventTargetKind.Channel or EventTargetKind.Collection => PipeText.WithItems(row.PipeLabel, row.ItemCount, row.ItemPartial),
             _ => null,
         };
         return FrameDetailText.Join(target, name, FrameDetailText.Words(row.Detail, row.Flags));
     }
 
-    /// <summary>What assistive technology announces for a row: type, direction and time.</summary>
+    /// <summary>What the frame's pipe carries: the CH / CO chip beside the type; <see cref="PipeContent.Raw"/> for no chip.</summary>
+    public static PipeContent PipeKind(in EventRow row) => row.Target switch
+    {
+        EventTargetKind.Channel => PipeContent.Channel,
+        EventTargetKind.Collection => PipeContent.Collection,
+        _ => PipeContent.Raw,
+    };
+
+    /// <summary>What assistive technology announces for a row: type (and the channel or collection it carries), direction and time.</summary>
     public static string Accessible(in EventRow row) =>
-        Type(row) + (row.Direction == Core.Model.TapDirection.Inbound ? ", inbound, " : ", outbound, ") + Time(row) + " ms";
+        Type(row) + row.Target switch
+        {
+            EventTargetKind.Channel => " on a channel",
+            EventTargetKind.Collection => " on a collection",
+            _ => "",
+        } + (row.Direction == Core.Model.TapDirection.Inbound ? ", inbound, " : ", outbound, ") + Time(row) + " ms";
 
     /// <summary>The name of a type byte; an unassigned disconnect code or an unknown byte by its value.</summary>
     public static string TypeName(MessageType type) => type switch

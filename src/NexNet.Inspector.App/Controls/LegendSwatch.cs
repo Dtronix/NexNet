@@ -7,6 +7,7 @@ using NexNet.Inspector.App.Controls.Hex;
 using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.App.Controls.PropertyTree;
 using NexNet.Inspector.App.Model;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 
@@ -108,6 +109,22 @@ public sealed class LegendSwatch : Decorator
         if (Legend.RoleOf(Symbol) is { } role)
         {
             HexCells(context, palette, role, HexCellMarks.None);
+            return;
+        }
+
+        if (Legend.PipeOf(Symbol) is { } pipe)
+        {
+            // As the timeline gutter and the ladder draw it, before a lane label.
+            PipeGlyph.Draw(context, palette, pipe, ThemeBrush.TextPrimary, new Point(1, Math.Round((SwatchHeight - PipeGlyph.Size) / 2)));
+            Text(context, palette, pipe switch { PipeContent.Channel => "LogLine", PipeContent.Collection => "Users", _ => "3·1" }, 10,
+                ThemeBrush.TextSecondary, PipeGlyph.Size + 5);
+            return;
+        }
+
+        if (Legend.ChipOf(Symbol) is { } chip)
+        {
+            // As the events and ladder rows draw it, after the wire type.
+            PipeChip.Draw(context, palette, chip, new Point(0, (SwatchHeight - FlagChip.ChipHeight) / 2));
             return;
         }
 

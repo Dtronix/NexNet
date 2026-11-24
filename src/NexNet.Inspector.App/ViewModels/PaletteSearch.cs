@@ -118,8 +118,8 @@ public sealed class PaletteSearch
                 && session.Decoder.TryGetCollection(assembler.Collections[row.Collection].CollectionId, out SchemaCollection? collection))
                 key = key.Text("Collection ").Text(collection.Name);
             else
-                key = key.Text(row.Content == PipeContent.Channel ? "Chan " : row.Content == PipeContent.Collection ? "Collection " : "Pipe ")
-                    .PipeIds(row.PipeId).Text(" ").Text(OpenerName(session, row) ?? "");
+                key = key.Text(PipeText.Title(row.Content, row.PipeId, row.Content == PipeContent.Channel ? session.Decoder.GetPipeLabel(i) : null))
+                    .Text(" ").Text(OpenerName(session, row) ?? "");
             Offer(query, key, Id(Pipe, i));
         }
 
@@ -178,10 +178,11 @@ public sealed class PaletteSearch
             return PaletteRow.Item(PaletteGroup.Entities, "Collection · " + name, messages + " · " + Lifecycle(row), PaletteGlyph.Collection, target);
         }
 
-        string label = (row.Content == PipeContent.Channel ? "Chan " : "Pipe ") + PipeIds(row.PipeId);
+        string label = PipeText.Title(session, index);
         if (OpenerName(session, row) is { } opener) label += " · " + opener;
-        string state = row.Content == PipeContent.Raw ? "raw · " + Lifecycle(row) : Lifecycle(row);
-        return PaletteRow.Item(PaletteGroup.Entities, label, state + " · " + Span(session, trace), PaletteGlyph.Pipe, target);
+        string state = row.Content == PipeContent.Raw ? "raw · " + Lifecycle(row) : "on " + PipeText.CarriedBy(row.PipeId) + " · " + Lifecycle(row);
+        return PaletteRow.Item(PaletteGroup.Entities, label, state + " · " + Span(session, trace),
+            row.Content == PipeContent.Channel ? PaletteGlyph.Channel : PaletteGlyph.Pipe, target);
     }
 
     private static PaletteRow HandshakeRow(CaptureSession session)
@@ -222,9 +223,12 @@ public sealed class PaletteSearch
             string target = AppendTarget(Key(), session, frame, link, withMethod: false).ToString();
             string label = "#" + (index + 1L).ToString("N0", Invariant) + " " + type + (target.Length > 0 ? " · " + target : "");
             string time = ((frame.StartTicks - session.StartTicks) * 1000.0 / frequency).ToString("N3", Invariant) + " ms";
+            PipeContent pipe = link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length
+                ? assembler.Pipes[link.EntityIndex].Content
+                : PipeContent.Raw;
             rows.Add(PaletteRow.Item(PaletteGroup.Frames, label, time,
                 frameKey.Direction == Core.Model.TapDirection.Inbound ? PaletteGlyph.Inbound : PaletteGlyph.Outbound,
-                PaletteTarget.OfFrame(frameKey, frame.StartTicks)));
+                PaletteTarget.OfFrame(frameKey, frame.StartTicks), pipe: pipe));
         }
     }
 
@@ -328,7 +332,7 @@ public sealed class PaletteSearch
         if (link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length)
         {
             ref readonly PipeRow pipe = ref assembler.Pipes[link.EntityIndex];
-            return key.Text(separator).Text(pipe.Content == PipeContent.Channel ? "chan " : "pipe ").PipeIds(pipe.PipeId);
+            return key.Text(separator).Text(PipeText.Noun(pipe.Content)).Text(" ").PipeIds(pipe.PipeId);
         }
 
         return frame.Target == FrameTarget.Pipe ? key.Text(separator).Text("pipe ").PipeIds(frame.TargetId) : key;

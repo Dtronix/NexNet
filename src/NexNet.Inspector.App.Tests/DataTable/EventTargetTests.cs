@@ -82,7 +82,7 @@ public class EventTargetTests
         for (int i = 0; i < model.Count; i++) details.Add(LadderText.Detail(model[i], model.GetLabel(model[i].Name)));
         await Assert.That(details).Contains("auth token · redacted");
         await Assert.That(details.Any(d => d.StartsWith("pipe ", StringComparison.Ordinal) && d.EndsWith(" · Ready", StringComparison.Ordinal))).IsTrue();
-        // The ladder draws a collection's pipe as a channel (its items are split), named after the collection.
-        await Assert.That(details.Any(d => d.StartsWith("chan 1·1 Users", StringComparison.Ordinal))).IsTrue();
+        // The ladder names a collection's pipe as the collection it carries (it gets the CO chip, not CH).
+        await Assert.That(details.Any(d => d.StartsWith("coll 1·1 Users", StringComparison.Ordinal))).IsTrue();
     }
 }

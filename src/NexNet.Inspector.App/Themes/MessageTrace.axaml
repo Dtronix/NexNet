@@ -1,7 +1,7 @@
 <!--
   The inspector's Message trace tab (controls/property-tree, "Message trace tab"): a virtualized list of 21 px rows on
-  surface.panel, one per step of the traced message in wire order — direction glyph, step (UI font), the T chip of a
-  transport split, time ms and bytes (mono 11 px, secondary). Interleaved frames are indented 12 px at 60 % opacity.
+  surface.panel, one per step of the traced message in wire order — direction glyph, step (UI font), the CH / CO chip of a
+  channel or collection frame, the T chip of a transport split, time ms and bytes (mono 11 px, secondary). Interleaved frames are indented 12 px at 60 % opacity.
   The current step (the selected frame's) is state.selected with the 3 px accent.trace bar at its left edge, as the
   data table marks its selected row; hover is the raised fill.
 -->
@@ -58,14 +58,16 @@
     <Setter Property="ItemTemplate">
       <DataTemplate x:DataType="m:TraceStepRow">
         <Grid Classes="trace-step" Classes.inbound="{Binding IsInbound}" Opacity="{Binding RowOpacity}"
-              ColumnDefinitions="14,*,Auto,72,52" ToolTip.Tip="{Binding Detail}">
+              ColumnDefinitions="14,*,Auto,Auto,72,52" ToolTip.Tip="{Binding Detail}">
           <TextBlock Classes="glyph" Text="{Binding Glyph}" VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Meta}" />
           <TextBlock Grid.Column="1" Classes="step" Text="{Binding Label}" Margin="{Binding LabelMargin}" VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
-          <c:FlagChip Grid.Column="2" Flag="TransportSplit" IsVisible="{Binding IsTransportSplit}" Margin="4,0,0,0"
+          <c:PipeChip Grid.Column="2" Kind="{Binding PipeKind}" IsVisible="{Binding HasPipeChip}" Margin="4,0,0,0"
                       VerticalAlignment="Center" />
-          <TextBlock Grid.Column="3" Classes="mono" Text="{Binding Time}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Bytes}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          <c:FlagChip Grid.Column="3" Flag="TransportSplit" IsVisible="{Binding IsTransportSplit}" Margin="4,0,0,0"
+                      VerticalAlignment="Center" />
+          <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Time}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="5" Classes="mono" Text="{Binding Bytes}" HorizontalAlignment="Right" VerticalAlignment="Center" />
         </Grid>
       </DataTemplate>
     </Setter>

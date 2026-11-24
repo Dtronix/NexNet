@@ -1,3 +1,4 @@
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Format;
 using NexNet.Inspector.Core.Framing;
@@ -92,6 +93,7 @@ public sealed class LadderProjection
         ushort targetId = 0;
         LadderNote note = LadderNote.None;
         int name = -1;
+        FrameItems items = FrameItems.None;
 
         if (link.Entity == EntityKind.Invocation && (uint)link.EntityIndex < (uint)assembler.Invocations.Length)
         {
@@ -110,17 +112,18 @@ public sealed class LadderProjection
         }
         else if (frame.Target == FrameTarget.Pipe)
         {
-            bool channel = link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length
-                && assembler.Pipes[link.EntityIndex].Content != PipeContent.Raw;
-            target = channel ? LadderTarget.Channel : LadderTarget.Pipe;
+            bool linked = link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length;
+            target = linked ? TargetOf(assembler.Pipes[link.EntityIndex].Content) : LadderTarget.Pipe;
             targetId = frame.TargetId;
-            if (link.Entity == EntityKind.Pipe && session.Decoder.GetPipeLabel(link.EntityIndex) is { } label)
+            if (linked && session.Decoder.GetPipeLabel(link.EntityIndex) is { } label)
                 name = _model.AddLabel(label);
+            if (linked && frame.Type == MessageType.DuplexPipeWrite)
+                items = PipeText.Find(assembler, link.EntityIndex, frame.Direction, frame.Seq);
         }
         else if (link.Entity == EntityKind.Pipe && (uint)link.EntityIndex < (uint)assembler.Pipes.Length)
         {
             // DuplexPipeUpdateState names its pipe in the body, not a post-header: assembly linked it.
-            target = assembler.Pipes[link.EntityIndex].Content != PipeContent.Raw ? LadderTarget.Channel : LadderTarget.Pipe;
+            target = TargetOf(assembler.Pipes[link.EntityIndex].Content);
             targetId = assembler.Pipes[link.EntityIndex].PipeId;
         }
 
@@ -136,8 +139,16 @@ public sealed class LadderProjection
         if (detail.Kind is FrameDetailKind.Result or FrameDetailKind.MessageStart) detail = FrameDetail.None;
 
         return new LadderRow(new FrameKey(frame.Direction, frame.Seq), frame.StartTicks, frame.Kind, frame.Type, frame.Flags,
-            Bytes(frame), target, targetId, note, name, frame.FirstOpId, frame.LastOpId, link.Entity, link.EntityIndex, link.Message, part, detail);
+            Bytes(frame), target, targetId, note, name, frame.FirstOpId, frame.LastOpId, link.Entity, link.EntityIndex, link.Message, part, detail,
+            items.Count, items.Partial);
     }
+
+    private static LadderTarget TargetOf(PipeContent content) => content switch
+    {
+        PipeContent.Channel => LadderTarget.Channel,
+        PipeContent.Collection => LadderTarget.Collection,
+        _ => LadderTarget.Pipe,
+    };
 
     // Chunks are numbered as they are projected, which is stream order within the message's direction.
     private int Part(CaptureSession session, in FrameRecord frame)

@@ -26,6 +26,24 @@
   <Style Selector="pt|PropertyTreeView Grid.muted TextBlock.value">
     <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
   </Style>
+  <!--
+    A section's kind badge ("Channel<LogLine> 36·36 [CHANNEL]"): 8.5 px bold secondary letters in a 1 px outline, as the
+    events and ladder rows draw the CH / CO chips.
+  -->
+  <Style Selector="pt|PropertyTreeView Border.badge">
+    <Setter Property="Margin" Value="6,0,0,0" />
+    <Setter Property="Padding" Value="3,0" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+  <Style Selector="pt|PropertyTreeView Border.badge TextBlock">
+    <Setter Property="FontSize" Value="8.5" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
   <!-- Sections: "▾ Title" bold primary, the summary in the UI font, secondary. -->
   <Style Selector="pt|PropertyTreeView Grid.section TextBlock.glyph">
     <Setter Property="Margin" Value="0,0,4,0" />

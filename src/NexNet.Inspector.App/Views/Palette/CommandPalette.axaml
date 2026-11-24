@@ -204,7 +204,7 @@
                              Text="{Binding Label, Converter={x:Static c:MenuText.Upper}}" />
                   <Border Classes="palette-item" Classes.selected="{Binding IsSelected}" Classes.disabled="{Binding !IsEnabled}"
                           IsVisible="{Binding IsItem}" AutomationProperties.Name="{Binding AccessibleName}">
-                    <Grid ColumnDefinitions="24,*,Auto">
+                    <Grid ColumnDefinitions="24,*,Auto,Auto">
                       <TextBlock Classes="glyph" Classes.inbound="{Binding IsInbound}" Classes.outbound="{Binding IsOutbound}"
                                  Classes.trace="{Binding IsTraceGlyph}" Text="{Binding GlyphText}" />
                       <TextBlock Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="{DynamicResource FontSize.Body}">
@@ -212,7 +212,9 @@
                         <Run Text=" " />
                         <Run Text="{Binding Detail}" Foreground="{DynamicResource Brush.Text.Secondary}" />
                       </TextBlock>
-                      <TextBlock Grid.Column="2" Classes="shortcut" Text="{Binding ShortcutText}" />
+                      <c:PipeChip Grid.Column="2" Kind="{Binding PipeKind}" IsVisible="{Binding HasPipeChip}" Margin="6,0,0,0"
+                                  VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Classes="shortcut" Text="{Binding ShortcutText}" />
                     </Grid>
                   </Border>
                 </Panel>

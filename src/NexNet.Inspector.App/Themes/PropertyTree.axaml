@@ -69,6 +69,9 @@
             <TextBlock Classes="glyph" Text="{Binding Glyph}" Width="12" Margin="-12,0,0,0" VerticalAlignment="Center"
                        FontSize="{DynamicResource FontSize.Meta}" />
             <TextBlock Classes="name" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <Border Classes="badge" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Badge}" />
+            </Border>
           </StackPanel>
           <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" Margin="8,0,0,0" VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}" />

@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using NexNet.Inspector.App.Model;
+using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
 using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Session;
@@ -133,13 +135,25 @@ public static class HexText
             ref readonly FrameRecord frame = ref frames[first + i];
             if (i > 0)
                 text.Append("   ");
-            text.Append("▸ ").Append(TypeName(frame)).Append(" #").Append(frame.Seq.ToString("N0", invariant))
-                .Append(" @").Append(frame.Offset.ToString("X", invariant));
+            text.Append("▸ ").Append(TypeName(frame)).Append(" #").Append(frame.Seq.ToString("N0", invariant));
+            AppendPipe(text, session, frame);
+            text.Append(" @").Append(frame.Offset.ToString("X", invariant));
         }
 
         if (count > named)
             text.Append("   +").Append((count - named).ToString(invariant)).Append(" more");
         return text.ToString();
+    }
+
+    // A pipe frame names what rides on its pipe: "≋ LogLine" for a channel, "☰ Users" for a collection, "⇄ 3·1" for a raw pipe.
+    private static void AppendPipe(StringBuilder text, CaptureSession session, in FrameRecord frame)
+    {
+        MessageAssembler assembler = session.Assembler;
+        FrameLink link = assembler.GetLink(frame.Direction, frame.Seq);
+        if (link.Entity != EntityKind.Pipe || (uint)link.EntityIndex >= (uint)assembler.Pipes.Length) return;
+        PipeRow pipe = assembler.Pipes[link.EntityIndex];
+        string? label = pipe.Content == PipeContent.Raw ? null : session.Decoder.GetPipeLabel(link.EntityIndex);
+        text.Append(' ').Append(PipeText.Glyph(pipe.Content)).Append(' ').Append(label ?? PipeText.Ids(pipe.PipeId));
     }
 
     /// <summary>A frame's display name: its message type, or Preamble / Malformed.</summary>

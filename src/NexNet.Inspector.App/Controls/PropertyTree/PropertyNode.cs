@@ -13,6 +13,19 @@ public enum PropertyRowKind : byte
     Field = 1,
 }
 
+/// <summary>The kind badge after a section's title: what rides on the duplex pipe the section names.</summary>
+public enum PropertyBadge : byte
+{
+    /// <summary>No badge.</summary>
+    None = 0,
+
+    /// <summary>CHANNEL: the section is a typed channel.</summary>
+    Channel = 1,
+
+    /// <summary>COLLECTION: the section is a synchronized collection.</summary>
+    Collection = 2,
+}
+
 /// <summary>The colour of a field's value.</summary>
 public enum PropertyTone : byte
 {
@@ -86,6 +99,9 @@ public struct PropertyNode
 
     /// <summary>True while its children show.</summary>
     public bool Expanded;
+
+    /// <summary>A section's kind badge.</summary>
+    public PropertyBadge Badge;
 
     /// <summary>True when the node has children.</summary>
     public readonly bool HasChildren(int index) => SubtreeEnd > index + 1;

@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
 using NexNet.Inspector.App.Controls.Primitives;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Compare;
 using NexNet.Inspector.Core.Model;
+using NexNet.Inspector.Core.Schema;
 using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.Controls.Compare;
@@ -323,9 +325,9 @@ public sealed class CompareRowsModel
                 case CompareEntityKind.Invocation when (uint)entity.Index < (uint)assembler.Invocations.Length:
                     return "#" + assembler.Invocations[entity.Index].InvocationId.ToString(System.Globalization.CultureInfo.InvariantCulture) + " " + label;
                 case CompareEntityKind.Pipe when (uint)entity.Index < (uint)assembler.Pipes.Length:
-                    return PipeTitle(assembler.Pipes[entity.Index]) + " " + label;
+                    return PipeTitle(document, entity.Index, label);
                 case CompareEntityKind.Collection:
-                    return "Collection " + label;
+                    return PipeText.CollectionGlyph + " Collection " + label;
             }
         }
 
@@ -335,12 +337,18 @@ public sealed class CompareRowsModel
     /// <summary>The time under a fraction of the track, in compare time.</summary>
     public long TimeAt(double x, double width) => Window.FromPixel(x, width);
 
-    // "Pipe 3·1" / "Chan 4·2", as the timeline's lanes name them.
-    private static string PipeTitle(in PipeRow pipe)
+    // "⇄ Pipe 3·1 FileUpload" / "≋ Channel<LogLine> 36·36 TailLogs", as the timeline's lanes name them: a channel by
+    // what it carries and the method that opened it (the label is its item type, already in the title).
+    private static string PipeTitle(CaptureSession document, int index, string label)
     {
-        string ids = (pipe.PipeId & 0xFF).ToString(System.Globalization.CultureInfo.InvariantCulture) + "·"
-                     + (pipe.PipeId >> 8).ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return (pipe.Content == PipeContent.Channel ? "Chan " : "Pipe ") + ids;
+        PipeRow pipe = document.Assembler.Pipes[index];
+        string title = PipeText.Glyph(pipe.Content) + " " + PipeText.Title(document, index);
+        if (pipe.Content == PipeContent.Raw) return title + " " + label;
+        MessageAssembler assembler = document.Assembler;
+        return (uint)pipe.OpenerInvocation < (uint)assembler.Invocations.Length
+               && document.Decoder.TryGetMethod(assembler.Invocations[pipe.OpenerInvocation], out SchemaMethod? opener)
+            ? title + " " + opener.Name
+            : title;
     }
 
     private TimeWindow ClampWindow(TimeWindow window)

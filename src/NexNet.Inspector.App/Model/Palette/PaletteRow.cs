@@ -55,10 +55,10 @@ public enum PaletteGlyph : byte
     /// <summary>◆ an invocation (accent.trace when selected).</summary>
     Invocation,
 
-    /// <summary>⇄ a pipe or channel.</summary>
+    /// <summary>⇄ a raw duplex pipe.</summary>
     Pipe,
 
-    /// <summary>≡ a collection.</summary>
+    /// <summary>☰ a collection.</summary>
     Collection,
 
     /// <summary>⇋ the handshake.</summary>
@@ -78,6 +78,9 @@ public enum PaletteGlyph : byte
 
     /// <summary>A command's own glyph (<see cref="PaletteRow.Command"/>).</summary>
     Command,
+
+    /// <summary>≋ a channel.</summary>
+    Channel,
 }
 
 /// <summary>Where a palette item leads.</summary>
@@ -142,9 +145,10 @@ public sealed partial class PaletteRow : ObservableObject
         PaletteTarget.None);
 
     /// <summary>An item.</summary>
+    /// <param name="pipe">For a frame of a channel or collection pipe, what it carries (the CH / CO chip).</param>
     public static PaletteRow Item(PaletteGroup group, string label, string? detail, PaletteGlyph glyph, PaletteTarget target,
-        string? shortcut = null, bool isEnabled = true) =>
-        new(group, false, label, detail, shortcut, glyph, target.Command, isEnabled && target.Kind != PaletteTargetKind.None, target);
+        string? shortcut = null, bool isEnabled = true, PipeContent pipe = PipeContent.Raw) =>
+        new(group, false, label, detail, shortcut, glyph, target.Command, isEnabled && target.Kind != PaletteTargetKind.None, target) { PipeKind = pipe };
 
     /// <summary>The group it belongs to.</summary>
     public PaletteGroup Group { get; }
@@ -167,6 +171,12 @@ public sealed partial class PaletteRow : ObservableObject
     /// <summary>The icon column.</summary>
     public PaletteGlyph Glyph { get; }
 
+    /// <summary>What a frame's pipe carries: a channel or collection frame shows its chip.</summary>
+    public PipeContent PipeKind { get; private init; }
+
+    /// <summary>True when the item shows the CH / CO chip.</summary>
+    public bool HasPipeChip => PipeKind != PipeContent.Raw;
+
     /// <summary>The command, for a command item.</summary>
     public AppCommand Command { get; }
 
@@ -188,8 +198,9 @@ public sealed partial class PaletteRow : ObservableObject
     public string GlyphText => Glyph switch
     {
         PaletteGlyph.Invocation => "◆",
-        PaletteGlyph.Pipe => "⇄",
-        PaletteGlyph.Collection => "≡",
+        PaletteGlyph.Pipe => PipeText.RawGlyph,
+        PaletteGlyph.Channel => PipeText.ChannelGlyph,
+        PaletteGlyph.Collection => PipeText.CollectionGlyph,
         PaletteGlyph.Handshake => "⇋",
         PaletteGlyph.Inbound => "▼",
         PaletteGlyph.Outbound => "▲",

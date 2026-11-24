@@ -114,8 +114,9 @@ public static class InspectMenus
     {
         LaneGlyph.Inbound => "▼",
         LaneGlyph.Outbound => "▲",
-        LaneGlyph.Pipe => "⇄",
-        LaneGlyph.Collection => "≡",
+        LaneGlyph.Pipe => PipeText.RawGlyph,
+        LaneGlyph.Channel => PipeText.ChannelGlyph,
+        LaneGlyph.Collection => PipeText.CollectionGlyph,
         LaneGlyph.Session => "◆",
         _ => null,
     };

@@ -37,7 +37,7 @@ public static class FieldDiffText
         EntityMatch row = compare.Matches[match];
         string label = compare.GetLabel(match);
         string kind = KindName(row.Key.Kind);
-        if (row.Key.Kind != CompareEntityKind.Invocation)
+        if (row.Key.Kind is not (CompareEntityKind.Invocation or CompareEntityKind.Pipe))
             return kind + " " + label;
 
         CompareSide side = row.A.IsPresent ? CompareSide.A : CompareSide.B;
@@ -45,6 +45,15 @@ public static class FieldDiffText
         int index = row.Get(side).Index;
         lock (session.Gate)
         {
+            // A channel or collection is named by what it carries ("Channel<LogLine> 36·36"), not by its pipe.
+            if (row.Key.Kind == CompareEntityKind.Pipe)
+            {
+                var pipes = session.Assembler.Pipes;
+                return (uint)index < (uint)pipes.Length && pipes[index].Content != Core.Assembly.PipeContent.Raw
+                    ? PipeText.Title(session, index)
+                    : kind + " " + label;
+            }
+
             var invocations = session.Assembler.Invocations;
             if ((uint)index < (uint)invocations.Length)
                 return kind + " #" + invocations[index].InvocationId.ToString(CultureInfo.InvariantCulture) + " " + label;

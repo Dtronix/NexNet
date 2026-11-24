@@ -27,6 +27,8 @@ namespace NexNet.Inspector.App.Controls.Ladder;
 /// <param name="Message">Index of the assembled message the frame is part of; -1 for none.</param>
 /// <param name="Part">For a MessageChunk, its 1-based number among the message's chunks; 0 otherwise.</param>
 /// <param name="Detail">What the body adds beyond target and note (preamble version, greeting token or ID, credits, pipe state).</param>
+/// <param name="Items">For a channel or collection write, how many of its items the frame carried bytes of; 0 otherwise.</param>
+/// <param name="ItemPartial">True when the frame carried part of one item only (the item crosses frames).</param>
 public readonly record struct LadderRow(
     FrameKey Frame,
     long Ticks,
@@ -44,7 +46,9 @@ public readonly record struct LadderRow(
     int EntityIndex,
     int Message,
     int Part,
-    FrameDetail Detail = default)
+    FrameDetail Detail = default,
+    int Items = 0,
+    bool ItemPartial = false)
 {
     /// <summary>The direction: inbound arrows point right, at the tapped endpoint.</summary>
     public TapDirection Direction => Frame.Direction;
