@@ -37,6 +37,17 @@ internal sealed class QueuedUi : IUiDispatcher
     }
 }
 
+/// <summary>
+/// Forwards posted UI work to a dispatcher that can change: a test indexes documents with <see cref="TestUi"/>, then
+/// hands later work to the headless UI thread before views bind to the results.
+/// </summary>
+internal sealed class SwitchableUi(IUiDispatcher target) : IUiDispatcher
+{
+    public IUiDispatcher Target { get; set; } = target;
+
+    public void Post(Action action) => Target.Post(action);
+}
+
 internal static class Wait
 {
     /// <summary>Polls until <paramref name="condition"/> holds; fails the test with <paramref name="what"/> on timeout.</summary>

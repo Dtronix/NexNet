@@ -29,6 +29,14 @@ public sealed class CompareDetailViewModel
     /// <param name="entityTitle">The entity's title for the Field diff subtitle; null names it from the compare.</param>
     public void Show(CompareSession? compare, int match, string? entityTitle = null) => FieldDiff.Show(compare, match, entityTitle);
 
+    /// <summary>Shows an entity with its field diff already built (off the UI thread); a null diff clears both panes.</summary>
+    /// <param name="compare">The compare.</param>
+    /// <param name="match">Index in <see cref="CompareSession.Matches"/>.</param>
+    /// <param name="entityTitle">The entity's title for the Field diff subtitle; null names it from the compare.</param>
+    /// <param name="diff">The entity's <see cref="CompareSession.GetFieldDiff"/>.</param>
+    public void Show(CompareSession? compare, int match, string? entityTitle, EntityFieldDiff? diff) =>
+        FieldDiff.Show(compare, match, entityTitle, diff);
+
     /// <summary>Selects the field at a hex byte's row (the hex view's click).</summary>
     public void PickField(int row) => FieldDiff.SelectRow(row);
 

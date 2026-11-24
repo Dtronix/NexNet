@@ -197,13 +197,16 @@ public sealed class CompareRowsControlTests
     [Test]
     public async Task The_window_binds_open_in_compare_and_the_session_comparer_and_shows_the_workspace()
     {
-        await using DocumentsViewModel documents = new(new TestUi(), null);
+        // Indexed inline; the compare then lands on the UI thread the window's bindings live on.
+        SwitchableUi ui = new(new TestUi());
+        await using DocumentsViewModel documents = new(ui, null);
         await CompareFixture.OpenIndexedAsync(documents, "chat-client.nntl");
         FileDocumentViewModel second = await CompareFixture.OpenIndexedAsync(documents, "chat-server.nntl");
 
         (bool comparer, bool canBefore, bool isCompare, int ticked, bool secondTicked, bool hasSession, bool viewShown, int entityRows) =
             await HeadlessSession.Run(() =>
             {
+                ui.Target = AvaloniaUiDispatcher.Instance;
                 ThemeService themes = new(HeadlessSession.App, new FakeOsTheme(Avalonia.Platform.PlatformThemeVariant.Light), AppTheme.Light);
                 MainWindowViewModel model = new(themes, null, documents);
                 model.Commands.Refresh();
@@ -211,6 +214,8 @@ public sealed class CompareRowsControlTests
                 Views.MainWindow window = new() { DataContext = model, Width = 1440, Height = 900 };
                 window.Show();
                 model.Commands.CommandFor(AppCommand.OpenInCompare).Execute(null);
+                Task computed = model.Compare.WhenComputedAsync();
+                Capture.InspectLiveScreen.Pump(() => computed.IsCompleted);
                 UiPump.Settle(200);
                 CompareView view = window.Compare;
                 int listed = view.EntityTree.GetRealizedContainers().Count();

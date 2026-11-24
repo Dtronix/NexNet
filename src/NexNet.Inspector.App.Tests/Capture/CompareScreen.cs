@@ -39,11 +39,11 @@ public static class CompareScreen
         a.IsIncludedInCompare = true;
         b.IsIncludedInCompare = true;
         viewModel.Chrome.Workspace.Value = Workspace.Compare;
-        InspectLiveScreen.Pump(() => viewModel.Compare.Session is not null);
-
         CompareWorkspaceViewModel compare = viewModel.Compare;
+        PumpComputed(compare);
         int message = FindInvocation(compare.Session!, "SendMessage");
         compare.Select(message);
+        PumpComputed(compare);
         FieldDiffViewModel fields = compare.DetailPanel.FieldDiff;
         if (fields.Rows.Diff is { } diff)
         {
@@ -60,6 +60,14 @@ public static class CompareScreen
         compare.Rows.SetPlayhead(compare.Session!.Clock.AnchorTime);
         InspectLiveScreen.Pump(static () => true);
         return new Picks(a, b, message);
+    }
+
+    /// <summary>Pumps the UI thread until the compare's background work (build, alignment, field diff) has landed.</summary>
+    public static void PumpComputed(CompareWorkspaceViewModel compare)
+    {
+        ArgumentNullException.ThrowIfNull(compare);
+        Task computed = compare.WhenComputedAsync();
+        InspectLiveScreen.Pump(() => computed.IsCompleted);
     }
 
     /// <summary>The first invocation of a method, preferring one whose sides differ.</summary>

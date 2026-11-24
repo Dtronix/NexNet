@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using NexNet.Inspector.App.Controls.Compare;
 using NexNet.Inspector.App.Controls.Primitives;
 using NexNet.Inspector.App.Model;
+using NexNet.Inspector.App.Services;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Compare;
 using NexNet.Inspector.Core.Model;
@@ -21,12 +22,25 @@ namespace NexNet.Inspector.App.ViewModels;
 /// double-click on a region opens it in Inspect on that document, its entity selected.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The compare is built when the workspace shows with two ticked documents, and kept while the same two sessions are
 /// compared; a document still growing (indexing, live) refreshes it at most once a second, and once more when it
 /// settles.
+/// </para>
+/// <para>
+/// Building, refreshing, re-aligning and the selected entity's field diff run off the UI thread (a recording of hundreds
+/// of MB would otherwise freeze the window): each reads the sessions under their gates and its result is published here
+/// through the UI dispatcher. The latest request wins: a newer one cancels the work it supersedes, whose result is then
+/// dropped. A first build shows "Comparing…"; a refresh or re-alignment keeps the previous result on screen until the
+/// new one lands. Published compares are never changed off the UI thread (a refresh builds a new one; an alignment is
+/// prepared aside and swapped in), so the views read them freely.
+/// </para>
 /// </remarks>
 public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDisposable
 {
+    /// <summary>The empty state while the first compare of a pair builds.</summary>
+    public const string ComparingText = "Comparing…";
+
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
 
     private static readonly CompareCategory[] SidebarCategories =
@@ -43,6 +57,21 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     private bool _selecting;
     private CompareSession? _shownSession;
     private int _shownMatch = -1;
+
+    // The work in flight (null when none) and the tasks that finish once its result is published or dropped.
+    private CancellationTokenSource? _build;
+    private CaptureSession? _buildA;
+    private CaptureSession? _buildB;
+    private CancellationTokenSource? _align;
+    private CancellationTokenSource? _detail;
+    private volatile Task _buildDone = Task.CompletedTask;
+    private volatile Task _alignDone = Task.CompletedTask;
+    private volatile Task _detailDone = Task.CompletedTask;
+    private string? _failure;
+
+    // "Open in Compare" picks the entity selected in Inspect once the compare it opens has landed.
+    private DocumentViewModel? _pendingFrom;
+    private Selection _pendingSelection;
 
     /// <param name="documents">The open documents (the tabs' Compare checkboxes pick the pair).</param>
     /// <param name="chrome">The shell: the Inspect | Compare switch.</param>
@@ -111,6 +140,31 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     /// <summary>True when a compare shows (otherwise the empty state does).</summary>
     public bool HasSession => Session is not null;
 
+    /// <summary>True while a compare is built, refreshed or re-aligned off the UI thread.</summary>
+    [ObservableProperty]
+    public partial bool IsComputing { get; private set; }
+
+    /// <summary>
+    /// Test hook: runs on the worker before each piece of background work, with the token that cancels it (a test slows
+    /// or blocks the work here to prove the UI thread stays free and that superseded work is cancelled).
+    /// </summary>
+    internal Action<CompareWork, CancellationToken>? WorkHook { get; set; }
+
+    /// <summary>
+    /// Completes once no background work is pending: the compare, its alignment and the selected entity's field diff
+    /// are published. For tests and the capture scenarios, which read the results synchronously.
+    /// </summary>
+    public async Task WhenComputedAsync()
+    {
+        while (true)
+        {
+            Task build = _buildDone, align = _alignDone, detail = _detailDone;
+            await Task.WhenAll(build, align, detail).ConfigureAwait(false);
+            // A published build may have started a re-alignment or a field diff: wait for those too.
+            if (build == _buildDone && align == _alignDone && detail == _detailDone) return;
+        }
+    }
+
     /// <summary>
     /// The selected entity, for the field diff and A ⇄ B hex below the rows (I32 fills them from
     /// <see cref="CompareSession.GetFieldDiff"/>); null when none is selected.
@@ -169,9 +223,18 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
             document.IsIncludedInCompare = true;
         }
 
+        _pendingFrom = from;
+        _pendingSelection = selection;
         _chrome.Workspace.Value = Workspace.Compare;
         Refresh(force: true);
-        if (Session is { } session && from is not null && MatchOf(session, from, selection) is var match and >= 0) Select(match);
+        if (_build is null) SelectPending();
+    }
+
+    private void SelectPending()
+    {
+        DocumentViewModel? from = _pendingFrom;
+        _pendingFrom = null;
+        if (Session is { } session && from is not null && MatchOf(session, from, _pendingSelection) is var match and >= 0) Select(match);
     }
 
     /// <summary>The compare row of an entity selected in one of the two documents; -1 when it has none.</summary>
@@ -265,7 +328,23 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
             return;
         _shownSession = session;
         _shownMatch = match;
-        DetailPanel.Show(session, match, DetailSubtitle);
+        Cancel(ref _detail);
+        if (session is null || match < 0)
+        {
+            DetailPanel.Show(null, -1, DetailSubtitle);
+            return;
+        }
+
+        // A big entity's decode (a pipe of many items) must not hold the UI: the panel keeps what it shows until the
+        // diff lands.
+        string title = DetailSubtitle;
+        CancellationTokenSource work = new();
+        _detail = work;
+        _detailDone = Run(CompareWork.FieldDiff, work, _ => session.GetFieldDiff(match), diff =>
+        {
+            _detail = null;
+            DetailPanel.Show(session, match, title, diff);
+        });
     }
 
     /// <summary>
@@ -301,7 +380,7 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         else _documents.Sync.Select(selection, start);
     }
 
-    /// <summary>Rebuilds or refreshes the compare from the ticked documents.</summary>
+    /// <summary>Rebuilds or refreshes the compare from the ticked documents, off the UI thread.</summary>
     /// <param name="force">Refresh a stale compare now, however recently it was built.</param>
     public void Refresh(bool force = false)
     {
@@ -309,37 +388,90 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         DocumentViewModel? a = pair.Length == CompareSession.DocumentCount ? pair[0] : null;
         DocumentViewModel? b = pair.Length == CompareSession.DocumentCount ? pair[1] : null;
         Track(a, b);
-        UpdateEmptyText();
-        if (!_chrome.IsCompare && Session is null) return;
-
-        if (a?.Session is not { } sessionA || b?.Session is not { } sessionB)
+        try
         {
-            SetSession(null, keep: false);
-            return;
-        }
+            if (!_chrome.IsCompare && Session is null && _build is null) return;
 
-        if (Session is { } current && current.A == sessionA && current.B == sessionB)
+            if (a?.Session is not { } sessionA || b?.Session is not { } sessionB)
+            {
+                CancelWork();
+                _pendingFrom = null;
+                SetSession(null, null, null, keep: false);
+                return;
+            }
+
+            // The build in flight is already for this pair; whether its result is stale is checked when it lands.
+            if (_build is not null && _buildA == sessionA && _buildB == sessionB) return;
+
+            if (Session is { } current && current.A == sessionA && current.B == sessionB)
+            {
+                // A build of another pair (ticked and unticked meanwhile) is superseded by the pair on screen.
+                CancelBuild();
+                if (!current.IsStale) return;
+                long now = _documents.Time.GetTimestamp();
+                bool settled = a.CaptureState != CaptureState.Open && b.CaptureState != CaptureState.Open;
+                if (!force && !settled && _documents.Time.GetElapsedTime(_lastBuild, now) < RefreshInterval) return;
+                StartBuild(sessionA, sessionB, CompareWork.Refresh);
+                return;
+            }
+
+            // Another pair: its rows would mislead while the new compare builds, so the workspace says "Comparing…".
+            CancelWork();
+            if (Session is not null) SetSession(null, null, null, keep: false);
+            StartBuild(sessionA, sessionB, CompareWork.Build);
+        }
+        finally
         {
-            if (!current.IsStale) return;
-            long now = _documents.Time.GetTimestamp();
-            bool settled = a.CaptureState != CaptureState.Open && b.CaptureState != CaptureState.Open;
-            if (!force && !settled && _documents.Time.GetElapsedTime(_lastBuild, now) < RefreshInterval) return;
-            EntityKey? selected = Rows.Selected >= 0 ? current.Matches[Rows.Selected].Key : null;
-            current.Refresh();
-            SetSession(current, keep: true, selected);
-            return;
+            UpdateComputing();
         }
-
-        CompareSession session = new(sessionA, sessionB);
-        if (Align.Value != Alignment.Relative) session.Align(Align.Value);
-        SetSession(session, keep: false);
     }
 
-    private void SetSession(CompareSession? session, bool keep, EntityKey? selected = null)
+    private void StartBuild(CaptureSession a, CaptureSession b, CompareWork kind)
     {
+        CancelBuild();
         _lastBuild = _documents.Time.GetTimestamp();
-        CompareDensity? densityA = session is null ? null : CompareDensity.Build(session.A);
-        CompareDensity? densityB = session is null ? null : CompareDensity.Build(session.B);
+        _failure = null;
+        Alignment mode = Align.Value;
+        CancellationTokenSource work = new();
+        _build = work;
+        _buildA = a;
+        _buildB = b;
+        _buildDone = Run(kind, work, token => Build(a, b, mode, token), built => OnBuilt(built, keep: kind == CompareWork.Refresh));
+    }
+
+    /// <summary>The worker's part of a build: the union, its alignment and both documents' heat-row densities.</summary>
+    private static BuiltCompare Build(CaptureSession a, CaptureSession b, Alignment mode, CancellationToken token)
+    {
+        CompareSession session = new(a, b, null, token);
+        if (mode != Alignment.Relative) session.ApplyAlignment(session.PrepareAlignment(mode, AlignmentEvent.SessionReady, token));
+        token.ThrowIfCancellationRequested();
+        CompareDensity densityA = CompareDensity.Build(a);
+        token.ThrowIfCancellationRequested();
+        return new BuiltCompare(session, densityA, CompareDensity.Build(b));
+    }
+
+    private void OnBuilt(BuiltCompare built, bool keep)
+    {
+        // An alignment prepared for the compare being replaced does not apply to the new one.
+        Cancel(ref _align);
+        EntityKey? selected = keep && Session is { } previous && (uint)Rows.Selected < (uint)previous.Matches.Length
+            ? previous.Matches[Rows.Selected].Key
+            : null;
+        SetSession(built.Session, built.DensityA, built.DensityB, keep, selected);
+        // The build counts as in flight until its pending selection is made, so "Open in Compare" makes it here only.
+        SelectPending();
+        _build = null;
+        _buildA = null;
+        _buildB = null;
+        // Align changed while it built.
+        if (built.Session.Alignment != Align.Value) Realign(Align.Value);
+        UpdateComputing();
+        // Data that arrived while it built (or the capture settling meanwhile) refreshes it again, coalesced as ever.
+        if (built.Session.IsStale && _chrome.IsCompare) Refresh();
+    }
+
+    private void SetSession(CompareSession? session, CompareDensity? densityA, CompareDensity? densityB, bool keep, EntityKey? selected = null)
+    {
         Rows.SetSession(session, densityA, densityB, keep);
         Session = session;
         // A refreshed compare rebuilt its union (and dropped its field diffs): the panel shows the entity again.
@@ -350,18 +482,154 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         if (!keep || match < 0) match = -1;
         Select(match);
         UpdateSubtitle();
+        UpdateEmptyText();
     }
 
     private void Realign(Alignment mode)
     {
+        // A build in flight aligns as it lands.
         if (Session is not { } session) return;
-        session.Align(mode);
+        Cancel(ref _align);
+        CancellationTokenSource work = new();
+        _align = work;
+        _alignDone = Run(CompareWork.Align, work, token => session.PrepareAlignment(mode, AlignmentEvent.SessionReady, token), prepared =>
+        {
+            _align = null;
+            if (ReferenceEquals(session, Session)) OnAligned(session, prepared);
+            UpdateComputing();
+        });
+        UpdateComputing();
+    }
+
+    private void OnAligned(CompareSession session, CompareAlignment prepared)
+    {
+        session.ApplyAlignment(prepared);
         Rows.OnAligned();
         DeltaCount = session.Deltas.Count;
         UpdateFiles();
         if (Rows.Selected >= 0) Detail = session.Matches[Rows.Selected];
         RebuildEntities();
         UpdateSubtitle();
+    }
+
+    /// <summary>
+    /// Runs <paramref name="compute"/> on the thread pool and publishes its result through the UI dispatcher, unless
+    /// <paramref name="work"/> was cancelled first (superseded): then the result is dropped.
+    /// </summary>
+    /// <returns>A task that completes once the result is published or dropped.</returns>
+    private Task Run<T>(CompareWork kind, CancellationTokenSource work, Func<CancellationToken, T> compute, Action<T> publish)
+    {
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken token = work.Token;
+        IUiDispatcher ui = _documents.Ui;
+        Action<CompareWork, CancellationToken>? hook = WorkHook;
+        _ = Task.Run(() =>
+        {
+            T result;
+            try
+            {
+                hook?.Invoke(kind, token);
+                token.ThrowIfCancellationRequested();
+                result = compute(token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                done.TrySetResult();
+                return;
+            }
+            catch (Exception e)
+            {
+                ui.Post(() =>
+                {
+                    // Superseded work's failure is as irrelevant as its result would have been.
+                    if (token.IsCancellationRequested)
+                    {
+                        done.TrySetResult();
+                        return;
+                    }
+
+                    OnFailed(kind, e);
+                    done.TrySetException(e);
+                });
+                return;
+            }
+
+            ui.Post(() =>
+            {
+                // Cancelled on the UI thread too, so a request made before this runs always wins.
+                if (token.IsCancellationRequested)
+                {
+                    done.TrySetResult();
+                    return;
+                }
+
+                try
+                {
+                    publish(result);
+                    done.TrySetResult();
+                }
+                catch (Exception e)
+                {
+                    done.TrySetException(e);
+                    throw;
+                }
+                finally
+                {
+                    work.Dispose();
+                }
+            });
+        });
+        return done.Task;
+    }
+
+    private void OnFailed(CompareWork kind, Exception e)
+    {
+        switch (kind)
+        {
+            case CompareWork.Build:
+            case CompareWork.Refresh:
+                _build = null;
+                _buildA = null;
+                _buildB = null;
+                _failure = "Could not compare these documents: " + e.Message;
+                SetSession(null, null, null, keep: false);
+                break;
+            case CompareWork.Align:
+                _align = null;
+                break;
+            default:
+                _detail = null;
+                DetailPanel.Show(null, -1);
+                break;
+        }
+
+        UpdateComputing();
+    }
+
+    private void CancelBuild()
+    {
+        Cancel(ref _build);
+        _buildA = null;
+        _buildB = null;
+    }
+
+    private void CancelWork()
+    {
+        CancelBuild();
+        Cancel(ref _align);
+    }
+
+    // The worker may still hold the token, so the source is left to the collector rather than disposed here.
+    private static void Cancel(ref CancellationTokenSource? work)
+    {
+        work?.Cancel();
+        work = null;
+    }
+
+    private void UpdateComputing()
+    {
+        IsComputing = _build is not null || _align is not null;
+        UpdateEmptyText();
     }
 
     private void UpdateFiles()
@@ -427,6 +695,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
         {
             0 => "Tick the checkboxes of two document tabs to compare them.",
             1 => "Tick one more document tab to compare it with the first.",
+            _ when _build is not null => ComparingText,
+            _ when _failure is not null => _failure,
             _ => "Waiting for both documents' data…",
         };
     }
@@ -608,9 +878,30 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
 
     public void Dispose()
     {
+        CancelWork();
+        Cancel(ref _detail);
         _documents.PropertyChanged -= OnDocumentsChanged;
         _documents.Documents.CollectionChanged -= OnTabsChanged;
         _chrome.PropertyChanged -= OnChromeChanged;
         Track(null, null);
     }
 }
+
+/// <summary>The kinds of work the Compare workspace runs off the UI thread.</summary>
+internal enum CompareWork
+{
+    /// <summary>A new pair's compare.</summary>
+    Build,
+
+    /// <summary>The same pair rebuilt after its documents grew.</summary>
+    Refresh,
+
+    /// <summary>A new alignment of the compare shown.</summary>
+    Align,
+
+    /// <summary>The selected entity's field diff.</summary>
+    FieldDiff,
+}
+
+/// <summary>A compare built off the UI thread with its documents' heat-row densities.</summary>
+internal readonly record struct BuiltCompare(CompareSession Session, CompareDensity DensityA, CompareDensity DensityB);

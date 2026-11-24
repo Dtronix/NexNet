@@ -92,10 +92,18 @@ public sealed partial class FieldDiffViewModel : ObservableObject
     /// What the subtitle calls the entity (the Compare workspace's own title for it, so the panel and the rows agree);
     /// null names it from the compare (<see cref="FieldDiffText.Describe"/>).
     /// </param>
-    public void Show(CompareSession? compare, int match, string? entityTitle = null)
+    public void Show(CompareSession? compare, int match, string? entityTitle = null) =>
+        Show(compare, match, entityTitle, compare is not null && (uint)match < (uint)compare.Matches.Length ? compare.GetFieldDiff(match) : null);
+
+    /// <summary>Shows an entity's field diff built elsewhere (off the UI thread); a null compare or diff clears.</summary>
+    /// <param name="compare">The compare.</param>
+    /// <param name="match">Index in <see cref="CompareSession.Matches"/>.</param>
+    /// <param name="entityTitle">What the subtitle calls the entity; null names it from the compare.</param>
+    /// <param name="diff">The entity's <see cref="CompareSession.GetFieldDiff"/>.</param>
+    public void Show(CompareSession? compare, int match, string? entityTitle, EntityFieldDiff? diff)
     {
         _entityTitle = string.IsNullOrEmpty(entityTitle) ? null : entityTitle;
-        if (compare is null || (uint)match >= (uint)compare.Matches.Length)
+        if (compare is null || diff is null || (uint)match >= (uint)compare.Matches.Length)
         {
             Compare = null;
             Match = -1;
@@ -120,7 +128,6 @@ public sealed partial class FieldDiffViewModel : ObservableObject
 
         Compare = compare;
         Match = match;
-        EntityFieldDiff diff = compare.GetFieldDiff(match);
         Rows.Set(diff);
         DifferenceText = FieldDiffText.Differences(diff.DifferenceCount);
         HasDifferences = diff.DifferenceCount > 0;

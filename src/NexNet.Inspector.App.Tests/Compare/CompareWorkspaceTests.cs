@@ -30,6 +30,7 @@ public sealed class CompareWorkspaceTests
         await Assert.That(f.Compare.Session).IsNull().Because("built when Compare shows, not before");
 
         f.Chrome.Workspace.Value = Workspace.Compare;
+        await f.Compare.WhenComputedAsync();
         CompareSession session = f.Compare.Session!;
         using (Assert.Multiple())
         {
@@ -48,6 +49,7 @@ public sealed class CompareWorkspaceTests
         f.B.IsIncludedInCompare = false;
         await Assert.That(f.Compare.Session).IsNull();
         f.B.IsIncludedInCompare = true;
+        await f.Compare.WhenComputedAsync();
         await Assert.That(f.Compare.Session).IsNotNull().And.IsNotSameReferenceAs(session);
     }
 
@@ -63,6 +65,7 @@ public sealed class CompareWorkspaceTests
         f.Compare.Rows.Changed += c => changes += (c & CompareChanges.Alignment) != 0 ? 1 : 0;
 
         f.Compare.Align.Value = Alignment.Relative;
+        await f.Compare.WhenComputedAsync();
         using (Assert.Multiple())
         {
             await Assert.That(session.Alignment).IsEqualTo(Alignment.Relative);
@@ -74,6 +77,7 @@ public sealed class CompareWorkspaceTests
         }
 
         f.Compare.Align.Value = Alignment.WallClock;
+        await f.Compare.WhenComputedAsync();
         await Assert.That(session.Clock.Mode).IsEqualTo(Alignment.WallClock);
     }
 
@@ -169,7 +173,12 @@ public sealed class CompareWorkspaceTests
         using RecordingFile recording = RecordingFile.Open(Wait.Fixture("server-all.nntl"));
         bool took = await compare.CompareRecordingAsync(recording);
         foreach (DocumentViewModel opened in documents.Documents) await ((FileDocumentViewModel)opened).Indexing;
-        ui.RunAll();
+        // The compare builds on the thread pool and lands through the (queued) UI, then refreshes once both settled.
+        await Wait.UntilAsync(() =>
+        {
+            ui.RunAll();
+            return compare.Session is { IsStale: false } && !compare.IsComputing;
+        }, "the compare of both sessions");
         DocumentViewModel[] ticked = documents.Compared.ToArray();
         using (Assert.Multiple())
         {
@@ -224,6 +233,7 @@ public sealed class CompareWorkspaceTests
         f.Documents.Sync.Select(Selection.OfEntity(EntityKind.Invocation, invocation));
 
         f.Compare.Show();
+        await f.Compare.WhenComputedAsync();
         CompareSession session = f.Compare.Session!;
         int expected = -1;
         for (int i = 0; i < session.Matches.Length; i++)

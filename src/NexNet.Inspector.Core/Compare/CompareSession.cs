@@ -33,6 +33,12 @@ namespace NexNet.Inspector.Core.Compare;
 /// on <see cref="Refresh"/>; changing the alignment only re-times it; decoded field diffs are built only for the entity
 /// asked for (<see cref="GetFieldDiff"/>). Building takes each session's <see cref="CaptureSession.Gate"/> in turn.
 /// </para>
+/// <para>
+/// Threads: a compare can be built (with its first alignment) on any thread before it is shared. Once shared, the thread
+/// that owns it (the UI) applies alignments and refreshes; <see cref="PrepareAlignment"/> and
+/// <see cref="GetFieldDiff"/> may run on any thread meanwhile, because an alignment is computed into new lists and swapped
+/// in whole by <see cref="ApplyAlignment"/>, and the field-diff cache is locked.
+/// </para>
 /// </remarks>
 public sealed class CompareSession
 {
@@ -41,10 +47,14 @@ public sealed class CompareSession
 
     private const int FieldDiffCacheSize = 8;
 
-    private readonly List<EntityMatch> _matches = [];
-    private readonly List<EntityGroupRow> _groups = [];
-    private readonly Dictionary<EntityKey, int> _byKey = [];
     private readonly List<(int Match, EntityFieldDiff Diff)> _fieldDiffs = [];
+    private readonly Lock _fieldDiffGate = new();
+
+    // Replaced whole, never changed in place once built: readers on other threads keep the lists they read.
+    private List<EntityMatch> _matches = [];
+    private List<EntityGroupRow> _groups = [];
+    private Dictionary<EntityKey, int> _byKey = [];
+    private int _union;
     private NntlGap[] _gapsA = [];
     private NntlGap[] _gapsB = [];
     private long _startA, _endA, _startB, _endB;
@@ -55,6 +65,17 @@ public sealed class CompareSession
     /// <param name="b">Document B.</param>
     /// <param name="options">Settings; <see cref="CompareOptions.Default"/> when null.</param>
     public CompareSession(CaptureSession a, CaptureSession b, CompareOptions? options = null)
+        : this(a, b, options, CancellationToken.None)
+    {
+    }
+
+    /// <summary>Compares two sessions; the build stops early when <paramref name="cancellationToken"/> is cancelled.</summary>
+    /// <param name="a">Document A (the reference).</param>
+    /// <param name="b">Document B.</param>
+    /// <param name="options">Settings; <see cref="CompareOptions.Default"/> when null.</param>
+    /// <param name="cancellationToken">Cancels the build (a superseded compare).</param>
+    /// <exception cref="OperationCanceledException">The build was cancelled.</exception>
+    public CompareSession(CaptureSession a, CaptureSession b, CompareOptions? options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(a);
         ArgumentNullException.ThrowIfNull(b);
@@ -62,7 +83,7 @@ public sealed class CompareSession
         B = b;
         Options = options ?? CompareOptions.Default;
         Deltas = new DeltaList([], 0);
-        Refresh();
+        Rebuild(cancellationToken);
     }
 
     /// <summary>Compares the documents ticked for Compare; there must be exactly <see cref="DocumentCount"/>.</summary>
@@ -121,7 +142,9 @@ public sealed class CompareSession
     public CaptureSession Get(CompareSide side) => side == CompareSide.A ? A : B;
 
     /// <summary>Rebuilds the entity union from both sessions as they are now and re-applies the alignment.</summary>
-    public void Refresh()
+    public void Refresh() => Rebuild(CancellationToken.None);
+
+    private void Rebuild(CancellationToken cancellationToken)
     {
         List<SideEntity> a, b;
         lock (A.Gate)
@@ -133,6 +156,7 @@ public sealed class CompareSession
             _endA = A.EndTicks;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         lock (B.Gate)
         {
             _versionB = B.Version;
@@ -142,9 +166,12 @@ public sealed class CompareSession
             _endB = B.EndTicks;
         }
 
-        BuildUnion(a, b);
-        _fieldDiffs.Clear();
-        Align(Clock.Mode, AlignmentEvent);
+        cancellationToken.ThrowIfCancellationRequested();
+        BuildUnion(a, b, cancellationToken);
+        _union++;
+        lock (_fieldDiffGate)
+            _fieldDiffs.Clear();
+        ApplyAlignment(PrepareAlignment(Clock.Mode, AlignmentEvent, cancellationToken));
     }
 
     /// <summary>Aligns the documents; On event aligns on "Session ready".</summary>
@@ -153,31 +180,47 @@ public sealed class CompareSession
     /// <summary>Aligns the documents and re-times the differences.</summary>
     /// <param name="mode">The alignment.</param>
     /// <param name="alignmentEvent">For <see cref="Alignment.OnEvent"/>, what to align on.</param>
-    public void Align(Alignment mode, AlignmentEvent alignmentEvent)
+    public void Align(Alignment mode, AlignmentEvent alignmentEvent) => ApplyAlignment(PrepareAlignment(mode, alignmentEvent));
+
+    /// <summary>
+    /// Computes an alignment without changing the compare: the clock, the re-timed differences and the Δ list, for
+    /// <see cref="ApplyAlignment"/>. Safe on any thread while the compare is read elsewhere.
+    /// </summary>
+    /// <param name="mode">The alignment.</param>
+    /// <param name="alignmentEvent">For <see cref="Alignment.OnEvent"/>, what to align on.</param>
+    /// <param name="cancellationToken">Cancels a superseded alignment.</param>
+    /// <exception cref="OperationCanceledException">Cancelled.</exception>
+    public CompareAlignment PrepareAlignment(Alignment mode, AlignmentEvent alignmentEvent, CancellationToken cancellationToken = default)
     {
-        AlignmentEvent = alignmentEvent;
+        // One snapshot of the union: an alignment applied meanwhile swaps the lists, it does not change these.
+        var union = _union;
+        var source = _matches;
         long? eventA = null, eventB = null;
         if (mode == Alignment.OnEvent)
         {
-            eventA = ResolveEvent(CompareSide.A, alignmentEvent);
-            eventB = ResolveEvent(CompareSide.B, alignmentEvent);
+            eventA = ResolveEvent(source, CompareSide.A, alignmentEvent);
+            eventB = ResolveEvent(source, CompareSide.B, alignmentEvent);
         }
 
-        Clock = CompareClock.Create(mode, A.Header, _startA, eventA, B.Header, _startB, eventB);
-        Duration = Math.Max(0, Math.Max(Clock.ToCompare(CompareSide.A, _endA), Clock.ToCompare(CompareSide.B, _endB)));
+        var clock = CompareClock.Create(mode, A.Header, _startA, eventA, B.Header, _startB, eventB);
+        var duration = Math.Max(0, Math.Max(clock.ToCompare(CompareSide.A, _endA), clock.ToCompare(CompareSide.B, _endB)));
 
-        var matches = CollectionsMarshal.AsSpan(_matches);
+        var matchList = new List<EntityMatch>(source);
+        var matches = CollectionsMarshal.AsSpan(matchList);
         var deltas = new List<DeltaEntry>();
         for (var i = 0; i < matches.Length; i++)
         {
+            if ((i & 0xFFF) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
             ref var match = ref matches[i];
-            var differences = Differ(match.Key.Kind, match.A, match.B);
+            var differences = Differ(clock, match.Key.Kind, match.A, match.B);
             match = match with { Differences = differences, Severity = SeverityOf(differences) };
             if (differences != EntityDifferences.None)
-                deltas.Add(new DeltaEntry(DeltaKind.Entity, GetStart(match), GetEnd(match), i, CompareSide.A, -1, differences, match.Severity));
+                deltas.Add(new DeltaEntry(DeltaKind.Entity, GetStart(clock, match), GetEnd(clock, match), i, CompareSide.A, -1, differences, match.Severity));
         }
 
-        var groups = CollectionsMarshal.AsSpan(_groups);
+        var groupList = new List<EntityGroupRow>(_groups);
+        var groups = CollectionsMarshal.AsSpan(groupList);
         for (var g = 0; g < groups.Length; g++)
         {
             ref var group = ref groups[g];
@@ -197,11 +240,28 @@ public sealed class CompareSession
 
         if (Options.IncludeGaps)
         {
-            AddGaps(deltas, CompareSide.A, _gapsA);
-            AddGaps(deltas, CompareSide.B, _gapsB);
+            AddGaps(deltas, clock, CompareSide.A, _gapsA);
+            AddGaps(deltas, clock, CompareSide.B, _gapsB);
         }
 
-        Deltas = new DeltaList(deltas.ToArray(), matches.Length);
+        return new CompareAlignment(this, union, clock, alignmentEvent, duration, matchList, groupList, new DeltaList(deltas.ToArray(), matches.Length));
+    }
+
+    /// <summary>Makes a prepared alignment current: swaps in its clock, differences and Δ list.</summary>
+    /// <param name="alignment">From this compare's <see cref="PrepareAlignment"/>, since its last refresh.</param>
+    /// <exception cref="ArgumentException">Prepared for another compare, or before a refresh rebuilt the union.</exception>
+    public void ApplyAlignment(CompareAlignment alignment)
+    {
+        ArgumentNullException.ThrowIfNull(alignment);
+        if (!ReferenceEquals(alignment.Owner, this) || alignment.Union != _union)
+            throw new ArgumentException("The alignment was prepared for another compare, or before a refresh.", nameof(alignment));
+
+        _matches = alignment.Matches;
+        _groups = alignment.Groups;
+        Clock = alignment.Clock;
+        AlignmentEvent = alignment.Event;
+        Duration = alignment.Duration;
+        Deltas = alignment.Deltas;
     }
 
     /// <summary>The union index of an entity; -1 when no document holds it.</summary>
@@ -229,6 +289,24 @@ public sealed class CompareSession
 
     /// <summary>Compare time of an entity's first frame in one document.</summary>
     public long GetStart(in EntityMatch match, CompareSide side) => Clock.ToCompare(side, match.Get(side).StartTicks);
+
+    private static long GetStart(in CompareClock clock, in EntityMatch match)
+    {
+        if (!match.A.IsPresent)
+            return clock.ToCompare(CompareSide.B, match.B.StartTicks);
+        if (!match.B.IsPresent)
+            return clock.ToCompare(CompareSide.A, match.A.StartTicks);
+        return Math.Min(clock.ToCompare(CompareSide.A, match.A.StartTicks), clock.ToCompare(CompareSide.B, match.B.StartTicks));
+    }
+
+    private static long GetEnd(in CompareClock clock, in EntityMatch match)
+    {
+        if (!match.A.IsPresent)
+            return clock.ToCompare(CompareSide.B, match.B.EndTicks);
+        if (!match.B.IsPresent)
+            return clock.ToCompare(CompareSide.A, match.A.EndTicks);
+        return Math.Max(clock.ToCompare(CompareSide.A, match.A.EndTicks), clock.ToCompare(CompareSide.B, match.B.EndTicks));
+    }
 
     /// <summary>Compare time of an entity's last frame in one document.</summary>
     public long GetEnd(in EntityMatch match, CompareSide side) => Clock.ToCompare(side, match.Get(side).EndTicks);
@@ -303,27 +381,56 @@ public sealed class CompareSession
     /// few entities asked for last; <see cref="Refresh"/> drops them.
     /// </summary>
     /// <param name="match">Index in <see cref="Matches"/>.</param>
+    /// <remarks>Safe on any thread; two threads asking for the same entity at once may both build it.</remarks>
     public EntityFieldDiff GetFieldDiff(int match)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)match, (uint)_matches.Count, nameof(match));
-        for (var i = 0; i < _fieldDiffs.Count; i++)
+        var matches = _matches;
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)match, (uint)matches.Count, nameof(match));
+        int union;
+        lock (_fieldDiffGate)
         {
-            if (_fieldDiffs[i].Match == match)
-                return _fieldDiffs[i].Diff;
+            if (TryGetCachedFieldDiff(match, out var cached))
+                return cached;
+            union = _union;
         }
 
-        var diff = BuildFieldDiff(match);
-        if (_fieldDiffs.Count == FieldDiffCacheSize)
-            _fieldDiffs.RemoveAt(0);
-        _fieldDiffs.Add((match, diff));
+        // Built outside the lock: a big entity's decode must not hold up the other threads' cached lookups.
+        var diff = BuildFieldDiff(matches[match], match);
+        lock (_fieldDiffGate)
+        {
+            if (TryGetCachedFieldDiff(match, out var cached))
+                return cached;
+            // A refresh rebuilt the union meanwhile: the diff answers the caller but is not kept for the new union.
+            if (union != _union)
+                return diff;
+            if (_fieldDiffs.Count == FieldDiffCacheSize)
+                _fieldDiffs.RemoveAt(0);
+            _fieldDiffs.Add((match, diff));
+        }
+
         return diff;
     }
 
-    private void BuildUnion(List<SideEntity> a, List<SideEntity> b)
+    private bool TryGetCachedFieldDiff(int match, out EntityFieldDiff diff)
     {
-        _matches.Clear();
-        _groups.Clear();
-        _byKey.Clear();
+        for (var i = 0; i < _fieldDiffs.Count; i++)
+        {
+            if (_fieldDiffs[i].Match == match)
+            {
+                diff = _fieldDiffs[i].Diff;
+                return true;
+            }
+        }
+
+        diff = null!;
+        return false;
+    }
+
+    private void BuildUnion(List<SideEntity> a, List<SideEntity> b, CancellationToken cancellationToken)
+    {
+        _matches = [];
+        _groups = [];
+        _byKey = [];
 
         var groupsA = GroupOf(a);
         var groupsB = GroupOf(b);
@@ -346,6 +453,7 @@ public sealed class CompareSession
         var pairs = new List<(int A, int B)>();
         foreach (var key in keys)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var inA = groupsA.TryGetValue(key, out var listA) ? listA : [];
             var inB = groupsB.TryGetValue(key, out var listB) ? listB : [];
             var digestsA = Digests(a, inA);
@@ -388,7 +496,7 @@ public sealed class CompareSession
         return digests;
     }
 
-    private EntityDifferences Differ(CompareEntityKind kind, in EntitySide a, in EntitySide b)
+    private EntityDifferences Differ(in CompareClock clock, CompareEntityKind kind, in EntitySide a, in EntitySide b)
     {
         if (!a.IsPresent || !b.IsPresent)
             return EntityDifferences.Presence;
@@ -409,9 +517,9 @@ public sealed class CompareSession
         if (kind != CompareEntityKind.Control && a.Frames > 0 && b.Frames > 0)
         {
             var tolerance = Options.TimingTolerance.Ticks;
-            var start = Math.Abs(Clock.ToCompare(CompareSide.B, b.StartTicks) - Clock.ToCompare(CompareSide.A, a.StartTicks));
-            var durationA = CompareClock.ToTimeSpanTicks(a.DurationTicks, Clock.A.Frequency);
-            var durationB = CompareClock.ToTimeSpanTicks(b.DurationTicks, Clock.B.Frequency);
+            var start = Math.Abs(clock.ToCompare(CompareSide.B, b.StartTicks) - clock.ToCompare(CompareSide.A, a.StartTicks));
+            var durationA = CompareClock.ToTimeSpanTicks(a.DurationTicks, clock.A.Frequency);
+            var durationB = CompareClock.ToTimeSpanTicks(b.DurationTicks, clock.B.Frequency);
             var duration = Math.Abs(durationB - durationA);
             if (start > tolerance || (duration > tolerance && duration > Options.DurationTolerance * Math.Max(durationA, durationB)))
                 differences |= EntityDifferences.Timing;
@@ -432,23 +540,23 @@ public sealed class CompareSession
         return differences == EntityDifferences.None ? DeltaSeverity.None : DeltaSeverity.Info;
     }
 
-    private void AddGaps(List<DeltaEntry> deltas, CompareSide side, NntlGap[] gaps)
+    private static void AddGaps(List<DeltaEntry> deltas, in CompareClock clock, CompareSide side, NntlGap[] gaps)
     {
         for (var i = 0; i < gaps.Length; i++)
         {
-            deltas.Add(new DeltaEntry(DeltaKind.Gap, Clock.ToCompare(side, gaps[i].FromTicks), Clock.ToCompare(side, gaps[i].ToTicks), -1,
+            deltas.Add(new DeltaEntry(DeltaKind.Gap, clock.ToCompare(side, gaps[i].FromTicks), clock.ToCompare(side, gaps[i].ToTicks), -1,
                 side, i, EntityDifferences.None, DeltaSeverity.Medium));
         }
     }
 
-    private long? ResolveEvent(CompareSide side, in AlignmentEvent alignmentEvent)
+    private long? ResolveEvent(List<EntityMatch> matches, CompareSide side, in AlignmentEvent alignmentEvent)
     {
         switch (alignmentEvent.Kind)
         {
             case AlignmentEventKind.Entity:
-                if ((uint)alignmentEvent.Match >= (uint)_matches.Count)
+                if ((uint)alignmentEvent.Match >= (uint)matches.Count)
                     return null;
-                var entity = _matches[alignmentEvent.Match].Get(side);
+                var entity = matches[alignmentEvent.Match].Get(side);
                 return entity.IsPresent && entity.Frames > 0 ? entity.StartTicks : null;
             case AlignmentEventKind.Frames:
                 var session = Get(side);
@@ -474,9 +582,8 @@ public sealed class CompareSession
         }
     }
 
-    private EntityFieldDiff BuildFieldDiff(int match)
+    private EntityFieldDiff BuildFieldDiff(in EntityMatch row, int match)
     {
-        var row = _matches[match];
         var builder = new FieldDiffBuilder();
         switch (row.Key.Kind)
         {

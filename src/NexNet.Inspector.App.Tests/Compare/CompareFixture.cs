@@ -32,6 +32,7 @@ internal sealed record CompareFixture(DocumentsViewModel Documents, ShellChromeV
             first.IsIncludedInCompare = true;
             second.IsIncludedInCompare = true;
             chrome.Workspace.Value = Workspace.Compare;
+            await compare.WhenComputedAsync();
         }
 
         return new CompareFixture(documents, chrome, compare, first, second);
@@ -39,7 +40,9 @@ internal sealed record CompareFixture(DocumentsViewModel Documents, ShellChromeV
 
     public static async Task<FileDocumentViewModel> OpenIndexedAsync(DocumentsViewModel documents, string name)
     {
-        FileDocumentViewModel document = await documents.OpenRecordingAsync(Wait.Fixture(name)) ?? throw new InvalidOperationException(name);
+        // A rooted name is a recording a test wrote; anything else is a fixture.
+        string path = Path.IsPathRooted(name) ? name : Wait.Fixture(name);
+        FileDocumentViewModel document = await documents.OpenRecordingAsync(path) ?? throw new InvalidOperationException(name);
         await document.Indexing;
         await Wait.UntilAsync(() => document.IndexingState == IndexingState.Complete, name + " indexed");
         return document;

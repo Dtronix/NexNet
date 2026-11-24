@@ -18,6 +18,7 @@ public sealed class CompareDetailWiringTests
         CompareSession session = f.Compare.Session!;
         int message = Capture.CompareScreen.FindInvocation(session, "SendMessage");
         f.Compare.Select(message);
+        await f.Compare.WhenComputedAsync();
 
         var panel = f.Compare.DetailPanel;
         using (Assert.Multiple())
@@ -36,6 +37,7 @@ public sealed class CompareDetailWiringTests
         int text = CompareFixture.TextRow(panel.FieldDiff.Rows.Diff!);
         panel.FieldDiff.SelectRow(text);
         f.Compare.Align.Value = Alignment.Relative;
+        await f.Compare.WhenComputedAsync();
         await Assert.That(panel.FieldDiff.SelectedRow).IsEqualTo(text);
         await Assert.That(panel.Hex.Model.Row).IsEqualTo(text);
         await Assert.That(panel.Hex.Model.GetSelected(CompareSide.B).End).IsGreaterThan(panel.Hex.Model.GetSelected(CompareSide.B).Start);
@@ -46,6 +48,7 @@ public sealed class CompareDetailWiringTests
         await Assert.That(panel.Hex.HasBytes).IsFalse();
 
         f.Compare.Select(message);
+        await f.Compare.WhenComputedAsync();
         await Assert.That(panel.Hex.HasBytes).IsTrue();
         f.B.IsIncludedInCompare = false;
         await Assert.That(f.Compare.Session).IsNull();
