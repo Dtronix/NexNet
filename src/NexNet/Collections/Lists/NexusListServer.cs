@@ -261,7 +261,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
             foreach (var item in state.List.MemoryChunk(bufferSize))
             {
                 var message = NexusCollectionListResetValuesMessage.Rent();
-                message.Values = PayloadSerializer.Serialize(item);
+                message.Values = PayloadSerializer.SerializeValues(item);
                 yield return message;
             }
         }

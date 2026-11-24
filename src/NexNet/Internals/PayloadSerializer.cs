@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using NexNet.Serialization;
+using NexNet.Serialization.Formatters;
 
 namespace NexNet.Internals;
 
@@ -27,6 +28,59 @@ internal static class PayloadSerializer
         {
             buffer.Return();
         }
+    }
+
+    /// <summary>
+    /// Serializes a run of list values as one `T[]` wire value: the bytes a C# `T[]` of the same items has.
+    /// </summary>
+    public static byte[] SerializeValues<T>(Memory<T> values)
+    {
+        var buffer = PooledArrayBufferWriter.Rent();
+        try
+        {
+            var writer = new MsgPackWriter(buffer);
+            // Primitive item types register a Memory<T> formatter whose bytes match their T[] form (ext 78, or bin for
+            // bytes); keep using it so those lists are unchanged on the wire. Other item types have no Memory<T>
+            // formatter, only the item's own, and their T[] form is an array of items.
+            if (NexusFormatterRegistry.TryGet<Memory<T>>(out var memoryFormatter))
+            {
+                memoryFormatter!.Serialize(ref writer, values);
+            }
+            else
+            {
+                var element = NexusFormatterRegistry.Get<T>();
+                var span = values.Span;
+                writer.WriteArrayHeader(span.Length);
+                for (var i = 0; i < span.Length; i++)
+                    element.Serialize(ref writer, span[i]);
+            }
+
+            writer.Flush();
+            return buffer.WrittenSpan.ToArray();
+        }
+        finally
+        {
+            buffer.Return();
+        }
+    }
+
+    /// <summary>
+    /// Deserializes a run of list values written by <see cref="SerializeValues{T}"/>.
+    /// </summary>
+    public static T[]? DeserializeValues<T>(ReadOnlyMemory<byte> data, NexusSerializerOptions options)
+    {
+        var reader = new MsgPackReader(data, options);
+        T[]? value = null;
+        // The generator registers only the item type of a list, not T[], so an item type that no method also uses as
+        // an array falls back to the same element-wise ArrayFormatter the generator would register.
+        var formatter = NexusFormatterRegistry.TryGet<T[]>(out var registered) ? registered! : FallbackArrayFormatter<T>.Instance;
+        formatter.Deserialize(ref reader, ref value);
+        return value;
+    }
+
+    private static class FallbackArrayFormatter<T>
+    {
+        public static readonly ArrayFormatter<T> Instance = new();
     }
 
     /// <summary>

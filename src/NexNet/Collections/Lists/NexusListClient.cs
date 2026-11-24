@@ -124,7 +124,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 
-                var values = valuesMessage.DeserializeValue<T[]>();
+                var values = valuesMessage.DeserializeValues<T>();
                 if (values != null)
                 {
                     if (values.Length > _resettingTotalValues - _resettingList.Count)
