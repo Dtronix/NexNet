@@ -226,6 +226,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 - `INexusDuplexPipe.cs` - Bidirectional pipe: Id, ReadyTask, CompleteTask, CompleteAsync()
 - `NexusPipeManager.cs` - Manages duplex pipes for large data transfers
+- `NexusPipeWriter.cs` - Sends what the peer's credit allows and waits in `FlushAsync` for more. A canceled flush (token or `CancelPendingFlush`) releases only what it sent and keeps the rest buffered for the next flush (the `PipeWriter` contract; dropping it tore the stream). `CancelPendingFlush` cancels one flush. A chunk the session gives up before writing (token canceled; `NexusSession` throws instead of returning for pipe chunks) keeps its credit. Completion or a session failure drops the unsent rest; buffers return to the pool on `Dispose`
 - `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, preceded by a varint length (`ChannelFraming.cs`). The reader deserializes each item from exactly its slice; a partial item waits for more data, with an extra credit grant from the session budget if it is larger than the pipe window. Items over `MaxMessageSize` or that break the framing reset the pipe
 
 ### 1.11 Logging (src/NexNet/Logging/)
