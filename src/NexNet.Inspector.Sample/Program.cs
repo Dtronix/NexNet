@@ -31,6 +31,7 @@ internal enum SampleOption : byte
     Iterations = 11,
     Delay = 12,
     Burst = 13,
+    Stay = 14,
 }
 
 /// <summary>
@@ -50,7 +51,7 @@ internal static class Program
                    self-signed certificate unless --cert is given. --record writes every session to FILE (needs
                    --allow-recording). Ctrl+C stops.
           client   [--transport tcp|tls|uds] [--host 127.0.0.1] [--port 7711] [--path SOCKET]
-                   [--iterations 0] [--delay 1000] [--burst 0]
+                   [--iterations 0] [--delay 1000] [--burst 0] [--stay]
                    Connects a Chat client and runs the Full scenario (Users, Join, a canceled SendMessage, uploads, a
                    five-chunk SendAttachment interleaved with a FileUpload pipe and pings, the LogLine channel, then
                    --burst extra log lines), disconnects, waits --delay ms and repeats; 0 iterations repeats forever.
@@ -167,6 +168,9 @@ internal static class Program
     private static async Task<int> ClientAsync(Options options, CancellationToken cancellationToken)
     {
         var address = options.Address(SampleTransport.Tcp, 7711);
+        if (options.Stay)
+            return await StayAsync(address, options, cancellationToken);
+
         for (var i = 1; options.Iterations == 0 || i <= options.Iterations; i++)
         {
             var config = FixtureGenerator.CreateClientConfig(address);
@@ -185,6 +189,55 @@ internal static class Program
             }
 
             Console.WriteLine($"Scenario {i} done.");
+            await Task.Delay(options.Delay, cancellationToken);
+        }
+
+        return 0;
+    }
+
+    // --stay: one long-lived session that repeats the scenario, so an attached inspector keeps receiving traffic.
+    // A dropped connection is reopened (a new session on the server) after --delay.
+    private static async Task<int> StayAsync(SampleAddress address, Options options, CancellationToken cancellationToken)
+    {
+        var run = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var config = FixtureGenerator.CreateClientConfig(address);
+            var pacer = new ChunkPacer();
+            config.Tap = pacer;
+            await using var client = ChatClientNexus.CreateClient(config, new ChatClientNexus());
+            try
+            {
+                await client.ConnectAsync(cancellationToken);
+                Console.WriteLine("Connected; repeating the scenario on one session. Ctrl+C stops.");
+                while (!cancellationToken.IsCancellationRequested && client.State == ConnectionState.Connected)
+                {
+                    run++;
+                    await ChatScenario.RunAsync(client, pacer, new ChatScenarioOptions
+                    {
+                        Kind = ChatScenarioKind.Full,
+                        User = $"user{run}",
+                        BurstLines = options.Burst,
+                    }, cancellationToken);
+                    Console.WriteLine($"Scenario {run} done (same session).");
+                    if (options.Iterations != 0 && run >= options.Iterations)
+                    {
+                        await client.DisconnectAsync();
+                        return 0;
+                    }
+
+                    await Task.Delay(options.Delay, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"Session lost ({e.GetType().Name}: {e.Message}); reconnecting.");
+            }
+
             await Task.Delay(options.Delay, cancellationToken);
         }
 
@@ -262,6 +315,7 @@ internal static class Program
         public int Iterations { get; private set; }
         public int Delay { get; private set; } = 1000;
         public int Burst { get; private set; }
+        public bool Stay { get; private set; }
 
         public SampleAddress Address(SampleTransport defaultTransport, int defaultPort)
         {
@@ -292,6 +346,9 @@ internal static class Program
                         continue;
                     case SampleOption.IncludeSecrets:
                         options.IncludeSecrets = true;
+                        continue;
+                    case SampleOption.Stay:
+                        options.Stay = true;
                         continue;
                 }
 
