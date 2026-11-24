@@ -100,6 +100,95 @@ public sealed class ConnectDialogTests
     }
 
     [Test]
+    public async Task Blur_does_not_probe_again_when_nothing_changed_since_the_last_probe()
+    {
+        ManualTime time = new();
+        await using DocumentsViewModel documents = new(new TestUi(), null, time);
+        (ConnectDialogViewModel dialog, Probes probes, _) = Create(documents);
+        await using ConnectDialogViewModel owned = dialog;
+
+        dialog.Connect.Endpoint = "10.0.4.12:7711";
+        dialog.EndpointBlurred();
+        await Wait.UntilAsync(() => dialog.Connect.ProbeState == ProbeState.Reached, "the blur probe");
+
+        // Focus leaving for Connect keeps the line as it is (a new probe could move the button under the pointer, I37).
+        dialog.EndpointBlurred();
+        await Assert.That(probes.Count).IsEqualTo(1);
+        await Assert.That(dialog.Connect.ProbeState).IsEqualTo(ProbeState.Reached);
+
+        // A changed value is probed on blur as before.
+        dialog.Connect.Token = "other";
+        dialog.EndpointBlurred();
+        await Wait.UntilAsync(() => probes.Count == 2, "the probe of the new token");
+    }
+
+    [Test]
+    public async Task A_wrong_token_ends_the_busy_state_with_the_reason()
+    {
+        await using var harness = await ChatServerHarness.StartAsync(allowRecording: true);
+        await harness.ConnectClientAsync();
+        await harness.WaitForSessionAsync();
+        await using DocumentsViewModel documents = new(new TestUi(), null);
+        (ConnectDialogViewModel dialog, _, List<ConnectDialogViewModel> closed) = Create(documents);
+        await using ConnectDialogViewModel owned = dialog;
+        dialog.Connect.Endpoint = harness.EndpointAddress;
+        dialog.Connect.Token = "not-the-token";
+        bool asked = false;
+        dialog.SessionChooser = (sessions, _) =>
+        {
+            asked = true;
+            return Task.FromResult<InspectorSessionInfo?>(sessions[0]);
+        };
+
+        await dialog.SubmitCommand.ExecuteAsync(null).WaitAsync(TimeSpan.FromSeconds(30));
+
+        await Assert.That(dialog.IsBusy).IsFalse();
+        await Assert.That(dialog.IsPicking).IsFalse();
+        await Assert.That(dialog.StatusTone).IsEqualTo(StatusTone.Error);
+        await Assert.That(dialog.StatusText).IsNotNull();
+        await Assert.That(dialog.PrimaryLabel).IsEqualTo("Connect");
+        await Assert.That(asked).IsFalse();
+        await Assert.That(dialog.Connect.Document).IsNull();
+        await Assert.That(closed).IsEmpty();
+    }
+
+    [Test]
+    public async Task Several_sessions_wait_for_the_pick_and_Cancel_abandons_it()
+    {
+        await using var harness = await ChatServerHarness.StartAsync(allowRecording: true);
+        await harness.ConnectClientAsync();
+        await harness.ConnectClientAsync();
+        await harness.WaitForSessionAsync(2);
+        await using DocumentsViewModel documents = new(new TestUi(), null);
+        (ConnectDialogViewModel dialog, _, List<ConnectDialogViewModel> closed) = Create(documents);
+        await using ConnectDialogViewModel owned = dialog;
+        dialog.Connect.Endpoint = harness.EndpointAddress;
+        dialog.Connect.Token = ChatServerHarness.Token;
+        TaskCompletionSource<CancellationToken> asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.SessionChooser = async (sessions, cancel) =>
+        {
+            asked.SetResult(cancel);
+            await Task.Delay(Timeout.Infinite, cancel).ContinueWith(static _ => { }, TaskScheduler.Default);
+            return null;
+        };
+
+        Task submit = dialog.SubmitCommand.ExecuteAsync(null);
+        CancellationToken token = await asked.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await Assert.That(dialog.IsPicking).IsTrue();
+        await Assert.That(dialog.StatusTone).IsEqualTo(StatusTone.Neutral);
+        await Assert.That(dialog.StatusText).IsEqualTo(ConnectDialogViewModel.PickPrompt);
+        await Assert.That(dialog.PrimaryLabel).IsEqualTo("Connect");
+
+        dialog.CancelCommand.Execute(null);
+        await Assert.That(token.IsCancellationRequested).IsTrue();
+        await submit.WaitAsync(TimeSpan.FromSeconds(30));
+        await Assert.That(dialog.IsBusy).IsFalse();
+        await Assert.That(dialog.IsPicking).IsFalse();
+        await Assert.That(closed.Count).IsEqualTo(1);
+        await Assert.That(documents.Documents.Count).IsEqualTo(0);
+    }
+
+    [Test]
     [NotInParallel("avalonia")]
     public async Task The_endpoint_field_losing_focus_probes()
     {
@@ -223,7 +312,7 @@ public sealed class ConnectDialogTests
         dialog.Connect.Token = ChatServerHarness.Token;
         dialog.IsServer = true;
         IReadOnlyList<InspectorSessionInfo>? offered = null;
-        dialog.SessionChooser = sessions =>
+        dialog.SessionChooser = (sessions, _) =>
         {
             offered = sessions;
             return Task.FromResult<InspectorSessionInfo?>(sessions[0]);
@@ -232,7 +321,8 @@ public sealed class ConnectDialogTests
         await dialog.SubmitCommand.ExecuteAsync(null);
 
         await Assert.That(dialog.Connect.Document).IsNotNull().Because(dialog.StatusText ?? "");
-        await Assert.That(offered!.Count).IsEqualTo(1);
+        // One session is the only answer: attached without asking (I37).
+        await Assert.That(offered).IsNull();
         await Assert.That(documents.Active).IsSameReferenceAs(dialog.Connect.Document);
         await Assert.That(closed.Count).IsEqualTo(1);
         await Assert.That(closed[0]).IsSameReferenceAs(dialog);

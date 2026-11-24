@@ -212,6 +212,16 @@ public class SessionAreaTests
         area.IsPopoverOpen = false;
         await Assert.That(await dismissed).IsNull();
         await Assert.That(area.HasConnection).IsFalse();
+
+        // The dialog canceled while the list waits: the popover and the pending connection group go too (I37).
+        using var cancel = new CancellationTokenSource();
+        var abandoned = area.ChooseAsync(connect, sessions, cancel.Token);
+        await Assert.That(area.IsChoosing).IsTrue();
+        cancel.Cancel();
+        await Assert.That(await abandoned).IsNull();
+        await Assert.That(area.IsChoosing).IsFalse();
+        await Assert.That(area.IsPopoverOpen).IsFalse();
+        await Assert.That(area.HasConnection).IsFalse();
     }
 
     [Test]

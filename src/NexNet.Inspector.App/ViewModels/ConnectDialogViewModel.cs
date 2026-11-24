@@ -13,9 +13,11 @@ namespace NexNet.Inspector.App.ViewModels;
 /// The Connect dialog (connect screen) over I18's <see cref="ConnectViewModel"/>: the choices as the dialog's controls
 /// bind them (radio cards, the Transport select, the Drop | Block segmented row) and one status line for the probe and
 /// the connect step (OQ2): a spinner with "Connecting…" while busy, the policy in green once reached, the reason in red
-/// with an error border on the endpoint when it failed. Connect performs the real attach; on a server the session is
-/// chosen by <see cref="SessionChooser"/> (I28's session popover replaces the default, which takes the first session).
-/// The dialog closes itself once a document is attached, or on Cancel.
+/// with an error border on the endpoint when it failed. Connect performs the real attach; on a server with one session
+/// it attaches to that session, with several the session is chosen by <see cref="SessionChooser"/> (I28's session
+/// popover replaces the default, which takes the first session) while the status line asks for the pick (I37). Every
+/// outcome ends the busy state: attached (the dialog closes), canceled (Cancel, ✕, Esc), or a red reason (wrong token,
+/// unreachable, refused, the picked session ended meanwhile) with Connect ready to try again.
 /// </summary>
 public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDisposable
 {
@@ -23,6 +25,10 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
     private string? _failure;
     private bool _showConnectOutcome;
     private bool _closed;
+    private CancellationTokenSource? _pick;
+
+    /// <summary>The status line while the session list waits for a pick.</summary>
+    public const string PickPrompt = "Pick a session in the list ↗";
 
     /// <param name="connect">The connect model (I18), owned by this dialog from now on.</param>
     /// <param name="close">Removes the dialog from the window; called once, on success or cancel.</param>
@@ -74,18 +80,23 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
     }
 
     /// <summary>
-    /// Picks the session to attach to on a server, or null to stay in the dialog. The default takes the first one;
-    /// I28's session popover replaces it.
+    /// Picks the session to attach to on a server with several, or null to stay in the dialog; the token is canceled
+    /// when the dialog is. The default takes the first one; I28's session popover replaces it.
     /// </summary>
-    public Func<IReadOnlyList<InspectorSessionInfo>, Task<InspectorSessionInfo?>> SessionChooser { get; set; } =
-        static sessions => Task.FromResult<InspectorSessionInfo?>(sessions.Count > 0 ? sessions[0] : null);
+    public Func<IReadOnlyList<InspectorSessionInfo>, CancellationToken, Task<InspectorSessionInfo?>> SessionChooser { get; set; } =
+        static (sessions, _) => Task.FromResult<InspectorSessionInfo?>(sessions.Count > 0 ? sessions[0] : null);
 
     /// <summary>Connect was pressed and has not finished: the spinner, "Connecting…" on the primary button.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PrimaryLabel))]
     public partial bool IsBusy { get; private set; }
 
-    public string PrimaryLabel => IsBusy ? "Connecting…" : "Connect";
+    /// <summary>The session list is waiting for the user's pick (the status line says so instead of "Connecting…").</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PrimaryLabel))]
+    public partial bool IsPicking { get; private set; }
+
+    public string PrimaryLabel => IsBusy && !IsPicking ? "Connecting…" : "Connect";
 
     /// <summary>The status line's dot (or spinner).</summary>
     public StatusTone StatusTone => Status().Tone;
@@ -101,7 +112,7 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
     /// <summary>Closed: attached, or canceled.</summary>
     public bool IsClosed => _closed;
 
-    /// <summary>The primary button and Enter: connect, choose a session on a server, attach, close.</summary>
+    /// <summary>The primary button and Enter: connect, choose a session on a server (of several), attach, close.</summary>
     [RelayCommand]
     private async Task Submit()
     {
@@ -126,11 +137,17 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
                 {
                     _failure = "No session is connected to this server yet";
                 }
-                else if (await SessionChooser(Connect.Sessions).ConfigureAwait(true) is { } session)
+                else if (await PickAsync().ConfigureAwait(true) is { } session && !_closed)
                 {
                     await Connect.AttachCommand.ExecuteAsync(session).ConfigureAwait(true);
                 }
             }
+        }
+        catch (Exception e) when (e is InspectorConnectionException or InspectorRequestException or IOException or System.Net.Sockets.SocketException
+                                      or TimeoutException or InvalidOperationException or ObjectDisposedException)
+        {
+            // Whatever the connect or attach threw ends here as the red line: the dialog never stays busy.
+            _failure = e.Message;
         }
         finally
         {
@@ -145,21 +162,43 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
     [RelayCommand]
     private void Cancel()
     {
+        _pick?.Cancel();
         if (Connect.ConnectCommand.IsRunning) Connect.ConnectCommand.Cancel();
         if (Connect.AttachCommand.IsRunning) Connect.AttachCommand.Cancel();
         Close();
     }
 
-    /// <summary>The endpoint field lost focus: probe now rather than after the typing pause (OQ18).</summary>
+    /// <summary>The endpoint field lost focus: probe now rather than after the typing pause (OQ18), unless it already has.</summary>
     public void EndpointBlurred()
     {
-        if (!_closed && !IsBusy) Connect.ProbeNow();
+        if (!_closed && !IsBusy) Connect.ProbeIfStale();
     }
 
     public async ValueTask DisposeAsync()
     {
         Connect.PropertyChanged -= OnConnectChanged;
         await Connect.DisposeAsync().ConfigureAwait(false);
+    }
+
+    // One session is the only answer: attach to it rather than asking. Several wait for the chooser, which the dialog's
+    // Cancel abandons.
+    private async Task<InspectorSessionInfo?> PickAsync()
+    {
+        if (Connect.Sessions.Count == 1) return Connect.Sessions[0];
+        using CancellationTokenSource pick = new();
+        _pick = pick;
+        IsPicking = true;
+        RaiseStatus();
+        try
+        {
+            return await SessionChooser([.. Connect.Sessions], pick.Token).ConfigureAwait(true);
+        }
+        finally
+        {
+            _pick = null;
+            IsPicking = false;
+            RaiseStatus();
+        }
     }
 
     private void Close()
@@ -171,6 +210,7 @@ public sealed partial class ConnectDialogViewModel : ObservableObject, IAsyncDis
 
     private (StatusTone Tone, string? Text) Status()
     {
+        if (IsPicking) return (StatusTone.Neutral, PickPrompt);
         if (IsBusy) return (StatusTone.Busy, $"Connecting to {Connect.Endpoint.Trim()}…");
         if (_failure is { } failure) return (StatusTone.Error, failure);
         if (_showConnectOutcome && Connect.ConnectState == ConnectState.Failed)

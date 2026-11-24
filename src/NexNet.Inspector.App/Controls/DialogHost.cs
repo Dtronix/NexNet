@@ -15,7 +15,8 @@ namespace NexNet.Inspector.App.Controls;
 /// centred ~60 px under it. Setting <see cref="Dialog"/> opens it, null closes it. While open:
 /// <list type="bullet">
 /// <item>the keyboard stays inside: Tab cycles through the dialog, and focus that lands outside (a click on the title
-/// bar) is sent back in;</item>
+/// bar) is sent back in, except in a popup open over the window (the session popover where Connect's session is picked,
+/// I37): sending that focus back would release the row's press and swallow the click;</item>
 /// <item>a press on the scrim is swallowed and never dismisses (UX rules: the scrim does not dismiss);</item>
 /// <item>the element marked <see cref="InitialFocusProperty"/> (else the first focusable one) takes the keyboard, and
 /// the control that had it gets it back on close.</item>
@@ -171,9 +172,20 @@ public sealed class DialogHost : ContentControl
 
     private void OnAnyGotFocus(object? sender, FocusChangedEventArgs e)
     {
-        if (!IsOpen || e.Source is not Visual target || Contains(target)) return;
+        if (!IsOpen || e.Source is not Visual target || Contains(target) || InPopup(target)) return;
         // Focus escaped (a click on the title bar, a stray Tab from outside): send it back in.
         Dispatcher.UIThread.Post(FocusInitial, DispatcherPriority.Input);
+    }
+
+    /// <summary>A popup's content (overlay or windowed): a surface above the modal layer that the dialog's flow opened.</summary>
+    private static bool InPopup(Visual target)
+    {
+        for (ILogical? logical = target as ILogical; logical is not null; logical = logical.LogicalParent)
+        {
+            if (logical is Popup) return true;
+        }
+
+        return false;
     }
 
     /// <summary>

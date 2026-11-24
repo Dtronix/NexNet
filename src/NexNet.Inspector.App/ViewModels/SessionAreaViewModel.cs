@@ -211,21 +211,30 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     /// <summary>
     /// The Connect dialog's session chooser (replacing the default that took the first session): shows the connection
     /// group for <paramref name="connect"/>'s endpoint and the popover over <paramref name="sessions"/>, and answers the
-    /// session clicked, or null when the popover closes without one (the dialog stays).
+    /// session clicked, or null when the popover closes without one (the dialog stays) or the dialog is canceled
+    /// (<paramref name="cancellationToken"/>; the popover and the pending connection group go with it).
     /// </summary>
-    public Task<InspectorSessionInfo?> ChooseAsync(ConnectViewModel connect, IReadOnlyList<InspectorSessionInfo> sessions)
+    public Task<InspectorSessionInfo?> ChooseAsync(ConnectViewModel connect, IReadOnlyList<InspectorSessionInfo> sessions,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connect);
         ArgumentNullException.ThrowIfNull(sessions);
-        _pending?.Answer.TrySetResult(null);
+        if (_pending is { } previous) Resolve(previous, null);
         var endpoint = EndpointAddress.TryParse(connect.Endpoint, connect.Transport, out var address, out _) ? Display(address) : connect.Endpoint.Trim();
         var pending = new PendingChoice(endpoint, connect.ServerInfo?.Role ?? NntlSessionRole.Server, connect.ServerInfo?.AllowRecording ?? false);
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromResult<InspectorSessionInfo?>(null);
         _pending = pending;
         Fill(sessions, attached: null);
         RaiseConnection();
         IsPopoverOpen = true;
+        // The dialog cancels on the UI thread, so the callback runs there.
+        pending.Registration = cancellationToken.Register(() => Resolve(pending, null));
         return pending.Answer.Task;
     }
+
+    /// <summary>True while a Connect waits for its session pick in the popover.</summary>
+    public bool IsChoosing => _pending is not null;
 
     /// <summary>A row was clicked: answers a waiting Connect, or switches the live document to that session.</summary>
     [RelayCommand]
@@ -234,10 +243,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
         ArgumentNullException.ThrowIfNull(choice);
         if (_pending is { } pending)
         {
-            _pending = null;
-            IsPopoverOpen = false;
-            pending.Answer.TrySetResult(choice.Info);
-            RaiseConnection();
+            Resolve(pending, choice.Info);
             return;
         }
 
@@ -321,7 +327,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
         _documents.PropertyChanged -= OnDocumentsChanged;
         _documents.Documents.CollectionChanged -= OnDocumentListChanged;
         StopTimer();
-        _pending?.Answer.TrySetResult(null);
+        if (_pending is { } pending) Resolve(pending, null);
         if (_recording is not { } run)
             return;
         _recording = null;
@@ -338,12 +344,18 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
         }
 
         // Closed without a pick: the Connect dialog stays open for another try.
-        if (_pending is { } pending)
-        {
-            _pending = null;
-            pending.Answer.TrySetResult(null);
-            RaiseConnection();
-        }
+        if (_pending is { } pending) Resolve(pending, null);
+    }
+
+    // Answers a waiting Connect once: the pick, or null (dismissed, canceled, superseded).
+    private void Resolve(PendingChoice pending, InspectorSessionInfo? answer)
+    {
+        if (!ReferenceEquals(_pending, pending)) return;
+        _pending = null;
+        pending.Registration.Dispose();
+        pending.Answer.TrySetResult(answer);
+        IsPopoverOpen = false;
+        RaiseConnection();
     }
 
     partial void OnLiveChanged(LiveDocumentViewModel? oldValue, LiveDocumentViewModel? newValue)
@@ -573,6 +585,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
 
     private void RaiseConnection()
     {
+        OnPropertyChanged(nameof(IsChoosing));
         OnPropertyChanged(nameof(HasConnection));
         OnPropertyChanged(nameof(RoleLabel));
         OnPropertyChanged(nameof(EndpointText));
@@ -588,6 +601,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
         public readonly string Endpoint = endpoint;
         public readonly NntlSessionRole Role = role;
         public readonly bool RecordingAllowed = recordingAllowed;
+        public CancellationTokenRegistration Registration;
     }
 
     private sealed class RecordAllRun(InspectorConnection connection, InspectorStream stream, FileStream file, string path, DateTimeOffset started)

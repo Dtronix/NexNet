@@ -26,6 +26,7 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
     private CancellationTokenSource? _probe;
     private int _probeGeneration;
     private InspectorConnection? _connection;
+    private (string Endpoint, EndpointScheme Transport, string Token)? _probed;
     private readonly bool _ready;
 
     internal ConnectViewModel(DocumentsViewModel documents, ConnectDefaults defaults, IReadOnlyList<RecentEndpoint> recents, TimeProvider time)
@@ -129,6 +130,18 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
     public void ProbeNow() => ScheduleProbe(TimeSpan.Zero);
 
     /// <summary>
+    /// Probes at once unless the last probe already ran (or runs) for exactly these values: the endpoint field losing
+    /// focus to the Connect button must not swap the status line under the pointer (its height can change, moving the
+    /// button between press and release and losing the click; I37).
+    /// </summary>
+    public void ProbeIfStale()
+    {
+        if (ProbeState is not (ProbeState.Idle or ProbeState.Pending) && _probed == (Endpoint, Transport, Token))
+            return;
+        ProbeNow();
+    }
+
+    /// <summary>
     /// Connects. A client target attaches at once and produces <see cref="Document"/>; a server target lists its
     /// sessions into <see cref="Sessions"/> for <see cref="AttachCommand"/>.
     /// </summary>
@@ -182,12 +195,24 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
             await AttachCoreAsync(session, cancellationToken).ConfigureAwait(true);
         }
         catch (Exception e) when (e is InspectorConnectionException or InspectorRequestException or IOException
-                                      or OperationCanceledException)
+                                      or System.Net.Sockets.SocketException or TimeoutException or OperationCanceledException)
         {
             await DropConnectionAsync().ConfigureAwait(true);
-            ConnectError = e.Message;
+            ConnectError = DescribeAttachFailure(e, session);
             ConnectState = ConnectState.Failed;
         }
+    }
+
+    /// <summary>
+    /// The red line for a failed attach: a session that ended between the list and the attach (short-lived sessions
+    /// do) says so and how to go on; anything else keeps the endpoint's reason.
+    /// </summary>
+    public static string DescribeAttachFailure(Exception error, InspectorSessionInfo session)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return error is InspectorRequestException { Status: InspectorStatus.NoSuchSession }
+            ? "Session " + LiveDocumentViewModel.SessionHex(session.Id) + " has ended · Connect lists the sessions again"
+            : error.Message;
     }
 
     /// <summary>Closes a connection that never became a document.</summary>
@@ -234,6 +259,7 @@ public sealed partial class ConnectViewModel : ObservableObject, IAsyncDisposabl
 
         var cancel = new CancellationTokenSource();
         _probe = cancel;
+        _probed = (Endpoint, Transport, Token);
         var generation = ++_probeGeneration;
         ProbeState = ProbeState.Pending;
         ProbeTask = ProbeAsync(Endpoint, Transport, TokenBytes(), delay, generation, cancel.Token);

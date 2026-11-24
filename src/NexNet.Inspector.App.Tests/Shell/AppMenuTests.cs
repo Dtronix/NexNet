@@ -234,7 +234,7 @@ public sealed class AppMenuTests
                 bool recordBound = window.KeyBindings.Any(b => b.Gesture.ToString() == "Ctrl+Shift+R" && ReferenceEquals(b.Command, model.Commands.CommandFor(AppCommand.RecordAll)));
                 ConnectDialogViewModel dialog = model.ShowConnect(null)!;
                 dialog.Connect.Endpoint = "tcp://10.0.4.12:7711";
-                Task<InspectorSessionInfo?> pick = dialog.SessionChooser([new InspectorSessionInfo(0x3A21, NntlSessionRole.Server, InspectorSessionState.Connected, 0x3A21, "Tcp", null, "192.168.1.40:5100", 0, 0)]);
+                Task<InspectorSessionInfo?> pick = dialog.SessionChooser([new InspectorSessionInfo(0x3A21, NntlSessionRole.Server, InspectorSessionState.Connected, 0x3A21, "Tcp", null, "192.168.1.40:5100", 0, 0)], CancellationToken.None);
                 Settle();
                 bool popover = window.SessionPopup.IsOpen && window.SessionPopover.IsEffectivelyVisible;
                 bool group = window.TitleBar.SessionAnchor.IsEffectivelyVisible;

@@ -166,7 +166,7 @@ Start `nexnet-inspector`. The empty window offers **Connect to inspector** (Ctrl
 
 ### Connecting
 
-The Connect dialog takes the endpoint address and token, whether it is a server or a client endpoint, the overflow mode (Drop or Block), and whether to request a state snapshot on attach. Once the address is typed, the dialog probes the endpoint and reports its recording policy and schema. After connecting to a server, choose a session in the title bar's session popover.
+The Connect dialog takes the endpoint address and token, whether it is a server or a client endpoint, the overflow mode (Drop or Block), and whether to request a state snapshot on attach. Once the address is typed, the dialog probes the endpoint and reports its recording policy and schema. After connecting to a server with one session, the dialog attaches to it; with several, the status line asks you to pick one in the title bar's session popover (Esc or Cancel leaves the pick). A session that ended before the attach shows in red, and Connect lists the sessions again.
 
 In a live tab, the title bar shows the endpoint, the session and a REC timer with the time attached. The session popover lists the server's sessions, switches to another one, and runs **Record all sessions** (Ctrl+Shift+R), which writes every session into one `.nntl` file under *Documents/NexNet Inspector/Recordings*. Record all needs `AllowRecording` on the server; otherwise the button is disabled and says why.
 

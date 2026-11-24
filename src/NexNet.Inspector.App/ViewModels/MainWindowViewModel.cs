@@ -176,8 +176,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             connect.Target = r.Target;
         }
 
-        // A server's session is picked in the title bar's session popover, as after attaching.
-        ConnectDialogViewModel dialog = new(connect, CloseDialog) { SessionChooser = sessions => Chrome.Session.ChooseAsync(connect, sessions) };
+        // A server's session (of several) is picked in the title bar's session popover, as after attaching.
+        ConnectDialogViewModel dialog = new(connect, CloseDialog) { SessionChooser = (sessions, cancel) => Chrome.Session.ChooseAsync(connect, sessions, cancel) };
         Dialog = dialog;
         return dialog;
     }

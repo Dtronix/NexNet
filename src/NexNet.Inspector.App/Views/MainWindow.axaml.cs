@@ -52,6 +52,17 @@ public sealed partial class MainWindow : Window
             AppMenu.Focus(NavigationMethod.Directional);
         };
         AppMenuPopup.Closed += (_, _) => TitleBar.AppMenuAnchor.Classes.Set("open", false);
+        SessionPopup.Opened += (_, _) =>
+        {
+            // Connect's pick: the keyboard follows the prompt into the list (the rows exist after layout).
+            if (DataContext is MainWindowViewModel { Chrome.Session.IsChoosing: true })
+                Avalonia.Threading.Dispatcher.UIThread.Post(SessionPopover.FocusFirstRow, Avalonia.Threading.DispatcherPriority.Loaded);
+        };
+        SessionPopup.Closed += (_, _) =>
+        {
+            // Closed over an open dialog (a pick, Esc): the keyboard goes back into the dialog.
+            if (Dialogs.IsOpen) Dialogs.FocusInitial();
+        };
         if (chrome == ChromeMode.Undecorated)
         {
             // No OS frame: the bar moves and maximizes the window, the grips resize it.
