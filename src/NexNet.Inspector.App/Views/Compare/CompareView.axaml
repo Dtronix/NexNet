@@ -75,9 +75,11 @@
           </c:PaneHeader.ViewControls>
         </c:PaneHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+        <!-- The bar overlays the rows' right edge as the app's rail (c:ScrollRail.Attach in code-behind), so widening near
+             the pointer never narrows the rows. -->
+        <Grid Name="RowsHost" Grid.Row="1">
           <cmp:CompareRowsControl Name="Rows" Model="{Binding Rows}" />
-          <ScrollBar Name="RowsScroll" Grid.Column="1" Orientation="Vertical" Margin="0,38,0,0" Minimum="0"
+          <ScrollBar Name="RowsScroll" Orientation="Vertical" Minimum="0" Margin="0,41,2,3"
                      Maximum="{Binding #Rows.ScrollMaximum}" ViewportSize="{Binding #Rows.ScrollViewport}"
                      Value="{Binding #Rows.ScrollOffset, Mode=TwoWay}" />
         </Grid>

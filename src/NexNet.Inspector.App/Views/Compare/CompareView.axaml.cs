@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using NexNet.Inspector.App.Controls;
 using NexNet.Inspector.App.Controls.Compare;
 
 namespace NexNet.Inspector.App.Views.Compare;
@@ -6,7 +7,14 @@ namespace NexNet.Inspector.App.Views.Compare;
 /// <summary>The Compare workspace over a <c>CompareWorkspaceViewModel</c>.</summary>
 public partial class CompareView : UserControl
 {
-    public CompareView() => InitializeComponent();
+    public CompareView()
+    {
+        InitializeComponent();
+        ScrollRail.Attach(RowsScroll, RowsHost);
+    }
+
+    /// <summary>The rows' own scroll bar (the rail).</summary>
+    public Avalonia.Controls.Primitives.ScrollBar RowsScrollBar => RowsScroll;
 
     /// <summary>The drawn aligned rows.</summary>
     public CompareRowsControl RowsView => Rows;

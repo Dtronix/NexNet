@@ -106,15 +106,11 @@ public sealed class HexView : UserControl
         _textView.LineTransformers.Add(new HexColorizer(this));
         _textView.BackgroundRenderers.Add(new HexBackgroundRenderer(this));
 
-        _scrollBar = new ScrollBar
-        {
-            Orientation = Orientation.Vertical,
-            Minimum = 0,
-            SmallChange = 1,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            AllowAutoHide = false,
-        };
+        _scrollBar = new ScrollBar { Orientation = Orientation.Vertical, Minimum = 0, SmallChange = 1 };
         _scrollBar.ValueChanged += OnScrollBarValueChanged;
+        // The bar is the app's rail like every ScrollViewer's: overlaid on the text's right padding, so widening near the
+        // pointer never reflows the bytes.
+        ScrollRail.Attach(_scrollBar, this);
 
         _hint = new TextBlock
         {
@@ -127,11 +123,10 @@ public sealed class HexView : UserControl
         _hint.Bind(TextBlock.FontSizeProperty, _hint.GetResourceObservable("FontSize.Body"));
         _hint.Bind(TextBlock.ForegroundProperty, _hint.GetResourceObservable("Brush.Text.Tertiary"));
 
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid grid = new();
         Border text = new() { Padding = new Thickness(10, 6, 16, 6), Child = _textView };
         grid.Children.Add(text);
         grid.Children.Add(_hint);
-        Grid.SetColumn(_scrollBar, 1);
         grid.Children.Add(_scrollBar);
         Content = grid;
 
@@ -182,6 +177,9 @@ public sealed class HexView : UserControl
 
     /// <summary>True while the empty hint shows.</summary>
     public bool ShowsHint => _hint.IsVisible;
+
+    /// <summary>The view's own scroll bar (the rail).</summary>
+    public ScrollBar ScrollBar => _scrollBar;
 
     /// <summary>The AvaloniaEdit text view (tests and I26's context menu read positions from it).</summary>
     public TextView TextView => _textView;

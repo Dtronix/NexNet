@@ -15,7 +15,8 @@ namespace NexNet.Inspector.App.Controls;
 
 /// <summary>
 /// The rail scrollbar's behaviour on a <see cref="ScrollViewer"/>, switched on for every one by an app-wide style
-/// (Themes/ScrollRail.axaml); the look is the ScrollBar theme there. It
+/// (Themes/ScrollRail.axaml), and on a standalone bar a virtual view scrolls by (<see cref="Attach"/>); the look is the
+/// ScrollBar theme there. It
 /// <list type="bullet">
 /// <item>widens a bar to the rail (class <c>near</c>) while the mouse is within its ScrollViewer's <see cref="ProximityZoneProperty"/>
 /// (16 px unless set) of its edge, and while its thumb is
@@ -54,6 +55,9 @@ public static class ScrollRail
 
     private static readonly ConditionalWeakTable<ScrollViewer, Rail> Rails = [];
 
+    /// <summary>The standalone bars given the rail's behaviour by <see cref="Attach"/>.</summary>
+    private static readonly ConditionalWeakTable<ScrollBar, Rail> BarRails = [];
+
     static ScrollRail() => IsEnabledProperty.Changed.AddClassHandler<ScrollViewer>(OnEnabledChanged);
 
     /// <summary>How far from the edge the pointer widens this ScrollViewer's bars (the transcript's covers its marker lane).</summary>
@@ -88,7 +92,7 @@ public static class ScrollRail
     {
         if (e.GetNewValue<bool>())
         {
-            if (!Rails.TryGetValue(scroll, out _)) Rails.Add(scroll, new Rail(scroll));
+            if (!Rails.TryGetValue(scroll, out _)) Rails.Add(scroll, new ViewerRail(scroll));
         }
         else if (Rails.TryGetValue(scroll, out Rail? rail))
         {
@@ -109,9 +113,32 @@ public static class ScrollRail
         if (RailOf(button) is { } found) found.Rail.JumpTo(found.Bar, along);
     }
 
-    private static (Rail Rail, ScrollBar Bar)? RailOf(Control part) =>
-        part.FindAncestorOfType<ScrollBar>() is { TemplatedParent: ScrollViewer scroll } bar && Rails.TryGetValue(scroll, out Rail? rail)
-            ? (rail, bar) : null;
+    /// <summary>
+    /// Gives a standalone <paramref name="bar"/> (one no ScrollViewer owns: a virtual view's own bar) the rail's behaviour:
+    /// it widens while the mouse is within 16 px of <paramref name="host"/>'s edge or its thumb is dragged, pages and jumps
+    /// smoothly, and has the bar menu. The bar should overlay the host's content (the rail widens over it, never
+    /// beside it, so the content does not reflow). Attaching a bar again does nothing.
+    /// </summary>
+    public static void Attach(ScrollBar bar, Control host)
+    {
+        ArgumentNullException.ThrowIfNull(bar);
+        ArgumentNullException.ThrowIfNull(host);
+        if (!BarRails.TryGetValue(bar, out _)) BarRails.Add(bar, new BarRail(bar, host));
+    }
+
+    /// <summary>True when <paramref name="bar"/> has the rail's behaviour (a ScrollViewer's bar, or one given it by <see cref="Attach"/>).</summary>
+    public static bool IsRail(ScrollBar bar)
+    {
+        ArgumentNullException.ThrowIfNull(bar);
+        return BarRails.TryGetValue(bar, out _) || (bar.TemplatedParent is ScrollViewer scroll && Rails.TryGetValue(scroll, out _));
+    }
+
+    private static (Rail Rail, ScrollBar Bar)? RailOf(Control part)
+    {
+        if (part.FindAncestorOfType<ScrollBar>() is not { } bar) return null;
+        if (BarRails.TryGetValue(bar, out Rail? own)) return (own, bar);
+        return bar.TemplatedParent is ScrollViewer scroll && Rails.TryGetValue(scroll, out Rail? rail) ? (rail, bar) : null;
+    }
 
     private static double Along(Orientation o, Vector v) => o == Orientation.Vertical ? v.Y : v.X;
 
@@ -121,11 +148,14 @@ public static class ScrollRail
 
     private static Vector With(Orientation o, Vector v, double value) => o == Orientation.Vertical ? v.WithY(value) : v.WithX(value);
 
-    /// <summary>One ScrollViewer's rail state: its bars, the pointer, the drags, the smooth scroll and the menus.</summary>
-    private sealed class Rail
+    /// <summary>
+    /// One rail's state: its bars, the pointer, the drags, the smooth scroll and the menus, over the control whose edge the
+    /// pointer nears (a ScrollViewer, or the view that owns a standalone bar) and the offset it scrolls.
+    /// </summary>
+    private abstract class Rail
     {
-        private readonly ScrollViewer _scroll;
-        private ScrollBar? _vertical, _horizontal;
+        private readonly Control _host;
+        protected ScrollBar? _vertical, _horizontal;
         private Point? _pointer;
         private ScrollBar? _dragged;
 
@@ -137,37 +167,47 @@ public static class ScrollRail
         // The bar a right-press was on, and where along its track, for "Scroll here".
         private double _menuAlong;
 
-        public Rail(ScrollViewer scroll)
+        protected Rail(Control host)
         {
-            _scroll = scroll;
-            scroll.AddHandler(InputElement.PointerMovedEvent, OnPointerMoved, RoutingStrategies.Bubble, handledEventsToo: true);
-            scroll.AddHandler(InputElement.PointerExitedEvent, OnPointerExited, RoutingStrategies.Direct, handledEventsToo: true);
-            scroll.AddHandler(InputElement.PointerPressedEvent, OnPressedTunnel, RoutingStrategies.Tunnel, handledEventsToo: true);
-            scroll.AddHandler(Thumb.DragStartedEvent, OnDragStarted, RoutingStrategies.Bubble, handledEventsToo: true);
-            scroll.AddHandler(Thumb.DragCompletedEvent, OnDragCompleted, RoutingStrategies.Bubble, handledEventsToo: true);
-            scroll.TemplateApplied += OnTemplateApplied;
-            scroll.ScrollChanged += OnScrollChanged;
-            FindBars(scroll.GetVisualDescendants().OfType<ScrollBar>().Where(b => b.TemplatedParent == scroll));
+            _host = host;
+            host.AddHandler(InputElement.PointerMovedEvent, OnPointerMoved, RoutingStrategies.Bubble, handledEventsToo: true);
+            host.AddHandler(InputElement.PointerExitedEvent, OnPointerExited, RoutingStrategies.Direct, handledEventsToo: true);
+            host.AddHandler(InputElement.PointerPressedEvent, OnPressedTunnel, RoutingStrategies.Tunnel, handledEventsToo: true);
+            host.AddHandler(Thumb.DragStartedEvent, OnDragStarted, RoutingStrategies.Bubble, handledEventsToo: true);
+            host.AddHandler(Thumb.DragCompletedEvent, OnDragCompleted, RoutingStrategies.Bubble, handledEventsToo: true);
         }
 
-        public void Detach()
+        /// <summary>The scroll offset, per axis.</summary>
+        protected abstract Vector Offset { get; }
+
+        /// <summary>The largest offset, per axis.</summary>
+        protected abstract Vector Maximum { get; }
+
+        /// <summary>The viewport, per axis, in the offset's units.</summary>
+        protected abstract Vector Viewport { get; }
+
+        /// <summary>One line, per axis, in the offset's units.</summary>
+        protected abstract Vector SmallChange { get; }
+
+        /// <summary>How far from the host's edge the pointer widens its bars.</summary>
+        protected abstract double Zone { get; }
+
+        /// <summary>Moves the offset (a step of the smooth scroll, a menu item).</summary>
+        protected abstract void Write(Vector offset);
+
+        public virtual void Detach()
         {
-            _scroll.RemoveHandler(InputElement.PointerMovedEvent, OnPointerMoved);
-            _scroll.RemoveHandler(InputElement.PointerExitedEvent, OnPointerExited);
-            _scroll.RemoveHandler(InputElement.PointerPressedEvent, OnPressedTunnel);
-            _scroll.RemoveHandler(Thumb.DragStartedEvent, OnDragStarted);
-            _scroll.RemoveHandler(Thumb.DragCompletedEvent, OnDragCompleted);
-            _scroll.TemplateApplied -= OnTemplateApplied;
-            _scroll.ScrollChanged -= OnScrollChanged;
+            _host.RemoveHandler(InputElement.PointerMovedEvent, OnPointerMoved);
+            _host.RemoveHandler(InputElement.PointerExitedEvent, OnPointerExited);
+            _host.RemoveHandler(InputElement.PointerPressedEvent, OnPressedTunnel);
+            _host.RemoveHandler(Thumb.DragStartedEvent, OnDragStarted);
+            _host.RemoveHandler(Thumb.DragCompletedEvent, OnDragCompleted);
             _running = false;
             Collapse(_vertical);
             Collapse(_horizontal);
         }
 
-        private void OnTemplateApplied(object? sender, TemplateAppliedEventArgs e) =>
-            FindBars(new[] { e.NameScope.Find<ScrollBar>("PART_VerticalScrollBar"), e.NameScope.Find<ScrollBar>("PART_HorizontalScrollBar") }.OfType<ScrollBar>());
-
-        private void FindBars(IEnumerable<ScrollBar> bars)
+        protected void FindBars(IEnumerable<ScrollBar> bars)
         {
             foreach (ScrollBar bar in bars)
             {
@@ -183,7 +223,7 @@ public static class ScrollRail
         private void OnPointerMoved(object? sender, PointerEventArgs e)
         {
             if (e.Pointer.Type != PointerType.Mouse) return;
-            _pointer = e.GetPosition(_scroll);
+            _pointer = e.GetPosition(_host);
             Update();
         }
 
@@ -212,9 +252,9 @@ public static class ScrollRail
 
         private void Update()
         {
-            Size size = _scroll.Bounds.Size;
+            Size size = _host.Bounds.Size;
             bool inside = _pointer is { } p && p.X >= 0 && p.Y >= 0 && p.X <= size.Width && p.Y <= size.Height;
-            double zone = GetProximityZone(_scroll);
+            double zone = Zone;
             _vertical?.Classes.Set("near", _dragged == _vertical || (inside && RailScrollMath.InZone(_pointer!.Value.X, size.Width, zone)));
             _horizontal?.Classes.Set("near", _dragged == _horizontal || (inside && RailScrollMath.InZone(_pointer!.Value.Y, size.Height, zone)));
         }
@@ -225,25 +265,25 @@ public static class ScrollRail
             bar.GetVisualDescendants().OfType<Track>().FirstOrDefault() is { Thumb: { } thumb } track ? (track, thumb) : null;
 
         /// <summary>The target the next page or step starts from: the running scroll's, else the offset.</summary>
-        private Vector Target => _running ? _to : _scroll.Offset;
+        private Vector Target => _running ? _to : Offset;
 
         public void PageToward(ScrollBar bar, double along)
         {
             if (Parts(bar) is not var (track, thumb)) return;
             Orientation o = bar.Orientation;
-            double max = Along(o, _scroll.ScrollBarMaximum), from = Along(o, Target);
+            double max = Along(o, Maximum), from = Along(o, Target);
             double trackLength = Along(o, track.Bounds.Size), thumbLength = Along(o, thumb.Bounds.Size);
             double thumbAt = max > 0 ? from / max * Math.Max(0, trackLength - thumbLength) : 0;
             int direction = along < thumbAt ? -1 : along > thumbAt + thumbLength ? 1 : 0;
             if (direction == 0) return;
-            ScrollTo(With(o, Target, RailScrollMath.PageTarget(from, Along(o, _scroll.Viewport), max, direction)));
+            ScrollTo(With(o, Target, RailScrollMath.PageTarget(from, Along(o, Viewport), max, direction)));
         }
 
         public void JumpTo(ScrollBar bar, double along)
         {
             if (Parts(bar) is not var (track, thumb)) return;
             Orientation o = bar.Orientation;
-            double target = RailScrollMath.JumpTarget(along, Along(o, track.Bounds.Size), Along(o, thumb.Bounds.Size), Along(o, _scroll.ScrollBarMaximum));
+            double target = RailScrollMath.JumpTarget(along, Along(o, track.Bounds.Size), Along(o, thumb.Bounds.Size), Along(o, Maximum));
             ScrollTo(With(o, Target, target));
         }
 
@@ -251,16 +291,16 @@ public static class ScrollRail
 
         private void ScrollTo(Vector to)
         {
-            Vector max = _scroll.ScrollBarMaximum;
-            to = new Vector(Math.Clamp(to.X, 0, max.X), Math.Clamp(to.Y, 0, max.Y));
-            if (TopLevel.GetTopLevel(_scroll) is not { } top)
+            Vector max = Maximum;
+            to = new Vector(Math.Clamp(to.X, 0, Math.Max(0, max.X)), Math.Clamp(to.Y, 0, Math.Max(0, max.Y)));
+            if (TopLevel.GetTopLevel(_host) is not { } top)
             {
                 _running = false;
-                _scroll.SetCurrentValue(ScrollViewer.OffsetProperty, to);
+                Write(to);
                 return;
             }
 
-            _from = _scroll.Offset;
+            _from = Offset;
             _written = _from;
             _to = to;
             _start = null;
@@ -286,7 +326,7 @@ public static class ScrollRail
         private void Step(TimeSpan at)
         {
             if (!_running) return;
-            if (_scroll.Offset != _written)
+            if (Offset != _written)
             {
                 // Something else moved the offset (the wheel, a drag, a viewer following its output): it wins.
                 _running = false;
@@ -296,9 +336,10 @@ public static class ScrollRail
             // The first frame already moves (one frame in): a frame that draws nothing new can leave the next one unscheduled.
             _start ??= at - Frame;
             double t = Math.Clamp((at - _start.Value) / ScrollMotion, 0, 1);
-            _scroll.SetCurrentValue(ScrollViewer.OffsetProperty, _from + (_to - _from) * RailScrollMath.EaseOut(t));
-            _written = _scroll.Offset;
-            if (t < 1 && TopLevel.GetTopLevel(_scroll) is { } top) top.RequestAnimationFrame(Tick);
+            Write(_from + (_to - _from) * RailScrollMath.EaseOut(t));
+            // Read back: a host that snaps the offset (whole lines) keeps the scroll running from where it put it.
+            _written = Offset;
+            if (t < 1 && TopLevel.GetTopLevel(_host) is { } top) top.RequestAnimationFrame(Tick);
             else _running = false;
         }
 
@@ -306,12 +347,13 @@ public static class ScrollRail
 
         private void OnPressedTunnel(object? sender, PointerPressedEventArgs e)
         {
-            if (!e.GetCurrentPoint(_scroll).Properties.IsRightButtonPressed || BarOf(e.Source) is not { } bar) return;
+            if (!e.GetCurrentPoint(_host).Properties.IsRightButtonPressed || BarOf(e.Source) is not { } bar) return;
             _menuAlong = Parts(bar) is var (track, _) ? Along(bar.Orientation, e.GetPosition(track)) : 0;
             if (bar.ContextMenu is null) bar.ContextMenu = MenuFor(bar);
         }
 
-        private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
+        /// <summary>The content scrolled: an open, unfocused bar menu closes (it no longer points where it was opened).</summary>
+        protected void OnScrolled()
         {
             if (_running) return;
             CloseUnfocusedMenu(_vertical);
@@ -348,10 +390,10 @@ public static class ScrollRail
                 return item;
             }
 
-            double Max() => Along(o, _scroll.ScrollBarMaximum);
+            double Max() => Along(o, Maximum);
             double From() => Along(o, Target);
-            double Page(int direction) => RailScrollMath.PageTarget(From(), Along(o, _scroll.Viewport), Max(), direction);
-            double Step(int direction) => Math.Clamp(From() + direction * Along(o, _scroll.SmallChange), 0, Max());
+            double Page(int direction) => RailScrollMath.PageTarget(From(), Along(o, Viewport), Max(), direction);
+            double Step(int direction) => Math.Clamp(From() + direction * Along(o, SmallChange), 0, Math.Max(0, Max()));
             double Here() => Parts(bar) is var (track, thumb)
                 ? RailScrollMath.JumpTarget(_menuAlong, Along(o, track.Bounds.Size), Along(o, thumb.Bounds.Size), Max())
                 : From();
@@ -374,6 +416,87 @@ public static class ScrollRail
             });
             return menu;
         }
+    }
+
+    /// <summary>A ScrollViewer's rail: its two template bars over its offset.</summary>
+    private sealed class ViewerRail : Rail
+    {
+        private readonly ScrollViewer _scroll;
+
+        public ViewerRail(ScrollViewer scroll)
+            : base(scroll)
+        {
+            _scroll = scroll;
+            scroll.TemplateApplied += OnTemplateApplied;
+            scroll.ScrollChanged += OnScrollChanged;
+            FindBars(scroll.GetVisualDescendants().OfType<ScrollBar>().Where(b => b.TemplatedParent == scroll));
+        }
+
+        protected override Vector Offset => _scroll.Offset;
+
+        protected override Vector Maximum => _scroll.ScrollBarMaximum;
+
+        protected override Vector Viewport => new(_scroll.Viewport.Width, _scroll.Viewport.Height);
+
+        protected override Vector SmallChange => new(_scroll.SmallChange.Width, _scroll.SmallChange.Height);
+
+        protected override double Zone => GetProximityZone(_scroll);
+
+        protected override void Write(Vector offset) => _scroll.SetCurrentValue(ScrollViewer.OffsetProperty, offset);
+
+        public override void Detach()
+        {
+            _scroll.TemplateApplied -= OnTemplateApplied;
+            _scroll.ScrollChanged -= OnScrollChanged;
+            base.Detach();
+        }
+
+        private void OnTemplateApplied(object? sender, TemplateAppliedEventArgs e) =>
+            FindBars(new[] { e.NameScope.Find<ScrollBar>("PART_VerticalScrollBar"), e.NameScope.Find<ScrollBar>("PART_HorizontalScrollBar") }.OfType<ScrollBar>());
+
+        private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => OnScrolled();
+    }
+
+    /// <summary>
+    /// A standalone bar's rail (a virtual view that scrolls by its own bar: the hex views, the compare rows): the bar's
+    /// Value is the offset along its orientation, and the pointer nears the edge of the view that owns it.
+    /// </summary>
+    private sealed class BarRail : Rail
+    {
+        private readonly ScrollBar _bar;
+
+        public BarRail(ScrollBar bar, Control host)
+            : base(host)
+        {
+            _bar = bar;
+            FindBars([bar]);
+            bar.ValueChanged += OnValueChanged;
+        }
+
+        private bool Vertical => _bar.Orientation == Orientation.Vertical;
+
+        private Vector OnAxis(double value) => Vertical ? new Vector(0, value) : new Vector(value, 0);
+
+        protected override Vector Offset => OnAxis(_bar.Value);
+
+        protected override Vector Maximum => OnAxis(_bar.Maximum);
+
+        protected override Vector Viewport => OnAxis(_bar.ViewportSize);
+
+        protected override Vector SmallChange => OnAxis(_bar.SmallChange);
+
+        protected override double Zone => RailScrollMath.ProximityZone;
+
+        protected override void Write(Vector offset) =>
+            _bar.SetCurrentValue(RangeBase.ValueProperty, Math.Clamp(Vertical ? offset.Y : offset.X, _bar.Minimum, Math.Max(_bar.Minimum, _bar.Maximum)));
+
+        public override void Detach()
+        {
+            _bar.ValueChanged -= OnValueChanged;
+            base.Detach();
+        }
+
+        private void OnValueChanged(object? sender, RangeBaseValueChangedEventArgs e) => OnScrolled();
     }
 
     /// <summary>cubic-bezier(.2,0,0,1) as an Avalonia easing, for the theme's transitions.</summary>

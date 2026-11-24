@@ -119,14 +119,9 @@ public sealed class CompareHexView : UserControl
         _textView.LineTransformers.Add(new CompareHexColorizer(this));
         _textView.BackgroundRenderers.Add(new CompareHexBackgroundRenderer(this));
 
-        _scrollBar = new ScrollBar
-        {
-            Orientation = Orientation.Vertical,
-            Minimum = 0,
-            SmallChange = 1,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            AllowAutoHide = false,
-        };
+        _scrollBar = new ScrollBar { Orientation = Orientation.Vertical, Minimum = 0, SmallChange = 1 };
+        // The app's rail, as in HexView: overlaid on the text's right padding.
+        ScrollRail.Attach(_scrollBar, this);
         _scrollBar.ValueChanged += (_, e) =>
         {
             if (!_settingScroll)
@@ -143,10 +138,9 @@ public sealed class CompareHexView : UserControl
         _hint.Bind(TextBlock.FontSizeProperty, _hint.GetResourceObservable("FontSize.Body"));
         _hint.Bind(TextBlock.ForegroundProperty, _hint.GetResourceObservable("Brush.Text.Tertiary"));
 
-        Grid grid = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid grid = new();
         grid.Children.Add(new Border { Padding = new Thickness(10, 6, 16, 6), Child = _textView });
         grid.Children.Add(_hint);
-        Grid.SetColumn(_scrollBar, 1);
         grid.Children.Add(_scrollBar);
         Content = grid;
 
@@ -188,6 +182,9 @@ public sealed class CompareHexView : UserControl
 
     /// <summary>True while the empty hint shows.</summary>
     public bool ShowsHint => _hint.IsVisible;
+
+    /// <summary>The view's own scroll bar (the rail).</summary>
+    public ScrollBar ScrollBar => _scrollBar;
 
     /// <summary>The AvaloniaEdit text view.</summary>
     public TextView TextView => _textView;
