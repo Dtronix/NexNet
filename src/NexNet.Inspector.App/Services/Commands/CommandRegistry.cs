@@ -19,7 +19,7 @@ public sealed class CommandRegistry
         new(AppCommand.CommandPalette, "Command palette", CommandGroup.View, CommandGlyph.Palette, Gesture(Key.P, KeyModifiers.Control | KeyModifiers.Shift)),
         new(AppCommand.OpenRecording, "Open recording…", CommandGroup.File, CommandGlyph.Open, Gesture(Key.O, KeyModifiers.Control)),
         new(AppCommand.SaveTimeline, "Save timeline as .nntl…", CommandGroup.File, CommandGlyph.Save, Gesture(Key.S, KeyModifiers.Control)),
-        new(AppCommand.ExportSelection, "Export selection as .nntl", CommandGroup.File, CommandGlyph.Save,
+        new(AppCommand.ExportSelection, "Export section as .nntl…", CommandGroup.File, CommandGlyph.Save,
             Gesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift)),
         new(AppCommand.Connect, "Connect to inspector…", CommandGroup.Session, CommandGlyph.Connect, Gesture(Key.K, KeyModifiers.Control)),
         new(AppCommand.RecordAll, "Record all sessions", CommandGroup.Session, CommandGlyph.Record, Gesture(Key.R, KeyModifiers.Control | KeyModifiers.Shift)),
@@ -34,6 +34,7 @@ public sealed class CommandRegistry
         new(AppCommand.ThemeSystem, "Theme: System", CommandGroup.View, CommandGlyph.Theme),
         new(AppCommand.HelpShortcuts, "Help & shortcuts", CommandGroup.Help, CommandGlyph.Help, Gesture(Key.F1, KeyModifiers.None)),
         new(AppCommand.Legend, "Legend & symbols", CommandGroup.View, CommandGlyph.Help, Gesture(Key.F2, KeyModifiers.None)),
+        new(AppCommand.Detach, "Detach from session", CommandGroup.Session, CommandGlyph.Connect),
     ];
 
     // The commands the palette offers when a query matches no command title (the package's "812" list), in its order.

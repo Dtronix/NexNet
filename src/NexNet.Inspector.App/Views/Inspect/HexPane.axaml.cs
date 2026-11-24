@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.ViewModels;
 using NexNet.Inspector.Core.Model;
@@ -34,6 +35,7 @@ public partial class HexPane : UserControl
     {
         if (CreateSelection() is not { } selection) return null;
         ContextMenu menu = InspectMenus.HexSelection(selection, ExportTarget);
+        AppendExportSection(menu);
         Menu = menu;
         menu.Open(View);
         return menu;
@@ -85,6 +87,15 @@ public partial class HexPane : UserControl
             // A shortcut runs on the dispatcher: a failed copy must not end the app.
             System.Diagnostics.Trace.TraceError("hex shortcut failed: " + ex);
         }
+    }
+
+    // Export section as .nntl… (I40): the time window, from the workspace that hosts this pane.
+    private void AppendExportSection(ContextMenu menu)
+    {
+        if (this.FindAncestorOfType<InspectView>()?.DataContext is not InspectWorkspaceViewModel { ShowExport: { } export, Session: not null }) return;
+        menu.Items.Add(new Separator());
+        menu.Items.Add(InspectMenus.Item(menu, "Export section as .nntl…", new KeyGesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift),
+            () => export(ExportRangeKind.Window)));
     }
 
     private Task Copy(string text) =>

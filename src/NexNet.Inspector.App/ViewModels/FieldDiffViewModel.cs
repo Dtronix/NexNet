@@ -73,6 +73,12 @@ public sealed partial class FieldDiffViewModel : ObservableObject
     /// <summary>Raised when the selected row changes (the hex view follows).</summary>
     public event Action? SelectionChanged;
 
+    /// <summary>The first document's name (the A column).</summary>
+    public string NameA => _nameA;
+
+    /// <summary>The second document's name (the B column).</summary>
+    public string NameB => _nameB;
+
     /// <summary>Names the documents in the column headers (their tab names).</summary>
     public void SetFiles(string nameA, string nameB)
     {

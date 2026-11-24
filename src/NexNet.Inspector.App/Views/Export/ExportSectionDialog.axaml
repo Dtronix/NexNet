@@ -1,0 +1,63 @@
+<!--
+  Export section as .nntl… (Ctrl+Shift+S): 460 px. RANGE: four radio rows (the time window, the selected message's span,
+  the traced message's frames, a typed start–end in ms with two mono fields under it), each with its span as the hint;
+  OPTIONS: include the handshake, embed the schema, keep redaction (checked and disabled: always on). The summary line,
+  the error line, then the footer hint, Cancel and the primary Export….
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:p="using:NexNet.Inspector.App.Controls.Primitives"
+             x:Class="NexNet.Inspector.App.Views.Export.ExportSectionDialog"
+             x:DataType="vm:ExportSectionDialogViewModel">
+  <c:DialogFrame x:Name="Frame" Width="460"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding ExportCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="Cancel" Command="{Binding CancelCommand}" />
+        <Button x:Name="ExportButton" Classes="md primary" Content="Export…" Command="{Binding ExportCommand}"
+                c:DialogHost.InitialFocus="True" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <StackPanel Spacing="14">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="field-label" Text="Range" />
+        <RadioButton x:Name="WindowRow" Theme="{StaticResource RadioRow}" GroupName="export-range"
+                     Content="Current time window" p:ControlHint.Text="{Binding WindowText}" IsChecked="{Binding IsWindow}" />
+        <RadioButton x:Name="MessageRow" Theme="{StaticResource RadioRow}" GroupName="export-range"
+                     Content="Selected message" p:ControlHint.Text="{Binding MessageText}" IsChecked="{Binding IsMessage}"
+                     IsEnabled="{Binding HasMessage}" />
+        <RadioButton x:Name="TraceRow" Theme="{StaticResource RadioRow}" GroupName="export-range"
+                     Content="Traced message's frames" p:ControlHint.Text="{Binding TraceText}" IsChecked="{Binding IsTrace}"
+                     IsEnabled="{Binding HasTrace}" />
+        <RadioButton x:Name="TypedRow" Theme="{StaticResource RadioRow}" GroupName="export-range"
+                     Content="From – to (ms)" IsChecked="{Binding IsTyped}" />
+        <Grid ColumnDefinitions="*,Auto,*" Margin="20,4,0,0" IsEnabled="{Binding IsTyped}">
+          <TextBox x:Name="FromBox" Classes="mono" Text="{Binding FromText}" AutomationProperties.Name="From (ms)" />
+          <TextBlock Grid.Column="1" Text="–" Margin="8,0" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}" />
+          <TextBox x:Name="ToBox" Grid.Column="2" Classes="mono" Text="{Binding ToText}" AutomationProperties.Name="To (ms)" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel Spacing="6">
+        <TextBlock Classes="field-label" Text="Options" />
+        <CheckBox x:Name="HandshakeBox" Content="Include the handshake (preamble and greetings)"
+                  ToolTip.Tip="So the file frames and decodes on its own" IsChecked="{Binding IncludeHandshake}" />
+        <CheckBox x:Name="SchemaBox" Content="Include the embedded schema" IsChecked="{Binding IncludeSchema}" />
+        <CheckBox x:Name="RedactionBox" Content="Keep redaction (always: secrets stay redacted)" IsChecked="{Binding KeepRedaction, Mode=OneWay}"
+                  IsEnabled="False" />
+      </StackPanel>
+
+      <StackPanel Spacing="4">
+        <TextBlock x:Name="SummaryText" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        <TextBlock x:Name="ErrorText" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Status.Error}" FontSize="{DynamicResource FontSize.Meta}" />
+      </StackPanel>
+    </StackPanel>
+  </c:DialogFrame>
+</UserControl>

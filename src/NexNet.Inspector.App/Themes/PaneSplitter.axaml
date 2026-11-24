@@ -1,0 +1,19 @@
+<!--
+  The workspace splitters (I40): a 7 px hit area over the panes' own 1 px border.default line, which they draw in
+  border.strong while hovered or dragged.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:c="using:NexNet.Inspector.App.Controls">
+  <ControlTheme x:Key="{x:Type c:PaneSplitter}" TargetType="c:PaneSplitter">
+    <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+    <Setter Property="LineBrush" Value="{DynamicResource Brush.Border.Strong}" />
+    <Setter Property="ZIndex" Value="1" />
+    <Style Selector="^:pointerover">
+      <Setter Property="ShowsLine" Value="True" />
+    </Style>
+    <Style Selector="^:dragging">
+      <Setter Property="ShowsLine" Value="True" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

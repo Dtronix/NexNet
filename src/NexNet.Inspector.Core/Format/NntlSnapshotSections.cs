@@ -204,6 +204,82 @@ public static class NntlSnapshotSections
         return buffer.WrittenSpan.ToArray();
     }
 
+    /// <summary>Encodes an open-pipes section from decoded states (an export's synthesised snapshot).</summary>
+    public static byte[] EncodeOpenPipes(ReadOnlySpan<NntlPipeState> pipes)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        var w = new MsgPackWriter(buffer);
+        w.WriteArrayHeader(pipes.Length);
+        foreach (var p in pipes)
+        {
+            w.WriteArrayHeader(PipeFields);
+            w.Write(p.Id);
+            w.Write((byte)p.Flags);
+            w.Write(p.Window);
+            w.Write(p.ReceiveCredit);
+            w.Write(p.Buffered);
+            w.Write(p.SendCredit);
+        }
+
+        w.Flush();
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Encodes a pending-invocations section from a decoded state.</summary>
+    public static byte[] EncodeInvocations(in NntlInvocationState invocations)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        var w = new MsgPackWriter(buffer);
+        w.WriteArrayHeader(InvocationFields);
+        w.Write(invocations.Queued);
+        w.Write(invocations.Executing);
+        w.Write(invocations.AwaitingResults);
+        w.Write(invocations.InboundCredits);
+        w.Write(invocations.OutboundCredits);
+        w.Write(invocations.CreditWaits);
+        w.Write(invocations.SeparatePoolQueued);
+        w.Write(invocations.SeparatePoolExecuting);
+        var large = invocations.LargeMessages ?? [];
+        w.WriteArrayHeader(large.Length);
+        foreach (var m in large)
+        {
+            w.WriteArrayHeader(LargeMessageFields);
+            w.Write((byte)m.Direction);
+            w.Write(m.IsResult);
+            w.Write(m.InvocationId);
+            w.Write(m.Length);
+            w.Write(m.Transferred);
+        }
+
+        w.Flush();
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Encodes a collection-state section from decoded states.</summary>
+    public static byte[] EncodeCollections(ReadOnlySpan<NntlCollectionState> collections)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        var w = new MsgPackWriter(buffer);
+        w.WriteArrayHeader(collections.Length);
+        foreach (var c in collections)
+        {
+            w.WriteArrayHeader(CollectionFields);
+            w.Write(c.Id);
+            w.Write((byte)c.Kind);
+            w.Write((byte)c.Mode);
+            w.Write((byte)c.State);
+            w.Write(c.Count);
+            w.Write(c.Version);
+            var ids = c.PipeIds ?? [];
+            w.WriteArrayHeader(ids.Length);
+            foreach (var id in ids)
+                w.Write(id);
+        }
+
+        w.Flush();
+        return buffer.WrittenSpan.ToArray();
+    }
+
     /// <summary>Decodes an open-pipes section.</summary>
     /// <exception cref="NntlFormatException">The payload is malformed.</exception>
     public static NntlPipeState[] DecodeOpenPipes(ReadOnlyMemory<byte> data)

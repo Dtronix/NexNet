@@ -82,7 +82,7 @@ public sealed class CommandPaletteTests
         string[] commands = Items(s.Palette, PaletteGroup.Commands).Select(r => r.Label).ToArray();
         await Assert.That(commands).IsEquivalentTo(new[]
         {
-            "Trace message under cursor", "Go to time…", "Open invocation #" + s.Id + " in Compare", "Export selection as .nntl",
+            "Trace message under cursor", "Go to time…", "Open invocation #" + s.Id + " in Compare", "Export section as .nntl…",
         }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
 
         // Compare's item carries the invocation, so running it selects that entity before Compare opens on it.

@@ -254,15 +254,16 @@ public class SessionEndTests
     }
 
     [Test]
-    public async Task A_detach_resets_the_view_end_to_end()
+    public async Task Detach_from_the_popover_stops_the_stream_keeps_the_data_and_Save_works()
     {
         await using var rig = await StartAsync();
+        var area = new SessionAreaViewModel(rig.Documents);
         var client = await rig.Harness.ConnectClientAsync();
         var info = await rig.Harness.WaitForSessionAsync();
         var live = await AttachAsync(rig, info);
         await ConverseAsync(client, live);
 
-        // A selection and a playhead on the live data, the window following it.
+        // A selection on the live data, the window following it.
         var sync = rig.Documents.Sync;
         var session = live.Session!;
         FrameKey key;
@@ -275,22 +276,88 @@ public class SessionEndTests
         }
 
         sync.Select(Selection.OfFrame(key), ticks);
-        await Assert.That(sync.Selection.IsNone).IsFalse();
+        await Assert.That(area.Live).IsSameReferenceAs(live);
+        await Assert.That(area.CanDetach).IsTrue();
+        await Assert.That(area.DetachLabel).IsEqualTo("Detach from " + LiveDocumentViewModel.SessionHex(info.Id));
+        await Assert.That(area.DetachDetail).IsEqualTo("Stops viewing · the captured data stays in the tab");
+
+        area.IsPopoverOpen = true;
+        await area.DetachCommand.ExecuteAsync(null);
+        await Assert.That(area.IsPopoverOpen).IsFalse();
+        await Assert.That(live.State).IsEqualTo(LiveState.Ended);
+        await Assert.That(live.IsDetachedByUser).IsTrue();
+        await Assert.That(live.IsStreaming).IsFalse();
+        await Assert.That(area.CanDetach).IsFalse();
+        await Assert.That(area.DetachCommand.CanExecute(null)).IsFalse();
+
+        // The data stays and the view is not reset.
+        await Assert.That(live.Session).IsSameReferenceAs(session);
+        await Assert.That(live.IsDirty).IsTrue();
+        await Assert.That(sync.Selection).IsEqualTo(Selection.OfFrame(key));
         await Assert.That(sync.Window.IsEmpty).IsFalse();
+        await Wait.UntilAsync(() => rig.Ended.IsShown, "the session-ended strip");
+        await Assert.That(rig.Ended.Title).IsEqualTo("Detached from " + LiveDocumentViewModel.SessionLabel(info.Id));
+        await Assert.That(rig.Ended.Detail).StartsWith(LiveDocumentViewModel.DetachedReason + " · ");
+        await Assert.That(rig.Ended.Detail).EndsWith(" · not saved");
 
-        await live.DetachCommand.ExecuteAsync(null);
-        await Wait.UntilAsync(() => sync.Window.IsEmpty, "the window to reset");
-        await Assert.That(live.Session).IsNull();
-        await Assert.That(live.IsDirty).IsFalse();
-        await Assert.That(sync.Selection.IsNone).IsTrue();
-        await Assert.That(sync.Playhead).IsEqualTo(0);
-        await Assert.That(sync.Trace).IsSameReferenceAs(MessageTrace.None);
-        await Assert.That(sync.FollowLive).IsTrue();
-        await Assert.That(rig.Ended.IsShown).IsFalse();
+        // The server stopped streaming to this viewer: more traffic adds nothing, and the endpoint takes a new attach on
+        // the same connection (one stream per connection: it would answer Busy while the old one still ran).
+        int frames;
+        lock (session.Gate)
+            frames = session.FrameCount;
+        await client.Proxy.SendMessage(new ChatMessage { Room = "general", Author = "ada", Text = "after" }, CancellationToken.None);
+        await Task.Delay(300);
+        int after;
+        lock (session.Gate)
+            after = session.FrameCount;
+        await Assert.That(after).IsEqualTo(frames);
+        var probe = await live.Connection.Client.AttachAsync(new InspectorAttachRequest(InspectorTargetKind.Session, info.Id, InspectorOverflow.Drop, false, false));
+        await live.Connection.Client.DetachAsync();
+        await probe.DisposeAsync();
 
-        // Closing a detached tab loses nothing, so it does not ask.
-        await Assert.That(await rig.Documents.CloseAsync(live)).IsTrue();
-        await Assert.That(rig.Prompts).IsEmpty();
+        // Save .nntl… from the strip: the tab becomes the saved recording, with what was captured before the detach.
+        rig.NextPath = rig.Temp.File("detached.nntl");
+        await rig.Ended.SaveCommand.ExecuteAsync(null);
+        await Assert.That(rig.Ended.Error).IsNull();
+        await Assert.That(File.Exists(rig.NextPath)).IsTrue();
+        var file = rig.Documents.Documents.Single() as FileDocumentViewModel;
+        await Assert.That(file).IsNotNull();
+        await file!.Indexing;
+        await Wait.UntilAsync(() => file.IndexingState == IndexingState.Complete, "the saved file to index");
+        await Assert.That(file.FrameCount).IsEqualTo(frames);
+        await area.DisposeAsync();
+    }
+
+    [Test]
+    public async Task Detach_while_Record_all_runs_stops_viewing_only_and_closing_asks_first()
+    {
+        await using var rig = await StartAsync();
+        var area = new SessionAreaViewModel(rig.Documents) { RecordingDirectory = () => rig.Temp.File("recordings") };
+        var client = await rig.Harness.ConnectClientAsync();
+        var info = await rig.Harness.WaitForSessionAsync();
+        var live = await AttachAsync(rig, info);
+        await ConverseAsync(client, live);
+
+        await area.RecordAllCommand.ExecuteAsync(null);
+        await Assert.That(area.IsRecordingAll).IsTrue();
+        await Assert.That(area.DetachDetail).IsEqualTo("Stops viewing only · Record all keeps recording until you stop it");
+
+        await area.DetachCommand.ExecuteAsync(null);
+        await Assert.That(live.State).IsEqualTo(LiveState.Ended);
+        await Assert.That(area.IsRecordingAll).IsTrue();
+
+        // Record all stops by its own toggle, and its file holds the session.
+        await area.RecordAllCommand.ExecuteAsync(null);
+        await Assert.That(area.IsRecordingAll).IsFalse();
+        await Assert.That(area.LastRecording).IsNotNull();
+        await Assert.That(File.Exists(area.LastRecording!)).IsTrue();
+
+        // The detached tab holds unsaved data: closing it asks (OQ5), and Cancel keeps it.
+        rig.Answers.Enqueue(CloseDecision.Cancel);
+        await Assert.That(await rig.Documents.CloseAsync(live)).IsFalse();
+        await Assert.That(rig.Prompts.Count).IsEqualTo(1);
+        await Assert.That(live.Session).IsNotNull();
+        await area.DisposeAsync();
     }
 
     private static int Invocations(CaptureSession session)

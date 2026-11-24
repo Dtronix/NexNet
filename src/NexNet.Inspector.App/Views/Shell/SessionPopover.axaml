@@ -113,6 +113,20 @@
         </ListBox.ItemTemplate>
       </ListBox>
 
+      <!-- Detach: stops viewing the attached session; the data stays in the tab (the session-ended strip). While Record all
+           runs the detail says the recording goes on: it stops only by its own toggle below. -->
+      <Button Name="DetachAction" Theme="{StaticResource SessionPopover.Row}" Margin="0,4,0,0" IsVisible="{Binding CanDetach}"
+              Command="{Binding DetachCommand}" AutomationProperties.Name="{Binding DetachLabel}"
+              ToolTip.Tip="{Binding DetachDetail}">
+        <Grid ColumnDefinitions="15,Auto,*">
+          <TextBlock Text="✕" VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Data}"
+                     Foreground="{DynamicResource Brush.Text.Secondary}" />
+          <TextBlock Grid.Column="1" Text="{Binding DetachLabel}" VerticalAlignment="Center" FontWeight="{DynamicResource FontWeight.SemiBold}" />
+          <TextBlock Name="DetachDetailText" Grid.Column="2" Text="{Binding DetachDetail}" Margin="12,0,0,0" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </Grid>
+      </Button>
+
       <Button Name="RecordAllAction" Theme="{StaticResource SessionPopover.Row}" Classes="action" Margin="0,4,0,0"
               Command="{Binding RecordAllCommand}" ToolTip.Tip="{Binding RecordTooltip}" ToolTip.ShowOnDisabled="True"
               AutomationProperties.Name="{Binding RecordAllLabel}">

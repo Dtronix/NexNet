@@ -1,13 +1,19 @@
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.ViewModels;
+using NexNet.Inspector.App.Views.Inspect;
 
 namespace NexNet.Inspector.App.Views.OpenRecording;
 
 /// <summary>
 /// The open-recording dialog's view. The two warning cards' texts mix the UI font with mono runs (hashes, the schema
-/// path, the repair command), so they are built here from the view-model's pieces.
+/// path, the repair command), so they are built here from the view-model's pieces. A session row opens the content
+/// menu on a right-click (Copy, Copy value, Copy row as TSV) and Ctrl+C copies it.
 /// </summary>
 public sealed partial class OpenRecordingDialog : UserControl
 {
@@ -16,6 +22,34 @@ public sealed partial class OpenRecordingDialog : UserControl
     public OpenRecordingDialog()
     {
         InitializeComponent();
+        Sessions.ContextRequested += OnSessionsContextRequested;
+        Sessions.AddHandler(KeyDownEvent, OnSessionsKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>The content menu last opened (tests read it).</summary>
+    public ContextMenu? ContentMenu { get; private set; }
+
+    /// <summary>The session row at <paramref name="index"/> as a content item; null outside the list.</summary>
+    public ContentItem? Describe(int index) =>
+        _model?.Source is { } source && (uint)index < (uint)source.Count ? ContentItems.ForSession(source[index]) : null;
+
+    private void OnSessionsContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        int index = (e.Source as Avalonia.Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is { } container
+            ? Sessions.IndexFromContainer(container)
+            : Sessions.SelectedIndex;
+        if (Describe(index) is not { } item) return;
+        e.Handled = true;
+        ContextMenu menu = ContentMenus.Build(new ContentMenuViewModel(item, null, null, ViewServices.CopyTo(this), null));
+        ContentMenu = menu;
+        menu.Open(Sessions);
+    }
+
+    private void OnSessionsKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.C || (e.KeyModifiers & KeyModifiers.Control) == 0 || Describe(Sessions.SelectedIndex) is not { } item) return;
+        e.Handled = true;
+        ViewServices.Run(() => ViewServices.Copy(this, item.Text), "copy");
     }
 
     protected override void OnDataContextChanged(EventArgs e)

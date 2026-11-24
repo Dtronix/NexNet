@@ -178,6 +178,10 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     /// </summary>
     public CompareDetailViewModel DetailPanel { get; } = new();
 
+    /// <summary>The splitters' sizes (the sidebar's width, the bottom panel's height); the window shares one set with Inspect.</summary>
+    [ObservableProperty]
+    public partial PaneSizesViewModel Sizes { get; set; } = new(null);
+
     /// <summary>The bottom panel's subtitle: "Invocation #812 SendAttachment".</summary>
     [ObservableProperty]
     public partial string DetailSubtitle { get; private set; } = "";

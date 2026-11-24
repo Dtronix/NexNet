@@ -99,6 +99,15 @@
                     WindowDecorationProperties.ElementRole="User"
                     Command="{Binding Session.TogglePopoverCommand}"
                     AutomationProperties.Name="Sessions on server">
+              <!-- Right-click: the session group's menu (the ▾ opens the popover with the same actions). -->
+              <Button.ContextMenu>
+                <ContextMenu Name="SessionMenu">
+                  <MenuItem Name="SessionMenuSessions" Header="Sessions on server…" Command="{Binding Session.TogglePopoverCommand}" />
+                  <MenuItem Name="SessionMenuDetach" Header="{Binding Session.DetachLabel}" Command="{Binding Session.DetachCommand}" />
+                  <MenuItem Name="SessionMenuRecordAll" Header="{Binding Session.RecordAllLabel}" Command="{Binding Session.RecordAllCommand}"
+                            InputGesture="Ctrl+Shift+R" />
+                </ContextMenu>
+              </Button.ContextMenu>
               <StackPanel Orientation="Horizontal" Spacing="4">
                 <TextBlock Text="Session" VerticalAlignment="Center" />
                 <TextBlock Name="SessionIdText" Text="{Binding Session.SessionText}" VerticalAlignment="Center"

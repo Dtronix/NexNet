@@ -16,6 +16,7 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
 {
     private readonly DocumentsViewModel _documents;
     private readonly ShellChromeViewModel _chrome;
+    private PaneSizesViewModel _sizes = new(null);
 
     /// <param name="documents">The open documents and their sync bus.</param>
     /// <param name="chrome">The shell: workspace switch and collapse state.</param>
@@ -44,7 +45,10 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
         UpdateSplit();
         documents.PropertyChanged += OnDocumentsChanged;
         chrome.PropertyChanged += OnChromeChanged;
+        _sizes.PropertyChanged += OnSizesChanged;
     }
+
+    private void OnSizesChanged(object? sender, PropertyChangedEventArgs e) => OnPropertyChanged(nameof(InspectorWidth));
 
     /// <summary>The timeline across the top.</summary>
     public TimelineViewModel Timeline { get; }
@@ -69,14 +73,48 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
     /// <summary>False while the window is too narrow for two panes: the Split button is disabled.</summary>
     public bool CanSplit => _chrome.ShowsRightPane;
 
-    /// <summary>The inspector's width (324, or 280 when narrowed).</summary>
-    public double InspectorWidth => _chrome.InspectorWidth;
+    /// <summary>
+    /// The inspector's width: the user's dragged width (324 by default), at most 280 while the window narrows it (OQ10;
+    /// see <see cref="PaneLayoutPolicy"/> for how the two combine).
+    /// </summary>
+    public double InspectorWidth => PaneLayoutPolicy.InspectorWidthFor(_chrome.Layout, Sizes.Sizes.InspectorWidth);
+
+    /// <summary>The window's collapse state (OQ10).</summary>
+    public ShellLayoutState Layout => _chrome.Layout;
+
+    /// <summary>The splitters' sizes; the window shares one set with Compare and the settings.</summary>
+    public PaneSizesViewModel Sizes
+    {
+        get => _sizes;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (ReferenceEquals(_sizes, value)) return;
+            _sizes.PropertyChanged -= OnSizesChanged;
+            _sizes = value;
+            _sizes.PropertyChanged += OnSizesChanged;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(InspectorWidth));
+        }
+    }
+
+    /// <summary>The active document's session (what the content menus read bytes from); null when none is open.</summary>
+    public Core.Session.CaptureSession? Session => _documents.Active?.Session;
+
+    /// <summary>The sync bus the views follow (the content menus' Open as ▸ selects on it).</summary>
+    public Services.SyncBus Sync => _documents.Sync;
 
     /// <summary>True when the workspace shows: a document is open and Inspect is the workspace.</summary>
     public bool IsShown => _documents.HasDocuments && !_chrome.IsCompare;
 
     /// <summary>Shows a dialog over the window (the hex menu's "Go to offset…"); false when one is already open.</summary>
     public Func<GoToOffsetDialogViewModel, bool>? ShowDialog { get; set; }
+
+    /// <summary>
+    /// Opens Export section as .nntl… on a range (the timeline's "Export this range…", the row and hex menus); false when
+    /// it could not open. Null where there is no window (tests of the workspace alone).
+    /// </summary>
+    public Func<ExportRangeKind, bool>? ShowExport { get; set; }
 
     /// <summary>
     /// Brings a view into a lower pane (the lane menu's "Show in Ladder" / "Show in Hex stream"): a pane that shows it
@@ -101,6 +139,7 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
     {
         _documents.PropertyChanged -= OnDocumentsChanged;
         _chrome.PropertyChanged -= OnChromeChanged;
+        _sizes.PropertyChanged -= OnSizesChanged;
         Timeline.Dispose();
         Inspector.Dispose();
         Left.Dispose();
@@ -128,6 +167,7 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
                 OnPropertyChanged(nameof(ShowsRightPane));
                 OnPropertyChanged(nameof(CanSplit));
                 OnPropertyChanged(nameof(InspectorWidth));
+                OnPropertyChanged(nameof(Layout));
                 UpdateSplit();
                 break;
             case nameof(ShellChromeViewModel.IsCompare):

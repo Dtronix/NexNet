@@ -109,10 +109,11 @@ public sealed class ContextMenuWindowTests
             await Assert.That(result.open).IsTrue();
             await Assert.That(result.described).Matches(
                 "^⇄  Pipe \\S+  \\S+.* \\| — \\| ✓Pin lane \\| Expand lane \\| Hide lane \\| — \\| Trace frames in view \\| Select all frames \\(off\\) "
-                + "\\| Show in Ladder \\| Show in Hex stream \\| — \\| Compare this pipe across files… \\(off\\) \\| Copy name \\| — \\| Close pipe in view$");
+                + "\\| Show in Ladder \\| Show in Hex stream \\| — \\| Compare this pipe across files… \\(off\\) \\| Copy name \\| — \\| Close pipe in view "
+                + "\\| — \\| Export this range…$");
             await Assert.That(result.expanded).IsTrue();
             await Assert.That(result.closed).IsTrue();
-            await Assert.That(result.groupMenu).IsEqualTo("PIPES · CHANNELS | — | Collapse group | Show hidden lanes (off)");
+            await Assert.That(result.groupMenu).IsEqualTo("PIPES · CHANNELS | — | Collapse group | Show hidden lanes (off) | — | Export this range…");
         }
         finally
         {
@@ -163,7 +164,7 @@ public sealed class ContextMenuWindowTests
             await Assert.That(result.described).StartsWith(count + "  ");
             await Assert.That(result.described[(result.described.IndexOf('|') - 1)..]).IsEqualTo(
                 " | — | Copy as hex | Copy as C# byte array | Copy as Base64 | — | Decode selection as | Go to frame start | Go to offset… | — "
-                + "| Bookmark offset | Export bytes…");
+                + "| Bookmark offset | Export bytes… | — | Export section as .nntl…");
             await Assert.That(result.submenu).IsEqualTo("✓Auto (schema) | MessagePack value | UTF-8 text | LEB128 length + item | — | Raw only");
             await Assert.That(result.copied).IsNotNull();
             await Assert.That(result.copied!.Length).IsEqualTo((int)(result.Length * 3) - 1);

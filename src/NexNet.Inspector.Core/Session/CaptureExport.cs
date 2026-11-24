@@ -34,7 +34,7 @@ public readonly record struct CaptureExportResult(long Ops, long Gaps, long Byte
 /// gap block for everything before it, so stream offsets stay those of the session.
 /// </para>
 /// </remarks>
-public static class CaptureExport
+public static partial class CaptureExport
 {
     // Blocks written per hold of the session's gate.
     private const int BatchBlocks = 256;

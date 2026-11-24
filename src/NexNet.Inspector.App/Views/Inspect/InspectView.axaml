@@ -1,13 +1,15 @@
 <!--
   The Inspect workspace (screens inspect-*): the timeline across the top (its height is its lanes', up to a share of
   the workspace), then the two lower stream panes side by side (equal widths, 1 px border.default between them) and
-  the inspector at the right (324 px, 280 px when narrowed; a border.default left edge). The right pane closes by its ✕,
+  the inspector at the right (324 px, 280 px when narrowed; a border.default left edge). Each of those three boundaries
+  is a PaneSplitter over its border line (I40): drag to resize, double-click for the default; the sizes are saved. The right pane closes by its ✕,
   by ◫ Single, or when the window is narrower than 1200 px (OQ10); the inspector narrows below 1150 px.
   Each stream view comes from the data template keyed by its model type: Events (I20), Ladder (I21), Hex (I22).
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
              xmlns:tl="using:NexNet.Inspector.App.Controls.Timeline"
              xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
              xmlns:ladder="using:NexNet.Inspector.App.Controls.Ladder"
@@ -32,18 +34,29 @@
                           PinCommand="{Binding Timeline.TogglePinCommand}" />
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+    <Grid Name="Lower" Grid.Row="1" ColumnDefinitions="*,Auto">
       <Grid Name="Panes" ColumnDefinitions="*,*">
         <inspect:StreamPaneView Name="LeftPane" DataContext="{Binding Left}" />
         <Border Name="RightPaneArea" Grid.Column="1" IsVisible="{Binding ShowsRightPane}"
                 BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1,0,0,0">
           <inspect:StreamPaneView Name="RightPane" DataContext="{Binding Right}" />
         </Border>
+        <c:PaneSplitter Name="PanesSplitter" Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Left"
+                        Width="7" Margin="-3,0,0,0" IsVisible="{Binding ShowsRightPane}"
+                        ToolTip.Tip="Drag to resize the panes · double-click for equal widths" />
       </Grid>
       <Border Name="InspectorArea" Grid.Column="1" Width="{Binding InspectorWidth}"
               BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1,0,0,0">
         <inspect:InspectorPane Name="Inspector" DataContext="{Binding Inspector}" />
       </Border>
+      <c:PaneSplitter Name="InspectorSplitter" Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Left"
+                      Width="7" Margin="-3,0,0,0"
+                      ToolTip.Tip="Drag to resize the inspector · double-click for its default width" />
     </Grid>
+
+    <!-- Over the timeline's bottom border, the top 3 px of the panes under it. -->
+    <c:PaneSplitter Name="TimelineSplitter" Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Top"
+                    Height="7" Margin="0,-4,0,0"
+                    ToolTip.Tip="Drag to resize the timeline · double-click to fit its lanes" />
   </Grid>
 </UserControl>

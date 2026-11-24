@@ -4,6 +4,8 @@
   pane header ("Aligned sessions · whole session · 42.1 s") with Rows (Heat | Packed), Only differences and Align
   (Relative | Wall-clock | On event · Session ready); the drawn ruler, Δ strip and per-file rows with the scroll rail
   beside them; the legend row; and the 200 px bottom panel for the selected entity's field diff and A ⇄ B hex (I32).
+  The sidebar's width and the bottom panel's height are PaneSplitters over their border lines (I40): drag to resize,
+  double-click for the default.
   Without two ticked documents it says how to get them.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
@@ -57,7 +59,11 @@
         </DockPanel>
       </Border>
 
-      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,200">
+      <c:PaneSplitter Name="SidebarSplitter" Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Left"
+                      Width="7" Margin="-4,0,0,0"
+                      ToolTip.Tip="Drag to resize the sidebar · double-click for its default width" />
+
+      <Grid Name="Aligned" Grid.Column="1" RowDefinitions="Auto,*,Auto,200">
         <c:PaneHeader Name="AlignedHeader" Variant="Titled" Title="Aligned sessions" Subtitle="{Binding Subtitle}">
           <c:PaneHeader.ViewControls>
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -100,9 +106,12 @@
           </DockPanel>
         </Border>
 
-        <Border Grid.Row="3" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0">
+        <Border Name="DetailArea" Grid.Row="3" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0">
           <views:CompareDetailView Name="Detail" DataContext="{Binding DetailPanel}" />
         </Border>
+        <c:PaneSplitter Name="DetailSplitter" Grid.Row="3" Orientation="Horizontal" VerticalAlignment="Top"
+                        Height="7" Margin="0,-3,0,0"
+                        ToolTip.Tip="Drag to resize the detail panel · double-click for its default height" />
       </Grid>
     </Grid>
   </Panel>

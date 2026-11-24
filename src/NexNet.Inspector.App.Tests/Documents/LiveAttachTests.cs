@@ -135,7 +135,7 @@ public class LiveAttachTests
     }
 
     [Test]
-    public async Task Detach_resets_the_view_and_a_new_attach_starts_from_nothing()
+    public async Task Detach_keeps_the_data_and_a_new_attach_starts_from_nothing()
     {
         await using var harness = await ChatServerHarness.StartAsync(allowRecording: true);
         var ui = new TestUi();
@@ -154,11 +154,14 @@ public class LiveAttachTests
         await client.Proxy.SendMessage(new ChatMessage { Room = "r", Author = "bob", Text = "one" }, CancellationToken.None);
         await Wait.UntilAsync(() => document.FrameCount > 0 && document.IsDirty, "frames");
 
+        var captured = document.Session;
         await document.DetachCommand.ExecuteAsync(null);
-        await Assert.That(document.State).IsEqualTo(LiveState.Detached);
-        await Assert.That(document.Session).IsNull();
-        await Assert.That(document.FrameCount).IsEqualTo(0);
-        await Assert.That(document.IsDirty).IsFalse();
+        await Assert.That(document.State).IsEqualTo(LiveState.Ended);
+        await Assert.That(document.IsDetachedByUser).IsTrue();
+        await Assert.That(document.Session).IsSameReferenceAs(captured);
+        await Assert.That(document.FrameCount).IsGreaterThan(0);
+        await Assert.That(document.IsDirty).IsTrue();
+        await Assert.That(Texts(document.Session!)).Contains("one");
 
         // Attach to the same session again: only what happens from now on.
         await document.AttachAsync(new InspectorAttachRequest(InspectorTargetKind.Session, session.Id, InspectorOverflow.Drop, true, false), session);
@@ -170,7 +173,8 @@ public class LiveAttachTests
         await Assert.That(texts).Contains("two");
         await Assert.That(texts).DoesNotContain("one");
 
-        await documents.CloseAsync(document);
+        await document.DetachCommand.ExecuteAsync(null);
+        await documents.CloseAsync(document, ask: false);
         await Assert.That(documents.HasDocuments).IsFalse();
     }
 

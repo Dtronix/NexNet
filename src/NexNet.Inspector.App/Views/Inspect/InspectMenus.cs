@@ -147,14 +147,14 @@ public static class InspectMenus
         return new MenuItem { Header = text, Classes = { "header" } };
     }
 
-    private static MenuItem Item(ContextMenu owner, string header, KeyGesture? gesture, Action run, bool? check = null, string? icon = null, bool enabled = true) =>
+    internal static MenuItem Item(ContextMenu owner, string header, KeyGesture? gesture, Action run, bool? check = null, string? icon = null, bool enabled = true) =>
         Item(owner, header, gesture, () =>
         {
             run();
             return Task.CompletedTask;
         }, check, icon, enabled);
 
-    private static MenuItem Item(ContextMenu owner, string header, KeyGesture? gesture, Func<Task> run, bool? check = null, string? icon = null, bool enabled = true)
+    internal static MenuItem Item(ContextMenu owner, string header, KeyGesture? gesture, Func<Task> run, bool? check = null, string? icon = null, bool enabled = true)
     {
         MenuItem item = new() { Header = header, InputGesture = gesture, IsEnabled = enabled };
         if (check is { } c)

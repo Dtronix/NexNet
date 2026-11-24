@@ -162,6 +162,45 @@ public sealed class PropertyTreeModel
     }
 
     /// <summary>The visible position of a node; -1 when a collapsed ancestor hides it.</summary>
+    /// <summary>
+    /// A field's path for Copy path: its ancestors' names and its own, dotted, from the section down
+    /// ("Arguments.message.Text"); a list item's index stays as its name shows it ("[2]").
+    /// </summary>
+    public string PathOf(int node)
+    {
+        var nodes = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_nodes);
+        if ((uint)node >= (uint)nodes.Length) return "";
+        var names = new List<string>();
+        int depth = nodes[node].Depth + 1;
+        bool hasSection = false;
+        for (int i = node; i >= 0; i--)
+        {
+            ref readonly var n = ref nodes[i];
+            if (n.Kind == PropertyRowKind.Section)
+            {
+                if (i != node) names.Add(n.Name);
+                hasSection = true;
+                break;
+            }
+
+            if (n.Depth < depth)
+            {
+                names.Add(n.Name);
+                depth = n.Depth;
+            }
+        }
+
+        if (!hasSection && names.Count == 0) return nodes[node].Name;
+        var text = new System.Text.StringBuilder();
+        for (int i = names.Count - 1; i >= 0; i--)
+        {
+            if (text.Length > 0 && !names[i].StartsWith('[')) text.Append('.');
+            text.Append(names[i]);
+        }
+
+        return text.ToString();
+    }
+
     public int PositionOf(int node) => _visible.BinarySearch(node) is var at and >= 0 ? at : -1;
 
     /// <summary>Expands or collapses a node with children.</summary>

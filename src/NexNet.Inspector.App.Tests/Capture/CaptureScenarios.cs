@@ -49,6 +49,9 @@ public enum CaptureScenario
 
     /// <summary>legend: inspect-live behind the Legend &amp; symbols dialog.</summary>
     Legend,
+
+    /// <summary>export-section: inspect-live with its panes resized by the splitters and Export section as .nntl… open.</summary>
+    ExportSection,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -84,6 +87,7 @@ public static class CaptureScenarios
         [CaptureScenario.SessionEnded] = new("session-ended", SessionEndedScreen.Create),
         [CaptureScenario.Compare] = new("compare", CompareScreen.Create),
         [CaptureScenario.Legend] = new("legend", LegendScreen.Create),
+        [CaptureScenario.ExportSection] = new("export-section", ExportSectionScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

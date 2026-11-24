@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using NexNet.Inspector.App.ViewModels;
+using NexNet.Inspector.App.Views.Inspect;
 
 namespace NexNet.Inspector.App.Views.Shell;
 
@@ -23,7 +24,8 @@ public sealed class DocumentTabList : TabStrip
 
 /// <summary>
 /// The tab strip's input: a click on a tab activates its document (the strip's selection only mirrors
-/// <see cref="DocumentsViewModel.Active"/>), the close glyph and a middle-click close it.
+/// <see cref="DocumentsViewModel.Active"/>), the close glyph and a middle-click close it, and a right-click opens the
+/// tab's menu: Detach from session (a live tab that streams), Save .nntl…, Close.
 /// </summary>
 public sealed partial class DocumentTabStrip : UserControl
 {
@@ -39,6 +41,41 @@ public sealed partial class DocumentTabStrip : UserControl
         Tabs.SelectionChanged += OnSelectionChanged;
         Tabs.AddHandler(PointerPressedEvent, OnTabPointerPressed, RoutingStrategies.Tunnel);
         Tabs.AddHandler(PointerReleasedEvent, OnTabPointerReleased, RoutingStrategies.Tunnel);
+        Tabs.ContextRequested += OnTabContextRequested;
+    }
+
+    /// <summary>The tab menu last opened (tests read it).</summary>
+    public ContextMenu? TabMenu { get; private set; }
+
+    /// <summary>
+    /// Builds the tab menu for <paramref name="document"/>: its title, Detach from session (live and streaming: stops the
+    /// stream, the data stays), Save .nntl… (through the documents' save handler) and Close (which asks first when the
+    /// data is unsaved, OQ5).
+    /// </summary>
+    public ContextMenu? CreateTabMenu(DocumentViewModel document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (Documents is not { } documents) return null;
+        ContextMenu menu = new();
+        menu.Items.Add(InspectMenus.Header(null, document.Title, null, monoDetail: false));
+        menu.Items.Add(new Separator());
+        if (document is LiveDocumentViewModel live)
+            menu.Items.Add(InspectMenus.Item(menu, "Detach from session", null, live.DetachAsync, enabled: live.IsStreaming));
+        menu.Items.Add(InspectMenus.Item(menu, "Save .nntl…", null, async () =>
+        {
+            if (documents.SaveHandler is { } save) await save(document).ConfigureAwait(true);
+        }, enabled: document.Session is not null && documents.SaveHandler is not null));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(InspectMenus.Item(menu, "Close", null, () => Close(document)));
+        return menu;
+    }
+
+    private void OnTabContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (DocumentAt(e.Source) is not { } document || CreateTabMenu(document) is not { } menu) return;
+        e.Handled = true;
+        TabMenu = menu;
+        menu.Open(ContainerFor(document) as Control ?? Tabs);
     }
 
     /// <summary>True in the Compare workspace: each tab shows its inclusion checkbox.</summary>

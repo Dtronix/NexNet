@@ -19,10 +19,10 @@ public enum LiveState : byte
     /// <summary>Attached: frames arrive.</summary>
     Live = 1,
 
-    /// <summary>The session disconnected; its data stays (the session-ended banner).</summary>
+    /// <summary>The session disconnected or the user detached; its data stays (the session-ended banner).</summary>
     Ended = 2,
 
-    /// <summary>The user detached: the view was reset and holds nothing.</summary>
+    /// <summary>Not attached: before the first attach.</summary>
     Detached = 3,
 
     /// <summary>The attach failed or the endpoint went away mid-stream.</summary>

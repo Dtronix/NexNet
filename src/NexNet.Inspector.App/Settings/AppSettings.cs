@@ -27,6 +27,9 @@ public sealed record AppSettings
     /// <summary>The Connect dialog's last values. The token is never stored.</summary>
     public ConnectDefaults Connect { get; set; } = new();
 
+    /// <summary>The workspace splitters' sizes (timeline, stream panes, inspector, Compare's sidebar and detail panel).</summary>
+    public Model.PaneSizes Panes { get; set; } = new();
+
     /// <summary>These settings with <paramref name="path"/> first in the recent files (moved there if already listed).</summary>
     public AppSettings WithRecentFile(string path, int sessions, DateTimeOffset at)
     {
@@ -58,6 +61,7 @@ public sealed record AppSettings
                 static (a, b) => a.Target == b.Target && string.Equals(a.Endpoint, b.Endpoint, StringComparison.OrdinalIgnoreCase)),
             Window = Window is { } w && w.IsUsable ? w : null,
             Connect = Connect ?? ConnectDefaults.Default,
+            Panes = (Panes ?? new Model.PaneSizes()).Normalized(),
         };
     }
 

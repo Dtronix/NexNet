@@ -45,9 +45,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Chrome = new ShellChromeViewModel(Documents);
         Ended = new SessionEndedViewModel(Documents, () => Chrome.Session.IsPopoverOpen = true);
         Chrome.Requested += OnShellRequested;
-        Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset };
+        Inspect = new InspectWorkspaceViewModel(Documents, Chrome) { ShowDialog = ShowGoToOffset, ShowExport = kind => ShowExportSection(kind) is not null };
         Compare = new CompareWorkspaceViewModel(Documents, Chrome);
         Documents.SessionComparer ??= Compare.CompareRecordingAsync;
+        Panes = new PaneSizesViewModel(store);
+        Inspect.Sizes = Panes;
+        Compare.Sizes = Panes;
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
         Palette = new CommandPaletteViewModel(Documents, Commands);
         BindCommands();
@@ -121,6 +124,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The Compare workspace: the two ticked documents aligned, their entity union and differences.</summary>
     public CompareWorkspaceViewModel Compare { get; }
+
+    /// <summary>The workspace splitters' sizes, kept in the settings.</summary>
+    public PaneSizesViewModel Panes { get; }
 
     /// <summary>The session-ended strip under the title bar (screens/session-ended).</summary>
     public SessionEndedViewModel Ended { get; }
@@ -221,6 +227,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         };
         Dialog = dialog;
         return true;
+    }
+
+    /// <summary>
+    /// Ctrl+Shift+S, File › Export section as .nntl…, and the timeline, hex and row menus: the export dialog over the
+    /// active document (unless a dialog is already open); it closes itself.
+    /// </summary>
+    /// <param name="initial">The range the dialog starts on (the time window by default).</param>
+    /// <returns>The dialog; null when another dialog was open or the active document holds nothing.</returns>
+    public ExportSectionDialogViewModel? ShowExportSection(ExportRangeKind initial = ExportRangeKind.Window)
+    {
+        if (Dialog is not null || Documents.Active is not { Session: not null } document) return null;
+        ExportSectionDialogViewModel dialog = new(Documents, document, initial);
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return dialog;
     }
 
     /// <summary>Ctrl+S, File › Save timeline as .nntl…: saves the active document through the documents' save handler (I29).</summary>
@@ -507,6 +531,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         session.RecordAllCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
         Commands.Bind(AppCommand.HelpShortcuts, () => ShowHelp(), () => Dialog is null);
         Commands.Bind(AppCommand.Legend, () => ShowLegend(), () => Dialog is null);
+        Commands.Bind(AppCommand.ExportSelection, () => ShowExportSection(),
+            () => Dialog is null && Documents.Active?.Session is not null && Documents.SavePicker is not null);
+        Commands.Bind(AppCommand.Detach, () => session.DetachCommand.Execute(null), () => session.DetachCommand.CanExecute(null));
+        session.DetachCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
     }
 
     partial void OnDialogChanged(object? value)

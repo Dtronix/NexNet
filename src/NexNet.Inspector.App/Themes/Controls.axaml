@@ -32,6 +32,8 @@
         <ResourceInclude Source="/Themes/MessageTrace.axaml" />
         <!-- The Compare workspace's Entities sidebar (I31). -->
         <ResourceInclude Source="/Themes/Compare.axaml" />
+        <!-- The workspaces' pane splitters (I40). -->
+        <ResourceInclude Source="/Themes/PaneSplitter.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

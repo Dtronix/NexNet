@@ -71,7 +71,9 @@ public sealed partial class SessionEndedViewModel : ObservableObject
     public static string Describe(LiveDocumentViewModel live)
     {
         ArgumentNullException.ThrowIfNull(live);
-        var text = live.EndReason is { } reason
+        var text = live.IsDetachedByUser
+            ? LiveDocumentViewModel.DetachedReason
+            : live.EndReason is { } reason
             ? "Disconnect" + reason + " (" + ((int)reason).ToString(System.Globalization.CultureInfo.InvariantCulture) + ")"
             : live.Error ?? "The stream ended";
         if (live.EndReason is not null && live.EndedBy is { } side)
@@ -87,6 +89,8 @@ public sealed partial class SessionEndedViewModel : ObservableObject
     public static string Headline(LiveDocumentViewModel live)
     {
         ArgumentNullException.ThrowIfNull(live);
+        if (live.IsDetachedByUser)
+            return live.AttachedSession is { } detached ? "Detached from " + LiveDocumentViewModel.SessionLabel(detached.Id) : "Detached";
         if (live.AttachedSession is { } session)
             return LiveDocumentViewModel.SessionLabel(session.Id) + " ended";
         return live.Session is { Role: NntlSessionRole.Client } ? "Client connection ended" : "Session ended";
@@ -157,7 +161,8 @@ public sealed partial class SessionEndedViewModel : ObservableObject
                 break;
             case nameof(LiveDocumentViewModel.FrameCount) or nameof(LiveDocumentViewModel.ByteCount) or nameof(LiveDocumentViewModel.IsDirty)
                 or nameof(LiveDocumentViewModel.SavedPath) or nameof(LiveDocumentViewModel.EndReason) or nameof(LiveDocumentViewModel.EndedBy)
-                or nameof(LiveDocumentViewModel.EndedAt) or nameof(LiveDocumentViewModel.AttachedSession):
+                or nameof(LiveDocumentViewModel.EndedAt) or nameof(LiveDocumentViewModel.AttachedSession)
+                or nameof(LiveDocumentViewModel.IsDetachedByUser):
                 // Counts tick with every refresh while live; the strip only shows once ended.
                 if (IsShown) Refresh();
                 break;

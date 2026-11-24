@@ -1,7 +1,7 @@
 <!--
   The application menu under the logo (screens/inspect-app-menu, controls/menu "app" variant: 280 px, grouped, no icon
-  column). File: Open recording… Ctrl+O, Save timeline as .nntl… Ctrl+S, Recent ▸. Session: Connect to inspector… Ctrl+K,
-  Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
+  column). File: Open recording… Ctrl+O, Save timeline as .nntl… Ctrl+S, Export section as .nntl… Ctrl+Shift+S (I40),
+  Recent ▸. Session: Connect to inspector… Ctrl+K, Detach from session (I40), Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
   System, OQ15), Command palette Ctrl+Shift+P, Legend & symbols F2. Then Help & shortcuts F1. Session also offers Record all sessions
   (Ctrl+Shift+R). The command items take their title, shortcut and enabled state from the command registry
   (AppMenu.axaml.cs), as the palette does. The submenus list MenuChoice items; a pick-one
@@ -36,12 +36,14 @@
   <MenuItem Header="File" Classes="group" />
   <MenuItem Name="OpenItem" />
   <MenuItem Name="SaveItem" />
+  <MenuItem Name="ExportItem" />
   <MenuItem Name="RecentItem" Header="Recent" Classes="choices" ItemsSource="{Binding RecentItems}"
             IsEnabled="{Binding HasRecentItems}" />
   <Separator />
 
   <MenuItem Header="Session" Classes="group" />
   <MenuItem Name="ConnectItem" />
+  <MenuItem Name="DetachItem" />
   <MenuItem Name="RecordAllItem" />
   <MenuItem Name="SwitchItem" Header="Switch session" Classes="choices checks" ItemsSource="{Binding SessionItems}"
             IsEnabled="{Binding HasSessionItems}" />

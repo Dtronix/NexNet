@@ -59,6 +59,9 @@ public enum AppCommand : byte
 
     /// <summary>Shows the legend of every symbol the views draw (F2).</summary>
     Legend,
+
+    /// <summary>Stops viewing the attached session; the captured data stays in the tab.</summary>
+    Detach,
 }
 
 /// <summary>The app menu's section a command belongs to (inspect-app-menu: FILE, SESSION, VIEW, then help).</summary>

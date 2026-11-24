@@ -97,7 +97,7 @@ public sealed class AppMenuTests
             string[] gestures = [.. shown.Items.Where(i => i.Gesture.Length > 0).Select(i => i.Header + "=" + i.Gesture)];
             await Assert.That(gestures).IsEquivalentTo(new[]
             {
-                "Open recording…=Ctrl+O", "Save timeline as .nntl…=Ctrl+S", "Connect to inspector…=Ctrl+K", "Record all sessions=Ctrl+Shift+R",
+                "Open recording…=Ctrl+O", "Save timeline as .nntl…=Ctrl+S", "Export section as .nntl…=Ctrl+Shift+S", "Connect to inspector…=Ctrl+K", "Record all sessions=Ctrl+Shift+R",
                 "Command palette=Ctrl+Shift+P", "Legend & symbols=F2", "Help & shortcuts=F1",
             });
             await Assert.That(shown.Items.Where(i => i.Sub).Select(i => i.Header).ToArray())

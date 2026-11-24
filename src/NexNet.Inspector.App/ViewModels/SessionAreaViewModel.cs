@@ -95,7 +95,8 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasLive), nameof(HasConnection), nameof(RoleLabel), nameof(EndpointText), nameof(SessionText),
         nameof(SessionDetail), nameof(RecordingAllowed), nameof(RecordTooltip), nameof(PolicyText), nameof(IsOnline))]
-    [NotifyCanExecuteChangedFor(nameof(RecordAllCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RecordAllCommand), nameof(DetachCommand))]
+    [NotifyPropertyChangedFor(nameof(CanDetach), nameof(DetachLabel))]
     public partial LiveDocumentViewModel? Live { get; private set; }
 
     /// <summary>True when a live document is shown: the record button and the time window's live state show.</summary>
@@ -142,7 +143,7 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
 
     /// <summary>True while every session is being recorded.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RecordText), nameof(RecordAllLabel), nameof(RecordAllDetail))]
+    [NotifyPropertyChangedFor(nameof(RecordText), nameof(RecordAllLabel), nameof(RecordAllDetail), nameof(DetachDetail))]
     public partial bool IsRecordingAll { get; private set; }
 
     /// <summary>Sessions the recording holds so far (the "3" of "ALL · 3").</summary>
@@ -165,6 +166,20 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     public string RecordAllDetail => IsRecordingAll
         ? RecordedCount.ToString(CultureInfo.InvariantCulture) + (RecordedCount == 1 ? " session · " : " sessions · ") + ElapsedText
         : Sessions.Count.ToString(CultureInfo.InvariantCulture) + " now + any that connect";
+
+    /// <summary>True while the shown live document streams: Detach can stop it.</summary>
+    public bool CanDetach => Live is { IsStreaming: true } && _pending is null;
+
+    /// <summary>The popover's Detach row: "Detach from 0x3A21".</summary>
+    public string DetachLabel => "Detach from " + SessionText;
+
+    /// <summary>
+    /// What Detach does: it stops viewing and keeps the data. While Record all runs it says that the recording goes on:
+    /// Record all has its own connection and stops only by its own toggle.
+    /// </summary>
+    public string DetachDetail => IsRecordingAll
+        ? "Stops viewing only · Record all keeps recording until you stop it"
+        : "Stops viewing · the captured data stays in the tab";
 
     /// <summary>The last recording Record all wrote; null before one.</summary>
     [ObservableProperty]
@@ -286,6 +301,21 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
 
     private bool CanRecordAll() => Live is { RecordingAllowed: true } || _recording is not null;
 
+    /// <summary>
+    /// The popover's Detach, the app menu's and the palette's Detach from session: stops the shown live document's
+    /// stream and keeps its data (<see cref="LiveDocumentViewModel.DetachAsync"/>). Record all is not touched.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDetach))]
+    private async Task Detach()
+    {
+        IsPopoverOpen = false;
+        if (Live is not { IsStreaming: true } live)
+            return;
+        Error = null;
+        await live.DetachAsync().ConfigureAwait(true);
+        RaiseConnection();
+    }
+
     /// <summary>Lists the server's sessions again (the popover's rows, the Switch session ▸ items).</summary>
     public async Task RefreshSessionsAsync()
     {
@@ -377,6 +407,9 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
                 OnPropertyChanged(nameof(SessionText));
                 OnPropertyChanged(nameof(SessionDetail));
                 OnPropertyChanged(nameof(IsOnline));
+                OnPropertyChanged(nameof(CanDetach));
+                OnPropertyChanged(nameof(DetachLabel));
+                DetachCommand.NotifyCanExecuteChanged();
                 break;
             case nameof(LiveDocumentViewModel.AttachedAt) or nameof(LiveDocumentViewModel.EndedAt):
                 Tick();
@@ -586,6 +619,9 @@ public sealed partial class SessionAreaViewModel : ObservableObject, IAsyncDispo
     private void RaiseConnection()
     {
         OnPropertyChanged(nameof(IsChoosing));
+        OnPropertyChanged(nameof(CanDetach));
+        OnPropertyChanged(nameof(DetachLabel));
+        DetachCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(HasConnection));
         OnPropertyChanged(nameof(RoleLabel));
         OnPropertyChanged(nameof(EndpointText));

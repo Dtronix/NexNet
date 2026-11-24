@@ -14,12 +14,20 @@ namespace NexNet.Inspector.App.ViewModels;
 /// <summary>
 /// A live attach to one session of an inspector endpoint. The attach stream is read on a background thread into a
 /// <see cref="LiveCapture"/>; the view shows data from the attach on. When the session disconnects the data stays
-/// (<see cref="LiveState.Ended"/>, the session-ended banner) and is unsaved until saved; a detach resets the view.
+/// (<see cref="LiveState.Ended"/>, the session-ended banner) and is unsaved until saved. A detach stops the stream and
+/// keeps the data the same way (the banner says "Detached by you"); only Discard or a new attach drops it.
 /// </summary>
 public sealed partial class LiveDocumentViewModel : DocumentViewModel
 {
     /// <summary>The tooltip of the disabled record controls (OQ4).</summary>
     public const string RecordingDisabledReason = "Recording disabled by server config";
+
+    /// <summary>The session-ended strip's reason after the user detached.</summary>
+    public const string DetachedReason = "Detached by you";
+
+    // How long a detach waits for the endpoint to end the stream (its close block and footer) before dropping it.
+    private static readonly TimeSpan DetachTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(3);
 
     private readonly NexusSchema? _workspace;
     private readonly TimeProvider _time;
@@ -84,6 +92,10 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     [ObservableProperty]
     public partial string? EndedBy { get; private set; }
 
+    /// <summary>True once the user detached: the stream stopped, the data stays (the strip's "Detached by you").</summary>
+    [ObservableProperty]
+    public partial bool IsDetachedByUser { get; private set; }
+
     /// <summary>Where the data was last saved (Save .nntl…); null before a save.</summary>
     [ObservableProperty]
     public partial string? SavedPath { get; private set; }
@@ -143,8 +155,9 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
     }
 
     /// <summary>
-    /// Detaches: the endpoint ends the stream, and the view resets (nothing captured is kept; there is no history
-    /// before the next attach).
+    /// Detaches: the endpoint ends the stream (the server stops sending to this viewer) and what was captured stays in
+    /// the tab as ended, unsaved data, like a session that disconnected: the session-ended strip offers Save .nntl…,
+    /// Attach to another session and Discard, and the view keeps its window and selection.
     /// </summary>
     [RelayCommand]
     public async Task DetachAsync()
@@ -155,7 +168,12 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         run.Detaching = true;
         try
         {
-            await Connection.Client.DetachAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(true);
+            await Connection.Client.DetachAsync().WaitAsync(DetachTimeout).ConfigureAwait(true);
+
+            // The endpoint ends the stream with the session's close block and the footer: read them, so the kept data
+            // ends as stopped rather than cut off.
+            if (run.Pump is { } pump)
+                await pump.WaitAsync(DrainTimeout).ConfigureAwait(true);
         }
         catch (Exception e) when (e is TimeoutException or IOException or InvalidOperationException or InspectorConnectionException)
         {
@@ -163,11 +181,17 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         }
 
         await StopRunAsync().ConfigureAwait(true);
-        Reset();
-        AttachedAt = null;
-        State = LiveState.Detached;
+        if (Session is null && run.Capture.Session is { } opened)
+            Session = opened;
+        EndReason = null;
+        EndedBy = null;
+        Error = null;
+        EndedAt = _time.GetUtcNow();
+        IsDetachedByUser = true;
+        IsDirty = Session is { } s && s.OpCount > 0 && s.Version != _savedVersion;
+        State = LiveState.Ended;
 
-        // The views and the sync bus learn of the reset like any other change.
+        // The views and the counts learn of the stopped capture like any other change.
         SignalChanged();
     }
 
@@ -302,6 +326,7 @@ public sealed partial class LiveDocumentViewModel : DocumentViewModel
         EndedBy = null;
         SavedPath = null;
         Error = null;
+        IsDetachedByUser = false;
         IsDirty = false;
         _savedVersion = -1;
         SavedSelection = Selection.None;

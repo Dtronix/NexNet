@@ -69,11 +69,11 @@ jobs:
 
     # Microsoft.Testing.Platform (global.json); raise --minimum-expected-tests when tests are added.
     - name: Execute inspector tests
-      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 276 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 282 --results-directory TestResults -- --report-trx
 
     # Headless Avalonia drawn by Skia: no display needed. The capture tests skip without NEXNET_INSPECTOR_CAPTURE_DIR.
     - name: Execute app tests
-      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 586 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 606 --results-directory TestResults -- --report-trx
 
     - name: Upload test results
       if: failure()
