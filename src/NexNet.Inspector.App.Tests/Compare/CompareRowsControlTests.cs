@@ -65,6 +65,35 @@ public sealed class CompareRowsControlTests
     }
 
     [Test]
+    public async Task Moving_the_pointer_across_the_rows_moves_no_row_and_invalidates_no_measure()
+    {
+        (bool sameRows, bool measureValid, int rows) = await With(p =>
+        {
+            CompareRowsModel model = p.Rows.Model!;
+            model.SetExpanded(CompareCategory.Invocations, true);
+            UiPump.Frames();
+            (double, double)[] before = model.Rows.ToArray().Select(r => (r.Top, r.Height)).ToArray();
+            bool valid = true;
+            for (double y = 0; y < p.Rows.Bounds.Height; y += 3)
+            {
+                foreach (double x in new[] { 40.0, CompareRowsControl.GutterWidth + 300 })
+                {
+                    p.Window.MouseMove(new Point(x, y), RawInputModifiers.None);
+                    valid &= p.Rows.IsMeasureValid;
+                }
+            }
+
+            UiPump.Frames();
+            (double, double)[] after = model.Rows.ToArray().Select(r => (r.Top, r.Height)).ToArray();
+            return (before.SequenceEqual(after), valid, after.Length);
+        });
+
+        await Assert.That(rows).IsGreaterThan(0);
+        await Assert.That(measureValid).IsTrue();
+        await Assert.That(sameRows).IsTrue();
+    }
+
+    [Test]
     public async Task A_click_on_a_category_gutter_folds_it_and_a_click_on_a_span_picks_its_entity()
     {
         (bool folded, int picked, int expected, long playhead, long clicked) = await With(p =>

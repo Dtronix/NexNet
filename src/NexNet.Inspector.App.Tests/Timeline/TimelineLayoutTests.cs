@@ -14,10 +14,10 @@ namespace NexNet.Inspector.App.Tests.Timeline;
 /// </summary>
 public class TimelineLayoutTests
 {
-    private static TimelineLayout Layout(TimelineModel model, TimeWindow window, LaneKey? hovered = null)
+    private static TimelineLayout Layout(TimelineModel model, TimeWindow window)
     {
         TimelineLayout layout = new(new LaneAnimator(enabled: false));
-        layout.Update(model, window, hovered, now: 0);
+        layout.Update(model, window, now: 0);
         return layout;
     }
 
@@ -96,7 +96,7 @@ public class TimelineLayoutTests
     }
 
     [Test]
-    public async Task A_pinned_lane_stays_out_of_its_lifetime_and_a_hovered_lane_expands()
+    public async Task A_pinned_lane_stays_out_of_its_lifetime_and_expands_while_others_keep_their_height()
     {
         TimelineModel model = Demo(pinned: false);
         LaneKey pipe2 = new(LaneKind.Pipe, 2);
@@ -106,10 +106,6 @@ public class TimelineLayoutTests
         await Assert.That(pinned.Height).IsEqualTo(TimelineLayout.ExpandedHeight);
         await Assert.That(pinned.Pinned).IsTrue();
 
-        LaneKey reads = new(LaneKind.Reads, 0);
-        LayoutRow hovered = Lanes(Layout(model, Window(30, 60), hovered: reads), LaneGroupKind.Transport).Single();
-        await Assert.That(hovered.Height).IsEqualTo(TimelineLayout.ExpandedHeight);
-        await Assert.That(hovered.Expanded).IsTrue();
         LayoutRow rest = Lanes(Layout(model, Window(30, 60)), LaneGroupKind.Transport).Single();
         await Assert.That(rest.Height).IsEqualTo(TimelineLayout.LaneHeight);
     }

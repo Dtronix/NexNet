@@ -168,7 +168,7 @@ public sealed class TimelineControl : Control
         set => SetValue(PinCommandProperty, value);
     }
 
-    /// <summary>The lane under the pointer, drawn expanded; settable to show the hover state.</summary>
+    /// <summary>The lane under the pointer, drawn with a raised gutter (never taller); settable to show the hover state.</summary>
     public LaneKey? HoveredLane { get; set; }
 
     /// <summary>The lane the last right-click was on (the lane menu's target).</summary>
@@ -606,7 +606,7 @@ public sealed class TimelineControl : Control
         if (lane != HoveredLane)
         {
             HoveredLane = lane;
-            InvalidateMeasure();
+            // Hover changes a fill only: no measure, so the lanes never move under the pointer.
             InvalidateVisual();
         }
 
@@ -722,7 +722,7 @@ public sealed class TimelineControl : Control
     private void UpdateLayout(long now)
     {
         if (_model is not { } model) return;
-        Layout.Update(model, Window, HoveredLane, now, _instant);
+        Layout.Update(model, Window, now, _instant);
         if (model.Lanes.Count > 0) _instant = false;
     }
 
@@ -890,6 +890,8 @@ public sealed class TimelineControl : Control
         double h = row.Height;
         bool expanded = h >= (TimelineLayout.LaneHeight + TimelineLayout.ExpandedHeight) / 2;
         context.FillRectangle(palette[ThemeBrush.SurfaceLane], new Rect(GutterWidth, y, width - GutterWidth, h));
+        if (HoveredLane == lane.Key)
+            context.FillRectangle(palette[ThemeBrush.SurfaceRaised], new Rect(0, y, GutterWidth, h - 1));
         context.FillRectangle(palette[ThemeBrush.BorderRow], new Rect(0, y + h - 1, width, 1));
         if (row.Expanded && expanded)
             context.FillRectangle(palette[ThemeBrush.DirectionInbound], new Rect(0, y, 2, h - 1));

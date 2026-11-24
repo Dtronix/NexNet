@@ -207,11 +207,11 @@ public class ContextMenuModelTests
         await Assert.That(model.IsHidden(pipe)).IsTrue();
         await Assert.That(model.IsPinned(pipe)).IsFalse(); // a pin would keep it
         TimelineLayout layout = new(new LaneAnimator(enabled: false));
-        layout.Update(model, f.Picks.Window, null, 0);
+        layout.Update(model, f.Picks.Window, 0);
         await Assert.That(layout.Rows.ToArray().Any(r => r.Lane?.Key == pipe)).IsFalse();
         await Assert.That(model.HiddenCount(LaneGroupKind.Pipes)).IsEqualTo(1);
         await Assert.That(model.ShowHidden(LaneGroupKind.Pipes)).IsEqualTo(1);
-        layout.Update(model, f.Picks.Window, null, 0);
+        layout.Update(model, f.Picks.Window, 0);
         LayoutRow row = layout.Rows.ToArray().Single(r => r.Lane?.Key == pipe);
         await Assert.That(row.Expanded).IsTrue(); // expanded by hand, without a pin
         await Assert.That(row.Height).IsEqualTo(TimelineLayout.ExpandedHeight);

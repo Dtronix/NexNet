@@ -18,7 +18,7 @@ namespace NexNet.Inspector.App.Tests.Timeline;
 /// <summary>
 /// The drawn timeline on the App's headless session: Ctrl+Wheel zooms around the pointer, Wheel pans time, Shift+Wheel
 /// scrolls the lanes (SYSTEM.md UX rules), a click on a span traces its invocation and moves the playhead through the
-/// sync bus, hovering expands a lane and sets its tooltip, P pins the hovered lane.
+/// sync bus, hovering a lane sets its tooltip without moving any lane, P pins the hovered lane.
 /// </summary>
 [NotInParallel("avalonia")]
 public sealed class TimelineControlTests
@@ -144,7 +144,7 @@ public sealed class TimelineControlTests
     }
 
     [Test]
-    public async Task Hovering_a_lane_expands_it_shows_its_tooltip_and_P_pins_it()
+    public async Task Hovering_a_lane_keeps_its_height_shows_its_tooltip_and_P_pins_it()
     {
         LaneKey pipe = new(LaneKind.Pipe, 2);
         (double height, string? tip, bool pinned) = await With(Demo(pinned: false), Window(0, 100), p =>
@@ -160,10 +160,42 @@ public sealed class TimelineControlTests
             return (expanded, text, p.Model.IsPinned(pipe));
         });
 
-        await Assert.That(height).IsEqualTo(TimelineLayout.ExpandedHeight);
+        await Assert.That(height).IsEqualTo(TimelineLayout.LaneHeight);
         await Assert.That(tip).IsEqualTo("Pipe 2·1 Sync · closed");
         await Assert.That(pinned).IsTrue();
     }
+
+    [Test]
+    public async Task Moving_the_pointer_across_every_lane_moves_no_lane_and_invalidates_no_measure()
+    {
+        (bool sameRows, bool measureValid, bool hoveredSome, double height, double after) = await With(Demo(pinned: false), Window(0, 100), p =>
+        {
+            (LaneKey?, double, double)[] before = Snapshot(p.Timeline);
+            double height0 = p.Timeline.Bounds.Height;
+            bool valid = true, hovered = false;
+            double top = p.Timeline.LanesTop;
+            for (double y = top; y < top + p.Timeline.Layout.Height; y += 3)
+            {
+                foreach (double x in new[] { 30.0, TimelineControl.GutterWidth + 200 })
+                {
+                    p.Window.MouseMove(new Point(x, y), RawInputModifiers.None);
+                    valid &= p.Timeline.IsMeasureValid;
+                    hovered |= p.Timeline.HoveredLane is not null;
+                }
+            }
+
+            UiPump.Frames();
+            return (before.SequenceEqual(Snapshot(p.Timeline)), valid, hovered, height0, p.Timeline.Bounds.Height);
+        });
+
+        await Assert.That(hoveredSome).IsTrue();
+        await Assert.That(measureValid).IsTrue();
+        await Assert.That(sameRows).IsTrue();
+        await Assert.That(after).IsEqualTo(height);
+    }
+
+    private static (LaneKey?, double, double)[] Snapshot(TimelineControl timeline) =>
+        timeline.Layout.Rows.ToArray().Select(r => (r.Lane?.Key, r.Top, r.Height)).ToArray();
 
     [Test]
     public async Task Clicking_a_group_header_collapses_it()

@@ -14,7 +14,7 @@ namespace NexNet.Inspector.App.Tests.Capture;
 /// <summary>
 /// The timeline gallery section (PKG controls/timeline-lane): the package's five states on its demo data, 760 px wide
 /// without the axis as timeline-lane.html draws them — default (trace band, playhead, pinned expanded Pipe 3·1), hover
-/// (the lane under the pointer expanded), active (the traced span), disabled (nothing traced) and empty (INVOCATIONS with
+/// (the lane under the pointer: a raised gutter, never taller), active (the traced span), disabled (nothing traced) and empty (INVOCATIONS with
 /// its hint) — then a full-width busy session with the overview strip and ruler.
 /// </summary>
 public static class TimelineGallery

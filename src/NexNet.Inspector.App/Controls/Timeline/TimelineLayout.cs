@@ -10,7 +10,7 @@ public enum LayoutRowKind : byte
     /// <summary>A 14 px group header.</summary>
     Group = 0,
 
-    /// <summary>A lane (12 px, 24 px expanded, anything between while it animates).</summary>
+    /// <summary>A lane (12 px, 24 px pinned or expanded by hand, anything between while it animates).</summary>
     Lane = 1,
 
     /// <summary>The hint of a group with nothing in the window.</summary>
@@ -24,7 +24,7 @@ public enum LayoutRowKind : byte
 /// <param name="Top">Its top, from the top of the lane area.</param>
 /// <param name="Height">Its height now.</param>
 /// <param name="Ordinal">For a lane in view, its 1-based place among its group's lanes in view (invocation rows are labelled by it).</param>
-/// <param name="Expanded">True when the lane is (heading to) 24 px: hovered, pinned or expanded by hand.</param>
+/// <param name="Expanded">True when the lane is (heading to) 24 px: pinned or expanded by hand. Hover never grows a lane.</param>
 /// <param name="Pinned">True for a pinned lane.</param>
 public readonly record struct LayoutRow(
     LayoutRowKind Kind,
@@ -60,7 +60,7 @@ public sealed class TimelineLayout
     /// <summary>A lane (lane.height).</summary>
     public const double LaneHeight = 12;
 
-    /// <summary>A hovered or pinned lane (lane.expanded-height).</summary>
+    /// <summary>A pinned lane, or one expanded by hand (lane.expanded-height).</summary>
     public const double ExpandedHeight = 24;
 
     /// <summary>The empty-group hint: 12 px text with 12 px padding (timeline-lane.html .e).</summary>
@@ -92,10 +92,9 @@ public sealed class TimelineLayout
     /// <summary>Lays the lanes out for <paramref name="window"/>.</summary>
     /// <param name="model">The model.</param>
     /// <param name="window">The visible window.</param>
-    /// <param name="hovered">The lane under the pointer, which expands.</param>
     /// <param name="now">Stopwatch ticks, for the height motion.</param>
     /// <param name="instant">True to apply heights at once (a document's first layout).</param>
-    public void Update(TimelineModel model, TimeWindow window, LaneKey? hovered, long now, bool instant = false)
+    public void Update(TimelineModel model, TimeWindow window, long now, bool instant = false)
     {
         ArgumentNullException.ThrowIfNull(model);
         _rows.Clear();
@@ -126,7 +125,9 @@ public sealed class TimelineLayout
                 bool pinned = model.IsPinned(lane.Key);
                 bool visible = !model.IsHidden(lane.Key) && (pinned || lane.IsVisibleIn(window));
                 if (visible && group == LaneGroupKind.Invocations) marksInView += lane.CountIn(window);
-                bool expanded = visible && (pinned || hovered == lane.Key || model.IsExpanded(lane.Key));
+                // Only explicit actions grow a lane: a height that followed the pointer moved every row below it as the
+                // mouse crossed the lanes, so the lane under it slid away (user report: the rows jittered).
+                bool expanded = visible && (pinned || model.IsExpanded(lane.Key));
                 double target = collapsed || !visible ? 0 : expanded ? ExpandedHeight : LaneHeight;
                 double height = Animator.Height(lane.Key, target, now, instant || collapsed);
                 if (visible && !collapsed) inView++;

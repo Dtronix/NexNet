@@ -58,18 +58,18 @@ public class LaneAnimationTests
     {
         var model = Demo(pinned: false);
         TimelineLayout layout = new(new LaneAnimator(enabled: true));
-        layout.Update(model, Window(30, 60), null, At(0), instant: true);
+        layout.Update(model, Window(30, 60), At(0), instant: true);
         await Assert.That(layout.IsAnimating).IsFalse();
         double before = layout.Height;
 
         // Pipe 5·1 opens at 73 ms: scrolling to 70-100 adds it (and drops nothing that animates away at once).
-        layout.Update(model, Window(70, 100), null, At(1000));
+        layout.Update(model, Window(70, 100), At(1000));
         await Assert.That(layout.IsAnimating).IsTrue();
-        layout.Update(model, Window(70, 100), null, At(1080));
+        layout.Update(model, Window(70, 100), At(1080));
         LayoutRow growing = layout.Rows.ToArray().Single(r => r.Lane?.Key == new LaneKey(LaneKind.Pipe, 5));
         await Assert.That(growing.Height).IsGreaterThan(0).And.IsLessThan(TimelineLayout.LaneHeight);
 
-        layout.Update(model, Window(70, 100), null, At(1200));
+        layout.Update(model, Window(70, 100), At(1200));
         await Assert.That(layout.IsAnimating).IsFalse();
         growing = layout.Rows.ToArray().Single(r => r.Lane?.Key == new LaneKey(LaneKind.Pipe, 5));
         await Assert.That(growing.Height).IsEqualTo(TimelineLayout.LaneHeight);
