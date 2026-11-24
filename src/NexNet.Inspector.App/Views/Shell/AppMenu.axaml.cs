@@ -37,6 +37,7 @@ public sealed partial class AppMenu : ContextMenu
         Bind(ConnectItem, AppCommand.Connect, commands);
         Bind(RecordAllItem, AppCommand.RecordAll, commands);
         Bind(PaletteItem, AppCommand.CommandPalette, commands);
+        Bind(LegendItem, AppCommand.Legend, commands);
         Bind(HelpItem, AppCommand.HelpShortcuts, commands);
     }
 

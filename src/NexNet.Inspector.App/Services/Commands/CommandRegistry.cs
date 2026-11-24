@@ -33,6 +33,7 @@ public sealed class CommandRegistry
         new(AppCommand.ThemeLight, "Theme: Light", CommandGroup.View, CommandGlyph.Theme),
         new(AppCommand.ThemeSystem, "Theme: System", CommandGroup.View, CommandGlyph.Theme),
         new(AppCommand.HelpShortcuts, "Help & shortcuts", CommandGroup.Help, CommandGlyph.Help, Gesture(Key.F1, KeyModifiers.None)),
+        new(AppCommand.Legend, "Legend & symbols", CommandGroup.View, CommandGlyph.Help, Gesture(Key.F2, KeyModifiers.None)),
     ];
 
     // The commands the palette offers when a query matches no command title (the package's "812" list), in its order.

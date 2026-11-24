@@ -196,6 +196,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return dialog;
     }
 
+    /// <summary>F2, View › Legend &amp; symbols: what every chip, fill and mark means (unless a dialog is already open).</summary>
+    /// <returns>The dialog; null when another dialog was open.</returns>
+    public LegendDialogViewModel? ShowLegend()
+    {
+        if (Dialog is not null) return null;
+        LegendDialogViewModel dialog = new();
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return dialog;
+    }
+
     /// <summary>Opens the hex view's "Go to offset…" dialog (unless a dialog is already open); it closes itself.</summary>
     public bool ShowGoToOffset(GoToOffsetDialogViewModel dialog)
     {
@@ -492,6 +506,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.RecordAll, () => session.RecordAllCommand.Execute(null), () => session.RecordAllCommand.CanExecute(null));
         session.RecordAllCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
         Commands.Bind(AppCommand.HelpShortcuts, () => ShowHelp(), () => Dialog is null);
+        Commands.Bind(AppCommand.Legend, () => ShowLegend(), () => Dialog is null);
     }
 
     partial void OnDialogChanged(object? value)

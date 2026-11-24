@@ -46,6 +46,9 @@ public enum CaptureScenario
 
     /// <summary>compare: a client-side and a server-side Chat capture aligned on session ready, SendAttachment selected.</summary>
     Compare,
+
+    /// <summary>legend: inspect-live behind the Legend &amp; symbols dialog.</summary>
+    Legend,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -80,6 +83,7 @@ public static class CaptureScenarios
         [CaptureScenario.InspectAppMenu] = new("inspect-app-menu", InspectAppMenuScreen.Create),
         [CaptureScenario.SessionEnded] = new("session-ended", SessionEndedScreen.Create),
         [CaptureScenario.Compare] = new("compare", CompareScreen.Create),
+        [CaptureScenario.Legend] = new("legend", LegendScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

@@ -54,6 +54,26 @@ public sealed class CountBadge : Control
         set => SetValue(ToneProperty, value);
     }
 
+    /// <summary>
+    /// Paints a badge reading <paramref name="text"/> with its top-left at <paramref name="origin"/>; returns its width. Shapes
+    /// the text on every call: for a still drawing (the legend), not a row drawn per frame.
+    /// </summary>
+    public static double Draw(DrawingContext context, ThemePalette palette, string text, CountBadgeTone tone, Point origin)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(palette);
+        FormattedText shaped = new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(palette.Mono), TextSize,
+            palette[Ink(tone)]);
+        double width = Math.Ceiling(shaped.Width + (2 * HorizontalPadding));
+        context.DrawRectangle(palette[Fill(tone)], null, new RoundedRect(new Rect(origin, new Size(width, BadgeHeight)), BadgeHeight / 2));
+        context.DrawText(shaped, new Point(origin.X + ((width - shaped.Width) / 2), origin.Y + ((BadgeHeight - shaped.Height) / 2)));
+        return width;
+    }
+
+    private static ThemeBrush Fill(CountBadgeTone tone) => tone == CountBadgeTone.Difference ? ThemeBrush.SplitNexnet : ThemeBrush.BorderDefault;
+
+    private static ThemeBrush Ink(CountBadgeTone tone) => tone == CountBadgeTone.Difference ? ThemeBrush.TextOnAccent : ThemeBrush.TextPrimary;
+
     protected override Size MeasureOverride(Size availableSize)
     {
         FormattedText? text = Measured(ThemeBrushes.For(this));
@@ -66,8 +86,7 @@ public sealed class CountBadge : Control
         FormattedText? text = Measured(palette);
         if (text is null) return;
         Rect bounds = new(Bounds.Size);
-        ThemeBrush fill = Tone == CountBadgeTone.Difference ? ThemeBrush.SplitNexnet : ThemeBrush.BorderDefault;
-        context.DrawRectangle(palette[fill], null, new RoundedRect(bounds, BadgeHeight / 2));
+        context.DrawRectangle(palette[Fill(Tone)], null, new RoundedRect(bounds, BadgeHeight / 2));
         context.DrawText(text, new Point((bounds.Width - text.Width) / 2, (BadgeHeight - text.Height) / 2));
     }
 
@@ -90,9 +109,8 @@ public sealed class CountBadge : Control
     {
         if (string.IsNullOrEmpty(Text)) return null;
         if (_text is not null && ReferenceEquals(_textPalette, palette)) return _text;
-        ThemeBrush ink = Tone == CountBadgeTone.Difference ? ThemeBrush.TextOnAccent : ThemeBrush.TextPrimary;
         _textPalette = palette;
         return _text = new FormattedText(Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            new Typeface(palette.Mono), TextSize, palette[ink]);
+            new Typeface(palette.Mono), TextSize, palette[Ink(Tone)]);
     }
 }

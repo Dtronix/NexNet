@@ -183,7 +183,7 @@ A recording with one session opens directly. Otherwise the open-recording dialog
 - **Inspector** (right): **Decoded** shows the selected frame's header, its transport ops and the decoded message as a tree; hovering a field highlights its bytes in the hex view and the other way round. A message split into chunks shows an assembly bar with one segment per chunk. **Message trace** lists every frame of the traced invocation or pipe in wire order; **Handshake** shows the preambles and greetings.
 - Every view follows one selection, one time window and one playhead.
 
-The command palette (Ctrl+Shift+P) searches entities, frames, commands and open documents. Prefixes pick a scope: `>` commands, `#` frames, `@` sessions, `:` time (`:1262.4` jumps to 1,262.4 ms; Ctrl+G opens it with `:`). Tab moves between scopes. **Help & shortcuts** (F1) lists every command with its shortcut and the gestures the views handle.
+The command palette (Ctrl+Shift+P) searches entities, frames, commands and open documents. Prefixes pick a scope: `>` commands, `#` frames, `@` sessions, `:` time (`:1262.4` jumps to 1,262.4 ms; Ctrl+G opens it with `:`). Tab moves between scopes. **Help & shortcuts** (F1) lists every command with its shortcut and the gestures the views handle. **View › Legend & symbols** (F2, also in the palette) explains every chip, fill and mark the views draw; [Reading the views](#reading-the-views) below has the same legend.
 
 The theme follows the operating system by default; **View › Theme** switches between Dark, Light and System.
 
@@ -196,6 +196,34 @@ Compare shows two documents side by side: two sessions of one recording, two rec
 - **Field diff** and **Hex · A ⇄ B** (bottom): the selected entity's decoded fields side by side, differing rows tinted, and both documents' bytes interleaved row by row with the selected field ringed.
 
 Entities are matched by their wire flow, so a client-side capture and a server-side capture of one connection line up entity for entity. Double-click a region to open that place in the Inspect workspace.
+
+### Reading the views
+
+The app's **Legend & symbols** dialog (logo menu › View, or F2) draws each of these with the views' own colours.
+
+**Frame flags** (chips on events, ladder rows and the inspector):
+
+| Chip | Meaning |
+|---|---|
+| **T** Transport split | The frame arrived over (or was written by) more than one socket op. |
+| **N** NexNet split | NexNet split the message across frames: MessageStart / MessageChunk / Abort, pipe writes, channel items crossing frames. |
+| **X** Cancelled | An InvocationCancellation, a Canceled result or an aborted message. |
+| **R** Redacted | Bytes replaced by the redaction marker before capture (e.g. the auth token). |
+| **…** Incomplete | The frame is still arriving, or the capture cut it off. |
+
+**Direction and transport ops**: ▼ inbound is what the tapped endpoint read, ▲ outbound what it wrote, each in its own colour. In the ladder each frame is an arrow between the lifelines (the remote peer on the left, the tapped endpoint on the right). Op chips name socket ops: `#n` is read *n*, `wN` write *N*, `#a–#b` a frame spanning reads *a* to *b*; a chip outlined in the T colour is an op the frame was split across.
+
+**Badges**: a count badge on a timeline group header (`3 rows · 9`); the Compare difference count; **synced** in a pane header (the pane follows the timeline's window, playhead and selection; *unsynced* when detached); the title bar's **REC** timer (time since attach) and **ALL · n** (Record all, *n* sessions so far).
+
+**Timeline**: the overview strip shows the whole session with the visible window boxed; the ruler shows time in the window. Lane groups are TRANSPORT, FRAMES, HANDSHAKE, INVOCATIONS, PIPES · CHANNELS, COLLECTIONS and SESSION CONTROL (click a header to fold it). Blocks are reads, writes and frames in their direction's colour, red when cancelled; thin T / N lines mark split frames. Invocation spans run from call to result: the traced span is violet, a cancelled span has a red right edge. A pipe or channel lane shows its lifetime as a line from a green open mark to a red close mark. The trace band (dashed edges) spans the traced message; a hatched gap marks events lost to Drop-mode overflow; the playhead is the current time every view follows. A pinned lane (◆) stays in view at 24 px; lanes never change height on hover.
+
+**Ladder**: a solid trace bracket marks the traced message's frames; a dotted bracket and a dimmed row mark another message's frame interleaved inside the trace. In time-scaled mode the gap above a row grows with the time since the row before.
+
+**Hex stream** fills: preamble (or ping), type byte, body length, post-header (the pipe id, or a chunk's invocation id), body, the selected frame's body, other frames, and no fill where no frame covers the byte yet. A `read #n → …` rule starts each new transport op and `▸ Type #seq` annotates frames starting in the next row. Striped `··` cells are redacted, a violet ring is the selected field, a blue ring the hovered one, and a diamond in the offset gutter a bookmark.
+
+**Inspector assembly bar**: `S` is the MessageStart, `1 … n` the chunks sized by their bytes (the selected frame's is filled), `A` a MessageAbort; a tick in a wider gap means other messages' frames arrived in between. For the handshake, `Pre` and `Greet` with ▼ ▲ are the preambles and greetings.
+
+**Compare**: file A is blue and file B orange. Heat is frame density of a collapsed group, a packed span an entity's lifetime in an expanded group; a pink mark means the entity differs from its match. The Δ strip marks where matched entities differ, the diff band is the selected match's time range in both files, and the pinned entity gets a row of its own per file.
 
 ## Recordings and schemas
 
