@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
 using NexNet.Inspector.App.Controls.Primitives;
+using NexNet.Inspector.App.Controls.Timeline;
 using NexNet.Inspector.Core.Compare;
 using NexNet.Inspector.Core.Model;
 
@@ -28,6 +29,8 @@ public readonly record struct CompareHit(CompareArea Area, int Row, CompareSide 
 /// pinned under its category in accent.trace; over the rows, the dashed diff band around the selection and the
 /// playhead. Ctrl+Wheel zooms both files around the pointer, Shift+Wheel pans, Wheel scrolls the rows; a click picks an
 /// entity (or moves the playhead), a click on a category's gutter expands it, a double-click opens the place in Inspect.
+/// A drag across the ruler selects a range as the timeline's does (<see cref="RulerSelection"/>): the release zooms both
+/// files to it, Esc cancels it, and a click there still moves the playhead.
 /// </summary>
 /// <remarks>
 /// Rows are laid out by the model once per change; a frame draws only the rows in view, finds heat counts by binary
@@ -93,6 +96,9 @@ public sealed class CompareRowsControl : Control
     private double _scrollMaximum;
     private double _scrollViewport;
     private bool _attached;
+    private readonly RulerSelection _ruler = new();
+    private long _pressPlayhead;
+    private IPointer? _captured;
 
     static CompareRowsControl()
     {
@@ -154,6 +160,9 @@ public sealed class CompareRowsControl : Control
 
     /// <summary>The compare time at an x.</summary>
     public long TimeAt(double x) => (_model?.Window ?? default).FromPixel(x - GutterWidth, TrackWidth);
+
+    /// <summary>The ruler's drag-select state (the band shows while it selects).</summary>
+    public RulerSelection RulerSelection => _ruler;
 
     /// <summary>The y of a row's top in the control (after the scroll).</summary>
     public double YOf(in CompareRow row) => RowsTop + row.Top - ScrollOffset;
@@ -280,6 +289,12 @@ public sealed class CompareRowsControl : Control
 
         DrawRuler(context, palette, session, window, bounds.Width, width);
         DrawDeltas(context, palette, session, window, bounds.Width, width);
+        if (_ruler.IsSelecting)
+        {
+            (double left, double right) = _ruler.Band;
+            using (context.PushClip(new Rect(GutterWidth, 0, width, bounds.Height)))
+                RulerSelection.DrawBand(context, palette, left, right, 0, bounds.Height);
+        }
     }
 
     private void EnsureHeat(ThemePalette palette, CompareRowsModel model)
@@ -711,7 +726,78 @@ public sealed class CompareRowsControl : Control
             return;
         }
 
+        if (hit.Area == CompareArea.Ruler)
+        {
+            // A click moves the playhead; a drag selects a range instead (and puts the playhead back).
+            _pressPlayhead = model.Playhead;
+            _ruler.Press(Math.Clamp(point.Position.X, GutterWidth, Math.Max(GutterWidth, Bounds.Width)));
+            _captured = e.Pointer;
+            e.Pointer.Capture(this);
+        }
+
         Click(model, hit);
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (_ruler.IsPressed) RulerDragTo(e.GetPosition(this).X);
+    }
+
+    /// <summary>Follows a ruler drag to <paramref name="x"/> (allocation-free; the band changes pixels only).</summary>
+    internal void RulerDragTo(double x)
+    {
+        bool selecting = _ruler.IsSelecting;
+        if (!_ruler.Move(Math.Clamp(x, GutterWidth, Math.Max(GutterWidth, Bounds.Width)))) return;
+        if (!selecting) _model?.SetPlayhead(_pressPlayhead);
+        InvalidateVisual();
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (!_ruler.IsPressed) return;
+        bool selecting = _ruler.IsSelecting;
+        bool selected = _ruler.Release(out double left, out double right);
+        ReleaseCapture();
+        if (selecting) InvalidateVisual();
+        if (selected && _model is { } model)
+            model.SetWindow(TimeWindow.Between(TimeAt(left), TimeAt(right), TimeWindow.MinSpan(TimeSpan.TicksPerSecond), model.Bounds));
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _captured = null;
+        if (!_ruler.IsPressed) return;
+        _ruler.Cancel();
+        InvalidateVisual();
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Key == Key.Escape) e.Handled = CancelDrag();
+    }
+
+    /// <summary>Cancels a ruler drag in progress (Esc): the band goes and the playhead returns.</summary>
+    /// <returns>False when nothing was being dragged.</returns>
+    public bool CancelDrag()
+    {
+        if (!_ruler.IsPressed) return false;
+        bool selecting = _ruler.IsSelecting;
+        _ruler.Cancel();
+        ReleaseCapture();
+        _model?.SetPlayhead(_pressPlayhead);
+        if (selecting) InvalidateVisual();
+        return true;
+    }
+
+    private void ReleaseCapture()
+    {
+        IPointer? captured = _captured;
+        _captured = null;
+        captured?.Capture(null);
     }
 
     /// <summary>A single click's action (public for tests): expand, pick an entity, or move the playhead.</summary>

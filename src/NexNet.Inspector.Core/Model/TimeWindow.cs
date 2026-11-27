@@ -76,6 +76,85 @@ public readonly record struct TimeWindow(long Start, long End)
         return this;
     }
 
+    /// <summary>
+    /// The narrowest window a range drag makes (the overview's handles, a ruler selection): 10 µs at
+    /// <paramref name="frequency"/>, never under one tick.
+    /// </summary>
+    /// <param name="frequency">Ticks per second.</param>
+    public static long MinSpan(long frequency) => Math.Max(MinDuration, (frequency + 99_999) / 100_000);
+
+    /// <summary>
+    /// The window with its start moved to <paramref name="start"/> and its end kept (the overview's left handle): the
+    /// start stays at least <paramref name="minDuration"/> before the end and inside <paramref name="bounds"/>.
+    /// </summary>
+    /// <param name="start">The tick the start is dragged to.</param>
+    /// <param name="minDuration">The narrowest window allowed (at least one tick).</param>
+    /// <param name="bounds">The range the start stays in; empty for none.</param>
+    public TimeWindow WithStart(long start, long minDuration, TimeWindow bounds)
+    {
+        minDuration = Math.Max(MinDuration, minDuration);
+        if (!bounds.IsEmpty && start < bounds.Start) start = bounds.Start;
+        if (start > End - minDuration) start = End - minDuration;
+        return new TimeWindow(start, End);
+    }
+
+    /// <summary>
+    /// The window with its end moved to <paramref name="end"/> and its start kept (the overview's right handle): the end
+    /// stays at least <paramref name="minDuration"/> after the start and inside <paramref name="bounds"/>.
+    /// </summary>
+    /// <param name="end">The tick the end is dragged to.</param>
+    /// <param name="minDuration">The narrowest window allowed (at least one tick).</param>
+    /// <param name="bounds">The range the end stays in; empty for none.</param>
+    public TimeWindow WithEnd(long end, long minDuration, TimeWindow bounds)
+    {
+        minDuration = Math.Max(MinDuration, minDuration);
+        if (!bounds.IsEmpty && end > bounds.End) end = bounds.End;
+        if (end < Start + minDuration) end = Start + minDuration;
+        return new TimeWindow(Start, end);
+    }
+
+    /// <summary>
+    /// The window moved by <paramref name="delta"/> ticks but kept inside <paramref name="bounds"/> at the same duration
+    /// (the overview's middle drag); a window as wide as the bounds or wider does not move.
+    /// </summary>
+    /// <param name="delta">Ticks to move by.</param>
+    /// <param name="bounds">The range the window stays in; empty for none.</param>
+    public TimeWindow PanWithin(long delta, TimeWindow bounds)
+    {
+        if (bounds.IsEmpty) return Pan(delta);
+        if (Duration >= bounds.Duration) return this;
+        long start = Math.Clamp(Start + delta, bounds.Start, bounds.End - Duration);
+        return new TimeWindow(start, start + Duration);
+    }
+
+    /// <summary>
+    /// The window between two ticks in either order (a ruler selection), at least <paramref name="minDuration"/> wide
+    /// (widened around its middle) and kept inside <paramref name="bounds"/>.
+    /// </summary>
+    /// <param name="a">One end.</param>
+    /// <param name="b">The other end.</param>
+    /// <param name="minDuration">The narrowest window allowed (at least one tick).</param>
+    /// <param name="bounds">The range the window stays in; empty for none.</param>
+    public static TimeWindow Between(long a, long b, long minDuration, TimeWindow bounds)
+    {
+        minDuration = Math.Max(MinDuration, minDuration);
+        long start = Math.Min(a, b), end = Math.Max(a, b);
+        if (!bounds.IsEmpty)
+        {
+            start = Math.Clamp(start, bounds.Start, bounds.End);
+            end = Math.Clamp(end, bounds.Start, bounds.End);
+        }
+
+        if (end - start < minDuration)
+        {
+            start = start + ((end - start) / 2) - (minDuration / 2);
+            end = start + minDuration;
+        }
+
+        TimeWindow window = new(start, end);
+        return bounds.IsEmpty ? window : window.Clamp(bounds.Start, bounds.End);
+    }
+
     /// <summary>The window with the same duration ending at <paramref name="latest"/> (following a live capture).</summary>
     public TimeWindow Follow(long latest) => new(latest - Math.Max(MinDuration, Duration), latest);
 

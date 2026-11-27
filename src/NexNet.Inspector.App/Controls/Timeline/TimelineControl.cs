@@ -42,6 +42,25 @@ public enum TimelineArea : byte
     Hint = 6,
 }
 
+/// <summary>What part of the overview strip is under a point (range drag, D1).</summary>
+public enum OverviewPart : byte
+{
+    /// <summary>Not the overview.</summary>
+    None = 0,
+
+    /// <summary>The overview outside the window's box: a press centres the window there.</summary>
+    Outside = 1,
+
+    /// <summary>The window's box between its handles: a drag pans it.</summary>
+    Window = 2,
+
+    /// <summary>The box's left edge: a drag moves the window's start.</summary>
+    StartHandle = 3,
+
+    /// <summary>The box's right edge: a drag moves the window's end.</summary>
+    EndHandle = 4,
+}
+
 /// <summary>A hit test's answer.</summary>
 /// <param name="Area">What is there.</param>
 /// <param name="Group">The group of a header, lane or hint.</param>
@@ -55,8 +74,12 @@ public readonly record struct TimelineHit(TimelineArea Area, LaneGroupKind Group
 /// their lanes (glyph, label, sub label, pin; marks for frames, ops, invocation spans, pipe lifetimes and splits), and the
 /// trace band, gap hatching and playhead over them. It owns the time window, playhead and selection through the
 /// <see cref="SyncBus"/>: Ctrl+Wheel zooms around the pointer, Wheel pans time, Shift+Wheel scrolls the lanes, a click
-/// selects a mark (moving the playhead), dragging the overview moves the window, and P or a double-click on a gutter
-/// pins the lane (<see cref="PinCommand"/>); Space expands it, H hides it and T traces it (as the lane menu does).
+/// selects a mark (moving the playhead), and P or a double-click on a gutter pins the lane (<see cref="PinCommand"/>);
+/// Space expands it, H hides it and T traces it (as the lane menu does). Range drag (D1): the overview's box has edge
+/// handles that move the window's start or end, its middle pans it, a press outside it centres the window there and a
+/// double-click fits all; a drag across the ruler selects a range (<see cref="RulerSelection"/>) and its release zooms
+/// to it, while a click there moves the playhead; Esc cancels any drag. Every range drag stays inside
+/// <see cref="RangeBounds"/>.
 /// </summary>
 /// <remarks>
 /// Performance: marks are found by binary search on start tick and drawn only in the window, blocks that would land on
@@ -80,6 +103,14 @@ public sealed class TimelineControl : Control
     private const double WheelScroll = 36;
     private const double ZoomStep = 1.25;
     private const double HitSlop = 3;
+
+    /// <summary>The width of each overview handle's hit zone, centred on the box's edge.</summary>
+    public const double HandleZone = 6;
+
+    /// <summary>The narrowest the overview's box gets by its handles, in overview pixels (and never under 10 µs).</summary>
+    public const double MinHandleGap = 4;
+
+    private const double MinViewportWidth = 3;
 
     public static readonly StyledProperty<TimelineModel?> ModelProperty =
         AvaloniaProperty.Register<TimelineControl, TimelineModel?>(nameof(Model));
@@ -110,6 +141,15 @@ public sealed class TimelineControl : Control
     private bool _frameRequested;
     private double _scroll;
     private Drag _drag;
+    private readonly RulerSelection _ruler = new();
+    private TimeWindow _dragWindow;
+    private long _dragPlayhead;
+    private bool _dragFollow;
+    private long _grab;
+    private IPointer? _captured;
+    private OverviewPart _hot;
+    private Cursor? _resizeCursor;
+    private Cursor? _panCursor;
     private string? _tip;
     private double _dimmed = DimmedOpacity;
     private (IPen Pen, IBrush Ground)? _stripes;
@@ -136,7 +176,10 @@ public sealed class TimelineControl : Control
     private enum Drag : byte
     {
         None,
-        Overview,
+        Pan,
+        StartHandle,
+        EndHandle,
+        Ruler,
         Playhead,
     }
 
@@ -193,6 +236,21 @@ public sealed class TimelineControl : Control
     public TimeWindow Window =>
         _sync is { Window.IsEmpty: false } sync ? sync.Window : _model?.Bounds ?? default;
 
+    /// <summary>
+    /// The time range the overview spans and every range drag stays in: the capture's. The one place the clamp bounds
+    /// are read, so a document scope (I43) replaces them here.
+    /// </summary>
+    public TimeWindow RangeBounds => _model?.Bounds ?? default;
+
+    /// <summary>The overview handle under the pointer or being dragged (drawn in the hover colour); None otherwise.</summary>
+    public OverviewPart HotHandle => _hot;
+
+    /// <summary>The ruler's drag-select state (the band shows while it selects).</summary>
+    public RulerSelection RulerSelection => _ruler;
+
+    /// <summary>True while a pointer drag (pan, handle, ruler, playhead) is in progress.</summary>
+    public bool IsDragging => _drag != Drag.None;
+
     /// <summary>The top of the lane area.</summary>
     public double LanesTop => ShowAxis ? TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight : 0;
 
@@ -211,6 +269,183 @@ public sealed class TimelineControl : Control
     public long TicksAt(double x) => Window.FromPixel(x - GutterWidth, TrackWidth);
 
     private double TrackWidth => Math.Max(1, Bounds.Width - GutterWidth);
+
+    /// <summary>The x of the window's box edges in the overview (at least 3 px apart, as drawn).</summary>
+    public (double Start, double End) ViewportEdges()
+    {
+        TimeWindow bounds = RangeBounds;
+        TimeWindow window = Window;
+        double width = TrackWidth;
+        double x0 = GutterWidth + bounds.ToPixel(window.Start, width);
+        double x1 = GutterWidth + bounds.ToPixel(window.End, width);
+        if (x1 - x0 < MinViewportWidth) x1 = x0 + MinViewportWidth;
+        return (x0, x1);
+    }
+
+    /// <summary>What part of the overview lies at <paramref name="x"/> (assuming the point is in the overview strip).</summary>
+    public OverviewPart OverviewPartAt(double x)
+    {
+        if (_model is null || !ShowAxis || RangeBounds.IsEmpty) return OverviewPart.None;
+        (double x0, double x1) = ViewportEdges();
+        return OverviewPartAt(x, x0, x1);
+    }
+
+    /// <summary>
+    /// The overview part at <paramref name="x"/> for a box from <paramref name="start"/> to <paramref name="end"/>: each
+    /// handle's zone is <see cref="HandleZone"/> wide on its edge, reaching at most a quarter of the box inward so a
+    /// narrow box keeps a middle to pan by.
+    /// </summary>
+    public static OverviewPart OverviewPartAt(double x, double start, double end)
+    {
+        const double half = HandleZone / 2;
+        double inward = Math.Min(half, (end - start) / 4);
+        if (x >= start - half && x <= start + inward) return OverviewPart.StartHandle;
+        if (x >= end - inward && x <= end + half) return OverviewPart.EndHandle;
+        return x > start && x < end ? OverviewPart.Window : OverviewPart.Outside;
+    }
+
+    /// <summary>Fits the window to <see cref="RangeBounds"/> (double-click on the overview).</summary>
+    public void FitAll()
+    {
+        TimeWindow bounds = RangeBounds;
+        if (_sync is { } sync && !bounds.IsEmpty) sync.SetWindow(bounds);
+    }
+
+    /// <summary>Cancels the drag in progress (Esc): the window, playhead and follow-live go back to where they were.</summary>
+    /// <returns>False when nothing was being dragged.</returns>
+    public bool CancelDrag()
+    {
+        Drag drag = _drag;
+        if (drag == Drag.None) return false;
+        EndDrag();
+        if (_sync is { } sync)
+        {
+            switch (drag)
+            {
+                case Drag.Pan or Drag.StartHandle or Drag.EndHandle:
+                    sync.SetWindow(_dragWindow);
+                    if (_dragFollow) sync.SetFollowLive(true);
+                    break;
+                case Drag.Ruler or Drag.Playhead:
+                    sync.SetPlayhead(_dragPlayhead);
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    // The narrowest window the handles leave: 10 µs, and never closer than MinHandleGap overview pixels.
+    private long HandleMinSpan() =>
+        Math.Max(TimeWindow.MinSpan(_model?.Frequency ?? 1), RangeBounds.PixelsToTicks(MinHandleGap, TrackWidth));
+
+    private void BeginOverviewDrag(double x)
+    {
+        TimeWindow window = Window;
+        _dragWindow = window;
+        _dragFollow = _sync?.FollowLive ?? false;
+        OverviewPart part = OverviewPartAt(x);
+        switch (part)
+        {
+            case OverviewPart.StartHandle:
+                _drag = Drag.StartHandle;
+                break;
+            case OverviewPart.EndHandle:
+                _drag = Drag.EndHandle;
+                break;
+            case OverviewPart.Window:
+                _drag = Drag.Pan;
+                _grab = OverviewTicksAt(x) - window.Start;
+                break;
+            default:
+                // Outside the box: the window centres on the press, then follows the drag from there.
+                _drag = Drag.Pan;
+                _grab = window.Duration / 2;
+                DragTo(x);
+                break;
+        }
+
+        SetHot(part is OverviewPart.StartHandle or OverviewPart.EndHandle ? part : OverviewPart.None);
+    }
+
+    /// <summary>Follows a drag to <paramref name="x"/>: what a pointer move does while a button is held (allocation-free).</summary>
+    internal void DragTo(double x)
+    {
+        TimeWindow bounds = RangeBounds;
+        switch (_drag)
+        {
+            case Drag.Pan:
+                _sync?.SetWindow(_dragWindow.PanWithin(OverviewTicksAt(x) - _grab - _dragWindow.Start, bounds));
+                break;
+            case Drag.StartHandle:
+                _sync?.SetWindow(_dragWindow.WithStart(OverviewTicksAt(x), HandleMinSpan(), bounds));
+                break;
+            case Drag.EndHandle:
+                _sync?.SetWindow(_dragWindow.WithEnd(OverviewTicksAt(x), HandleMinSpan(), bounds));
+                break;
+            case Drag.Ruler:
+            {
+                bool selecting = _ruler.IsSelecting;
+                if (!_ruler.Move(Math.Clamp(x, GutterWidth, Math.Max(GutterWidth, Bounds.Width)))) break;
+                // A drag, not a click: the playhead the press moved goes back.
+                if (!selecting) _sync?.SetPlayhead(_dragPlayhead);
+                // The band changes pixels only: no measure.
+                InvalidateVisual();
+                break;
+            }
+
+            case Drag.Playhead:
+                _sync?.SetPlayhead(TicksAt(Math.Clamp(x, GutterWidth, Bounds.Width)));
+                break;
+        }
+    }
+
+    private void FinishDrag()
+    {
+        Drag drag = _drag;
+        EndDrag(keepRuler: true);
+        if (drag != Drag.Ruler || !_ruler.Release(out double left, out double right)) return;
+        // TicksAt reads the window the band was drawn over: the window does not move while the ruler selects.
+        _sync?.SetWindow(TimeWindow.Between(TicksAt(left), TicksAt(right), TimeWindow.MinSpan(_model?.Frequency ?? 1), RangeBounds));
+    }
+
+    private void EndDrag(bool keepRuler = false)
+    {
+        _drag = Drag.None;
+        if (_ruler.IsSelecting) InvalidateVisual();
+        if (!keepRuler) _ruler.Cancel();
+        SetHot(OverviewPart.None);
+        IPointer? captured = _captured;
+        _captured = null;
+        captured?.Capture(null);
+    }
+
+    private void SetHot(OverviewPart hot)
+    {
+        if (hot == _hot) return;
+        _hot = hot;
+        // A colour change: no measure.
+        InvalidateVisual();
+    }
+
+    private void HoverOverview(Point point)
+    {
+        OverviewPart part = ShowAxis && point.Y >= 0 && point.Y < TimelineLayout.OverviewHeight ? OverviewPartAt(point.X) : OverviewPart.None;
+        SetHot(part is OverviewPart.StartHandle or OverviewPart.EndHandle ? part : OverviewPart.None);
+        Cursor? cursor = part switch
+        {
+            OverviewPart.StartHandle or OverviewPart.EndHandle => _resizeCursor ??= new Cursor(StandardCursorType.SizeWestEast),
+            OverviewPart.Window => _panCursor ??= new Cursor(StandardCursorType.SizeAll),
+            _ => null,
+        };
+        if (!ReferenceEquals(Cursor, cursor)) Cursor = cursor;
+    }
+
+    private void CapturePointer(IPointer pointer)
+    {
+        _captured = pointer;
+        pointer.Capture(this);
+    }
 
     /// <summary>What lies at <paramref name="point"/>.</summary>
     public TimelineHit HitTest(Point point)
@@ -384,6 +619,16 @@ public sealed class TimelineControl : Control
                 DrawOverlays(context, palette, model, window, top, contentBottom);
         }
 
+        if (_ruler.IsSelecting && ShowAxis)
+        {
+            // Over the ruler and the lanes: what the release will zoom to.
+            const double bandTop = TimelineLayout.OverviewHeight;
+            double bandBottom = Math.Max(top, Math.Min(bounds.Height, top + Layout.Height - _scroll));
+            (double left, double right) = _ruler.Band;
+            using (context.PushClip(new Rect(GutterWidth, bandTop, TrackWidth, Math.Max(0, bandBottom - bandTop))))
+                RulerSelection.DrawBand(context, palette, left, right, bandTop, bandBottom);
+        }
+
         DrawPlayhead(context, palette, window, bounds.Height);
         if (Layout.IsAnimating) RequestFrame();
     }
@@ -406,15 +651,20 @@ public sealed class TimelineControl : Control
         Focus();
         switch (hit.Area)
         {
+            case TimelineArea.Overview when e.ClickCount == 2:
+                FitAll();
+                break;
             case TimelineArea.Overview:
-                _drag = Drag.Overview;
-                MoveWindowTo(hit.Ticks);
-                e.Pointer.Capture(this);
+                BeginOverviewDrag(point.X);
+                CapturePointer(e.Pointer);
                 break;
             case TimelineArea.Ruler:
-                _drag = Drag.Playhead;
+                // A click moves the playhead; a drag selects a range instead (and puts the playhead back).
+                _drag = Drag.Ruler;
+                _dragPlayhead = _sync?.Playhead ?? 0;
+                _ruler.Press(Math.Clamp(point.X, GutterWidth, Math.Max(GutterWidth, Bounds.Width)));
                 _sync?.SetPlayhead(hit.Ticks);
-                e.Pointer.Capture(this);
+                CapturePointer(e.Pointer);
                 break;
             case TimelineArea.Group:
                 _model?.ToggleCollapsed(hit.Group);
@@ -423,11 +673,12 @@ public sealed class TimelineControl : Control
                 TogglePin(lane.Key);
                 break;
             case TimelineArea.Track:
+                _dragPlayhead = _sync?.Playhead ?? 0;
                 Activate(hit);
                 if (hit.Mark < 0)
                 {
                     _drag = Drag.Playhead;
-                    e.Pointer.Capture(this);
+                    CapturePointer(e.Pointer);
                 }
 
                 break;
@@ -440,16 +691,13 @@ public sealed class TimelineControl : Control
     {
         base.OnPointerMoved(e);
         Point point = e.GetPosition(this);
-        switch (_drag)
+        if (_drag != Drag.None)
         {
-            case Drag.Overview:
-                MoveWindowTo(OverviewTicksAt(point.X));
-                return;
-            case Drag.Playhead:
-                _sync?.SetPlayhead(TicksAt(Math.Clamp(point.X, GutterWidth, Bounds.Width)));
-                return;
+            DragTo(point.X);
+            return;
         }
 
+        HoverOverview(point);
         Hover(HitTest(point));
     }
 
@@ -457,13 +705,23 @@ public sealed class TimelineControl : Control
     {
         base.OnPointerReleased(e);
         if (_drag == Drag.None) return;
-        _drag = Drag.None;
-        e.Pointer.Capture(null);
+        FinishDrag();
+        HoverOverview(e.GetPosition(this));
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        // Another control took the pointer: the drag ends where it is, and a half-made selection is dropped.
+        _captured = null;
+        if (_drag != Drag.None) EndDrag();
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
+        if (_drag != Drag.None) return;
+        HoverOverview(new Point(-1, -1));
         Hover(default);
     }
 
@@ -522,6 +780,9 @@ public sealed class TimelineControl : Control
                 break;
             case Key.Left or Key.Right:
                 e.Handled = Step(e.Key == Key.Right ? 1 : -1);
+                break;
+            case Key.Escape:
+                e.Handled = CancelDrag();
                 break;
         }
     }
@@ -633,17 +894,9 @@ public sealed class TimelineControl : Control
         return null;
     }
 
-    private void MoveWindowTo(long center)
-    {
-        if (_sync is not { } sync) return;
-        TimeWindow window = Window;
-        sync.SetWindow(window.Pan(center - window.Center));
-    }
-
     private long OverviewTicksAt(double x)
     {
-        TimeWindow bounds = _model?.Bounds ?? default;
-        return bounds.FromPixel(x - GutterWidth, TrackWidth);
+        return RangeBounds.FromPixel(x - GutterWidth, TrackWidth);
     }
 
     private int MarkAt(TimelineModel model, in LayoutRow row, double x)
@@ -709,7 +962,19 @@ public sealed class TimelineControl : Control
     private void OnSyncChanged(SyncChanges changes)
     {
         if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
-        if ((changes & (SyncChanges.Window | SyncChanges.Bounds | SyncChanges.Selection)) != 0) InvalidateMeasure();
+        if ((changes & (SyncChanges.Bounds | SyncChanges.Selection)) != 0)
+        {
+            InvalidateMeasure();
+        }
+        else if ((changes & SyncChanges.Window) != 0)
+        {
+            // A drag or wheel moves the window many times a second: the lanes are laid out again at once, and the
+            // control asks for a new measure only when their height changed (lanes came or went).
+            double height = Layout.Height;
+            UpdateLayout(Clock());
+            if (Layout.Height != height) InvalidateMeasure();
+        }
+
         InvalidateVisual();
     }
 
@@ -737,7 +1002,7 @@ public sealed class TimelineControl : Control
     {
         const double h = TimelineLayout.OverviewHeight;
         context.FillRectangle(palette[ThemeBrush.SurfaceChrome], new Rect(0, 0, width, h));
-        TimeWindow bounds = model.Bounds;
+        TimeWindow bounds = RangeBounds;
         if (bounds.IsEmpty) return;
 
         if (_rangeTicks != bounds.Duration || _rangeLabel is null)
@@ -780,10 +1045,24 @@ public sealed class TimelineControl : Control
             context.FillRectangle(palette[ink], new Rect(GutterWidth + (b * OverviewBucket), h - 1 - barHeight, OverviewBucket - 1, barHeight));
         }
 
-        double x0 = GutterWidth + bounds.ToPixel(window.Start, trackWidth);
-        double x1 = GutterWidth + bounds.ToPixel(window.End, trackWidth);
-        if (x1 - x0 < 3) x1 = x0 + 3;
+        (double x0, double x1) = ViewportEdges();
         context.DrawRectangle(null, palette.Pen(ThemeBrush.TextPrimary, 1.5), new Rect(x0, 0.75, x1 - x0, h - 1.5));
+        DrawRangeHandle(context, palette, x0, 0, h, _hot == OverviewPart.StartHandle);
+        DrawRangeHandle(context, palette, x1, 0, h, _hot == OverviewPart.EndHandle);
+    }
+
+    /// <summary>
+    /// An edge handle of the overview's box: a 4 px grip on the edge, text.primary at rest and direction.inbound under
+    /// the pointer or while dragged (a colour change only, never a size change).
+    /// </summary>
+    public static void DrawRangeHandle(DrawingContext context, ThemePalette palette, double x, double top, double height, bool hot)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(palette);
+        const double width = 4;
+        double inset = Math.Min(3, height / 4);
+        Rect grip = new(Math.Round(x - (width / 2)), top + inset, width, Math.Max(0, height - (2 * inset)));
+        context.DrawRectangle(palette[hot ? ThemeBrush.DirectionInbound : ThemeBrush.TextPrimary], null, new RoundedRect(grip, 1.5));
     }
 
     private void DrawRuler(DrawingContext context, ThemePalette palette, TimelineModel model, TimeWindow window, double width)

@@ -28,10 +28,10 @@ public sealed class TimelineControlTests
     internal sealed record Probe(Window Window, TimelineControl Timeline, SyncBus Sync, TimelineModel Model);
 
     internal static Task<T> With<T>(TimelineModel model, TimeWindow window, Func<Probe, T> body, double height = 0,
-        ThemeVariant? theme = null) =>
+        ThemeVariant? theme = null, Func<IUiDispatcher>? ui = null) =>
         HeadlessSession.Run(() => UiPump.InTheme(theme ?? ThemeVariant.Light, () =>
         {
-            SyncBus sync = new(new TestUi());
+            SyncBus sync = new(ui?.Invoke() ?? new TestUi());
             sync.SetBounds(model.Bounds);
             sync.SetWindow(window, byUser: false);
             TimelineControl timeline = new()

@@ -191,10 +191,22 @@ public sealed class LegendSwatch : Decorator
                 break;
             }
 
+            case LegendSymbol.RangeHandles:
+                // As the overview draws its box: text.primary edges, a grip on each, the hovered one in direction.inbound.
+                context.FillRectangle(palette[ThemeBrush.SurfaceChrome], new Rect(0, 2, W, 16));
+                context.DrawRectangle(null, palette.Pen(ThemeBrush.TextPrimary, 1.5), new Rect(22, 2.75, 40, 14.5));
+                Timeline.TimelineControl.DrawRangeHandle(context, palette, 22, 2, 16, hot: false);
+                Timeline.TimelineControl.DrawRangeHandle(context, palette, 62, 2, 16, hot: true);
+                break;
             case LegendSymbol.Ruler:
                 context.FillRectangle(palette[ThemeBrush.SurfacePanel], new Rect(0, 2, W, 16));
                 for (double x = 0; x < W; x += 28) context.FillRectangle(palette[ThemeBrush.BorderDefault], new Rect(x, 2, 1, 15));
                 Text(context, palette, "10 ms", 9.5, ThemeBrush.TextTertiary, 32, mono: true);
+                break;
+            case LegendSymbol.RulerSelection:
+                context.FillRectangle(palette[ThemeBrush.SurfacePanel], new Rect(0, 2, W, 16));
+                for (double x = 0; x < W; x += 28) context.FillRectangle(palette[ThemeBrush.BorderDefault], new Rect(x, 2, 1, 15));
+                Timeline.RulerSelection.DrawBand(context, palette, 18, 62, 0, H);
                 break;
             case LegendSymbol.LaneGroups:
                 context.FillRectangle(palette[ThemeBrush.SurfaceRaised], new Rect(0, 3, W, 14));

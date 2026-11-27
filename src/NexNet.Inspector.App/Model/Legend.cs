@@ -65,7 +65,9 @@ public enum LegendSymbol : byte
     RecordAllPill,
 
     Overview,
+    RangeHandles,
     Ruler,
+    RulerSelection,
     LaneGroups,
     Block,
     SplitMarks,
@@ -158,8 +160,12 @@ public static class Legend
         new(LegendSymbol.RecordingPill, LegendSection.Badges, "REC  Recording", "Recording the attached session; time since attach."),
         new(LegendSymbol.RecordAllPill, LegendSection.Badges, "ALL · n  Record all", "Recording every session of the server; n sessions so far."),
 
-        new(LegendSymbol.Overview, LegendSection.Timeline, "Overview", "The whole session's frames; the box is the visible window (drag it)."),
+        new(LegendSymbol.Overview, LegendSection.Timeline, "Overview", "The whole session's frames; the box is the visible window. Double-click to fit all."),
+        new(LegendSymbol.RangeHandles, LegendSection.Timeline, "Range handles",
+            "Drag the box's edges to move the window's start or end, its middle to pan; Esc cancels."),
         new(LegendSymbol.Ruler, LegendSection.Timeline, "Ruler", "Time in the window; click to move the playhead."),
+        new(LegendSymbol.RulerSelection, LegendSection.Timeline, "Ruler selection",
+            "Drag across the ruler (timeline or Compare): release zooms to the range, Esc cancels."),
         new(LegendSymbol.LaneGroups, LegendSection.Timeline, "Lane groups", GroupList()),
         new(LegendSymbol.Block, LegendSection.Timeline, "Block", "A read, write or frame in its direction's colour; red when cancelled."),
         new(LegendSymbol.SplitMarks, LegendSection.Timeline, "Split marks", "Thin T / N lines where a frame was split."),
