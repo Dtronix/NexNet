@@ -64,13 +64,15 @@ public class SessionEndTests
         return await rig.Documents.AttachAsync(connection, session, InspectorOverflow.Block, snapshot: true);
     }
 
-    // Join, a message and an 18 KB attachment: enough for several invocations and both directions.
+    // Join, a message and an 18 KB attachment: enough for several invocations and both directions. The captured stream
+    // trails the client's calls: wait until every invocation has its result (the attachment's request starts an
+    // invocation before its result arrives), so nothing of the conversation is still on its way.
     private static async Task ConverseAsync(NexusClient<ChatClientNexus, ChatClientNexus.ServerProxy> client, LiveDocumentViewModel document)
     {
         await client.Proxy.Join("ada");
         await client.Proxy.SendMessage(new ChatMessage { Room = "general", Author = "ada", Text = "hello" }, CancellationToken.None);
         await client.Proxy.SendAttachment(new Attachment { Room = "general", FileName = "a.bin", Data = new byte[18_000] });
-        await Wait.UntilAsync(() => document.Session is { } s && Invocations(s) >= 4 && document.IsDirty, "the conversation");
+        await Wait.UntilAsync(() => document.Session is { } s && Settled(s) && document.IsDirty, "the conversation");
     }
 
     [Test]
@@ -360,9 +362,21 @@ public class SessionEndTests
         await area.DisposeAsync();
     }
 
-    private static int Invocations(CaptureSession session)
+    // Join, SendMessage, the ReceiveMessage it broadcasts back and SendAttachment, each with its result (or one-way).
+    private static bool Settled(CaptureSession session)
     {
         lock (session.Gate)
-            return session.Assembler.Invocations.Length;
+        {
+            var invocations = session.Assembler.Invocations;
+            if (invocations.Length < 4)
+                return false;
+            foreach (var invocation in invocations)
+            {
+                if (invocation.State == InvocationState.Pending)
+                    return false;
+            }
+
+            return true;
+        }
     }
 }
