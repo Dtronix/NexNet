@@ -104,6 +104,9 @@ public enum AppCommand : byte
 
     /// <summary>Jumps to the ninth bookmark (Alt+9).</summary>
     JumpBookmark9,
+
+    /// <summary>"Copy for LLM": the selection, else the traced message, else the current view, as text (D6-E).</summary>
+    CopyForLlm,
 }
 
 /// <summary>The app menu's section a command belongs to (inspect-app-menu: FILE, SESSION, VIEW, then help).</summary>

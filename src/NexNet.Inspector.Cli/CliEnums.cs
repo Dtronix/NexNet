@@ -25,6 +25,7 @@ internal enum CliCommand : byte
     Format = 19,
     Findings = 20,
     Mcp = 21,
+    Expect = 22,
 }
 
 /// <summary>Named options. A flag set, so each command can declare which ones it accepts and which it requires.</summary>
@@ -73,6 +74,10 @@ internal enum CliOption : ulong
     To = 1UL << 38,
     Top = 1UL << 39,
     Findings = 1UL << 40,
+    NoGaps = 1UL << 41,
+    NoErrors = 1UL << 42,
+    P99 = 1UL << 43,
+    MaxFindings = 1UL << 44,
 }
 
 /// <summary>What <c>record --session</c> names.</summary>
@@ -113,6 +118,9 @@ internal enum ExitCode
 
     /// <summary>The requested session does not exist, or none appeared within <c>--wait</c>.</summary>
     NotFound = 4,
+
+    /// <summary><c>expect</c>: the capture failed an expectation (<c>--no-gaps</c>, <c>--no-errors</c>, <c>--p99</c>, <c>--max-findings</c>).</summary>
+    ExpectationFailed = 5,
 
     /// <summary><c>record</c> was interrupted (Ctrl+C) before recording started.</summary>
     Cancelled = 130,

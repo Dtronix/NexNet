@@ -72,6 +72,20 @@ await recording.StopAsync();   // writes the index footer
 
 A recording that stops without its footer (a crash, a killed process) can still be read: the reader scans it. `nexnet-tap repair` rebuilds the footer.
 
+### In tests
+
+The `NexNet.Inspector.Testing` project (not packaged; reference it from a test project) records a test's traffic in memory and reads it back as the text format:
+
+```csharp
+await using var capture = InspectorCapture.Start<MyServerNexus>(serverConfig, new() { Output = Console.Out });
+// ... create the server and clients from serverConfig, run the test ...
+await capture.StopAsync();
+Console.WriteLine(capture.Summary());          // what nexnet-tap summary prints, per session (about 4k tokens at most)
+Assert.That(capture.FindingList()).IsEmpty();  // what nexnet-tap findings reports
+```
+
+`Start` takes a `ServerConfig` or a `ClientConfig` (generic with a nexus built with `NexNetEmitInspectorSchema=true` to decode values, or without); call it before the server or client is created. It records with `Block` overflow, so nothing is dropped. `Summary()`, `Findings()`, `FindingList()` and `Text()` work on demand while recording (sessions still connected read as cut off, `END truncated`) and after `StopAsync`; disposing stops the recording and writes the summary and findings to `Output` when set, and the `.nntl` to `SavePath` when set (open it in the app or with `nexnet-tap`).
+
 ### Overflow
 
 Captured ops are copied into the viewer's ring buffer and a background sender drains it, so the inspected connection does not wait on the viewer's network. When the ring is full:
@@ -105,6 +119,7 @@ nexnet-tap diff <a.nntl> <b.nntl> [--top <n>]
 nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
 nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <duration>] [--json]
 nexnet-tap mcp [--token <token>]
+nexnet-tap expect <file.nntl | endpoint> [--no-gaps] [--no-errors] [--p99 '<method><<d>,…'] [--max-findings <limit>=<n>,…]
 nexnet-tap help [command]
 nexnet-tap help format
 nexnet-tap --version
@@ -237,6 +252,31 @@ Runs rule-based detectors over each session and prints its header line, one `!` 
 
 Each kind lists at most 20 findings per session; one more `info` line counts the rest. The detectors are in the core library (`FindingsEngine`), and run incrementally on a live session too: each update returns what was detected since the last. `nexnet-tap tail --findings` prints them inline, as they are detected, after the lines that revealed them (with the session tag when tailing every session); these lines are extra and do not count against `--max-lines` or `--max-tokens`.
 
+### expect
+
+```
+$ nexnet-tap expect chat-client.nntl --no-gaps --no-errors --p99 'Send*<50ms,Join<=1s' --max-findings high=0,warn=2
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
+findings none
+
+expect ok no-gaps: gaps 0
+expect ok no-errors: errors 0
+expect ok p99 Send*<50ms: p99 26.1ms max 26.1ms over 5 calls (slowest #4 SendAttachment)
+expect ok p99 Join<=1s: p99 0.2ms max 0.2ms over 1 calls (slowest #1 Join)
+expect ok max-findings high=0: error 0, at most 0
+expect ok max-findings warn=2: warn or worse 0, at most 2
+expect pass: 6 of 6 held
+```
+
+An assertion mode for CI: it checks a recording (every session, or `--session`'s) or a live session (`expect tcp://… --token …` attaches for `--duration`, default 2 s), prints the findings report (as `findings`), then one `expect ok` or `expect FAIL` line per expectation with what it measured and the IDs that broke it, then the verdict. It exits 0 when every expectation held and **5** when one failed. Expectations (at least one):
+
+- `--no-gaps`: the capture dropped nothing (no Drop-overflow gaps).
+- `--no-errors`: what `errors` lists is empty: no call ended in an exception, unauthorized or refused, no frame failed to read, no pipe was refused, every disconnect was graceful.
+- `--p99 'Method<bound'`: the p99 duration of the completed calls of each method (a glob: `Send*`, `*`) is under the bound (`<=` allows equal); a comma separates several. Quote it: `<` is a shell redirect. A method with no completed call fails, so a typo cannot pass.
+- `--max-findings limit=n`: at most *n* findings of a severity *or worse* (`error`/`high`, `warn`/`medium`, `info`/`low`), of one kind (`slow=0`, `gap=0`, `window-stall=1`, …), or in all (`all=5`).
+
+`--slow` sets the findings' slow-call threshold as for `findings`.
+
 ### Using with LLM agents
 
 `nexnet-tap mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server on stdin and stdout, so an agent such as Claude Code can read captures and watch live sessions itself. It is the same Native AOT binary, with tools only (no resources or prompts), and it targets MCP revision **2026-07-28**, the current stable one at the time of writing (`server/discover`; every request names its revision in `_meta`). Clients of the earlier initialize-based revisions (2025-11-25, 2025-06-18, 2025-03-26) are served too: `initialize` negotiates one of them, and `ping` works. Messages are newline-delimited JSON-RPC 2.0, one per line; diagnostics go to stderr only. The server runs until stdin closes; it then answers the calls still running, detaches open streams and stops recordings (each gets its index footer).
@@ -281,6 +321,7 @@ Each tool has a JSON Schema for its arguments and returns the text the matching 
 | 2 | Invalid command line, or a `tail --after` cursor of another session, level or filters. |
 | 3 | Refused by the server configuration (recording disabled, secrets not included). |
 | 4 | Session not found, or none appeared within `--wait` (`findings`: the file has no such session). `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
+| 5 | `expect`: an expectation failed. |
 | 130 | Interrupted by Ctrl+C before recording started. |
 
 ## The app
@@ -309,6 +350,8 @@ A recording with one session opens directly. Otherwise the open-recording dialog
 **Filter to time range (scope).** A long capture can be narrowed to a *scope*: **View › Filter to time range…** (Ctrl+Shift+F, also in the palette) sets it from the current view (the default), the selected or traced message, or a start and end typed in ms from the capture's start; **Filter to view** (View menu, palette) and the timeline menu's **Filter to this range** take the current window at once. While a document is scoped, the overview strip and the ruler span only the scope (so it zooms like a short capture), the window cannot leave it, Events and Ladder list only its frames (each keeps its capture number), the Hex stream shows only the transport ops in it, the Message trace dims the steps outside it and marks them ⊘, the palette searches only its entities and frames, **Export section as .nntl…** starts on it, and Compare keeps its aligned axis inside it. Scopes nest: filtering again inside a scope narrows it further. The title bar shows a chip beside the time window, *Scope 1,240.0–1,290.0 ms ✕*, with *‹2* when two scopes are nested: click it (or press Alt+Left, **View › Back to previous scope**) to return to the previous scope and the view you had before it, or click ✕ to clear every scope. Each document keeps its own scopes while you switch tabs; scopes are not saved with a recording. On a live session a scope stays where it is while data keeps arriving after it, and following the live edge is paused until the scope is cleared.
 
 **Bookmarks.** A bookmark keeps a view to come back to: its time window and, when the document is scoped, its scope. **Ctrl+Shift+B** (**View › Bookmark current view** in the palette) adds the current view and opens the title bar's ★ list with the new name selected for editing; it defaults to the range (*1,240.0 – 1,290.0 ms*): type a name and press Enter, or Esc to keep the default. The ★ button beside the time window shows how many the recording has and opens the list: each row shows its Alt+n key, name, range and a *scope* badge when it carries a scope. Click a row (or press Enter on it) to jump there; **F2** renames the focused row in place (Enter keeps, Esc cancels), **Delete** or the row's ✕ deletes it. **Alt+1…9** jump to the first nine from anywhere. A jump restores the window and pushes the bookmark's scope again (nested when it lies inside the current scope, otherwise replacing the scopes); a bookmark without a scope keeps the current scope when its window fits inside it, and clears it otherwise. A jump stops following the live edge. Bookmarks are kept per recording in the app's settings, not in the .nntl file: the key is the file's header block (a fingerprint taken when the capture started), the session and its extent, so a renamed or moved file keeps its bookmarks and every session of a multi-session file has its own. A live session keeps its bookmarks in memory until you save it; saving copies them to the saved file (and the tab that becomes the file shows them). **Export section as .nntl…** offers *Include bookmarks in range*, which copies the bookmarks whose window lies inside the exported range to the new file. A recording keeps at most 50 bookmarks and the app 500 in all; past that, the recordings used least recently lose theirs first.
+
+**Copy for LLM.** The content menus (Events, Ladder, Message trace, the trees) and the timeline's menu have **Copy for LLM ▸** with **Selection** (the selected invocation, pipe or frame, decoded, as `nexnet-tap show` prints it), **Traced message** (the frames and transport ops that carried it, as `trace`), **Current view** (the lines of the time window) and **Scope** (the lines of the document's scope, when it has one). **File › Copy for LLM** (also in the palette) copies the selection, else the traced message, else the current view. Each copies the inspector's text format, the session's header line first, at most about 4,000 tokens; when it is cut, the last line says how many lines were withheld. Paste it into a chat with a model.
 
 The command palette (Ctrl+Shift+P) searches entities, frames, commands and open documents. Prefixes pick a scope: `>` commands, `#` frames, `@` sessions, `:` time (`:1262.4` jumps to 1,262.4 ms; Ctrl+G opens it with `:`). Tab moves between scopes. **Help & shortcuts** (F1) lists every command with its shortcut and the gestures the views handle. **View › Legend & symbols** (F2, also in the palette) explains every chip, fill and mark the views draw; [Reading the views](#reading-the-views) below has the same legend.
 

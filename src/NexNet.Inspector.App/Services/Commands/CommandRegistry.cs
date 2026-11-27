@@ -44,6 +44,7 @@ public sealed class CommandRegistry
             Gesture(Key.B, KeyModifiers.Control | KeyModifiers.Shift), "★ window and scope"),
         Jump(1, Key.D1), Jump(2, Key.D2), Jump(3, Key.D3), Jump(4, Key.D4), Jump(5, Key.D5), Jump(6, Key.D6), Jump(7, Key.D7), Jump(8, Key.D8),
         Jump(9, Key.D9),
+        new(AppCommand.CopyForLlm, "Copy for LLM", CommandGroup.File, CommandGlyph.Save, Hint: "selection, trace or view as text"),
     ];
 
     /// <summary>The command that jumps to bookmark <paramref name="number"/> (1–9: Alt+1…9).</summary>

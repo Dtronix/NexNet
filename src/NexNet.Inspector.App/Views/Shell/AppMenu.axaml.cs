@@ -35,6 +35,7 @@ public sealed partial class AppMenu : ContextMenu
         Bind(OpenItem, AppCommand.OpenRecording, commands);
         Bind(SaveItem, AppCommand.SaveTimeline, commands);
         Bind(ExportItem, AppCommand.ExportSelection, commands);
+        Bind(CopyLlmItem, AppCommand.CopyForLlm, commands);
         Bind(DetachItem, AppCommand.Detach, commands);
         Bind(ConnectItem, AppCommand.Connect, commands);
         Bind(RecordAllItem, AppCommand.RecordAll, commands);

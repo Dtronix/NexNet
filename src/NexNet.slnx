@@ -37,6 +37,7 @@
     <Project Path="NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
     <Project Path="NexNet.Inspector.Sample\NexNet.Inspector.Sample.csproj" />
     <Project Path="NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <Project Path="NexNet.Inspector.Testing\NexNet.Inspector.Testing.csproj" />
     <Project Path="NexNet.Inspector.Tests\NexNet.Inspector.Tests.csproj" />
   </Folder>
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />

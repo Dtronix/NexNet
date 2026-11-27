@@ -69,11 +69,11 @@ jobs:
 
     # Microsoft.Testing.Platform (global.json); raise --minimum-expected-tests when tests are added.
     - name: Execute inspector tests
-      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 459 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 470 --results-directory TestResults -- --report-trx
 
     # Headless Avalonia drawn by Skia: no display needed. The capture tests skip without NEXNET_INSPECTOR_CAPTURE_DIR.
     - name: Execute app tests
-      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 661 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.App.Tests -c Release --no-build --minimum-expected-tests 665 --results-directory TestResults -- --report-trx
 
     - name: Upload test results
       if: failure()
@@ -94,12 +94,15 @@ jobs:
           2>&1 | tee aot.log
         ! grep -E "warning IL[0-9]+" aot.log
 
-    - name: Smoke run (nexnet-tap info on a fixture)
+    - name: Smoke run (nexnet-tap info, findings and expect on fixtures)
       shell: bash
       run: |
         ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/chat-server.nntl
         ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/server-all.nntl
         ./publish/nexnet-tap/${{ matrix.exe }} findings src/NexNet.Inspector.Tests/Fixtures/findings-stall.nntl
+        # expect exits 5 when an expectation fails; the clean client-side fixture meets all of these.
+        ./publish/nexnet-tap/${{ matrix.exe }} expect src/NexNet.Inspector.Tests/Fixtures/chat-client.nntl \
+          --no-gaps --no-errors --max-findings high=0 --p99 '*<5s'
 
     - name: Upload nexnet-tap
       uses: actions/upload-artifact@v7

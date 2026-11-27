@@ -59,6 +59,7 @@ internal static class CliCommands
         new(CliCommand.Findings, "findings", CliOption.Session | CliOption.Slow | CliOption.Json, 1, TapCli.FindingsUsage,
             static (cli, args, _) => Task.FromResult(FindingsCommand.Run(cli, args))),
         new(CliCommand.Mcp, "mcp", CliOption.Token, 0, TapCli.McpUsage, McpServer.RunCommandAsync),
+        new(CliCommand.Expect, "expect", ExpectCommand.Options, 1, ExpectCommand.Usage, ExpectCommand.RunAsync),
     ];
 
     /// <summary>The row of a command; null for <see cref="CliCommand.None"/> or a value without a row.</summary>

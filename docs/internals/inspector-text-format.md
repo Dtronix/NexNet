@@ -169,6 +169,10 @@ prints them (see the user guide). Every query starts with the header line; sessi
 Budgets apply to the whole query (`TextQueryWriter`): its cursor is a `TextCursor` whose skip counts the lines of that
 session already written and whose filter fingerprint is the query's text, so `--after` resumes only the same query.
 
+The app's Copy for LLM (`TextClip`, Core) writes the same forms within a budget of 4,000 tokens: an entity as `show` or
+`trace` writes it, or a time range as the header line, a `stat` line `clip <what> +a..+b (dms)` (`view`, `scope`,
+`trace <title>`) and the messages-level lines that start inside the range (the end line always).
+
 ## 11. Findings
 
 The findings detectors (Core `Findings/`, `FindingsEngine`; `nexnet-tap findings`) write one line per finding through the

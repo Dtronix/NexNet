@@ -52,6 +52,9 @@ public sealed class ContentMenuViewModel
     /// <summary>The item.</summary>
     public ContentItem Item { get; }
 
+    /// <summary>The "Copy for LLM ▸" submenu's model; null leaves the submenu out (views without a session).</summary>
+    public CopyForLlmViewModel? Llm { get; init; }
+
     /// <summary>True when the copy items can run.</summary>
     public bool CanCopy => _copy is not null;
 

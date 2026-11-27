@@ -1,7 +1,7 @@
 <!--
   The application menu under the logo (screens/inspect-app-menu, controls/menu "app" variant: 280 px, grouped, no icon
   column). File: Open recording… Ctrl+O, Save timeline as .nntl… Ctrl+S, Export section as .nntl… Ctrl+Shift+S (I40),
-  Recent ▸. Session: Connect to inspector… Ctrl+K, Detach from session (I40), Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
+  Copy for LLM (I50), Recent ▸. Session: Connect to inspector… Ctrl+K, Detach from session (I40), Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
   System, OQ15), Filter to time range… Ctrl+Shift+F, Filter to view, Back to previous scope Alt+Left (I43), Command
   palette Ctrl+Shift+P, Legend & symbols F2. Then Help & shortcuts F1. Session also offers Record all sessions
   (Ctrl+Shift+R). The command items take their title, shortcut and enabled state from the command registry
@@ -38,6 +38,7 @@
   <MenuItem Name="OpenItem" />
   <MenuItem Name="SaveItem" />
   <MenuItem Name="ExportItem" />
+  <MenuItem Name="CopyLlmItem" />
   <MenuItem Name="RecentItem" Header="Recent" Classes="choices" ItemsSource="{Binding RecentItems}"
             IsEnabled="{Binding HasRecentItems}" />
   <Separator />

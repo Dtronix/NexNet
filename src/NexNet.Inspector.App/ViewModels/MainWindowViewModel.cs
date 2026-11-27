@@ -28,6 +28,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly TimeProvider _time;
     private readonly bool _ready;
     private bool _hadWindow;
+    private Func<string, Task>? _clipboard;
 
     /// <param name="themes">Applies the theme choice.</param>
     /// <param name="store">Persists the choice; null keeps it for this run only (self-check, tests).</param>
@@ -574,7 +575,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         Documents.Bookmarks.Changed += _ => Commands.Refresh();
+        Commands.Bind(AppCommand.CopyForLlm, () => _ = CopyForLlmAsync(), () => Dialog is null && Documents.Active?.Session is not null && Clipboard is not null);
     }
+
+    /// <summary>Puts text on the window's clipboard (the window sets it); null disables Copy for LLM.</summary>
+    public Func<string, Task>? Clipboard
+    {
+        get => _clipboard;
+        set
+        {
+            _clipboard = value;
+            Commands.Refresh();
+        }
+    }
+
+    /// <summary>Copy for LLM (the app menu, the palette): the selection, else the traced message, else the current view.</summary>
+    /// <returns>True when text reached the clipboard.</returns>
+    public Task<bool> CopyForLlmAsync() =>
+        new CopyForLlmViewModel(Documents.Active?.Session, Documents.Sync, Clipboard).CopyDefaultAsync();
 
     partial void OnDialogChanged(object? value)
     {

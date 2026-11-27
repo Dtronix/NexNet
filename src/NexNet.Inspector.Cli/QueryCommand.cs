@@ -236,7 +236,7 @@ internal static class QueryCommand
     }
 
     // Opens a recording and indexes the sessions --session picks (all by default).
-    private static ExitCode Open(TapCli cli, string path, CliArguments args, out RecordingFile? recording, out List<CaptureSession> sessions)
+    internal static ExitCode Open(TapCli cli, string path, CliArguments args, out RecordingFile? recording, out List<CaptureSession> sessions)
     {
         sessions = [];
         recording = null;
@@ -281,7 +281,7 @@ internal static class QueryCommand
     }
 
     // Attaches to a live session for --duration and returns what arrived.
-    private static async Task<(CaptureSession? Session, ExitCode Code)> AttachAsync(TapCli cli, CliArguments args, CancellationToken cancellationToken)
+    internal static async Task<(CaptureSession? Session, ExitCode Code)> AttachAsync(TapCli cli, CliArguments args, CancellationToken cancellationToken)
     {
         var client = await EndpointSession.ConnectAsync(cli, args, cancellationToken).ConfigureAwait(false);
         if (client is null)

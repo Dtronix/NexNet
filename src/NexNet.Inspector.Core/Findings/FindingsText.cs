@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using NexNet.Inspector.Core.Session;
 using NexNet.Inspector.Core.Text;
 
 namespace NexNet.Inspector.Core.Findings;
@@ -104,6 +105,56 @@ public static class FindingsText
             Frame = -1,
             Entity = -1,
         };
+    }
+
+    /// <summary>
+    /// The findings report (`nexnet-tap findings`, `expect`, the test helper): per session its header line, its ranked
+    /// findings and a tally (text puts a blank line between sessions), then, when there are any, the findings across
+    /// sessions (reconnect loops) after an `across N sessions` line.
+    /// </summary>
+    /// <param name="output">Where lines go.</param>
+    /// <param name="sessions">The sessions, indexed.</param>
+    /// <param name="options">Detector thresholds; <see cref="FindingsOptions.Default"/> when null.</param>
+    /// <param name="text">The format; <see cref="TextOptions.Default"/> when null.</param>
+    /// <returns>Every finding reported, in report order.</returns>
+    public static List<Finding> WriteReport(TextWriter output, IReadOnlyList<CaptureSession> sessions, FindingsOptions? options = null,
+        TextOptions? text = null)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(sessions);
+        text ??= TextOptions.Default;
+        var writer = new TextRecordWriter(text);
+        var all = new List<Finding>();
+        for (var i = 0; i < sessions.Count; i++)
+        {
+            if (i > 0 && text.Format == TextFormat.Text)
+                output.Write('\n');
+            writer.Measure(new TextQuery(sessions[i], text).Header());
+            writer.Write(output);
+            var findings = FindingsEngine.Analyze(sessions[i], options);
+            Write(output, findings, text, tally: true);
+            all.AddRange(findings);
+        }
+
+        var across = FindingsEngine.AnalyzeAcross(sessions, options);
+        if (across.Count > 0)
+        {
+            if (text.Format == TextFormat.Text)
+                output.Write('\n');
+            writer.Measure(new TextRecord
+            {
+                Kind = TextRecordKind.Stat,
+                Value = string.Create(Invariant, $"across {sessions.Count} sessions"),
+                Bytes = -1,
+                Frame = -1,
+                Entity = -1,
+            });
+            writer.Write(output);
+            Write(output, across, text);
+            all.AddRange(across);
+        }
+
+        return all;
     }
 
     /// <summary>Writes findings, one line each, in the given order, as text or ndjson (<see cref="TextOptions.Format"/>).</summary>

@@ -323,6 +323,10 @@ internal sealed partial class CliArguments
         "--to" => CliOption.To,
         "--top" => CliOption.Top,
         "--findings" => CliOption.Findings,
+        "--no-gaps" => CliOption.NoGaps,
+        "--no-errors" => CliOption.NoErrors,
+        "--p99" => CliOption.P99,
+        "--max-findings" => CliOption.MaxFindings,
         _ => CliOption.None,
     };
 
@@ -330,6 +334,7 @@ internal sealed partial class CliArguments
         or CliOption.ServerName or CliOption.ConnectTimeout or CliOption.Session or CliOption.Duration or CliOption.Out
         or CliOption.Overflow or CliOption.Wait
         or CliOption.Over or CliOption.From or CliOption.To or CliOption.Top
+        or CliOption.P99 or CliOption.MaxFindings
         || (option & TailValueOptions) != 0;
 
     private bool TrySetValue(CliOption option, string value, [NotNullWhen(false)] out string? error)
@@ -411,6 +416,9 @@ internal sealed partial class CliArguments
             case CliOption.To:
             case CliOption.Top:
                 return TrySetQueryValue(option, value, out error);
+            case CliOption.P99:
+            case CliOption.MaxFindings:
+                return TrySetExpectValue(option, value, out error);
             default:
                 error = $"Option {option} takes no value.";
                 return false;
@@ -569,6 +577,8 @@ internal sealed partial class CliArguments
                 // The tools' default endpoint token; a call's token argument overrides it.
                 Token ??= string.IsNullOrEmpty(environmentToken) ? null : environmentToken;
                 return true;
+            case CliCommand.Expect:
+                return TryValidateExpect(environmentToken, out error);
             case CliCommand.Info:
             case CliCommand.Repair:
             case CliCommand.Findings:

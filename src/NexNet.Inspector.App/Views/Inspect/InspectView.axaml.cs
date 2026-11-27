@@ -68,7 +68,7 @@ public sealed partial class InspectView : UserControl
 
     /// <summary>
     /// Builds and opens the timeline's menu: the lane's (or group header's) items, Export this range… (the time window as
-    /// a recording of its own), and when <paramref name="frame"/> names a frame mark, that frame's content items.
+    /// a recording of its own), Copy for LLM ▸, and when <paramref name="frame"/> names a frame mark, that frame's content items.
     /// </summary>
     public ContextMenu? OpenTimelineMenu(FrameKey? frame)
     {
@@ -86,6 +86,8 @@ public sealed partial class InspectView : UserControl
             if (model.ShowExport is { } export)
                 menu.Items.Add(InspectMenus.Item(menu, "Export this range…", new KeyGesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift),
                     () => export(ExportRangeKind.Window)));
+            if (CreateCopyForLlm() is { } llm)
+                menu.Items.Add(ContentMenus.CopyForLlm(menu, llm));
         }
 
         if (frame is { } key && model.Session is { } session && ContentItems.ForFrame(session, key) is { } item)
@@ -97,7 +99,11 @@ public sealed partial class InspectView : UserControl
 
     /// <summary>The content menu's model for <paramref name="item"/>, over the active session, the sync bus and the window.</summary>
     public ContentMenuViewModel CreateContentMenu(ContentItem item) =>
-        new(item, _model?.Session, _model?.Sync, ViewServices.CopyTo(this), ViewServices.SaveBytesTo(this));
+        new(item, _model?.Session, _model?.Sync, ViewServices.CopyTo(this), ViewServices.SaveBytesTo(this)) { Llm = CreateCopyForLlm() };
+
+    /// <summary>The "Copy for LLM ▸" model over the active session, the sync bus and the window's clipboard; null without a workspace.</summary>
+    public CopyForLlmViewModel? CreateCopyForLlm() =>
+        _model is { } model && model.Session is not null ? new CopyForLlmViewModel(model.Session, model.Sync, ViewServices.CopyTo(this)) : null;
 
     /// <summary>
     /// The item a content view shows at <paramref name="source"/> (a row of Events, Ladder, Message trace or a property

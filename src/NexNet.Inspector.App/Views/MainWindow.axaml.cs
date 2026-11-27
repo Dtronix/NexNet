@@ -156,6 +156,7 @@ public sealed partial class MainWindow : Window
         {
             model.PickSchemaFile ??= PickSchemaAsync;
             model.Documents.SavePicker ??= PickSavePathAsync;
+            model.Clipboard ??= ViewServices.CopyTo(this);
         }
     }
 

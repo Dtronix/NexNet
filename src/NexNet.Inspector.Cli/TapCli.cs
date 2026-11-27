@@ -80,6 +80,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           2    invalid command line
           3    refused by the server configuration ("Recording disabled by server config", secrets not included)
           4    session not found, or none appeared within --wait
+          5    expect: an expectation failed
           130  record interrupted by Ctrl+C before recording started
 
         """;
@@ -101,6 +102,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
           nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <d>] [--json]
           nexnet-tap mcp    [--token <token>]
+          nexnet-tap expect <file.nntl | endpoint> [--no-gaps] [--no-errors] [--p99 '<m><d'] [--max-findings <l>=<n>]
           nexnet-tap help [command]
           nexnet-tap help format
           nexnet-tap --version
@@ -116,6 +118,8 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
                    budgets and --until.
           findings Rank what the detectors notice in a recording: slow calls, stalls, lost results, errors, gaps.
           mcp      Serve these commands to LLM agents as Model Context Protocol tools over stdio.
+          expect   Assert over a recording or live session for CI: no gaps, no errors, p99 bounds, finding limits
+                   (exit 5 when one fails), with the findings report.
 
         Queries (a recording, or a live session with --endpoint; text or ndjson, budgets with --max-lines/--max-tokens):
           summary      About 30 lines: calls per method with p50/p99, errors, cancellations, pipes, largest

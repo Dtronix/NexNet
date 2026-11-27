@@ -122,7 +122,7 @@ public sealed class ContentMenuTests
 
             await Assert.That(result.Selected).IsEqualTo(result.index);
             await Assert.That(result.described).Matches(
-                "^Frame #[0-9,]+  .+ · [0-9,]+ B \\| — \\| Copy \\| Copy value \\| Copy row as TSV \\| — \\| Copy as hex \\| Copy as C# byte array "
+                "^Frame #[0-9,]+  .+ · [0-9,]+ B \\| — \\| Copy \\| Copy value \\| Copy row as TSV \\| Copy for LLM \\| — \\| Copy as hex \\| Copy as C# byte array "
                 + "\\| Copy as Base64 \\| (Save bytes to file…|Save frame bytes to file… \\| Save message body to file…) \\| Open as \\| — \\| Export section as \\.nntl…$");
             await Assert.That(result.copied).IsEqualTo(result.Text);
             await Assert.That(result.tsv).IsEqualTo(result.Row);
@@ -161,7 +161,7 @@ public sealed class ContentMenuTests
                 return (described, openAs, path, value, Room: room.Value, section, item.Bytes.Kind, Selection: model.Documents.Sync.Selection.Kind);
             });
 
-            await Assert.That(result.described).Contains("| Copy | Copy value | Copy path | Copy row as TSV | — | Copy as hex |");
+            await Assert.That(result.described).Contains("| Copy | Copy value | Copy path | Copy row as TSV | Copy for LLM | — | Copy as hex |");
             await Assert.That(result.openAs).IsEqualTo("MessagePack value | UTF-8 text | LEB128 length + item | — | Raw only");
             await Assert.That(result.path).EndsWith(".Room");
             await Assert.That(result.value).IsEqualTo(result.Room);
