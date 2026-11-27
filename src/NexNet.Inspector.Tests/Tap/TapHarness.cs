@@ -35,12 +35,14 @@ internal sealed class TapHarness : IAsyncDisposable
     /// <param name="options">The inspector's options.</param>
     /// <param name="authenticate">True to make clients authenticate.</param>
     /// <param name="wrapTap">Puts a test's own tap in front of the inspector, to watch what the session gets back from it.</param>
+    /// <param name="configureServer">Adjusts the inspected server's configuration before the server is created.</param>
     public TapHarness(TapTransport transport, InspectorOptions? options = null, bool authenticate = false,
-        Func<INexusTap, INexusTap>? wrapTap = null)
+        Func<INexusTap, INexusTap>? wrapTap = null, Action<ServerConfig>? configureServer = null)
     {
         _transport = transport;
         _serverConfig = CreateServerConfig();
         _serverConfig.Authenticate = authenticate;
+        configureServer?.Invoke(_serverConfig);
         Inspector = _serverConfig.UseInspector<TapServerNexus>(options);
         if (wrapTap != null)
             _serverConfig.Tap = wrapTap(Inspector);

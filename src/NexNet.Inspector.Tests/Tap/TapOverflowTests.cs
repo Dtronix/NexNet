@@ -4,6 +4,7 @@ using NexNet.Inspector.Core.Format;
 using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Tap;
 using NexNet.Messages;
+using NexNet.Transports;
 
 namespace NexNet.Inspector.Tests.Tap;
 
@@ -18,7 +19,7 @@ public class TapOverflowTests
     {
         WatchedTap? watched = null;
         await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 },
-            wrapTap: inspector => watched = new WatchedTap(inspector));
+            wrapTap: inspector => watched = new WatchedTap(inspector), configureServer: NoCreditReturns);
         await h.StartAsync();
         await h.StartEndpointAsync();
         var client = await h.ConnectClientAsync();
@@ -84,7 +85,8 @@ public class TapOverflowTests
     private static async Task DetachUnderPressure(bool stalledAtDetach)
     {
         const int window = 4 * 1024;
-        await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 });
+        await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 },
+            configureServer: NoCreditReturns);
         await h.StartAsync();
         await h.StartEndpointAsync(pipeWindow: window);
         var client = await h.ConnectClientAsync();
@@ -136,7 +138,8 @@ public class TapOverflowTests
     [Test]
     public async Task Block_is_lossless_and_holds_the_session_back()
     {
-        await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 });
+        await using var h = new TapHarness(TapTransport.Uds, new InspectorOptions { RingCapacity = 8 * 1024 },
+            configureServer: NoCreditReturns);
         await h.StartAsync();
         await h.StartEndpointAsync();
         var client = await h.ConnectClientAsync();
@@ -179,9 +182,24 @@ public class TapOverflowTests
     }
 
     /// <summary>
+    /// The server returns invocation credit on its own (a background control send, coalesced per half of
+    /// <see cref="ConfigBase.InvocationCredits"/>), not as part of any reply the client waits for. A credit taken
+    /// by that send just before the counters are read can reach the transport after them: a real op the counters
+    /// missed (I43b). With more credit than half of what any of these tests invokes, the server never returns any, so
+    /// once the client has its last reply the session sends nothing more until the test ends.
+    /// </summary>
+    private static void NoCreditReturns(ServerConfig config)
+    {
+        config.InvocationCredits = 1000;
+        config.SessionBudget = 128 * 1024 * 1024;
+    }
+
+    /// <summary>
     /// The session's op and byte counters once the server has caught up with the client. The ops and the sent bytes
     /// are counted before the bytes reach the peer, but the server counts what it read only after processing it, which
     /// can be after its reply has already reached the client; the client counts what it sent before flushing it.
+    /// Needs a server that sends nothing unprompted (<see cref="NoCreditReturns"/>): only the client's calls and
+    /// the replies to them move, so the last reply is the session's last op.
     /// </summary>
     private static async Task<(long[] Ops, long[] Bytes)> QuietCounters(TapHarness h, TappedSession tapped,
         NexusClient<TapClientNexus, TapClientNexus.ServerProxy> client)
