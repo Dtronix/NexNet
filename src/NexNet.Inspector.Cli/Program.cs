@@ -25,7 +25,11 @@ internal static class Program
             // No console to configure.
         }
 
-        var cli = new TapCli(Console.Out, Console.Error);
+        // mcp reads the client's messages from stdin as UTF-8, whatever the console's input code page.
+        var cli = new TapCli(Console.Out, Console.Error)
+        {
+            Input = new StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false)),
+        };
         return await cli.RunAsync(args, Environment.GetEnvironmentVariable(CliArguments.TokenVariable), interrupt.Token)
             .ConfigureAwait(false);
     }

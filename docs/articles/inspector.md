@@ -104,6 +104,7 @@ nexnet-tap slow <file.nntl> [--over <d>] [options]
 nexnet-tap diff <a.nntl> <b.nntl> [--top <n>]
 nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
 nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <duration>] [--json]
+nexnet-tap mcp [--token <token>]
 nexnet-tap help [command]
 nexnet-tap help format
 nexnet-tap --version
@@ -235,6 +236,41 @@ Runs rule-based detectors over each session and prints its header line, one `!` 
 | `reconnect-loop` | warn | Across the sessions of a file: three or more reconnections from one peer (a session starting within 10 s of a failed one, or with a reconnection greeting). |
 
 Each kind lists at most 20 findings per session; one more `info` line counts the rest. The detectors are in the core library (`FindingsEngine`), and run incrementally on a live session too: each update returns what was detected since the last. `nexnet-tap tail --findings` prints them inline, as they are detected, after the lines that revealed them (with the session tag when tailing every session); these lines are extra and do not count against `--max-lines` or `--max-tokens`.
+
+### Using with LLM agents
+
+`nexnet-tap mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server on stdin and stdout, so an agent such as Claude Code can read captures and watch live sessions itself. It is the same Native AOT binary, with tools only (no resources or prompts), and it targets MCP revision **2026-07-28**, the current stable one at the time of writing (`server/discover`; every request names its revision in `_meta`). Clients of the earlier initialize-based revisions (2025-11-25, 2025-06-18, 2025-03-26) are served too: `initialize` negotiates one of them, and `ping` works. Messages are newline-delimited JSON-RPC 2.0, one per line; diagnostics go to stderr only. The server runs until stdin closes; it then answers the calls still running, detaches open streams and stops recordings (each gets its index footer).
+
+A project's `.mcp.json` for Claude Code (with `nexnet-tap` on the `PATH`, or an absolute `command`):
+
+```json
+{
+  "mcpServers": {
+    "nexnet-inspector": {
+      "type": "stdio",
+      "command": "nexnet-tap",
+      "args": ["mcp"],
+      "env": { "NEXNET_TAP_TOKEN": "${NEXNET_TAP_TOKEN}" }
+    }
+  }
+}
+```
+
+The endpoint token comes from the `token` argument of a call, or else from `NEXNET_TAP_TOKEN` in the server's environment (as above, expanded from yours) or `mcp --token`. No result or log line repeats it. Auth tokens inside captures stay redacted unless the inspected server's configuration includes secrets; the tools never ask for them.
+
+| Tool | What it does |
+|------|--------------|
+| `list_sessions(endpoint, token?)` | The endpoint's role, recording policy and live sessions (`list`). |
+| `attach(endpoint, session, …)` | Starts a live tail (`tail`) of a session, `first`, or `all` and returns a `stream_id`. Takes `tail`'s level, format, filters (`method`, `pipe`, `dir`, `only`, `slow`, `grep`), `findings`, `until`/`context` and `duration`. |
+| `read(stream_id, after?, max_lines?, wait_ms?)` | The stream's lines from line number `after` (default 0): at most `max_lines` (default 200, hard cap 1000), then `… next: after=N (…)` with the stream's state. `wait_ms` (up to 30 s) waits for a new line. A stream keeps its last 10,000 lines. |
+| `detach(stream_id)` | Ends the stream and returns the lines not read yet. |
+| `summary`, `show`, `trace`, `around`, `schema` | The queries above, over a `file`, or a live session (`endpoint`, `session`, `duration`). |
+| `findings(file, session?, slow?)` | The findings above. |
+| `diff(a, b, session?, top?)` | Two recordings compared. |
+| `export_section(file \| endpoint, out, from?, to?, force?)` | A time section as its own recording. |
+| `record_start(endpoint, session, out, …)` / `record_stop(record_id)` | Records a live session (or all) into a file until stopped; refused, as `record` is, unless the server allows recording. |
+
+Each tool has a JSON Schema for its arguments and returns the text the matching command prints. Queries get a default budget of 8,000 tokens when the call gives neither `max_lines` nor `max_tokens`; a budget line ends with `--after <cursor>`, and the same call with `after` set to that cursor returns the next page. A result is never longer than 100,000 characters. Arguments that do not fit the schema, a missing token, a refused recording or an unknown ID come back as a tool result with `isError: true` and a message that says what to change; protocol mistakes (an unknown tool or method, a line that is not JSON) are JSON-RPC errors. A `notifications/cancelled` for a running call stops it, and the call then gets no response. The file tools read and write only the paths a call names; relative paths resolve against the server's working directory.
 
 ### Exit codes
 

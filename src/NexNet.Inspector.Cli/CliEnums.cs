@@ -24,6 +24,7 @@ internal enum CliCommand : byte
     Export = 18,
     Format = 19,
     Findings = 20,
+    Mcp = 21,
 }
 
 /// <summary>Named options. A flag set, so each command can declare which ones it accepts and which it requires.</summary>

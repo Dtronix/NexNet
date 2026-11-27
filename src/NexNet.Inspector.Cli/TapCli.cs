@@ -16,6 +16,9 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
     /// <summary>Called once <c>record</c> has its stream and the output file is open; tests wait on it.</summary>
     public Action? RecordingStarted { get; init; }
 
+    /// <summary>Standard input: the client's messages for &lt;c&gt;mcp&lt;/c&gt;.</summary>
+    public TextReader Input { get; init; } = TextReader.Null;
+
     /// <summary>Called once a live &lt;c&gt;tail&lt;/c&gt; has its stream; tests wait on it.</summary>
     public Action? TailStarted { get; init; }
 
@@ -97,6 +100,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           nexnet-tap diff <a.nntl> <b.nntl> [options]
           nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
           nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <d>] [--json]
+          nexnet-tap mcp    [--token <token>]
           nexnet-tap help [command]
           nexnet-tap help format
           nexnet-tap --version
@@ -111,6 +115,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           tail     Print a recording or a live session as condensed text, one line per message, with filters,
                    budgets and --until.
           findings Rank what the detectors notice in a recording: slow calls, stalls, lost results, errors, gaps.
+          mcp      Serve these commands to LLM agents as Model Context Protocol tools over stdio.
 
         Queries (a recording, or a live session with --endpoint; text or ndjson, budgets with --max-lines/--max-tokens):
           summary      About 30 lines: calls per method with p50/p99, errors, cancellations, pipes, largest
@@ -232,6 +237,21 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           -f, --force              Rebuild even when the footer is intact
 
         """ + ExitCodes;
+
+    internal static readonly string McpUsage = """
+        Usage: nexnet-tap mcp [--token <token>]
+
+        A Model Context Protocol server on stdin/stdout (one JSON-RPC message per line; logs on stderr) for LLM agents.
+        Protocol revision 2026-07-28 (server/discover), and 2025-11-25 and earlier through initialize. Tools only:
+        list_sessions, attach, read, detach (a live tail paged by line cursor), summary, findings, show, trace, around,
+        schema, diff, export_section, record_start, record_stop. Each returns the text these commands print.
+        Runs until stdin closes; open streams are detached and recordings stopped (with their footer) on exit.
+
+        Options:
+          -t, --token <token>      Default endpoint token for the tools (default: the NEXNET_TAP_TOKEN environment
+                                   variable); a call's token argument overrides it. Never echoed.
+
+        """;
 
     internal static readonly string FindingsUsage = """
         Usage: nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <d>] [--json]

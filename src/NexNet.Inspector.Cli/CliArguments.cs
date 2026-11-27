@@ -565,6 +565,10 @@ internal sealed partial class CliArguments
                 }
 
                 return QueryCommand.TryValidate(this, out error);
+            case CliCommand.Mcp:
+                // The tools' default endpoint token; a call's token argument overrides it.
+                Token ??= string.IsNullOrEmpty(environmentToken) ? null : environmentToken;
+                return true;
             case CliCommand.Info:
             case CliCommand.Repair:
             case CliCommand.Findings:
