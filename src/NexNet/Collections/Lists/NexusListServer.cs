@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
@@ -10,7 +11,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMessage>, INexusList<T>
+internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMessage>, INexusList<T>, INexusCollectionSnapshotSource
 {
     private readonly VersionedList<T> _itemList;
 
@@ -105,6 +106,13 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
     }
 
 
+
+    NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
+    {
+        // One read of the immutable state, so the count and version belong together.
+        var state = Volatile.Read(ref _itemList.State);
+        return CreateSnapshot(session, NexusCollectionKind.List, state.List.Count, state.Version);
+    }
 
     public bool Contains(T item) => _itemList.Contains(item);
 
@@ -253,7 +261,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
             foreach (var item in state.List.MemoryChunk(bufferSize))
             {
                 var message = NexusCollectionListResetValuesMessage.Rent();
-                message.Values = PayloadSerializer.Serialize(item);
+                message.Values = PayloadSerializer.SerializeValues(item);
                 yield return message;
             }
         }

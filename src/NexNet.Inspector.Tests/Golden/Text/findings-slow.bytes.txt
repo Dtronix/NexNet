@@ -1,0 +1,76 @@
+@0x26D53EA44 server tcp 127.0.0.1:60698 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.180Z
++0.1 >f1 Preamble v1 8B
+  4e6e501400000001
++0.2 <f2 Preamble v1 8B
+  4e6e501400000001
++0.2 <f3 ClientGreeting token 0B 23B
+  64140096c0d2f7d02003d2c6c05014c400ce0040000020
++0.3 >f4 ServerGreeting id=10424150596 27B
+  69180095d2c6c05014cf000000026d53ea44ce0040000020cd7530
++0.4 <f5 Invocation #1 Work 9B
+  6e0600940100009100
++0.5 >f6 InvocationResult #1 Work ok 7B
+  70040093010100
++0.7 <f7 Invocation #2 Work 9B
+  6e0600940200009100
++0.7 >f8 InvocationResult #2 Work ok 7B
+  70040093020100
++0.8 <f9 Invocation #3 Work 9B
+  6e0600940300009100
++0.8 >f10 InvocationResult #3 Work ok 7B
+  70040093030100
++1.0 <f11 Invocation #4 Work 9B
+  6e0600940400009100
++1.0 >f12 InvocationResult #4 Work ok 7B
+  70040093040100
++1.2 <f13 Invocation #5 Work 9B
+  6e0600940500009100
++1.2 >f14 InvocationResult #5 Work ok 7B
+  70040093050100
++1.3 <f15 Invocation #6 Work 9B
+  6e0600940600009100
++1.3 >f16 InvocationResult #6 Work ok 7B
+  70040093060100
++1.4 <f17 Invocation #7 Work 9B
+  6e0600940700009100
++1.5 >f18 InvocationResult #7 Work ok 7B
+  70040093070100
++1.6 <f19 Invocation #8 Work 9B
+  6e0600940800009100
++1.6 >f20 InvocationResult #8 Work ok 7B
+  70040093080100
++1.7 <f21 Invocation #9 Work 9B
+  6e0600940900009100
++1.7 >f22 InvocationResult #9 Work ok 7B
+  70040093090100
++1.8 <f23 Invocation #10 Work 9B
+  6e0600940a00009100
++1.9 >f24 InvocationResult #10 Work ok 7B
+  700400930a0100
++2.0 <f25 Invocation #11 Work 9B
+  6e0600940b00009100
++2.0 >f26 InvocationResult #11 Work ok 7B
+  700400930b0100
++2.1 <f27 Invocation #12 Work 9B
+  6e0600940c00009100
++2.2 >f28 InvocationResult #12 Work ok 7B
+  700400930c0100
++2.2 <f29 Invocation #13 Work 10B
+  6e0700940d000091ccc8
++208.8 >f30 InvocationResult #13 Work ok 8B
+  700500930d01ccc8
++209.1 <f31 Invocation #14 Work 9B
+  6e0600940e00009100
++209.2 >f32 InvocationResult #14 Work ok 7B
+  700400930e0100
++209.3 <f33 Invocation #15 Work 9B
+  6e0600940f00009100
++209.3 >f34 InvocationResult #15 Work ok 7B
+  700400930f0100
++209.4 <f35 Invocation #16 Work 9B
+  6e0600941000009100
++209.5 >f36 InvocationResult #16 Work ok 7B
+  70040093100100
++209.6 <f37 DisconnectGraceful 1B
+  15
++210.0 END Graceful from client

@@ -1,0 +1,75 @@
+<!--
+  The application menu under the logo (screens/inspect-app-menu, controls/menu "app" variant: 280 px, grouped, no icon
+  column). File: Open recording… Ctrl+O, Save timeline as .nntl… Ctrl+S, Export section as .nntl… Ctrl+Shift+S (I40),
+  Copy for LLM (I50), Recent ▸. Session: Connect to inspector… Ctrl+K, Detach from session (I40), Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
+  System, OQ15), Filter to time range… Ctrl+Shift+F, Filter to view, Back to previous scope Alt+Left (I43), Command
+  palette Ctrl+Shift+P, Legend & symbols F2. Then Help & shortcuts F1. Session also offers Record all sessions
+  (Ctrl+Shift+R). The command items take their title, shortcut and enabled state from the command registry
+  (AppMenu.axaml.cs), as the palette does. The submenus list MenuChoice items; a pick-one
+  list (Switch session, Overflow mode) shows its current choice checked. The menu is hosted in the window's popup (so it
+  renders in the window's overlay layer) and closes itself when an item runs.
+-->
+<ContextMenu xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             x:Class="NexNet.Inspector.App.Views.Shell.AppMenu"
+             x:DataType="vm:MainWindowViewModel"
+             Classes="app"
+             AutomationProperties.Name="Application menu">
+  <ContextMenu.Styles>
+    <!-- A submenu's items come from MenuChoice lists. -->
+    <Style Selector="MenuItem.choices > MenuItem" x:DataType="vm:MenuChoice">
+      <Setter Property="Header" Value="{Binding Header}" />
+      <Setter Property="Command" Value="{Binding Command}" />
+      <Setter Property="CommandParameter" Value="{Binding Parameter}" />
+      <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+    </Style>
+    <!-- Pick-one lists check their current choice; the app menu's hidden icon column comes back for the check. -->
+    <Style Selector="MenuItem.checks > MenuItem" x:DataType="vm:MenuChoice">
+      <Setter Property="ToggleType" Value="CheckBox" />
+      <Setter Property="IsChecked" Value="{Binding IsChecked}" />
+    </Style>
+    <Style Selector="MenuItem.checks > MenuItem /template/ Panel#PART_IconColumn">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ContextMenu.Styles>
+
+  <MenuItem Header="File" Classes="group" />
+  <MenuItem Name="OpenItem" />
+  <MenuItem Name="SaveItem" />
+  <MenuItem Name="ExportItem" />
+  <MenuItem Name="CopyLlmItem" />
+  <MenuItem Name="RecentItem" Header="Recent" Classes="choices" ItemsSource="{Binding RecentItems}"
+            IsEnabled="{Binding HasRecentItems}" />
+  <Separator />
+
+  <MenuItem Header="Session" Classes="group" />
+  <MenuItem Name="ConnectItem" />
+  <MenuItem Name="DetachItem" />
+  <MenuItem Name="RecordAllItem" />
+  <MenuItem Name="SwitchItem" Header="Switch session" Classes="choices checks" ItemsSource="{Binding SessionItems}"
+            IsEnabled="{Binding HasSessionItems}" />
+  <MenuItem Name="SchemaItem" Header="{Binding SchemaHeader}" Classes="choices" ItemsSource="{Binding SchemaItems}" />
+  <MenuItem Name="OverflowItem" Header="{Binding OverflowHeader}" Classes="choices checks" ItemsSource="{Binding OverflowItems}" />
+  <Separator />
+
+  <MenuItem Header="View" Classes="group" />
+  <MenuItem Name="ThemeItem" Classes="embedded" AutomationProperties.Name="Theme">
+    <MenuItem.Header>
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="Theme" VerticalAlignment="Center" />
+        <ListBox Name="ThemeSwitch" Grid.Column="1" Theme="{StaticResource Segmented}" Classes="sm"
+                 ItemsSource="{Binding ThemeChoice.Labels}" SelectedIndex="{Binding ThemeChoice.SelectedIndex}"
+                 AutomationProperties.Name="Theme" />
+      </Grid>
+    </MenuItem.Header>
+  </MenuItem>
+  <MenuItem Name="FilterRangeItem" />
+  <MenuItem Name="FilterViewItem" />
+  <MenuItem Name="ScopeBackItem" />
+  <MenuItem Name="PaletteItem" />
+  <MenuItem Name="LegendItem" />
+  <Separator />
+
+  <MenuItem Name="HelpItem" />
+</ContextMenu>

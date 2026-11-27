@@ -1,0 +1,93 @@
+<!--
+  The empty window (connect screen): a centred column, at most 760 px wide. Hero (44 px logo, 20 px bold app name,
+  secondary tagline), a 2-column grid of action cards (Connect, Ctrl+K; Open a recording, Ctrl+O, the dashed drop
+  target) and one of list cards (Recent endpoints, Recent recordings). Dropping a .nntl anywhere on the view opens it.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:h="using:NexNet.Inspector.App.Views.Home"
+             x:Class="NexNet.Inspector.App.Views.Home.HomeView"
+             x:DataType="vm:HomeViewModel"
+             DragDrop.AllowDrop="True">
+  <UserControl.Styles>
+    <!-- The whole view is the drop zone, so it hit-tests where nothing is drawn. -->
+    <Style Selector="h|HomeView">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel x:Name="Column" MaxWidth="760" Spacing="18" Margin="24"
+              HorizontalAlignment="Stretch" VerticalAlignment="Center">
+    <StackPanel Orientation="Horizontal" Spacing="14">
+      <Image Source="/Assets/Logo/logo-128.png" Width="44" Height="44" VerticalAlignment="Center" />
+      <StackPanel VerticalAlignment="Center" Spacing="2">
+        <TextBlock x:Name="AppTitle" Text="{Binding Title}" FontSize="{DynamicResource FontSize.Display}" FontWeight="Bold" />
+        <TextBlock x:Name="Tagline" Text="{Binding Tagline}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+      </StackPanel>
+    </StackPanel>
+
+    <StackPanel Spacing="18">
+      <Grid ColumnDefinitions="*,12,*">
+        <h:ActionCard x:Name="ConnectCard"
+                      Title="Connect to a live session"
+                      Description="Attach to the inspector endpoint of a server or client. Only data sent while attached is shown."
+                      Shortcut="Ctrl+K"
+                      Icon="{StaticResource Glyph.Pulse}"
+                      IconBrush="{DynamicResource Brush.Direction.Inbound}"
+                      Command="{Binding ConnectCommand}" />
+        <h:ActionCard x:Name="OpenCard" Grid.Column="2"
+                      Title="Open a recording"
+                      Description="Open a .nntl timeline, or drop one here. Recordings from nexnet-tap or server-side capture."
+                      Shortcut="Ctrl+O"
+                      Icon="{StaticResource Glyph.Folder}"
+                      IconBrush="{DynamicResource Brush.Direction.Outbound}"
+                      IsDropTarget="True"
+                      IsDragOver="{Binding IsDragOver}"
+                      DropText="{Binding DropText}"
+                      Command="{Binding OpenFileCommand}" />
+      </Grid>
+
+      <Grid ColumnDefinitions="*,12,*">
+        <h:ListCard x:Name="RecentEndpointsCard"
+                    Title="Recent endpoints" EmptyText="No recent endpoints yet"
+                    ItemsSource="{Binding RecentEndpoints}"
+                    ItemCommand="{Binding OpenRecentEndpointCommand}">
+          <h:ListCard.ItemTemplate>
+            <DataTemplate x:DataType="vm:RecentEndpointRow">
+              <Grid ColumnDefinitions="52,8,*,8,Auto">
+                <TextBlock Text="{Binding Kind}" Foreground="{DynamicResource Brush.Text.Secondary}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Endpoint}" FontFamily="{DynamicResource Font.Mono}"
+                           FontSize="{DynamicResource FontSize.Data}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           ToolTip.Tip="{Binding Endpoint}" />
+                <TextBlock Grid.Column="4" Text="{Binding When}" FontSize="{DynamicResource FontSize.Data}"
+                           Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </h:ListCard.ItemTemplate>
+        </h:ListCard>
+        <h:ListCard x:Name="RecentRecordingsCard" Grid.Column="2"
+                    Title="Recent recordings" EmptyText="No recent recordings yet"
+                    ItemsSource="{Binding RecentRecordings}"
+                    ItemCommand="{Binding OpenRecentRecordingCommand}">
+          <h:ListCard.ItemTemplate>
+            <DataTemplate x:DataType="vm:RecentRecordingRow">
+              <Grid ColumnDefinitions="*,8,Auto,8,Auto">
+                <TextBlock Text="{Binding Name}" FontFamily="{DynamicResource Font.Mono}"
+                           FontSize="{DynamicResource FontSize.Data}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           ToolTip.Tip="{Binding Path}" />
+                <TextBlock Grid.Column="2" Text="{Binding Sessions}" FontSize="{DynamicResource FontSize.Data}"
+                           Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4" Text="{Binding When}" FontSize="{DynamicResource FontSize.Data}"
+                           Foreground="{DynamicResource Brush.Text.Tertiary}" VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </h:ListCard.ItemTemplate>
+        </h:ListCard>
+      </Grid>
+
+      <c:Banner x:Name="OpenError" Kind="Status" Tone="Error" Content="{Binding OpenError}" IsVisible="{Binding HasOpenError}" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>

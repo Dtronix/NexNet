@@ -1,0 +1,16 @@
+<!--
+  The Compare "Hex · A ⇄ B" pane (PKG compare, bottom right): a titled pane header over the A ⇄ B hex view. A byte
+  clicked here selects its field in the Field diff table (the code-behind forwards it to the detail view-model).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:hex="using:NexNet.Inspector.App.Controls.Hex"
+             x:Class="NexNet.Inspector.App.Views.Compare.CompareHexPane"
+             x:DataType="vm:CompareHexViewModel">
+  <DockPanel>
+    <c:PaneHeader DockPanel.Dock="Top" Variant="Titled" Title="{Binding Title}" Subtitle="{Binding Subtitle}" />
+    <hex:CompareHexView x:Name="View" Model="{Binding Model}" />
+  </DockPanel>
+</UserControl>

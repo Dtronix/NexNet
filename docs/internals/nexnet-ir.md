@@ -27,6 +27,7 @@ So the wire shape, the hashes and every target's code cannot drift apart. Buildi
 | `IrNativeFormatters.Apply(ir, mappings)` | Attaches `[assembly: NexusTargetFormatter<T>]` mappings to the External references of a merged IR. |
 | `IrJsNumbers.Apply(ir, compilation)` | Applies `[assembly: NexusJsNumber]` to every reference of a merged IR (`jsNumber`, [#259](https://github.com/Dtronix/NexNet/pull/259)). Member, parameter and return-value attributes are applied while the fragments are built. |
 | `IrJson.Write(ir)` / `IrJson.Read(json)` | JSON form (this document). |
+| `IrMsgPack.Write(ir)` / `IrMsgPack.Hash(bytes)` | MessagePack form, the inspector schema (§5), and its 64-bit FNV-1a hash. |
 
 Fragments are built in the transform phase (symbol access); every IR record is symbol-free and has value equality, so
 fragments and the merged IR are cacheable incremental pipeline values.
@@ -234,6 +235,9 @@ declaration order). `value` holds the raw 64 bits as a signed integer: reinterpr
   and every change goes through one PR that updates this document, the
   snapshots in `src/NexNet.Generator.Tests/Ir/Snapshots/` and every consumer in one PR.
 - `IrJson.Read` rejects any `irVersion` other than the one it was built for.
+- The MessagePack form (§5) shares `irVersion`: a change to its layout (field order, an enum's numeric values) is a
+  breaking change like any other. Appending a field to the end of a record array is the MessagePack form of an optional
+  field.
 
 ## 4. Example
 
@@ -358,3 +362,91 @@ A declaration (`Envelope<T>` from the zoo snapshot, trimmed to one member):
 The complete snapshots in `src/NexNet.Generator.Tests/Ir/Snapshots/` (`basic.json`, `versioned.json`, `zoo.json`) are the
 reference examples; set `NEXNET_UPDATE_SNAPSHOTS=1` when running the generator tests to regenerate them after an
 intended change.
+
+## 5. MessagePack form (inspector schema, `.nnschema`)
+
+`IrMsgPack.Write` (`src/NexNet.Generator/Ir/IrMsgPack.cs`) writes the same IR as MessagePack. It is the inspector
+schema: the bytes a generated nexus embeds (§5.3), the inspector endpoint sends on attach and recordings store, and the
+`.nnschema` file format. It carries exactly the fields of the JSON form; `src/NexNet.Generator.Tests/Ir/IrMsgPackDecoder.cs`
+reads it back with NexNet's `MsgPackReader` into records equal to `IrJson.Read(IrJson.Write(ir))`.
+
+### 5.1 Encoding
+
+- Every record is a MessagePack **array** with its fields in the fixed order of the tables below; there are no maps, so
+  there is no key order to keep stable. A null field is `nil` (never omitted), so positions never shift.
+- Canonical, deterministic encoding (the form NexNet's `MsgPackWriter` produces): the smallest array and str header;
+  non-negative integers in the smallest of positive fixint / uint8 / uint16 / uint32 / uint64, negative integers in the
+  smallest of negative fixint / int8 / int16 / int32 / int64. Strings are UTF-8. Booleans are `true`/`false`.
+- Enum-valued fields are their **numeric** values (the declaration order in `IrModel.cs`), not names:
+
+| Enum | Values |
+|---|---|
+| ReturnKind | Void 0, Task 1, TaskOf 2 |
+| PipeKind | None 0, DuplexPipe 1, Channel 2 |
+| ParamKind | Value 0, CancellationToken 1, DuplexPipe 2, DuplexChannel 3 |
+| CollectionKind | Unset 0, List 1 |
+| CollectionMode | Unset 0, ServerToClient 1, BiDirectional 2, Relay 3 |
+| PrimKind | None 0, Bool 1, SByte 2, Byte 3, Int16 4, UInt16 5, Int32 6, UInt32 7, Int64 8, UInt64 9, Single 10, Double 11, Half 12, Char 13, Decimal 14, String 15, DateTime 16, DateTimeOffset 17, TimeSpan 18, DateOnly 19, TimeOnly 20, Guid 21, BigInteger 22, Uri 23, Version 24 |
+| TypeRefKind | Prim 0, Bin 1, PrimArray 2, Seq 3, Set 4, Queue 5, Stack 6, Map 7, Tuple 8, Nullable 9, Decl 10, TypeParam 11, External 12 |
+| LiteralKind | Null 0, Bool 1, Integer 2, Real 3, Decimal 4, String 5, Char 6, Enum 7 |
+| Declaration kind | Object 0, Union 1, Enum 2 (`IrMsgPack.DeclObject` / `DeclUnion` / `DeclEnum`) |
+
+- A reader must skip trailing elements of a record array it does not know (§3: that is how an optional field is added).
+
+### 5.2 Layout
+
+Field names are those of §2; `?` marks a field that may be `nil`; `X[]` is an array of `X`.
+
+| Record | Array elements, in order |
+|---|---|
+| Root | `irVersion`, `exports` Export[], `types` TypeDecl[] |
+| Export | `name`, `clrNamespace`, `targets`, `serverApi` Interface, `clientApi` Interface, `handshake` Handshake, `clientAcceptedIds` AcceptedId[], `docs`? |
+| Handshake | `version`?, `serverNexusHash`, `clientNexusHash` |
+| AcceptedId | `hash`, `id` |
+| Interface | `clrName`, `name`, `clrNamespace`, `hash`, `methods` Method[], `collections` Collection[], `versions` Version[] |
+| Version | `version`, `hash`, `methodIds` int[] |
+| Method | `name`, `id`, `hash`, `returnKind`, `returnType` TypeRef?, `params` Param[], `serializedCount`, `hasCancellation`, `pipeKind`, `pipeType` TypeRef?, `separatePool`, `isAuthorized`, `docs`? |
+| Param | `name`, `kind`, `type` TypeRef?, `wireIndex`, `nullable` |
+| Collection | `name`, `id`, `hash`, `kind`, `mode`, `item` TypeRef?, `isAuthorized`, `docs`? |
+| TypeRef | `kind`, `prim` (0 when unset), `clr`?, `args` TypeRef[], `id`?, `ordinal` (0 unless TypeParam), `refNullable`, `jsNumber`, `nativeFormatters` NativeFormatter[] |
+| NativeFormatter | `target`, `formatter` |
+| TypeDecl (Object) | 0, `id`, `clrMetadataName`, `clrNamespace`, `name`, `containingTypes` string[], `docs`?, `isStruct`, `isRecord`, `isAbstract`, `typeParams` string[], `baseDeclId`?, `arrayLength`, `isRecursive`, `members` Member[] (15 elements) |
+| TypeDecl (Union) | 1, the six common fields, `isInterface`, `typeParams` string[], `isRecursive`, `cases` UnionCase[] (11 elements) |
+| TypeDecl (Enum) | 2, the six common fields, `underlying` (PrimKind), `isFlags`, `members` EnumMember[] (10 elements) |
+| Member | `name`, `key`, `type` TypeRef, `refNullable`, `wasNonPublic`, `defaultLiteral` Literal?, `docs`? |
+| Literal | `kind`, `value`? |
+| UnionCase | `tag`, `caseDeclId`, `inheritanceDepth` |
+| EnumMember | `name`, `value` (int64; reinterpret for UInt64 enums) |
+
+The schema hash (`InspectorSchemaHash`) is 64-bit FNV-1a (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`) over
+these bytes; readers can recompute it.
+
+### 5.3 Embedded schema (`NexNetEmitInspectorSchema`)
+
+With the MSBuild property `<NexNetEmitInspectorSchema>true</NexNetEmitInspectorSchema>`, every generated `[Nexus]` class
+(server and client) also implements `NexNet.Diagnostics.IInspectorSchemaSource`, independent of `Targets`:
+
+```csharp
+public interface IInspectorSchemaSource
+{
+    static abstract ReadOnlySpan<byte> InspectorSchema { get; }
+    static abstract ulong InspectorSchemaHash { get; }
+}
+
+static ReadOnlySpan<byte> Schema<T>() where T : IInspectorSchemaSource => T.InspectorSchema;
+```
+
+- The schema of a nexus class is `IrBuilder.Merge([IrBuilder.Build(compilation, nexusClass, data)])`: one export (the
+  pair seen from the client, named after the class) and every type both APIs reach. It does not include `[NexusObject]`
+  types reached only at runtime (`CreateChannel<T>()`), the `[assembly: NexusSerializable<T>]` roots, the
+  `[assembly: NexusTargetFormatter<T>]` mappings or `[assembly: NexusJsNumber]`; `targets` is 0.
+- It is emitted in its own file, `<Namespace>.<Class>.InspectorSchema.g.cs`, as explicit interface implementations: the
+  bytes are `=> new byte[] { ... }` (stored in the assembly's data section, no allocation) and the hash a literal computed
+  at generation time. With the property off nothing runs and the generated output is byte-identical to a build without it.
+- A nexus that the generator does not emit (a blocking validation or serialization error, NEXNET042) gets no schema.
+- The output is deterministic (no timestamps or paths; independent of syntax tree order), so it is identical across builds.
+- `build/NexNet.Generator.props` (imported by `buildTransitive/`) makes the property compiler visible when it is `true`. A project that references
+  the generator as a `ProjectReference` analyzer does not import that file and must add
+  `<CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />` itself (as `NexNet.Generator.Tests` does).
+- Tests: `src/NexNet.Generator.Tests/Ir/InspectorSchemaTests.cs`; the generated-code snapshot is
+  `Ir/Snapshots/chat.ChatServerNexus.InspectorSchema.g.cs.txt`.

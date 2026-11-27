@@ -1,0 +1,61 @@
+<!--
+  Text input (controls/text-input): Fluent's TextBox, re-keyed. Its colours come from the TextControl* keys in
+  Tokens.axaml (raised fill, default border, strong border on hover, direction.inbound when focused, tertiary
+  placeholder); these styles add what a key cannot: the 28 px field, 1.5 px focus and error borders (OQ2), the 60 %
+  disabled field, and the classes mono (endpoints, ids), search (24 px) and password (bullets, no reveal).
+  A validation error (DataValidationErrors) turns the border status.error and shows its message as the red status
+  line under the field. TextBlock.field-label is the 11 px label above a field.
+  These are Styles over Fluent's ControlTheme (they win over its template states), not a theme of their own, so the
+  TextBox keeps Fluent's caret, selection, scrolling and context menu.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="TextBox">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.Input}" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Md}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+  </Style>
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+  </Style>
+  <Style Selector="TextBox.search">
+    <Setter Property="MinHeight" Value="{DynamicResource Size.HeaderControl}" />
+  </Style>
+  <Style Selector="TextBox.password">
+    <Setter Property="PasswordChar" Value="•" />
+    <Setter Property="RevealPassword" Value="False" />
+  </Style>
+
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+  <!-- After focus, so a field that is both focused and in error shows the error. -->
+  <Style Selector="TextBox:error /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Status.Error}" />
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+  <Style Selector="TextBox:disabled">
+    <Setter Property="Opacity" Value="0.6" />
+  </Style>
+
+  <!-- The error message: an 11 px status line in the UI font (even under a mono field), 4 px under it, in status.error. -->
+  <Style Selector="DataValidationErrors /template/ ContentControl#InlineDataValidationContentControl">
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+    <Setter Property="FontWeight" Value="Regular" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Status.Error}" />
+  </Style>
+
+  <Style Selector="TextBlock.field-label">
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+</Styles>

@@ -1,0 +1,69 @@
+<!--
+  The inspector (controls/property-tree, right of every inspect screen): a pane header (Decoded | Message trace, or
+  Handshake at session start, with the selected frame's id at the right), then the selected tab over the assembly
+  footer (bold title and secondary summary 11 px, the 18 px bar, a 10.5 px note), which shows under either tab for a
+  message assembled from several frames and for the handshake.
+  Decoded: the property tree of the selected frame; nothing selected: a tertiary hint.
+  Message trace: the traced message's title and summary, then its steps in wire order (MessageStart → Chunk 1/5 (T) →
+  "↳ pipe 3·1, Ping" → … → InvocationResult), the current step selected; a click moves the selection there.
+  Handshake (a preamble or greeting selected): every handshake frame's decoded fields.
+  Hovering a field in the hex view lights its row (LinkedRow), as hovering the row rings its bytes there.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:pt="using:NexNet.Inspector.App.Controls.PropertyTree"
+             x:Class="NexNet.Inspector.App.Views.Inspect.InspectorPane"
+             x:DataType="vm:InspectorViewModel"
+             Background="{DynamicResource Brush.Surface.Panel}"
+             AutomationProperties.Name="Inspector">
+  <DockPanel>
+    <c:PaneHeader DockPanel.Dock="Top" Variant="Inspector"
+                  Tabs="{Binding TabLabels}" SelectedIndex="{Binding TabIndex}"
+                  Trailing="{Binding FrameLabel}" />
+
+    <Border Name="AssemblyFooter" DockPanel.Dock="Bottom" IsVisible="{Binding ShowsAssembly}"
+            BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0" Padding="10,8,10,10">
+      <StackPanel>
+        <TextBlock FontSize="{DynamicResource FontSize.Data}" TextTrimming="CharacterEllipsis">
+          <Run Text="{Binding Assembly.Title}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Primary}" />
+          <Run Text=" " />
+          <Run Text="{Binding Assembly.Summary}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </TextBlock>
+        <pt:AssemblyBar Name="Bar" Margin="0,6" Segments="{Binding Assembly.Segments}" />
+        <TextBlock Text="{Binding Assembly.Note}" FontSize="{DynamicResource FontSize.Meta}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Text.Secondary}" />
+      </StackPanel>
+    </Border>
+
+    <Panel>
+      <pt:PropertyTreeView Name="Tree" IsVisible="{Binding ShowsTree}" Margin="0,0,0,0"
+                           ItemsSource="{Binding Rows}"
+                           SelectedItem="{Binding SelectedRow}"
+                           HoveredRow="{Binding HoveredRow}"
+                           LinkedRow="{Binding LinkedRow}" />
+      <TextBlock Name="EmptyHint" IsVisible="{Binding ShowsHint}" Margin="10,16" TextWrapping="Wrap"
+                 Text="{x:Static vm:InspectorViewModel.EmptyHint}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+
+      <DockPanel Name="TracePanel" IsVisible="{Binding ShowsTraceList}">
+        <TextBlock DockPanel.Dock="Top" Margin="10,8,14,4" FontSize="{DynamicResource FontSize.Data}" TextWrapping="Wrap">
+          <Run Text="{Binding TraceTitle}" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Primary}" />
+          <Run Text=" " />
+          <Run Text="{Binding TraceSummary}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </TextBlock>
+        <ListBox Name="TraceList" Theme="{StaticResource MessageTraceList}"
+                 ItemsSource="{Binding TraceRows}" SelectedItem="{Binding SelectedTraceRow}" />
+      </DockPanel>
+      <TextBlock Name="TraceHint" IsVisible="{Binding ShowsTraceHint}" Margin="10,16" TextWrapping="Wrap"
+                 Text="{x:Static vm:InspectorViewModel.TraceHint}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+
+      <pt:PropertyTreeView Name="HandshakeTree" IsVisible="{Binding ShowsHandshake}"
+                           AutomationProperties.Name="Handshake"
+                           ItemsSource="{Binding HandshakeRows}"
+                           SelectedItem="{Binding HandshakeSelectedRow}"
+                           HoveredRow="{Binding HandshakeHoveredRow}"
+                           LinkedRow="{Binding HandshakeLinkedRow}" />
+    </Panel>
+  </DockPanel>
+</UserControl>

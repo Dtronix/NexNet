@@ -62,6 +62,14 @@ As with `System.IO.Pipelines`, the `INexusDuplexPipe` is **not thread safe**. Yo
 
 Each direction of a pipe has a receive window (`ConfigBase.PipeWindow`, 256 KiB by default, 1 MiB with trusted serializer options). A writer only sends what the reader has granted, and waits in its own `FlushAsync` for more; the reader grants credit back as it consumes data. A slow reader therefore slows only its own pipe: other pipes, invocations and pings on the session are unaffected. Pass a `CancellationToken` to `WriteAsync`/`FlushAsync` to stop waiting.
 
+### Cancellation
+
+A canceled flush (its `CancellationToken`, or `CancelPendingFlush`) returns a `FlushResult` with `IsCanceled` set, as `System.IO.Pipelines` does. What the flush already sent stays delivered; what it had not sent stays buffered in the writer, and the next `FlushAsync` (or `WriteAsync`) sends it first. The reader therefore receives every byte exactly once and in order, even when the flush was canceled while waiting for the window part way through a message.
+
+- `CancelPendingFlush` cancels the flush in progress, or the next one if none is running; the flush after that runs normally.
+- A typed channel's `WriteAsync` returns `false` when its flush is canceled. The item is still sent, with the next write.
+- Completing the writer (`CompleteAsync`), or the pipe closing from the other side, discards whatever is still buffered: nothing is sent after the pipe's completion.
+
 Each session holds at most `ConfigBase.MaxPipes` pipes (32 by default), and every open pipe's window is reserved from the session budget (`ConfigBase.SessionBudget`). Opening a pipe beyond either limit fails with `NexusBusyException` (from `CreatePipe`, or from `ReadyTask` when the remote side refuses it); the session stays connected.
 
 If you frame your own messages on a raw pipe, a message must fit in the window. Channels handle larger items themselves.

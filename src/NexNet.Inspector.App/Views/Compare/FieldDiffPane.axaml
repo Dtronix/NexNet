@@ -1,0 +1,38 @@
+<!--
+  The Compare Field diff pane (PKG compare, bottom left): a titled pane header ("Field diff" and the entity, the
+  difference count at the right in split.nexnet) over the data-table field-diff variant (Field | file A | file B, 20 px
+  rows, differing rows tinted diff.band with B's value in split.nexnet semibold).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:dt="using:NexNet.Inspector.App.Controls.DataTable"
+             x:Class="NexNet.Inspector.App.Views.Compare.FieldDiffPane"
+             x:DataType="vm:FieldDiffViewModel">
+  <DockPanel>
+    <c:PaneHeader DockPanel.Dock="Top" Variant="Titled" Title="{Binding Title}" Subtitle="{Binding Subtitle}">
+      <c:PaneHeader.ViewControls>
+        <TextBlock x:Name="Count" Text="{Binding DifferenceText}" FontFamily="{DynamicResource Font.Ui}"
+                   FontSize="{DynamicResource FontSize.Body}" Classes.differs="{Binding HasDifferences}" Margin="0,0,4,0">
+          <!-- Styled, not set locally, so the differs class can override the secondary colour. -->
+          <TextBlock.Styles>
+            <Style Selector="TextBlock#Count">
+              <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+            </Style>
+            <Style Selector="TextBlock#Count.differs">
+              <Setter Property="Foreground" Value="{DynamicResource Brush.Split.Nexnet}" />
+            </Style>
+          </TextBlock.Styles>
+        </TextBlock>
+      </c:PaneHeader.ViewControls>
+    </c:PaneHeader>
+    <dt:DataTableControl x:Name="Table"
+                         ItemsSource="{Binding Rows}"
+                         Columns="{Binding Columns}"
+                         SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
+                         CellPadding="12,0,16,0"
+                         EmptyText="{Binding EmptyText}"
+                         AutomationProperties.Name="Field diff" />
+  </DockPanel>
+</UserControl>

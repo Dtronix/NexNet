@@ -1,0 +1,48 @@
+<!--
+  The app's style merge point, included after Fluent and AvaloniaEdit (App.axaml) so its keys and control themes win.
+  Tokens first; the control themes of later work orders (buttons, menus, scroll rail, ...) are merged below them, one
+  file per control so parallel work orders do not edit the same file.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/Themes/Tokens.axaml" />
+        <!-- Primitive control themes (I14). -->
+        <ResourceInclude Source="/Themes/Button.axaml" />
+        <ResourceInclude Source="/Themes/SegmentedControl.axaml" />
+        <ResourceInclude Source="/Themes/Select.axaml" />
+        <ResourceInclude Source="/Themes/CheckBox.axaml" />
+        <ResourceInclude Source="/Themes/RadioCard.axaml" />
+        <!-- Window chrome: title bar buttons and the document tabs (I16). -->
+        <ResourceInclude Source="/Themes/WindowChrome.axaml" />
+        <!-- Dialog layer, banner and home cards (I17). -->
+        <ResourceInclude Source="/Themes/Dialog.axaml" />
+        <ResourceInclude Source="/Themes/Banner.axaml" />
+        <ResourceInclude Source="/Themes/Card.axaml" />
+        <!-- Data table: header, drawn rows, skeleton and empty states (I20). -->
+        <ResourceInclude Source="/Themes/DataTable.axaml" />
+        <!-- Hex view pane-header toggles (I22). -->
+        <ResourceInclude Source="/Themes/HexView.axaml" />
+        <!-- Pane headers and the inspector's property tree (I23). -->
+        <ResourceInclude Source="/Themes/PaneHeader.axaml" />
+        <ResourceInclude Source="/Themes/PropertyTree.axaml" />
+        <!-- The inspector's Message trace tab (I25). -->
+        <ResourceInclude Source="/Themes/MessageTrace.axaml" />
+        <!-- The Compare workspace's Entities sidebar (I31). -->
+        <ResourceInclude Source="/Themes/Compare.axaml" />
+        <!-- The workspaces' pane splitters (I40). -->
+        <ResourceInclude Source="/Themes/PaneSplitter.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Fluent's TextBox, re-keyed and sized (I14). -->
+  <StyleInclude Source="/Themes/TextInput.axaml" />
+  <StyleInclude Source="/Themes/Menus.axaml" />
+  <StyleInclude Source="/Themes/ToolTip.axaml" />
+  <StyleInclude Source="/Themes/ScrollRail.axaml" />
+  <StyleInclude Source="/Themes/PropertyTreeRows.axaml" />
+  <StyleInclude Source="/Themes/MessageTraceRows.axaml" />
+</Styles>

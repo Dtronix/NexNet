@@ -1,0 +1,6 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
++55.4 GAP out 1 ops 163B (Drop)
++55.4 GAP out 320 ops 52.0KB (Drop)
++56.2 GAP in 2 ops 10B (Drop)
++56.3 GAP out 1 ops 1B (Drop)
++282.6 END Graceful from client

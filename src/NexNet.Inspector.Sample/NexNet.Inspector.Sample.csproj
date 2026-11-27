@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- Recordings embed the Chat schema. The generator is a ProjectReference analyzer, so its props are not imported:
+         the property is made compiler visible here. -->
+    <NexNetEmitInspectorSchema>true</NexNetEmitInspectorSchema>
+  </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+</Project>

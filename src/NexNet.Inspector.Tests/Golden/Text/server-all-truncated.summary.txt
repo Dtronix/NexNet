@@ -1,0 +1,47 @@
+@0x3B52AC651 server tcp 127.0.0.1:49947 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.420Z
+frames 12 ops 12 in 38B out 338B duration 59.1ms
+hs none (attached mid-stream)
+calls 8 ok 1 oneway 7
+  >ReceiveMessage ×7 oneway 7
+  <SendMessage ×1 ok 1 p50 0.1ms max 0.1ms
+pipes 1
+  ☰1·1 Users open in 0B out 32B items 0 v1
+gaps 0
+noise ping ×0 credit ×0 window ×0
++59.1 END Graceful from client
+
+@0x42F6FD6BC server tcp 127.0.0.1:49949 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.431Z
+frames 49 ops 47 in 2.4KB out 1.2KB duration 254.6ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=17975727804
+calls 15 ok 4 cancel 1 oneway 10
+  >ReceiveMessage ×7 oneway 7
+  <SendMessage ×4 ok 3 cancel 1 p50 0.1ms max 23.3ms
+  <Join ×1 ok 1 p50 0.3ms max 0.3ms
+  <TailLogs ×1 oneway 1
+  <UploadFile ×1 oneway 1
+  <Users ×1 oneway 1
+pipes 3
+  ☰1·1 Users by #0 open in 0B out 68B items 6 v4
+  ⇄2·2 by #0.3 closed in 2.0KB out 0B
+  ≋3·3 LogLine by #0.5 closed in 0B out 632B items 4
+gaps 0
+noise ping ×0 credit ×0 window ×3
++254.6 END Graceful from client
+
+@0x51E471F34 server tcp 127.0.0.1:49950 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.432Z
+frames 51 ops 49 in 2.4KB out 1.2KB duration 461.7ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=21982814004
+calls 15 ok 4 cancel 1 oneway 10
+  >ReceiveMessage ×7 oneway 7
+  <SendMessage ×4 ok 3 cancel 1 p50 0.0ms max 9.4ms
+  <Join ×1 ok 1 p50 0.3ms max 0.3ms
+  <TailLogs ×1 oneway 1
+  <UploadFile ×1 oneway 1
+  <Users ×1 oneway 1
+pipes 3
+  ☰1·1 Users by #0.4 open in 0B out 67B items 6 v5
+  ⇄2·2 by #0.6 closed in 2.0KB out 0B
+  ≋3·3 LogLine by #0.8 closed in 0B out 632B items 4
+gaps 0
+noise ping ×2 credit ×0 window ×3
++461.7 END truncated from client

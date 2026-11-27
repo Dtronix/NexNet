@@ -1,0 +1,201 @@
+@0x1 client tcp 127.0.0.1:54368 schema ChatClientNexus#9a68b8ec t0=2026-11-23T22:54:21.822Z
++0.1 >f1 Preamble v1 8B
++0.2 >f2 ClientGreeting token redacted 119B R
++0.2 <f3 Preamble v1 8B
++0.4 <f4 ServerGreeting id=8944158243 27B
++0.5 >f5 Invocation #0 Users 9B
++0.7 <f6 DuplexPipeUpdateState ☰1·1 Users ready 13B
++0.7 >window ☰1·1
++0.8 <f8 DuplexPipeWrite ☰1·1 Users 12B
++1.6 <f9 DuplexPipeWrite ☰1·1 Users 10B
++1.7 >f10 Invocation #1 Join 12B
++2.0 <f11 InvocationResult #1 Join ok 21B
++2.0 <f12 DuplexPipeWrite ☰1·1 Users 21B
++2.0 >f13 Invocation #2 SendMessage 46B
++2.2 <f14 Invocation #0.2 ReceiveMessage 46B
++2.2 <f15 InvocationResult #2 SendMessage ok 7B
++2.2 >f16 Invocation #3 SendMessage 45B
++2.3 <f17 Invocation #0.3 ReceiveMessage 45B
++2.4 <f18 InvocationResult #3 SendMessage ok 7B
++2.4 >f19 Invocation #4 SendMessage 46B
++10.8 >ping
++10.9 >f21 InvocationCancellation #4 SendMessage 5B X
++10.9 >f22 Invocation #0.4 UploadFile 20B
++11.1 <ping
++11.1 <f24 DuplexPipeUpdateState ⇄2·2 ready 13B
++11.1 <f25 InvocationResult #4 SendMessage canceled 6B X
++11.2 >window ⇄2·2
++11.2 >f27 DuplexPipeWrite ⇄2·2 2.0KB
++11.2 >f28 DuplexPipeUpdateState ⇄2·2 client done 9B
++11.6 <f29 DuplexPipeUpdateState ⇄2·2 complete 9B
++11.6 >f30 DuplexPipeUpdateState ⇄2·2 complete 9B
++11.7 >f31 Invocation #0.5 UploadFile 19B
++11.8 <f32 DuplexPipeUpdateState ⇄3·3 ready 13B
++11.8 >window ⇄3·3
++11.8 >f34 DuplexPipeWrite ⇄3·3 4.0KB
++12.3 >f35 MessageStart #5 SendAttachment arg 293.0KB 12B N
++12.3 >f36 MessageChunk #5 SendAttachment 64.0KB N
++17.5 >f37 DuplexPipeWrite ⇄3·3 4.0KB
++17.5 >f38 MessageChunk #5 SendAttachment 64.0KB N
++22.7 >f39 DuplexPipeWrite ⇄3·3 4.0KB
++22.7 >f40 MessageChunk #5 SendAttachment 64.0KB N
++27.8 >f41 DuplexPipeWrite ⇄3·3 4.0KB
++27.9 >ping
++27.9 >f43 MessageChunk #5 SendAttachment 64.0KB N
++28.0 <ping
++33.0 >f45 DuplexPipeWrite ⇄3·3 4.0KB
++33.0 >f46 MessageChunk #5 SendAttachment 37.0KB N
++38.0 >f47 DuplexPipeWrite ⇄3·3 4.0KB
++38.1 >f48 DuplexPipeUpdateState ⇄3·3 client done 9B
++38.4 <f49 DuplexPipeUpdateState ⇄3·3 complete 9B
++38.4 >f50 DuplexPipeUpdateState ⇄3·3 complete 9B
++38.7 <f51 InvocationResult #5 SendAttachment ok 47B
++38.8 >f52 Invocation #6 SendMessage 44B
++38.9 <f53 Invocation #0.6 ReceiveMessage 44B
++38.9 <f54 InvocationResult #6 SendMessage ok 7B
++39.0 >f55 Invocation #0.7 TailLogs 11B
++39.1 <f56 DuplexPipeUpdateState ≋4·4 LogLine ready 13B
++39.2 >window ≋4·4
++39.3 <f58 DuplexPipeWrite ≋4·4 LogLine 161B
++39.3 <f59 DuplexPipeWrite ≋4·4 LogLine 159B
++39.3 <f60 DuplexPipeWrite ≋4·4 LogLine 165B
++39.3 <f61 DuplexPipeWrite ≋4·4 LogLine 167B
++39.3 <f62 DuplexPipeWrite ≋4·4 LogLine 161B
++39.3 <f63 DuplexPipeWrite ≋4·4 LogLine 159B
++39.3 <f64 DuplexPipeWrite ≋4·4 LogLine 165B
++39.3 <f65 DuplexPipeWrite ≋4·4 LogLine 167B
++39.3 <f66 DuplexPipeWrite ≋4·4 LogLine 161B
++39.3 <f67 DuplexPipeWrite ≋4·4 LogLine 159B
++39.3 <f68 DuplexPipeWrite ≋4·4 LogLine 167B
++39.3 <f69 DuplexPipeWrite ≋4·4 LogLine 169B
++39.3 <f70 DuplexPipeUpdateState ≋4·4 LogLine server done 9B
++39.3 <f71 DuplexPipeUpdateState ≋4·4 LogLine complete 9B
++39.4 >f72 DuplexPipeUpdateState ≋4·4 LogLine complete 9B
++39.4 >f73 Invocation #0.8 TailLogs 13B
++39.5 <f74 DuplexPipeUpdateState ≋5·5 LogLine ready 13B
++39.5 >window ≋5·5
++39.6 <f76 DuplexPipeWrite ≋5·5 LogLine 161B
++39.7 <f77 DuplexPipeWrite ≋5·5 LogLine 159B
++39.7 <f78 DuplexPipeWrite ≋5·5 LogLine 165B
++39.7 <f79 DuplexPipeWrite ≋5·5 LogLine 167B
++39.7 <f80 DuplexPipeWrite ≋5·5 LogLine 161B
++39.7 <f81 DuplexPipeWrite ≋5·5 LogLine 159B
++39.7 <f82 DuplexPipeWrite ≋5·5 LogLine 165B
++39.7 <f83 DuplexPipeWrite ≋5·5 LogLine 167B
++39.7 <f84 DuplexPipeWrite ≋5·5 LogLine 161B
++39.7 <f85 DuplexPipeWrite ≋5·5 LogLine 159B
++39.7 <f86 DuplexPipeWrite ≋5·5 LogLine 167B T
++39.7 <f87 DuplexPipeWrite ≋5·5 LogLine 169B
++39.7 <f88 DuplexPipeWrite ≋5·5 LogLine 163B
++39.7 <f89 DuplexPipeWrite ≋5·5 LogLine 160B
++39.7 <f90 DuplexPipeWrite ≋5·5 LogLine 166B
++39.7 <f91 DuplexPipeWrite ≋5·5 LogLine 168B
++39.7 <f92 DuplexPipeWrite ≋5·5 LogLine 162B
++39.7 <f93 DuplexPipeWrite ≋5·5 LogLine 160B
++39.7 <f94 DuplexPipeWrite ≋5·5 LogLine 166B
++39.7 <f95 DuplexPipeWrite ≋5·5 LogLine 168B
++39.7 <f96 DuplexPipeWrite ≋5·5 LogLine 162B
++39.7 <f97 DuplexPipeWrite ≋5·5 LogLine 160B
++39.7 <f98 DuplexPipeWrite ≋5·5 LogLine 166B
++39.7 <f99 DuplexPipeWrite ≋5·5 LogLine 169B
++39.7 <f100 DuplexPipeWrite ≋5·5 LogLine 163B
++39.7 <f101 DuplexPipeWrite ≋5·5 LogLine 161B
++39.7 <f102 DuplexPipeWrite ≋5·5 LogLine 166B
++39.7 <f103 DuplexPipeWrite ≋5·5 LogLine 168B
++39.7 <f104 DuplexPipeWrite ≋5·5 LogLine 162B
++39.7 <f105 DuplexPipeWrite ≋5·5 LogLine 160B
++39.7 <f106 DuplexPipeWrite ≋5·5 LogLine 166B
++39.8 <f107 DuplexPipeWrite ≋5·5 LogLine 168B
++39.8 <f108 DuplexPipeWrite ≋5·5 LogLine 162B
++39.8 <f109 DuplexPipeWrite ≋5·5 LogLine 160B
++39.8 <f110 DuplexPipeWrite ≋5·5 LogLine 166B
++39.8 <f111 DuplexPipeWrite ≋5·5 LogLine 168B
++39.8 <f112 DuplexPipeWrite ≋5·5 LogLine 163B
++39.8 <f113 DuplexPipeWrite ≋5·5 LogLine 161B
++39.8 <f114 DuplexPipeWrite ≋5·5 LogLine 167B
++39.8 <f115 DuplexPipeWrite ≋5·5 LogLine 168B
++39.8 <f116 DuplexPipeWrite ≋5·5 LogLine 162B
++39.8 <f117 DuplexPipeWrite ≋5·5 LogLine 160B
++39.8 <f118 DuplexPipeWrite ≋5·5 LogLine 166B
++39.8 <f119 DuplexPipeWrite ≋5·5 LogLine 168B
++39.8 <f120 DuplexPipeWrite ≋5·5 LogLine 162B
++39.8 <f121 DuplexPipeWrite ≋5·5 LogLine 160B
++39.8 <f122 DuplexPipeWrite ≋5·5 LogLine 166B
++39.8 <f123 DuplexPipeWrite ≋5·5 LogLine 168B
++39.8 <f124 DuplexPipeWrite ≋5·5 LogLine 162B
++39.8 <f125 DuplexPipeWrite ≋5·5 LogLine 161B
++39.8 <f126 DuplexPipeWrite ≋5·5 LogLine 167B
++39.8 <f127 DuplexPipeWrite ≋5·5 LogLine 169B
++39.8 <f128 DuplexPipeWrite ≋5·5 LogLine 162B
++39.8 <f129 DuplexPipeWrite ≋5·5 LogLine 160B
++39.8 <f130 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f131 DuplexPipeWrite ≋5·5 LogLine 168B
++39.9 <f132 DuplexPipeWrite ≋5·5 LogLine 162B
++39.9 <f133 DuplexPipeWrite ≋5·5 LogLine 160B
++39.9 <f134 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f135 DuplexPipeWrite ≋5·5 LogLine 168B
++39.9 <f136 DuplexPipeWrite ≋5·5 LogLine 162B T
++39.9 <f137 DuplexPipeWrite ≋5·5 LogLine 160B
++39.9 <f138 DuplexPipeWrite ≋5·5 LogLine 167B
++39.9 <f139 DuplexPipeWrite ≋5·5 LogLine 169B
++39.9 <f140 DuplexPipeWrite ≋5·5 LogLine 163B
++39.9 <f141 DuplexPipeWrite ≋5·5 LogLine 160B
++39.9 <f142 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f143 DuplexPipeWrite ≋5·5 LogLine 168B
++39.9 <f144 DuplexPipeWrite ≋5·5 LogLine 162B
++39.9 <f145 DuplexPipeWrite ≋5·5 LogLine 160B
++39.9 <f146 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f147 DuplexPipeWrite ≋5·5 LogLine 168B
++39.9 <f148 DuplexPipeWrite ≋5·5 LogLine 162B
++39.9 <f149 DuplexPipeWrite ≋5·5 LogLine 160B
++39.9 <f150 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f151 DuplexPipeWrite ≋5·5 LogLine 169B
++39.9 <f152 DuplexPipeWrite ≋5·5 LogLine 163B
++39.9 <f153 DuplexPipeWrite ≋5·5 LogLine 161B
++39.9 <f154 DuplexPipeWrite ≋5·5 LogLine 166B
++39.9 <f155 DuplexPipeWrite ≋5·5 LogLine 168B
++39.9 <f156 DuplexPipeWrite ≋5·5 LogLine 162B
++39.9 <f157 DuplexPipeWrite ≋5·5 LogLine 160B
++40.0 <f158 DuplexPipeWrite ≋5·5 LogLine 166B
++40.0 <f159 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f160 DuplexPipeWrite ≋5·5 LogLine 162B
++40.0 <f161 DuplexPipeWrite ≋5·5 LogLine 160B T
++40.0 <f162 DuplexPipeWrite ≋5·5 LogLine 166B
++40.0 <f163 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f164 DuplexPipeWrite ≋5·5 LogLine 163B
++40.0 <f165 DuplexPipeWrite ≋5·5 LogLine 161B
++40.0 <f166 DuplexPipeWrite ≋5·5 LogLine 167B
++40.0 <f167 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f168 DuplexPipeWrite ≋5·5 LogLine 162B
++40.0 <f169 DuplexPipeWrite ≋5·5 LogLine 160B
++40.0 <f170 DuplexPipeWrite ≋5·5 LogLine 166B
++40.0 <f171 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f172 DuplexPipeWrite ≋5·5 LogLine 162B
++40.0 <f173 DuplexPipeWrite ≋5·5 LogLine 160B
++40.0 <f174 DuplexPipeWrite ≋5·5 LogLine 166B
++40.0 <f175 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f176 DuplexPipeWrite ≋5·5 LogLine 163B
++40.0 <f177 DuplexPipeWrite ≋5·5 LogLine 162B
++40.0 <f178 DuplexPipeWrite ≋5·5 LogLine 168B
++40.0 <f179 DuplexPipeWrite ≋5·5 LogLine 170B
++40.0 <f180 DuplexPipeWrite ≋5·5 LogLine 163B
++40.0 <f181 DuplexPipeWrite ≋5·5 LogLine 161B
++40.0 <f182 DuplexPipeWrite ≋5·5 LogLine 167B
++40.0 <f183 DuplexPipeWrite ≋5·5 LogLine 169B
++40.0 <f184 DuplexPipeWrite ≋5·5 LogLine 163B
++40.0 <f185 DuplexPipeWrite ≋5·5 LogLine 161B
++40.1 <f186 DuplexPipeWrite ≋5·5 LogLine 167B T
++40.1 <f187 DuplexPipeWrite ≋5·5 LogLine 169B
++40.1 <f188 DuplexPipeWrite ≋5·5 LogLine 163B
++40.1 <f189 DuplexPipeWrite ≋5·5 LogLine 161B
++40.1 <f190 DuplexPipeWrite ≋5·5 LogLine 168B
++40.1 <f191 DuplexPipeWrite ≋5·5 LogLine 170B
++40.1 <f192 DuplexPipeWrite ≋5·5 LogLine 164B
++40.1 <f193 DuplexPipeWrite ≋5·5 LogLine 161B
++40.1 <f194 DuplexPipeWrite ≋5·5 LogLine 167B
++40.1 <f195 DuplexPipeWrite ≋5·5 LogLine 169B
++40.1 <f196 DuplexPipeWrite ≋5·5 LogLine 163B
++40.1 <f197 DuplexPipeWrite ≋5·5 LogLine 161B
++40.1 <f198 DuplexPipeWrite ≋5·5 LogLine 167B
++40.1 <f199 DuplexPipeWrite ≋5·5 LogLine 169B
+… budget hit, 656 withheld, --after AQIBAQAAAAAAAADHAAAAAAAAAAAAAACGru5rwuYapw

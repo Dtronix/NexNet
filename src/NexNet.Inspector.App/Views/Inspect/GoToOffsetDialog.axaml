@@ -1,0 +1,42 @@
+<!--
+  The hex menu's "Go to offset…" dialog: 360 px. The stream (▼ IN | ▲ OUT, segmented) and the mono hex offset (initial
+  focus) with its error line; footer hint, Cancel and Go. A label sits 4 px above its field, groups 14 px apart.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             x:Class="NexNet.Inspector.App.Views.Inspect.GoToOffsetDialog"
+             x:DataType="vm:GoToOffsetDialogViewModel">
+  <c:DialogFrame x:Name="Frame" Width="360"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding SubmitCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="Cancel" Command="{Binding CancelCommand}" />
+        <Button x:Name="GoButton" Classes="md primary" Content="Go" Command="{Binding SubmitCommand}" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <StackPanel Spacing="14">
+      <StackPanel>
+        <TextBlock Classes="field-label" Text="Stream" />
+        <ListBox x:Name="DirectionChoice" Theme="{StaticResource Segmented}" Classes="dialog"
+                 ItemsSource="{Binding Direction.Labels}"
+                 SelectedIndex="{Binding Direction.SelectedIndex}"
+                 AutomationProperties.Name="Stream" />
+      </StackPanel>
+      <StackPanel>
+        <TextBlock Classes="field-label" Text="Offset (hex)" />
+        <TextBox x:Name="OffsetBox" Classes="mono" Text="{Binding Text}"
+                 PlaceholderText="1A3F21"
+                 c:DialogHost.InitialFocus="True"
+                 AutomationProperties.Name="Offset" />
+        <TextBlock x:Name="ErrorText" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                   Foreground="{DynamicResource Brush.Status.Error}" FontSize="{DynamicResource FontSize.Meta}" Margin="0,4,0,0" />
+      </StackPanel>
+    </StackPanel>
+  </c:DialogFrame>
+</UserControl>

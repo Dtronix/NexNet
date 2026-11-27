@@ -582,8 +582,16 @@ internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
         NexusPipeWriter? pipeWriter,
         CancellationToken cancellationToken)
     {
-        if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
+        if (_pipeOutput == null)
             return;
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            // A pipe chunk must not look sent when it was not: its writer keeps it for the next flush.
+            if (pipeWriter != null)
+                throw new TaskCanceledException(null, null, cancellationToken);
+            return;
+        }
 
         if (State != ConnectionState.Connected)
             return;

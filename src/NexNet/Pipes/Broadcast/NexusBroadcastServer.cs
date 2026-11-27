@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Internals.Threading;
 using NexNet.Invocation;
@@ -373,6 +374,39 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
                 $"S{client.Id} Could not write the collection snapshot after {sent} messages. Closing the pipe.");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Builds the collection's snapshot entry for one session from the subclass's item count and version.
+    /// </summary>
+    /// <remarks>
+    /// Enumerates the session set without taking its locks (unlike its Keys property, which locks and copies), so a
+    /// snapshot never holds up a client connecting or leaving.
+    /// </remarks>
+    private protected NexusCollectionSnapshot CreateSnapshot(INexusSession session, NexusCollectionKind kind, int count, int version)
+    {
+        List<ushort>? pipeIds = null;
+        var registered = false;
+        foreach (var entry in _sessions)
+        {
+            var client = entry.Key;
+            if (!ReferenceEquals(client.Session, session))
+                continue;
+
+            (pipeIds ??= new List<ushort>(1)).Add(client.Pipe.Id);
+            registered |= client.Registered;
+        }
+
+        return new NexusCollectionSnapshot
+        {
+            Id = Id,
+            Kind = kind,
+            Mode = Mode,
+            State = registered ? NexusCollectionState.Connected : NexusCollectionState.Disconnected,
+            Count = count,
+            Version = version,
+            PipeIds = pipeIds ?? (IReadOnlyList<ushort>)[],
+        };
     }
 
     /// <summary>

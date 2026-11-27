@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
@@ -32,7 +33,7 @@ internal interface INexusListRelay
 /// This collection is read-only and does not accept modifications from clients.
 /// </summary>
 /// <typeparam name="T">The type of elements in the list.</typeparam>
-internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMessage>, INexusList<T>, INexusListRelay
+internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMessage>, INexusList<T>, INexusListRelay, INexusCollectionSnapshotSource
 {
     private readonly VersionedList<T> _itemList;
     private INexusCollectionClientConnector? _parentConnector;
@@ -492,6 +493,13 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
 
     #region INexusList<T> - Read Operations
 
+    NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
+    {
+        // One read of the immutable state, so the count and version belong together.
+        var state = Volatile.Read(ref _itemList.State);
+        return CreateSnapshot(session, NexusCollectionKind.List, state.List.Count, state.Version);
+    }
+
     /// <inheritdoc />
     public bool Contains(T item) => _itemList.Contains(item);
 
@@ -603,7 +611,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
             foreach (var item in state.List.MemoryChunk(bufferSize))
             {
                 var message = NexusCollectionListResetValuesMessage.Rent();
-                message.Values = PayloadSerializer.Serialize(item);
+                message.Values = PayloadSerializer.SerializeValues(item);
                 yield return message;
             }
         }

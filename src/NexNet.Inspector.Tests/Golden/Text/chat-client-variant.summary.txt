@@ -1,0 +1,20 @@
+@0x1 client tcp 127.0.0.1:54368 schema ChatClientNexus#9a68b8ec t0=2026-11-23T22:54:21.822Z
+frames 880 ops 383 in 127.3KB out 319.6KB duration 468.3ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=8944158243
+calls 16 ok 6 cancel 1 oneway 9
+  >SendMessage ×5 ok 4 cancel 1 p50 0.2ms max 8.8ms
+  <ReceiveMessage ×4 oneway 4
+  >TailLogs ×2 oneway 2
+  >UploadFile ×2 oneway 2
+  >Join ×1 ok 1 p50 0.2ms max 0.2ms
+  >SendAttachment ×1 ok 1 p50 26.4ms max 26.4ms
+  >Users ×1 oneway 1
+pipes 5
+  ☰1·1 Users by #0 open in 28B out 0B items 3 v1
+  ⇄2·2 by #0.4 closed in 0B out 2.0KB
+  ⇄3·3 by #0.5 closed in 0B out 24.0KB
+  ≋4·4 LogLine by #0.7 closed in 1.9KB out 0B items 12
+  ≋5·5 LogLine by #0.8 closed in 121.2KB out 0B items 768
+gaps 0
+noise ping ×34 credit ×0 window ×5
++468.3 END Graceful from client

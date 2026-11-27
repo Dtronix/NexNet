@@ -93,12 +93,12 @@ internal static class IrTestRunner
     }
 }
 
-/// <summary>JSON snapshots stored beside this file in <c>Snapshots/</c>. Set NEXNET_UPDATE_SNAPSHOTS=1 to rewrite them.</summary>
+/// <summary>Snapshots stored beside this file in <c>Snapshots/</c> (JSON by default). Set NEXNET_UPDATE_SNAPSHOTS=1 to rewrite them.</summary>
 internal static class IrSnapshots
 {
-    public static async Task Verify(string name, string actual)
+    public static async Task Verify(string name, string actual, string extension = ".json")
     {
-        var path = Path.Combine(Directory(), name + ".json");
+        var path = Path.Combine(Directory(), name + extension);
         actual = actual.Replace("\r\n", "\n");
         if (Environment.GetEnvironmentVariable("NEXNET_UPDATE_SNAPSHOTS") == "1")
         {

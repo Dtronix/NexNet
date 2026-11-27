@@ -1,0 +1,91 @@
+@0x3B52AC651 server tcp 127.0.0.1:49947 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.420Z
+hs none (attached mid-stream)
++19.0 >☰1·1 data 16B items unavailable
++19.1 >#0 ReceiveMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++44.3 >#0.2 ReceiveMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++44.7 >#0.3 ReceiveMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++45.5 >☰1·1 data 16B items unavailable
++48.1 >#0.4 ReceiveMessage({"general" "linus" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++58.1 >#0.5 ReceiveMessage({"general" "linus" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++58.6 >#0.6 ReceiveMessage({"general" "linus" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++58.7 <#2 SendMessage({"general" "grace" "welcome both" 0001-01-01T00:00:00.0000000}) -> ok true 0.1ms
++58.8 >#0.7 ReceiveMessage({"general" "grace" "welcome both" 0001-01-01T00:00:00.0000000}) (oneway)
++59.1 END Graceful from client
+
+@0x42F6FD6BC server tcp 127.0.0.1:49949 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.431Z
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=17975727804
++0.9 <#0 Users(pipe:1) (oneway)
++0.9 >☰1·1 open Users by #0
++1.0 <window ☰1·1
++1.1 >☰1·1 Users ResetStart v1 n=1
++5.3 >☰1·1 Users ResetValues Integer[1]
++5.8 >☰1·1 Users ResetComplete
++7.0 <#1 Join("ada") -> ok 17975727804 "ada" Online 0.3ms
++7.3 >☰1·1 Users Insert v2 @1 17975727804
++7.3 <#2 SendMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++7.4 >#0.2 ReceiveMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++7.5 <#3 SendMessage({"general" "ada" "/slow typing…" 2026-11-22T12:04:00.0000000Z}) -> canceled 23.3ms
++30.8 <#0.3 UploadFile("avatar.png", pipe:2) (oneway)
++31.0 >⇄2·2 open by #0.3
++31.1 <window ⇄2·2
++31.1 <⇄2·2 data 2.0KB
++31.1 <⇄2·2 client done
++32.3 >⇄2·2 complete
++32.5 <⇄2·2 complete
++32.5 <#4 SendMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++32.6 >#0.4 ReceiveMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++32.7 <#0.5 TailLogs(Info, 4, pipe:3) (oneway)
++32.7 >≋3·3 open LogLine by #0.5
++32.8 <window ≋3·3
++32.8 >≋3·3 LogLine ×4 0 Info "chat.rooms" "chat.rooms event 0: room genera…" (…3 more)
++32.8 >≋3·3 server done
++32.9 >≋3·3 complete
++32.9 <≋3·3 complete
++33.0 <#5 SendMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.0ms
++33.0 >#0.6 ReceiveMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++33.8 >☰1·1 Users Insert v3 @2 21982814004
++36.4 >#0.7 ReceiveMessage({"general" "linus" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++46.4 >#0.8 ReceiveMessage({"general" "linus" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++46.8 >#0.9 ReceiveMessage({"general" "linus" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++47.0 >#0.10 ReceiveMessage({"general" "grace" "welcome both" 0001-01-01T00:00:00.0000000}) (oneway)
++47.5 >☰1·1 Users Remove v4 @0
++254.6 END Graceful from client
+
+@0x51E471F34 server tcp 127.0.0.1:49950 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.432Z
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=21982814004
++6.8 >#0 ReceiveMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++31.9 >#0.2 ReceiveMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++32.4 >#0.3 ReceiveMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++32.5 <#0.4 Users(pipe:1) (oneway)
++32.5 >☰1·1 open Users by #0.4
++32.6 <window ☰1·1
++32.6 >☰1·1 Users ResetStart v2 n=2
++32.7 >☰1·1 Users ResetValues Integer[2]
++32.7 >☰1·1 Users ResetComplete
++32.8 <#1 Join("linus") -> ok 21982814004 "linus" Online 0.3ms
++33.2 >☰1·1 Users Insert v3 @2 21982814004
++35.7 <#2 SendMessage({"general" "linus" "hello everyone" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++35.8 >#0.5 ReceiveMessage({"general" "linus" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++35.9 <#3 SendMessage({"general" "linus" "/slow typing…" 2026-11-22T12:04:00.0000000Z}) -> canceled 9.4ms
++45.3 <#0.6 UploadFile("avatar.png", pipe:2) (oneway)
++45.4 >⇄2·2 open by #0.6
++45.5 <window ⇄2·2
++45.5 <⇄2·2 data 2.0KB
++45.5 <⇄2·2 client done
++45.6 >⇄2·2 complete
++45.6 <⇄2·2 complete
++45.7 <#4 SendMessage({"general" "linus" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.0ms
++45.7 >#0.7 ReceiveMessage({"general" "linus" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++45.8 <#0.8 TailLogs(Info, 4, pipe:3) (oneway)
++45.9 >≋3·3 open LogLine by #0.8
++46.0 <window ≋3·3
++46.0 >≋3·3 LogLine ×4 0 Info "chat.rooms" "chat.rooms event 0: room genera…" (…3 more)
++46.0 >≋3·3 server done
++46.1 >≋3·3 complete
++46.2 <≋3·3 complete
++46.2 <#5 SendMessage({"general" "linus" "bye" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.0ms
++46.2 >#0.9 ReceiveMessage({"general" "linus" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++46.4 >#0.10 ReceiveMessage({"general" "grace" "welcome both" 0001-01-01T00:00:00.0000000}) (oneway)
++46.9 >☰1·1 Users ×2 Remove v4 @0 (…1 more)
++414.5 ping ×2 (span 0.0ms)
++461.9 END Graceful from client

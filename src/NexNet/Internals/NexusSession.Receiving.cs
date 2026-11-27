@@ -139,9 +139,13 @@ internal partial class NexusSession<TNexus, TProxy>
             // Only this loop touches the streams' buffers.
             _largeMessages.Clear();
 
-            // A loop that ended without a disconnect (one in progress retires the session itself).
+            // A loop that ended without a disconnect (one in progress retires the session itself, and tells the tap).
             if (State != ConnectionState.Disconnecting)
+            {
                 RetireMetrics();
+                if (!IsDisconnectStarted)
+                    TapClosed();
+            }
 
             try
             {
@@ -539,6 +543,7 @@ internal partial class NexusSession<TNexus, TProxy>
             EnumUtilities<InternalState>.SetFlag(
                 ref _internalState, InternalState.NexusCompletedConnection);
             EndHandshake();
+            TapConnected();
 
             // The client may now be invoked: it advertised its credits in the greeting.
             _outboundCredits.Release(_peerInvocationCredits);
@@ -785,6 +790,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 EnumUtilities<InternalState>.SetFlag(
                     ref _internalState, InternalState.NexusCompletedConnection);
+                TapConnected();
                 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
                 

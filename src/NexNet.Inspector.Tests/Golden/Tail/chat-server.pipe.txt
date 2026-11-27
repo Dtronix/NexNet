@@ -1,0 +1,8 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
++53.8 >≋4·4 open LogLine by #0.6
++53.9 <window ≋4·4
++53.9 >≋4·4 LogLine ×12 0 Info "chat.rooms" "chat.rooms event 0: room genera…" (…11 more)
++53.9 >≋4·4 server done
++53.9 >≋4·4 complete
++54.0 <≋4·4 complete
++282.6 END Graceful from client

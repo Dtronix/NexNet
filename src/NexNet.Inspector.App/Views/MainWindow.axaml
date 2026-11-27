@@ -1,0 +1,106 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+        xmlns:shell="using:NexNet.Inspector.App.Views.Shell"
+        xmlns:c="using:NexNet.Inspector.App.Controls"
+        xmlns:home="using:NexNet.Inspector.App.Views.Home"
+        xmlns:connect="using:NexNet.Inspector.App.Views.Connect"
+        xmlns:recording="using:NexNet.Inspector.App.Views.OpenRecording"
+        xmlns:inspect="using:NexNet.Inspector.App.Views.Inspect"
+        xmlns:palette="using:NexNet.Inspector.App.Views.Palette"
+        xmlns:compare="using:NexNet.Inspector.App.Views.Compare"
+        xmlns:export="using:NexNet.Inspector.App.Views.Export"
+        xmlns:scope="using:NexNet.Inspector.App.Views.Scope"
+        x:Class="NexNet.Inspector.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1440" Height="900"
+        MinWidth="1100" MinHeight="700"
+        WindowDecorations="BorderOnly" ExtendClientAreaToDecorationsHint="True" ExtendClientAreaTitleBarHeightHint="36"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource Brush.Surface.App}"
+        Foreground="{DynamicResource Brush.Text.Primary}"
+        FontFamily="{DynamicResource Font.Ui}"
+        FontSize="{DynamicResource FontSize.Body}">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+K" Command="{Binding ConnectCommand}" />
+    <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenCommand}" />
+  </Window.KeyBindings>
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:ConnectDialogViewModel">
+      <connect:ConnectDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:OpenRecordingDialogViewModel">
+      <recording:OpenRecordingDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:GoToOffsetDialogViewModel">
+      <inspect:GoToOffsetDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:UnsavedCloseDialogViewModel">
+      <shell:UnsavedCloseDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:HelpDialogViewModel">
+      <shell:HelpDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:LegendDialogViewModel">
+      <shell:LegendDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ExportSectionDialogViewModel">
+      <export:ExportSectionDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ScopeDialogViewModel">
+      <scope:ScopeDialog />
+    </DataTemplate>
+  </Window.DataTemplates>
+  <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window
+       draws its own title bar: the OS frame with the client area extended under it, or no frame at all on Linux
+       (MainWindow.axaml.cs). -->
+  <Grid x:Name="Root" RowDefinitions="Auto,*">
+    <shell:TitleBar x:Name="TitleBar" DataContext="{Binding Chrome}" />
+
+    <!-- The Inspect workspace over the active document, under the session-ended strip while its live session has ended
+         (the data stays navigable beneath it). -->
+    <DockPanel Grid.Row="1" IsVisible="{Binding Inspect.IsShown}">
+      <shell:SessionEndedBanner x:Name="EndedBanner" DockPanel.Dock="Top" DataContext="{Binding Ended}" />
+      <inspect:InspectView x:Name="Inspect" DataContext="{Binding Inspect}" />
+    </DockPanel>
+
+    <!-- The Compare workspace over the two documents ticked in the tabs. -->
+    <Panel Grid.Row="1" IsVisible="{Binding Compare.IsShown}">
+      <compare:CompareView x:Name="Compare" DataContext="{Binding Compare}" />
+    </Panel>
+
+    <!-- The empty window: hero, action cards, recents; dropping a .nntl on it opens the file. -->
+    <Panel Grid.Row="1" IsVisible="{Binding !Documents.HasDocuments}">
+      <home:HomeView x:Name="Home" DataContext="{Binding Home}" />
+    </Panel>
+
+    <!-- The modal layer below the title bar: scrim and the open dialog (connect, open-recording). -->
+    <c:DialogHost x:Name="Dialogs" Grid.Row="1" Dialog="{Binding Dialog}" />
+
+    <!-- The application menu under the logo and the session popover under the connection group. Both render in the
+         window's overlay layer (anchored in code to the title bar's parts), so they stay inside the window. -->
+    <Popup x:Name="AppMenuPopup" IsOpen="{Binding IsAppMenuOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedLeft"
+           VerticalOffset="2" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True" WindowManagerAddShadowHint="False">
+      <shell:AppMenu x:Name="AppMenu" />
+    </Popup>
+    <Popup x:Name="SessionPopup" DataContext="{Binding Chrome.Session}" x:DataType="vm:SessionAreaViewModel"
+           IsOpen="{Binding IsPopoverOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedLeft"
+           HorizontalOffset="-28" VerticalOffset="6" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True"
+           WindowManagerAddShadowHint="False">
+      <shell:SessionPopover x:Name="SessionPopover" />
+    </Popup>
+
+    <!-- The bookmarks dropdown under the title bar's ★ (I44). -->
+    <Popup x:Name="BookmarksPopup" DataContext="{Binding Chrome.Bookmarks}" x:DataType="vm:BookmarksViewModel"
+           IsOpen="{Binding IsOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedRight"
+           VerticalOffset="6" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True" WindowManagerAddShadowHint="False">
+      <shell:BookmarksPopover x:Name="BookmarksPopover" />
+    </Popup>
+
+    <!-- The command palette over the whole window, title bar included (56 px from the window top). -->
+    <Panel Grid.RowSpan="2" IsVisible="{Binding Palette.IsOpen}">
+      <palette:CommandPalette x:Name="Palette" DataContext="{Binding Palette}" />
+    </Panel>
+  </Grid>
+</Window>

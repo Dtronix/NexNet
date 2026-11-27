@@ -1,0 +1,51 @@
+<!--
+  The Compare workspace's Entities sidebar (screens/compare): a 20 px tree of rows on the panel fill. Hover raises the
+  row; the selected (pinned) row takes state.selected with a 2 px direction.inbound bar at its left edge; keyboard focus
+  is a 2 px direction.inbound ring inside the row.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ◆: the pinned entity's marker. -->
+  <StreamGeometry x:Key="Glyph.Compare.Pinned">M4,0 L8,4 L4,8 L0,4 Z</StreamGeometry>
+
+  <ControlTheme x:Key="CompareEntityRow" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="MinHeight" Value="20" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Name="PART_Fill" Background="{TemplateBinding Background}" />
+          <Border Name="PART_Bar" Width="2" HorizontalAlignment="Left" Background="{DynamicResource Brush.Direction.Inbound}"
+                  IsVisible="False" />
+          <Border Name="PART_FocusRing" BorderThickness="2" BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Center" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^:selected /template/ Border#PART_Bar">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

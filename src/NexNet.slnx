@@ -1,6 +1,7 @@
 ﻿<Solution>
   <Folder Name="/github/">
     <File Path="..\.github\workflows\dotnet.yml" />
+    <File Path="..\.github\workflows\inspector.yml" />
     <File Path="..\README.md" />
   </Folder>
   <Folder Name="/Samples/">
@@ -29,6 +30,16 @@
   <Project Path="NexNet.InteropServer\NexNet.InteropServer.csproj" />
   <Project Path="NexNet.InteropServer\Cli\NexNet.InteropServer.Cli.csproj" />
   <Project Path="NexNet.InteropServer\SelfTest\NexNet.InteropServer.SelfTest.csproj" />
+  <Folder Name="/Inspector/">
+    <Project Path="NexNet.Inspector.App\NexNet.Inspector.App.csproj" />
+    <Project Path="NexNet.Inspector.App.Tests\NexNet.Inspector.App.Tests.csproj" />
+    <Project Path="NexNet.Inspector.Cli\NexNet.Inspector.Cli.csproj" />
+    <Project Path="NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <Project Path="NexNet.Inspector.Sample\NexNet.Inspector.Sample.csproj" />
+    <Project Path="NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <Project Path="NexNet.Inspector.Testing\NexNet.Inspector.Testing.csproj" />
+    <Project Path="NexNet.Inspector.Tests\NexNet.Inspector.Tests.csproj" />
+  </Folder>
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
   <Project Path="NexNet.Serialization.Tests\NexNet.Serialization.Tests.csproj" />
   <Project Path="NexNet.TestNexus\NexNet.TestNexus.csproj" />

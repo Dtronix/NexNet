@@ -1,0 +1,20 @@
+@0x3078183DB server tcp 127.0.0.1:60700 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.597Z
++0.0 >f1 Preamble v1 8B
++0.0 <f2 Preamble v1 8B
++0.0 <f3 ClientGreeting token 0B 23B
++0.1 >f4 ServerGreeting id=13010830299 27B
++21.0 <f5 Invocation #0 Upload 10B
++24.4 >f6 DuplexPipeUpdateState ⇄1·1 ready 11B
++29.5 <window ⇄1·1
++29.9 <f8 DuplexPipeWrite ⇄1·1 16.0KB T
++31.8 >window ⇄1·1
++32.7 <f10 DuplexPipeWrite ⇄1·1 16.0KB T
++139.5 >window ⇄1·1
++139.8 <f12 DuplexPipeWrite ⇄1·1 16.0KB T
++250.4 >window ⇄1·1
++250.7 <f14 DuplexPipeWrite ⇄1·1 16.0KB T
++252.1 <f15 DuplexPipeUpdateState ⇄1·1 client done 9B
++362.2 >f16 DuplexPipeUpdateState ⇄1·1 complete 9B
++362.5 <f17 DuplexPipeUpdateState ⇄1·1 complete 9B
++363.4 <f18 DisconnectGraceful 1B
++363.6 END Graceful from client

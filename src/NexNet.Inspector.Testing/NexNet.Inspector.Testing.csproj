@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>NexNet Inspector test helper: InspectorCapture records a test's traffic in memory and renders it as the inspector's text format (summary, findings).</Description>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+  </ItemGroup>
+</Project>

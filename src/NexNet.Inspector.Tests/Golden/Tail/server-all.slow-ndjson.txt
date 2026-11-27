@@ -1,0 +1,8 @@
+{"k":"hdr","id":"@0x3B52AC651","v":"server tcp 127.0.0.1:49947 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.420Z"}
+{"k":"end","t":59.1,"n":"client","r":"Graceful"}
+{"k":"hdr","id":"@0x42F6FD6BC","v":"server tcp 127.0.0.1:49949 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.431Z"}
+{"k":"call","t":7.5,"d":"<","id":"#3","n":"SendMessage","v":"{\"general\" \"ada\" \"/slow typing…\" 2026-11-22T12:04:00.0000000Z}","r":"canceled","ms":23.3,"b":39,"f":17}
+{"k":"end","t":254.6,"n":"client","r":"Graceful"}
+{"k":"hdr","id":"@0x51E471F34","v":"server tcp 127.0.0.1:49950 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.432Z"}
+{"k":"call","t":35.9,"d":"<","id":"#3","n":"SendMessage","v":"{\"general\" \"linus\" \"/slow typing…\" 2026-11-22T12:04:00.0000000Z}","r":"canceled","ms":9.4,"b":41,"f":20}
+{"k":"end","t":461.9,"n":"client","r":"Graceful"}

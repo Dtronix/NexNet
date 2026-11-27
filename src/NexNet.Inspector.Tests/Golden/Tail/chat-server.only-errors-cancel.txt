@@ -1,0 +1,3 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
++2.1 <#3 SendMessage({"general" "ada" "/slow typing…" 2026-11-22T12:04:00.0000000Z}) -> canceled 24.1ms
++282.6 END Graceful from client

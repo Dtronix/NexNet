@@ -234,9 +234,10 @@ public static class NexusPipeForwardingExtensions
                     var flushToken = cancellationToken;
                     if (nexusOutput != null)
                     {
-                        // A canceled NexusPipeWriter flush drops what it has not sent yet. Wait for credit here
-                        // instead and write no more than it, so the flush sends everything without waiting and
-                        // is not canceled: the source is then advanced past exactly what reached the destination.
+                        // A canceled NexusPipeWriter flush keeps what it has not sent buffered in the writer, out
+                        // of the source's reach. Wait for credit here instead and write no more than it, so the
+                        // flush sends everything without waiting and is not canceled: the source is then advanced
+                        // past exactly what reached the destination.
                         var credit = await nexusOutput.WaitForCreditAsync(chunk.Length, cancellationToken)
                             .ConfigureAwait(false);
                         if (credit == 0)

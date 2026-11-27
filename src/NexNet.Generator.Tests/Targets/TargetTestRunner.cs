@@ -59,7 +59,7 @@ internal static class TargetTestRunner
         return new TargetRun(ir, diagnostics.Where(d => d.Id.StartsWith("NEXNET", StringComparison.Ordinal)).ToArray());
     }
 
-    private sealed class TestOptionsProvider : AnalyzerConfigOptionsProvider
+    internal sealed class TestOptionsProvider : AnalyzerConfigOptionsProvider
     {
         public TestOptionsProvider(Dictionary<string, string> global) => GlobalOptions = new Options(global);
 

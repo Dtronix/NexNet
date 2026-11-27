@@ -1,0 +1,270 @@
+<!--
+  The app's one popup menu look (PKG controls/menu), app-wide: every ContextMenu, every MenuFlyout's presenter and every
+  MenuItem, so right-click menus, the logo (application) menu, select dropdowns and the rail's scroll menu all match.
+  Surface: surface.panel in a 1 px border.strong outline, 8 px corners, shadow.menu, 4 px in, fading in by opacity
+  (120 ms, 80 ms when the OS's animations are off; never a brush fade). Item: 26 px, 0 8 px in, 5 px corners, three
+  columns 8 px apart: an 18 px icon / check column (✓ in direction.inbound when checked), the 12 px label, and the
+  InputGesture right-aligned in mono 10.5 px tertiary, or a tertiary ▸ on a submenu. Hover and keyboard selection fill
+  state.selected; keyboard focus adds a 1 px direction.inbound inset ring; a disabled item is tertiary and never filled.
+  Separators: 1 px border.default, 3 px above and below, 4 px in. A submenu opens to the right, its first item level with
+  its parent item.
+  Item kinds beyond the plain item, each a MenuItem class (so they stay in the menu's keyboard order and automation tree):
+  - header: the 24 px context header (11 px secondary text; the target's name in bold primary is the caller's Run);
+  - group: a group heading (10 px bold capitals, .05em tracking, tertiary) for the app menu;
+  - embedded: a 28 px row that hosts any control as its Header (the app menu's Theme segmented row); it stays open on click.
+  The app menu variant (class "app" on the ContextMenu, or FlyoutPresenterClasses="app" on a MenuFlyout) is 280 px wide and
+  drops the icon column. The parts keep Fluent's names (PART_Popup, PART_HeaderPresenter, PART_InputGestureText,
+  PART_ItemsPresenter) so MenuItem's code finds them.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:Avalonia.Controls.Converters"
+        xmlns:c="using:NexNet.Inspector.App.Controls">
+
+  <Styles.Resources>
+    <conv:PlatformKeyGestureConverter x:Key="Menu.KeyGesture" />
+
+    <ItemsPanelTemplate x:Key="Menu.ItemsPanel">
+      <StackPanel />
+    </ItemsPanelTemplate>
+
+    <ControlTheme x:Key="{x:Type ContextMenu}" TargetType="ContextMenu">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xl}" />
+      <Setter Property="Padding" Value="4" />
+      <Setter Property="MinWidth" Value="{x:Static c:MenuMetrics.MinWidth}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+      <Setter Property="Focusable" Value="True" />
+      <Setter Property="WindowManagerAddShadowHint" Value="False" />
+      <Setter Property="ItemsPanel" Value="{StaticResource Menu.ItemsPanel}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}" BoxShadow="{DynamicResource Shadow.Menu}"
+                  MaxWidth="{TemplateBinding MaxWidth}" MinHeight="{TemplateBinding MinHeight}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
+                              KeyboardNavigation.TabNavigation="Continue" />
+            </ScrollViewer>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:open /template/ Border#PART_Chrome">
+        <Style.Animations>
+          <Animation Duration="{x:Static c:MenuMotion.Fade}" Easing="{x:Static c:MenuMotion.Ease}">
+            <KeyFrame Cue="0%">
+              <Setter Property="Opacity" Value="0" />
+            </KeyFrame>
+            <KeyFrame Cue="100%">
+              <Setter Property="Opacity" Value="1" />
+            </KeyFrame>
+          </Animation>
+        </Style.Animations>
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type MenuFlyoutPresenter}" TargetType="MenuFlyoutPresenter">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xl}" />
+      <Setter Property="Padding" Value="4" />
+      <Setter Property="MinWidth" Value="{x:Static c:MenuMetrics.MinWidth}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+      <Setter Property="Focusable" Value="True" />
+      <Setter Property="ItemsPanel" Value="{StaticResource Menu.ItemsPanel}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}" BoxShadow="{DynamicResource Shadow.Menu}"
+                  MaxWidth="{TemplateBinding MaxWidth}" MinHeight="{TemplateBinding MinHeight}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}"
+                              KeyboardNavigation.TabNavigation="Continue" />
+            </ScrollViewer>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type MenuItem}" TargetType="MenuItem">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+      <Setter Property="Height" Value="{DynamicResource Size.MenuItem}" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Md}" />
+      <Setter Property="ItemsPanel" Value="{StaticResource Menu.ItemsPanel}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel>
+            <Border Name="PART_LayoutRoot" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                    Padding="{TemplateBinding Padding}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <!-- The icon / check column: 18 px, then the 8 px gap. The app menu hides it, gap and all. -->
+                <Panel Name="PART_IconColumn" Width="18" Margin="0,0,8,0">
+                  <ContentPresenter Name="PART_IconPresenter" Content="{TemplateBinding Icon}" HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="11.5" />
+                  <Path Name="PART_CheckPath" IsVisible="False" Width="10" Height="8" HorizontalAlignment="Center"
+                        VerticalAlignment="Center" Stretch="Uniform" Data="M 0,4 L 3.5,7.5 L 10,0.5"
+                        Stroke="{DynamicResource Brush.Direction.Inbound}" StrokeThickness="1.5" />
+                </Panel>
+                <ContentPresenter Name="PART_HeaderPresenter" Grid.Column="1" Content="{TemplateBinding Header}"
+                                  ContentTemplate="{TemplateBinding HeaderTemplate}" RecognizesAccessKey="True"
+                                  HorizontalAlignment="Left" VerticalAlignment="Center" />
+                <Panel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center">
+                  <TextBlock Name="PART_InputGestureText" HorizontalAlignment="Right" VerticalAlignment="Center"
+                             FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Meta}"
+                             Foreground="{DynamicResource Brush.Text.Tertiary}"
+                             Text="{TemplateBinding InputGesture, Converter={StaticResource Menu.KeyGesture}}"
+                             IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <Path Name="PART_ChevronPath" Width="4" Height="7" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Stretch="Uniform" Data="M 0,0 L 4,3.5 L 0,7 Z" Fill="{DynamicResource Brush.Text.Tertiary}" />
+                </Panel>
+              </Grid>
+            </Border>
+            <!-- Keyboard focus: a 1 px inset ring over the selected fill. -->
+            <Border Name="PART_FocusRing" IsVisible="False" IsHitTestVisible="False" BorderThickness="1"
+                    BorderBrush="{DynamicResource Brush.Direction.Inbound}" CornerRadius="{TemplateBinding CornerRadius}" />
+            <!-- Level with the parent: the submenu's border and padding (5 px) sit above the item's top. -->
+            <Popup Name="PART_Popup" WindowManagerAddShadowHint="False" Placement="RightEdgeAlignedTop" HorizontalOffset="-1"
+                   VerticalOffset="-5" IsLightDismissEnabled="False" IsOpen="{TemplateBinding IsSubMenuOpen, Mode=TwoWay}">
+              <Border Name="PART_SubmenuChrome" Background="{DynamicResource Brush.Surface.Panel}" BorderBrush="{DynamicResource Brush.Border.Strong}"
+                      BorderThickness="1" CornerRadius="{DynamicResource Radius.Xl}" Padding="4" MinWidth="{x:Static c:MenuMetrics.MinWidth}"
+                      BoxShadow="{DynamicResource Shadow.Menu}" TextElement.FontFamily="{DynamicResource Font.Ui}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                  <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:empty /template/ Path#PART_ChevronPath">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+      <Style Selector="^:checked /template/ Path#PART_CheckPath">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^:selected">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^:open">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^:focus-visible">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+      </Style>
+      <Style Selector="^:disabled /template/ Border#PART_FocusRing">
+        <Setter Property="IsVisible" Value="False" />
+      </Style>
+    </ControlTheme>
+
+    <!-- The context header: what the menu acts on, e.g. "⇄ Pipe 3·1 FileUpload · raw" with the name in a bold Run. -->
+    <ControlTheme x:Key="MenuItem.Header" TargetType="MenuItem">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="StaysOpenOnClick" Value="True" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_HeaderPresenter" Content="{TemplateBinding Header}"
+                              ContentTemplate="{TemplateBinding HeaderTemplate}" HorizontalAlignment="Left" VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!-- A group heading in the app menu (FILE, SESSION, VIEW): written in sentence case, drawn in capitals. -->
+    <ControlTheme x:Key="MenuItem.Group" TargetType="MenuItem">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="{DynamicResource FontWeight.Bold}" />
+      <Setter Property="Padding" Value="8,4,8,2" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="StaysOpenOnClick" Value="True" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+            <TextBlock Name="PART_HeadingText" Text="{TemplateBinding Header, Converter={x:Static c:MenuText.Upper}}"
+                       LetterSpacing="0.5" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!-- A row hosting a control (its Header), e.g. the app menu's Theme segmented row: no fill, stays open when used. -->
+    <ControlTheme x:Key="MenuItem.Embedded" TargetType="MenuItem">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="StaysOpenOnClick" Value="True" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_HeaderPresenter" Content="{TemplateBinding Header}"
+                              ContentTemplate="{TemplateBinding HeaderTemplate}" HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <Style Selector="MenuItem.header">
+    <Setter Property="Theme" Value="{StaticResource MenuItem.Header}" />
+  </Style>
+  <Style Selector="MenuItem.group">
+    <Setter Property="Theme" Value="{StaticResource MenuItem.Group}" />
+  </Style>
+  <Style Selector="MenuItem.embedded">
+    <Setter Property="Theme" Value="{StaticResource MenuItem.Embedded}" />
+  </Style>
+
+  <Style Selector="ContextMenu Separator, MenuFlyoutPresenter Separator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="MinHeight" Value="1" />
+    <Setter Property="Margin" Value="4,3" />
+    <Setter Property="Background" Value="{DynamicResource Brush.Border.Default}" />
+  </Style>
+
+  <!-- The app menu: 280 px, no icon column (its items carry no icons or checks). -->
+  <Style Selector="ContextMenu.app, MenuFlyoutPresenter.app">
+    <Setter Property="Width" Value="{x:Static c:MenuMetrics.AppWidth}" />
+  </Style>
+  <Style Selector="ContextMenu.app MenuItem /template/ Panel#PART_IconColumn, MenuFlyoutPresenter.app MenuItem /template/ Panel#PART_IconColumn">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+</Styles>

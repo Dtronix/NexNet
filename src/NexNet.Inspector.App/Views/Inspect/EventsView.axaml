@@ -1,0 +1,21 @@
+<!--
+  The Events pane's body (PKG data-table, Events variant): the active document's frames, one 20 px drawn row each, in a
+  virtualized table that selects through the sync bus, follows the live edge, and shows skeleton rows while a file
+  indexes and a tertiary hint when empty. The pane header around it (tabs, Filter, Follow live, synced) is I23's.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:dt="using:NexNet.Inspector.App.Controls.DataTable"
+             x:Class="NexNet.Inspector.App.Views.Inspect.EventsView"
+             x:DataType="vm:EventsViewModel">
+  <dt:DataTableControl x:Name="Table"
+                       ItemsSource="{Binding Rows}"
+                       Columns="{x:Static vm:EventsViewModel.Columns}"
+                       SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
+                       IsLoading="{Binding IsLoading}"
+                       EmptyText="{Binding EmptyText}"
+                       FollowTail="{Binding FollowLive, Mode=TwoWay}"
+                       ActivateCommand="{Binding TraceSelectedCommand}"
+                       AutomationProperties.Name="Events" />
+</UserControl>

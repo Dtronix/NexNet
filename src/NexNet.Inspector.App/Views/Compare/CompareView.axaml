@@ -1,0 +1,118 @@
+<!--
+  The Compare workspace (screens/compare): the Entities sidebar (232 px: a titled pane header "Entities · union of 2
+  files", the search field and the 20 px entity tree with Δ markers and counts), then the aligned sessions: a titled
+  pane header ("Aligned sessions · whole session · 42.1 s") with Rows (Heat | Packed), Only differences and Align
+  (Relative | Wall-clock | On event · Session ready); the drawn ruler, Δ strip and per-file rows with the scroll rail
+  beside them; the legend row; and the 200 px bottom panel for the selected entity's field diff and A ⇄ B hex (I32).
+  The sidebar's width and the bottom panel's height are PaneSplitters over their border lines (I40): drag to resize,
+  double-click for the default.
+  Without two ticked documents it says how to get them.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:cmp="using:NexNet.Inspector.App.Controls.Compare"
+             xmlns:views="using:NexNet.Inspector.App.Views.Compare"
+             x:Class="NexNet.Inspector.App.Views.Compare.CompareView"
+             x:DataType="vm:CompareWorkspaceViewModel"
+             Background="{DynamicResource Brush.Surface.Panel}">
+  <Panel>
+    <TextBlock Name="Empty" IsVisible="{Binding !HasSession}" Text="{Binding EmptyText}"
+               HorizontalAlignment="Center" VerticalAlignment="Center"
+               FontSize="{DynamicResource FontSize.Body}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+
+    <Grid Name="Layout" IsVisible="{Binding HasSession}" ColumnDefinitions="232,*">
+      <Border Name="Sidebar" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <c:PaneHeader DockPanel.Dock="Top" Variant="Titled" Title="Entities" ViewControls="{Binding EntitiesSubtitle}" />
+          <TextBox Name="Search" DockPanel.Dock="Top" Classes="search" Margin="8,8,8,6"
+                   PlaceholderText="Find method, pipe, collection…" Text="{Binding SearchText}"
+                   AutomationProperties.Name="Find an entity" />
+          <ListBox Name="EntityList" ItemsSource="{Binding Entities}" SelectedItem="{Binding SelectedEntity}"
+                   ItemContainerTheme="{StaticResource CompareEntityRow}"
+                   Background="{x:Null}" BorderThickness="0" Padding="0"
+                   AutomationProperties.Name="Entities">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:CompareEntityItem">
+                <Grid ColumnDefinitions="16,Auto,*,Auto,40" Margin="{Binding Indent}">
+                  <TextBlock Text="{Binding Caret}" IsVisible="{Binding IsCategory}" VerticalAlignment="Center"
+                             FontSize="{DynamicResource FontSize.CapsLabel}" FontWeight="Bold"
+                             Foreground="{DynamicResource Brush.Text.Secondary}" />
+                  <CheckBox Grid.Column="1" Classes="outline" IsVisible="{Binding IsGroup}" IsChecked="{Binding IsShown}" Margin="2,0,2,0"
+                            MinHeight="11" VerticalAlignment="Center" AutomationProperties.Name="Show as a row" />
+                  <Path Grid.Column="1" IsVisible="{Binding IsPinned}" Data="{StaticResource Glyph.Compare.Pinned}"
+                        Fill="{DynamicResource Brush.Direction.Inbound}" Width="8" Height="8" Margin="3,0,3,0" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="{Binding Label}" IsVisible="{Binding IsCategory}" VerticalAlignment="Center"
+                             FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding Label}" IsVisible="{Binding !IsCategory}" VerticalAlignment="Center"
+                             Margin="6,0,0,0" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="3" Text="Δ" IsVisible="{Binding HasDelta}" VerticalAlignment="Center" Margin="6,0,6,0"
+                             FontSize="{DynamicResource FontSize.Data}" FontWeight="Bold" Foreground="{DynamicResource Brush.Split.Nexnet}" />
+                  <TextBlock Grid.Column="4" Text="{Binding Count}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0"
+                             FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
+                             Foreground="{DynamicResource Brush.Text.Secondary}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <c:PaneSplitter Name="SidebarSplitter" Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Left"
+                      Width="7" Margin="-4,0,0,0"
+                      ToolTip.Tip="Drag to resize the sidebar · double-click for its default width" />
+
+      <Grid Name="Aligned" Grid.Column="1" RowDefinitions="Auto,*,Auto,200">
+        <c:PaneHeader Name="AlignedHeader" Variant="Titled" Title="Aligned sessions" Subtitle="{Binding Subtitle}">
+          <c:PaneHeader.ViewControls>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Rows" VerticalAlignment="Center" />
+              <ListBox Name="RowModeSwitch" Theme="{StaticResource Segmented}" Classes="sm"
+                       ItemsSource="{Binding RowMode.Labels}" SelectedIndex="{Binding RowMode.SelectedIndex}"
+                       AutomationProperties.Name="Rows" />
+              <CheckBox Name="OnlyDifferencesBox" Content="Only differences" IsChecked="{Binding OnlyDifferences}" Margin="4,0,4,0"
+                        FontSize="{DynamicResource FontSize.Data}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+              <TextBlock Text="Align" VerticalAlignment="Center" />
+              <ListBox Name="AlignSwitch" Theme="{StaticResource Segmented}" Classes="sm"
+                       ItemsSource="{Binding Align.Labels}" SelectedIndex="{Binding Align.SelectedIndex}"
+                       AutomationProperties.Name="Align" />
+            </StackPanel>
+          </c:PaneHeader.ViewControls>
+        </c:PaneHeader>
+
+        <!-- The bar overlays the rows' right edge as the app's rail (c:ScrollRail.Attach in code-behind), so widening near
+             the pointer never narrows the rows. -->
+        <Grid Name="RowsHost" Grid.Row="1">
+          <cmp:CompareRowsControl Name="Rows" Model="{Binding Rows}" />
+          <ScrollBar Name="RowsScroll" Orientation="Vertical" Minimum="0" Margin="0,41,2,3"
+                     Maximum="{Binding #Rows.ScrollMaximum}" ViewportSize="{Binding #Rows.ScrollViewport}"
+                     Value="{Binding #Rows.ScrollOffset, Mode=TwoWay}" />
+        </Grid>
+
+        <Border Name="Legend" Grid.Row="2" Height="24" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0"
+                Background="{DynamicResource Brush.Surface.Panel}"
+                TextElement.FontSize="{DynamicResource FontSize.Data}" TextElement.Foreground="{DynamicResource Brush.Text.Secondary}">
+          <DockPanel Margin="12,0">
+            <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Text="Ctrl + Wheel zoom · double-click a region to open it in Inspect" />
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <cmp:CompareLegendSwatch Kind="Density" VerticalAlignment="Center" />
+              <TextBlock Text="Frame density (collapsed group, 16 px)" Margin="0,0,10,0" />
+              <cmp:CompareLegendSwatch Kind="Span" VerticalAlignment="Center" />
+              <TextBlock Text="Packed span (expanded, 18 px)" Margin="0,0,10,0" />
+              <cmp:CompareLegendSwatch Kind="Differs" VerticalAlignment="Center" />
+              <TextBlock Text="Differs from other file" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <Border Name="DetailArea" Grid.Row="3" BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="0,1,0,0">
+          <views:CompareDetailView Name="Detail" DataContext="{Binding DetailPanel}" />
+        </Border>
+        <c:PaneSplitter Name="DetailSplitter" Grid.Row="3" Orientation="Horizontal" VerticalAlignment="Top"
+                        Height="7" Margin="0,-3,0,0"
+                        ToolTip.Tip="Drag to resize the detail panel · double-click for its default height" />
+      </Grid>
+    </Grid>
+  </Panel>
+</UserControl>

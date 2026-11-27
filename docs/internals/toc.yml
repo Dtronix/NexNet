@@ -12,3 +12,7 @@
   href: interop-control-protocol.md
 - name: Generator-Emitted Client Runtime
   href: generator-emitted-runtime.md
+- name: Inspector Recording Format (.nntl)
+  href: nntl-format.md
+- name: Inspector Text Format
+  href: inspector-text-format.md

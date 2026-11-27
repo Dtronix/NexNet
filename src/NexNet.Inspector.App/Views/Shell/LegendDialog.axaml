@@ -1,0 +1,58 @@
+<!--
+  Legend & symbols (F2, app menu › View): 880 px, scrollable, two columns of sections (Legend.cs is the one source of
+  the lines). Each line: the symbol drawn by c:LegendSwatch with the views' own draw paths and tokens, its name in
+  semibold and one sentence in secondary text. Caps section headings as the help dialog has them. Close (Enter / Esc).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:m="using:NexNet.Inspector.App.Model"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             x:Class="NexNet.Inspector.App.Views.Shell.LegendDialog"
+             x:DataType="vm:LegendDialogViewModel">
+  <UserControl.Resources>
+    <DataTemplate x:Key="LegendGroupTemplate" x:DataType="vm:LegendGroup">
+      <StackPanel>
+        <TextBlock Text="{Binding Title, Converter={x:Static c:MenuText.Upper}}"
+                   FontSize="{DynamicResource FontSize.CapsLabel}" FontWeight="{DynamicResource FontWeight.SemiBold}"
+                   Foreground="{DynamicResource Brush.Text.Tertiary}" Margin="0,10,0,6" />
+        <ItemsControl ItemsSource="{Binding Entries}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="m:LegendEntry">
+              <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,6">
+                <c:LegendSwatch Symbol="{Binding Symbol}" VerticalAlignment="Top" />
+                <TextBlock Grid.Column="1" Margin="10,2,0,0" TextWrapping="Wrap" FontSize="{DynamicResource FontSize.Data}">
+                  <Run Text="{Binding Name}" FontWeight="{DynamicResource FontWeight.SemiBold}" />
+                  <Run Text="{Binding Text}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+                </TextBlock>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <c:DialogFrame x:Name="Frame" Width="880"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding CloseCommand}"
+                 CancelCommand="{Binding CloseCommand}">
+    <c:DialogFrame.Footer>
+      <Button x:Name="CloseButton" Classes="md primary" Content="Close" Command="{Binding CloseCommand}"
+              c:DialogHost.InitialFocus="True" />
+    </c:DialogFrame.Footer>
+
+    <ScrollViewer x:Name="Scroller" MaxHeight="560" HorizontalScrollBarVisibility="Disabled">
+      <Grid ColumnDefinitions="*,24,*" Margin="0,0,8,0">
+        <ItemsControl x:Name="LeftColumn" ItemsSource="{Binding Left}" ItemTemplate="{StaticResource LegendGroupTemplate}" />
+        <ItemsControl x:Name="RightColumn" Grid.Column="2" ItemsSource="{Binding Right}" ItemTemplate="{StaticResource LegendGroupTemplate}" />
+      </Grid>
+    </ScrollViewer>
+  </c:DialogFrame>
+</UserControl>

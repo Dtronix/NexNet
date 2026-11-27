@@ -1,0 +1,148 @@
+<!--
+  The session popover (screens/inspect-session-start, 380 px, anchored under Session ▾ on the menu surface: panel fill,
+  border.strong, 8 px corners, shadow.popover). Header: "Sessions on server · 3 connected" and the server's recording
+  policy. Rows (26 px): status dot (status.ok when connected), id, remote · transport · endpoint, uptime, REC while Record
+  all writes the session; the attached session's row is filled state.selected, a click attaches to (or switches to) the
+  session. The highlighted action "● Record all sessions · 3 now + any that connect · Ctrl+Shift+R" (disabled with the
+  OQ4 tooltip when the server disallows recording), then the note on what one recording holds.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             x:Class="NexNet.Inspector.App.Views.Shell.SessionPopover"
+             x:DataType="vm:SessionAreaViewModel"
+             AutomationProperties.Name="Sessions on server">
+  <UserControl.Resources>
+    <!-- Rows are buttons; their list item adds nothing around them. -->
+    <ControlTheme x:Key="SessionPopover.Item" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalContentAlignment="Stretch" />
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="SessionPopover.Row" TargetType="Button">
+      <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Md}" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="Height" Value="{DynamicResource Size.MenuItem}" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="FocusAdorner" Value="{x:Null}" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel>
+            <ContentPresenter Name="PART_ContentPresenter" Background="{TemplateBinding Background}"
+                              CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" />
+            <Border Name="PART_FocusRing" BorderThickness="1" CornerRadius="{TemplateBinding CornerRadius}"
+                    BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" IsHitTestVisible="False" />
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^.attached">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+      </Style>
+      <Style Selector="^.action">
+        <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+        <Setter Property="Height" Value="32" />
+      </Style>
+      <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Background" Value="{x:Static Brushes.Transparent}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+      </Style>
+    </ControlTheme>
+  </UserControl.Resources>
+
+  <Border Width="380" Background="{DynamicResource Brush.Surface.Panel}" BorderBrush="{DynamicResource Brush.Border.Strong}"
+          BorderThickness="1" CornerRadius="{DynamicResource Radius.Xl}" BoxShadow="{DynamicResource Shadow.Popover}"
+          TextElement.FontFamily="{DynamicResource Font.Ui}" TextElement.FontSize="{DynamicResource FontSize.Body}"
+          TextElement.Foreground="{DynamicResource Brush.Text.Primary}">
+    <StackPanel Margin="4">
+      <DockPanel Margin="8,6,8,4">
+        <TextBlock Name="Policy" DockPanel.Dock="Right" Text="{Binding PolicyText}" VerticalAlignment="Center"
+                   FontSize="{DynamicResource FontSize.Data}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="Sessions on server" FontWeight="{DynamicResource FontWeight.SemiBold}" VerticalAlignment="Center" />
+          <TextBlock Name="Connected" Text="{Binding ConnectedText}" VerticalAlignment="Center"
+                     FontSize="{DynamicResource FontSize.Data}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </StackPanel>
+      </DockPanel>
+
+      <ListBox Name="Rows" ItemsSource="{Binding Sessions}" ItemContainerTheme="{StaticResource SessionPopover.Item}"
+               Background="{x:Static Brushes.Transparent}" BorderThickness="0" Padding="0" MaxHeight="264"
+               AutomationProperties.Name="Sessions">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:SessionChoice">
+            <Button Theme="{StaticResource SessionPopover.Row}" Classes.attached="{Binding IsAttached}"
+                    Command="{Binding #Rows.((vm:SessionAreaViewModel)DataContext).ChooseCommand}" CommandParameter="{Binding}"
+                    AutomationProperties.Name="{Binding MenuLabel}">
+              <Grid ColumnDefinitions="15,74,*,52,34">
+                <Ellipse Width="7" Height="7" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Fill="{DynamicResource Brush.Status.Ok}" IsVisible="{Binding IsConnected}" />
+                <Ellipse Width="7" Height="7" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Fill="{DynamicResource Brush.Text.Tertiary}" IsVisible="{Binding !IsConnected}" />
+                <TextBlock Grid.Column="1" Text="{Binding IdText}" VerticalAlignment="Center"
+                           FontFamily="{DynamicResource Font.Mono}" FontWeight="{DynamicResource FontWeight.Medium}" />
+                <TextBlock Grid.Column="2" Text="{Binding Detail}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource Brush.Text.Secondary}" ToolTip.Tip="{Binding Detail}" />
+                <TextBlock Grid.Column="3" Text="{Binding Uptime}" VerticalAlignment="Center" HorizontalAlignment="Right"
+                           FontFamily="{DynamicResource Font.Mono}" Foreground="{DynamicResource Brush.Text.Secondary}" />
+                <TextBlock Grid.Column="4" Text="REC" VerticalAlignment="Center" HorizontalAlignment="Right"
+                           FontSize="{DynamicResource FontSize.Meta}" FontWeight="{DynamicResource FontWeight.Bold}"
+                           Foreground="{DynamicResource Brush.Status.Recording}" IsVisible="{Binding IsRecording}" />
+              </Grid>
+            </Button>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- Detach: stops viewing the attached session; the data stays in the tab (the session-ended strip). While Record all
+           runs the detail says the recording goes on: it stops only by its own toggle below. -->
+      <Button Name="DetachAction" Theme="{StaticResource SessionPopover.Row}" Margin="0,4,0,0" IsVisible="{Binding CanDetach}"
+              Command="{Binding DetachCommand}" AutomationProperties.Name="{Binding DetachLabel}"
+              ToolTip.Tip="{Binding DetachDetail}">
+        <Grid ColumnDefinitions="15,Auto,*">
+          <TextBlock Text="✕" VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Data}"
+                     Foreground="{DynamicResource Brush.Text.Secondary}" />
+          <TextBlock Grid.Column="1" Text="{Binding DetachLabel}" VerticalAlignment="Center" FontWeight="{DynamicResource FontWeight.SemiBold}" />
+          <TextBlock Name="DetachDetailText" Grid.Column="2" Text="{Binding DetachDetail}" Margin="12,0,0,0" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        </Grid>
+      </Button>
+
+      <Button Name="RecordAllAction" Theme="{StaticResource SessionPopover.Row}" Classes="action" Margin="0,4,0,0"
+              Command="{Binding RecordAllCommand}" ToolTip.Tip="{Binding RecordTooltip}" ToolTip.ShowOnDisabled="True"
+              AutomationProperties.Name="{Binding RecordAllLabel}">
+        <Grid ColumnDefinitions="15,Auto,*,Auto">
+          <Ellipse Width="8" Height="8" HorizontalAlignment="Left" VerticalAlignment="Center" Fill="{DynamicResource Brush.Status.Recording}" />
+          <TextBlock Grid.Column="1" Text="{Binding RecordAllLabel}" VerticalAlignment="Center" FontWeight="{DynamicResource FontWeight.SemiBold}" />
+          <TextBlock Grid.Column="2" Text="{Binding RecordAllDetail}" Margin="12,0,8,0" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Brush.Text.Secondary}" />
+          <TextBlock Grid.Column="3" Text="Ctrl+Shift+R" VerticalAlignment="Center" FontFamily="{DynamicResource Font.Mono}"
+                     FontSize="{DynamicResource FontSize.Meta}" Foreground="{DynamicResource Brush.Text.Tertiary}" />
+        </Grid>
+      </Button>
+
+      <TextBlock Margin="8,6,8,6" TextWrapping="Wrap" FontSize="{DynamicResource FontSize.Data}"
+                 Foreground="{DynamicResource Brush.Text.Secondary}"
+                 Text="One .nntl holds every session; the viewer shows one at a time. Auth tokens are redacted unless the server sets IncludeSecrets. Server-side capture from connection start writes to the configured stream." />
+    </StackPanel>
+  </Border>
+</UserControl>

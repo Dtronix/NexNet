@@ -6,6 +6,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Internals.Threading;
 using NexNet.Invocation;
@@ -520,6 +521,26 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         _readyTcs?.TrySetResult();
     }
     
+    /// <summary>
+    /// Builds the collection's snapshot entry for one session from the subclass's item count and version. The pipe is
+    /// reported only when the current enable runs over that session.
+    /// </summary>
+    private protected NexusCollectionSnapshot CreateSnapshot(INexusSession session, NexusCollectionKind kind, int count, int version)
+    {
+        var client = Volatile.Read(ref _client);
+        var linked = client != null && ReferenceEquals(client.Session, session);
+        return new NexusCollectionSnapshot
+        {
+            Id = Id,
+            Kind = kind,
+            Mode = Mode,
+            State = linked ? State : NexusCollectionState.Disconnected,
+            Count = count,
+            Version = version,
+            PipeIds = linked ? [client!.Pipe.Id] : [],
+        };
+    }
+
     void INexusCollectionConnector.TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
     {
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));

@@ -1,0 +1,22 @@
+<!--
+  The Message trace rows' text (Themes/MessageTrace.axaml): the direction glyph in its direction's colour (▼ inbound,
+  ▲ outbound), the step in the UI font, time and bytes mono 11 px secondary. A control theme may not style into an item
+  template, so these are plain styles scoped to the trace rows.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="Grid.trace-step TextBlock.glyph">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Direction.Outbound}" />
+  </Style>
+  <Style Selector="Grid.trace-step.inbound TextBlock.glyph">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Direction.Inbound}" />
+  </Style>
+  <Style Selector="Grid.trace-step TextBlock.out-of-scope">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+  </Style>
+  <Style Selector="Grid.trace-step TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+  </Style>
+</Styles>

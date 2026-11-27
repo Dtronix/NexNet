@@ -1,0 +1,31 @@
+<!--
+  The Hex stream pane header's controls (PKG hex-view "Pane-header controls"): the ▼ IN | ▲ OUT direction toggles and
+  the 16 B/row label, for I23's pane header to host on the right of its tabs.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             x:Class="NexNet.Inspector.App.Views.Inspect.HexPaneHeader"
+             x:DataType="vm:HexViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.hex-header-meta">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+  <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+    <ToggleButton Theme="{StaticResource HexDirectionToggle}" IsChecked="{Binding ShowsInbound}"
+                  ToolTip.Tip="Show inbound bytes (reads)" AutomationProperties.Name="Inbound">
+      <TextBlock Text="▼ IN" />
+    </ToggleButton>
+    <TextBlock Classes="hex-header-meta" Text="|" />
+    <ToggleButton Theme="{StaticResource HexDirectionToggle}" IsChecked="{Binding ShowsOutbound}"
+                  ToolTip.Tip="Show outbound bytes (writes)" AutomationProperties.Name="Outbound">
+      <TextBlock Text="▲ OUT" />
+    </ToggleButton>
+    <TextBlock Classes="hex-header-meta" Text="·" />
+    <TextBlock Classes="hex-header-meta" Text="{Binding RowLabel}" />
+  </StackPanel>
+</UserControl>

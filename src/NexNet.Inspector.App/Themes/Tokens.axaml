@@ -1,0 +1,460 @@
+<!--
+  Every design token (PKG tokens.json) as a resource, and the only file in the App that holds a colour literal
+  (ThemeTokenTests scans for any other). Views take these as DynamicResource; drawn controls read the brushes through
+  Controls/Primitives/ThemeBrushes, never by key per frame.
+
+  Key scheme (PLAN §5): the token path in PascalCase. A colour is a Color (Color.Surface.App) plus a SolidColorBrush
+  (Brush.Surface.App) in each theme; the two stripe tokens are DrawingBrushes only. Every tint is opaque except
+  Brush.Accent.TraceBand and Brush.Diff.Band, so visibility is animated with Opacity only: Avalonia treats Transparent
+  as #00FFFFFF, and a brush faded to it flashes white in dark mode.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+  <!-- typography.family: static weights (Assets/Fonts), since Avalonia 12 cannot select weights from a variable font. -->
+  <FontFamily x:Key="Font.Ui">avares://nexnet-inspector/Assets/Fonts/Atkinson#Atkinson Hyperlegible Next</FontFamily>
+  <!-- Times, byte counts, offsets, hex, ids, shortcuts. -->
+  <FontFamily x:Key="Font.Mono">avares://nexnet-inspector/Assets/Fonts/JetBrainsMono#JetBrains Mono NL</FontFamily>
+
+  <!-- typography.weight -->
+  <FontWeight x:Key="FontWeight.Regular">Regular</FontWeight><!-- 400 -->
+  <FontWeight x:Key="FontWeight.Medium">Medium</FontWeight><!-- 500 -->
+  <FontWeight x:Key="FontWeight.SemiBold">SemiBold</FontWeight><!-- 600 -->
+  <FontWeight x:Key="FontWeight.Bold">Bold</FontWeight><!-- 700 -->
+
+  <!-- typography.size -->
+  <x:Double x:Key="FontSize.LaneLabel">8.5</x:Double><!-- text inside timeline spans, count badges -->
+  <x:Double x:Key="FontSize.CapsLabel">9.5</x:Double><!-- uppercase group headers (letter-spacing .05em) -->
+  <x:Double x:Key="FontSize.Meta">10.5</x:Double><!-- column headers, legends, sub labels, shortcuts -->
+  <x:Double x:Key="FontSize.Data">11</x:Double><!-- mono table cells, ladder labels -->
+  <x:Double x:Key="FontSize.Small">11.5</x:Double><!-- tabs, hex text, pane titles -->
+  <x:Double x:Key="FontSize.Body">12</x:Double><!-- default UI text -->
+  <x:Double x:Key="FontSize.Title">13</x:Double><!-- dialog titles -->
+  <x:Double x:Key="FontSize.Large">14</x:Double><!-- palette input, card titles -->
+  <x:Double x:Key="FontSize.Display">20</x:Double><!-- empty-state app name -->
+
+  <!-- typography.line-height; "row" is a range (18-21 px), kept as its two ends. -->
+  <x:Double x:Key="LineHeight.Dense">12</x:Double>
+  <x:Double x:Key="LineHeight.RowMin">18</x:Double>
+  <x:Double x:Key="LineHeight.RowMax">21</x:Double>
+  <x:Double x:Key="LineHeight.Hex">20</x:Double>
+
+  <!-- spacing: the token's step number is the key (Spacing.2 = 8 px). -->
+  <x:Double x:Key="Spacing.1">4</x:Double>
+  <x:Double x:Key="Spacing.2">8</x:Double>
+  <x:Double x:Key="Spacing.3">12</x:Double>
+  <x:Double x:Key="Spacing.4">16</x:Double>
+  <x:Double x:Key="Spacing.6">24</x:Double>
+  <x:Double x:Key="Spacing.0.5">2</x:Double>
+  <x:Double x:Key="Spacing.1.5">6</x:Double>
+  <x:Double x:Key="Spacing.2.5">10</x:Double>
+  <x:Double x:Key="Spacing.3.5">14</x:Double>
+
+  <!-- size: the path with its trailing height/width dropped (lane.gutter-width is Size.LaneGutter). -->
+  <x:Double x:Key="Size.TitleBar">36</x:Double><!-- titlebar.height -->
+  <x:Double x:Key="Size.CaptionButton">46</x:Double><!-- titlebar.caption-button.width -->
+  <x:Double x:Key="Size.HeaderControl">24</x:Double><!-- header-control.height -->
+  <x:Double x:Key="Size.PaneHeader">24</x:Double><!-- pane-header.height -->
+  <x:Double x:Key="Size.Lane">12</x:Double><!-- lane.height -->
+  <x:Double x:Key="Size.LaneExpanded">24</x:Double><!-- lane.expanded-height -->
+  <x:Double x:Key="Size.LaneGroup">14</x:Double><!-- lane-group.height -->
+  <x:Double x:Key="Size.LaneGutter">156</x:Double><!-- lane.gutter-width -->
+  <x:Double x:Key="Size.EventRow">20</x:Double><!-- event-row.height -->
+  <x:Double x:Key="Size.LadderRow">18</x:Double><!-- ladder-row.height -->
+  <x:Double x:Key="Size.PropertyRow">21</x:Double><!-- property-row.height -->
+  <x:Double x:Key="Size.MenuItem">26</x:Double><!-- menu-item.height -->
+  <x:Double x:Key="Size.PaletteItem">28</x:Double><!-- palette-item.height -->
+  <x:Double x:Key="Size.Input">28</x:Double><!-- input.height -->
+  <x:Double x:Key="Size.ButtonSm">24</x:Double><!-- button.height.sm -->
+  <x:Double x:Key="Size.ButtonMd">28</x:Double><!-- button.height.md -->
+  <x:Double x:Key="Size.Inspector">324</x:Double><!-- inspector.width -->
+  <x:Double x:Key="Size.CompareHeatRow">16</x:Double><!-- compare.heat-row.height -->
+  <x:Double x:Key="Size.ComparePackedRow">18</x:Double><!-- compare.packed-row.height -->
+  <x:Double x:Key="Size.CompareGutter">196</x:Double><!-- compare.gutter-width -->
+  <x:Double x:Key="Size.ScrollRail.Rest">2</x:Double><!-- scroll-rail.rest -->
+  <x:Double x:Key="Size.ScrollRail.Near">12</x:Double><!-- scroll-rail.near -->
+  <x:Double x:Key="Size.ScrollRail.ThumbNear">8</x:Double><!-- scroll-rail.thumb-near -->
+  <x:Double x:Key="Size.ScrollRail.ThumbMin">28</x:Double><!-- scroll-rail.thumb-min -->
+  <x:Double x:Key="Size.ScrollRail.Proximity">16</x:Double><!-- scroll-rail.proximity -->
+
+  <!-- radius -->
+  <CornerRadius x:Key="Radius.Xs">2</CornerRadius>
+  <CornerRadius x:Key="Radius.Sm">3</CornerRadius>
+  <CornerRadius x:Key="Radius.Md">5</CornerRadius>
+  <CornerRadius x:Key="Radius.Lg">6</CornerRadius>
+  <CornerRadius x:Key="Radius.Xl">8</CornerRadius>
+  <CornerRadius x:Key="Radius.2Xl">10</CornerRadius>
+  <CornerRadius x:Key="Radius.Pill">999</CornerRadius>
+
+  <!-- opacity (scrim.dialog differs per theme: in the theme dictionaries below) -->
+  <x:Double x:Key="Opacity.Scrim.Palette">0.55</x:Double>
+  <x:Double x:Key="Opacity.DimmedUntraced">0.4</x:Double>
+  <x:Double x:Key="Opacity.InterleavedRow">0.6</x:Double>
+
+  <!-- motion: the standard ease, the rail's width change, and its fade (and the fade when OS animations are off). -->
+  <SplineEasing x:Key="Motion.Ease" X1="0.2" Y1="0" X2="0" Y2="1" />
+  <sys:TimeSpan x:Key="Motion.RailWidth">0:0:0.160</sys:TimeSpan>
+  <sys:TimeSpan x:Key="Motion.RailFade">0:0:0.120</sys:TimeSpan>
+  <sys:TimeSpan x:Key="Motion.RailFadeReduced">0:0:0.080</sys:TimeSpan>
+
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <!-- Colours (tokens.json color.*): a Color for setters and a SolidColorBrush for everything else. -->
+      <Color x:Key="Color.Surface.App">#EEF0F3</Color>
+      <Color x:Key="Color.Surface.Chrome">#F5F6F8</Color>
+      <Color x:Key="Color.Surface.Panel">#FFFFFF</Color>
+      <Color x:Key="Color.Surface.Raised">#ECEEF2</Color>
+      <Color x:Key="Color.Surface.Lane">#F8F9FB</Color>
+      <Color x:Key="Color.Border.Default">#D8DCE2</Color>
+      <Color x:Key="Color.Border.Strong">#B9BFC8</Color>
+      <Color x:Key="Color.Border.Row">#EEF0F3</Color>
+      <Color x:Key="Color.Text.Primary">#1A1E26</Color>
+      <Color x:Key="Color.Text.Secondary">#4E5563</Color>
+      <Color x:Key="Color.Text.Tertiary">#5F6673</Color>
+      <Color x:Key="Color.Text.OnAccent">#FFFFFF</Color>
+      <Color x:Key="Color.Direction.Inbound">#3C50F8</Color>
+      <Color x:Key="Color.Direction.Outbound">#B84504</Color>
+      <Color x:Key="Color.Accent.Trace">#7C3AED</Color>
+      <Color x:Key="Color.Accent.TraceBand">#127C3AED</Color>
+      <Color x:Key="Color.Split.Transport">#0F766E</Color>
+      <Color x:Key="Color.Split.Nexnet">#BE185D</Color>
+      <Color x:Key="Color.State.Selected">#E3E8FE</Color>
+      <Color x:Key="Color.Status.Ok">#1A7F37</Color>
+      <Color x:Key="Color.Status.Recording">#CF222E</Color>
+      <Color x:Key="Color.Status.Error">#CF222E</Color>
+      <Color x:Key="Color.Timeline.Span">#DDE1E8</Color>
+      <Color x:Key="Color.Scroll.ThumbRest">#C3C8D0</Color>
+      <Color x:Key="Color.Scroll.ThumbNear">#8A919C</Color>
+      <Color x:Key="Color.Scroll.Rail">#ECEEF2</Color>
+      <Color x:Key="Color.Overlay.Scrim">#1A1E26</Color>
+      <Color x:Key="Color.Hex.OtherFrame">#EEF0F3</Color>
+      <Color x:Key="Color.Hex.Type">#E9E0FB</Color>
+      <Color x:Key="Color.Hex.Length">#E1E5FE</Color>
+      <Color x:Key="Color.Hex.PostHeader">#F6E3D6</Color>
+      <Color x:Key="Color.Hex.Preamble">#DCEFEC</Color>
+      <Color x:Key="Color.Hex.Body">#F1F3FE</Color>
+      <Color x:Key="Color.Hex.BodySelected">#F5F1FD</Color>
+      <Color x:Key="Color.Warning.Surface">#FDF6E7</Color>
+      <Color x:Key="Color.Warning.Border">#EAD9AE</Color>
+      <Color x:Key="Color.Warning.Icon">#9A6700</Color>
+      <Color x:Key="Color.Diff.Band">#0FBE185D</Color>
+      <Color x:Key="Color.Heat.Low">#E6E9FB</Color>
+
+      <SolidColorBrush x:Key="Brush.Surface.App" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="Brush.Surface.Chrome" Color="{StaticResource Color.Surface.Chrome}" />
+      <SolidColorBrush x:Key="Brush.Surface.Panel" Color="{StaticResource Color.Surface.Panel}" />
+      <SolidColorBrush x:Key="Brush.Surface.Raised" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="Brush.Surface.Lane" Color="{StaticResource Color.Surface.Lane}" />
+      <SolidColorBrush x:Key="Brush.Border.Default" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="Brush.Border.Strong" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="Brush.Border.Row" Color="{StaticResource Color.Border.Row}" />
+      <SolidColorBrush x:Key="Brush.Text.Primary" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="Brush.Text.Secondary" Color="{StaticResource Color.Text.Secondary}" />
+      <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="{StaticResource Color.Text.OnAccent}" />
+      <SolidColorBrush x:Key="Brush.Direction.Inbound" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="Brush.Direction.Outbound" Color="{StaticResource Color.Direction.Outbound}" />
+      <SolidColorBrush x:Key="Brush.Accent.Trace" Color="{StaticResource Color.Accent.Trace}" />
+      <SolidColorBrush x:Key="Brush.Accent.TraceBand" Color="{StaticResource Color.Accent.TraceBand}" />
+      <SolidColorBrush x:Key="Brush.Split.Transport" Color="{StaticResource Color.Split.Transport}" />
+      <SolidColorBrush x:Key="Brush.Split.Nexnet" Color="{StaticResource Color.Split.Nexnet}" />
+      <SolidColorBrush x:Key="Brush.State.Selected" Color="{StaticResource Color.State.Selected}" />
+      <SolidColorBrush x:Key="Brush.Status.Ok" Color="{StaticResource Color.Status.Ok}" />
+      <SolidColorBrush x:Key="Brush.Status.Recording" Color="{StaticResource Color.Status.Recording}" />
+      <SolidColorBrush x:Key="Brush.Status.Error" Color="{StaticResource Color.Status.Error}" />
+      <SolidColorBrush x:Key="Brush.Timeline.Span" Color="{StaticResource Color.Timeline.Span}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbRest" Color="{StaticResource Color.Scroll.ThumbRest}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbNear" Color="{StaticResource Color.Scroll.ThumbNear}" />
+      <SolidColorBrush x:Key="Brush.Scroll.Rail" Color="{StaticResource Color.Scroll.Rail}" />
+      <SolidColorBrush x:Key="Brush.Overlay.Scrim" Color="{StaticResource Color.Overlay.Scrim}" />
+      <SolidColorBrush x:Key="Brush.Hex.OtherFrame" Color="{StaticResource Color.Hex.OtherFrame}" />
+      <SolidColorBrush x:Key="Brush.Hex.Type" Color="{StaticResource Color.Hex.Type}" />
+      <SolidColorBrush x:Key="Brush.Hex.Length" Color="{StaticResource Color.Hex.Length}" />
+      <SolidColorBrush x:Key="Brush.Hex.PostHeader" Color="{StaticResource Color.Hex.PostHeader}" />
+      <SolidColorBrush x:Key="Brush.Hex.Preamble" Color="{StaticResource Color.Hex.Preamble}" />
+      <SolidColorBrush x:Key="Brush.Hex.Body" Color="{StaticResource Color.Hex.Body}" />
+      <SolidColorBrush x:Key="Brush.Hex.BodySelected" Color="{StaticResource Color.Hex.BodySelected}" />
+      <SolidColorBrush x:Key="Brush.Warning.Surface" Color="{StaticResource Color.Warning.Surface}" />
+      <SolidColorBrush x:Key="Brush.Warning.Border" Color="{StaticResource Color.Warning.Border}" />
+      <SolidColorBrush x:Key="Brush.Warning.Icon" Color="{StaticResource Color.Warning.Icon}" />
+      <SolidColorBrush x:Key="Brush.Diff.Band" Color="{StaticResource Color.Diff.Band}" />
+      <SolidColorBrush x:Key="Brush.Heat.Low" Color="{StaticResource Color.Heat.Low}" />
+
+      <!-- Added (no design token): the scroll-rail thumb under the pointer and while dragged (OQ7), and the red the
+           close caption button turns on hover (controls/button README; Windows' own value, the same in both themes). -->
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="{StaticResource Color.Text.Secondary}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbDrag" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="Brush.Caption.CloseHover" Color="#C42B1C" />
+      <!-- Added for the button theme (I14): the close glyph on that red (white in both themes, as Windows draws it),
+           and the primary button's hover and pressed fills: button.html's filter brightness(1.08) and (.92) applied to
+           direction.inbound, so the brighter/darker primary needs no colour outside the tokens. -->
+      <SolidColorBrush x:Key="Brush.Caption.CloseGlyphHover" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryHover" Color="#4156FF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryPressed" Color="#374AE4" />
+
+      <!-- The CSS stripes (color.timeline.gap, color.hex.redacted: repeating-linear-gradient(135deg, a 0 w, b w 2w)) as a
+           tile of two vertical bands turned 45 degrees, so the tile itself stays a whole number of pixels and seamless. -->
+      <DrawingBrush x:Key="Brush.Timeline.Gap" TileMode="Tile" DestinationRect="0,0,8,8">
+        <DrawingBrush.Transform>
+          <RotateTransform Angle="45" />
+        </DrawingBrush.Transform>
+        <DrawingBrush.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="#DCDFE5" Geometry="M0,0 H4 V8 H0 Z" />
+            <GeometryDrawing Brush="#F8F9FB" Geometry="M4,0 H8 V8 H4 Z" />
+          </DrawingGroup>
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+      <DrawingBrush x:Key="Brush.Hex.Redacted" TileMode="Tile" DestinationRect="0,0,6,6">
+        <DrawingBrush.Transform>
+          <RotateTransform Angle="45" />
+        </DrawingBrush.Transform>
+        <DrawingBrush.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="#F3D9E3" Geometry="M0,0 H3 V6 H0 Z" />
+            <GeometryDrawing Brush="#FBEFF3" Geometry="M3,0 H6 V6 H3 Z" />
+          </DrawingGroup>
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+
+      <!-- Shadows (tokens.json shadow.*: x y blur rgba) as x y blur spread #AARRGGBB. -->
+      <BoxShadows x:Key="Shadow.Menu">0 10 28 0 #2E000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Popover">0 12 32 0 #47000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Dialog">0 18 48 0 #40000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Palette">0 18 48 0 #73000000</BoxShadows>
+
+      <!-- The dialog scrim's opacity differs per theme (opacity.scrim.dialog); the scrim colour is color.overlay.scrim. -->
+      <x:Double x:Key="Opacity.Scrim.Dialog">0.45</x:Double>
+
+      <!-- Fluent re-keyed, so stock controls and the window take the tokens without a control theme of their own. Fluent's
+           brushes resolve their palette colours inside FluentTheme, so overriding a System*Color here does not reach them:
+           the app-wide brushes are overridden by key. The accent colours are for DynamicResource users outside Fluent; every
+           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*)
+           follow at the end of this dictionary. -->
+      <Color x:Key="SystemAccentColor">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorLight1">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorLight2">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorLight3">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorDark1">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorDark2">#3C50F8</Color>
+      <Color x:Key="SystemAccentColorDark3">#3C50F8</Color>
+      <Color x:Key="SystemErrorTextColor">#CF222E</Color>
+      <!-- Window and page backgrounds, default text. -->
+      <SolidColorBrush x:Key="SystemRegionBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlPageBackgroundAltHighBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="{StaticResource Color.Text.Primary}" />
+      <!-- Accent highlights, links and the keyboard focus outline (controls/button README: direction.inbound). -->
+      <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlBackgroundAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlForegroundAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <!-- A selected list item. -->
+      <SolidColorBrush x:Key="SystemControlHighlightListAccentLowBrush" Color="{StaticResource Color.State.Selected}" />
+      <SolidColorBrush x:Key="SystemControlErrorTextForegroundBrush" Color="{StaticResource Color.Status.Error}" />
+      <!-- Fluent's inner focus ring is translucent by default; opaque here, so no colour outside the tokens shows. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="{StaticResource Color.Surface.App}" />
+      <!-- Fluent's TextBox (controls/text-input, I14; sizes and the 1.5 px borders are in Themes/TextInput.axaml). These
+           sit here rather than in the control's own file because only a theme dictionary beside the colours can take
+           each theme's Color.* statically. -->
+      <SolidColorBrush x:Key="TextControlBackground" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="{StaticResource Color.State.Selected}" />
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Dark">
+      <!-- Colours (tokens.json color.*): a Color for setters and a SolidColorBrush for everything else. -->
+      <Color x:Key="Color.Surface.App">#111318</Color>
+      <Color x:Key="Color.Surface.Chrome">#15181E</Color>
+      <Color x:Key="Color.Surface.Panel">#1B1F26</Color>
+      <Color x:Key="Color.Surface.Raised">#242833</Color>
+      <Color x:Key="Color.Surface.Lane">#171A21</Color>
+      <Color x:Key="Color.Border.Default">#2D323C</Color>
+      <Color x:Key="Color.Border.Strong">#3C4250</Color>
+      <Color x:Key="Color.Border.Row">#21252D</Color>
+      <Color x:Key="Color.Text.Primary">#E7E9ED</Color>
+      <Color x:Key="Color.Text.Secondary">#A0A7B4</Color>
+      <Color x:Key="Color.Text.Tertiary">#8A92A0</Color>
+      <Color x:Key="Color.Text.OnAccent">#111318</Color>
+      <Color x:Key="Color.Direction.Inbound">#7385FF</Color>
+      <Color x:Key="Color.Direction.Outbound">#F2884A</Color>
+      <Color x:Key="Color.Accent.Trace">#C3A6FF</Color>
+      <Color x:Key="Color.Accent.TraceBand">#17C3A6FF</Color>
+      <Color x:Key="Color.Split.Transport">#2DD4BF</Color>
+      <Color x:Key="Color.Split.Nexnet">#F472B6</Color>
+      <Color x:Key="Color.State.Selected">#283150</Color>
+      <Color x:Key="Color.Status.Ok">#3FB950</Color>
+      <Color x:Key="Color.Status.Recording">#FF6B61</Color>
+      <Color x:Key="Color.Status.Error">#FF6B61</Color>
+      <Color x:Key="Color.Timeline.Span">#2E3442</Color>
+      <Color x:Key="Color.Scroll.ThumbRest">#3C4250</Color>
+      <Color x:Key="Color.Scroll.ThumbNear">#6B7280</Color>
+      <Color x:Key="Color.Scroll.Rail">#242833</Color>
+      <Color x:Key="Color.Overlay.Scrim">#07080B</Color>
+      <Color x:Key="Color.Hex.OtherFrame">#262A32</Color>
+      <Color x:Key="Color.Hex.Type">#3D3654</Color>
+      <Color x:Key="Color.Hex.Length">#2A3260</Color>
+      <Color x:Key="Color.Hex.PostHeader">#45301F</Color>
+      <Color x:Key="Color.Hex.Preamble">#173B39</Color>
+      <Color x:Key="Color.Hex.Body">#1F2433</Color>
+      <Color x:Key="Color.Hex.BodySelected">#221F2D</Color>
+      <Color x:Key="Color.Warning.Surface">#2A2620</Color>
+      <Color x:Key="Color.Warning.Border">#4A4130</Color>
+      <Color x:Key="Color.Warning.Icon">#D29922</Color>
+      <Color x:Key="Color.Diff.Band">#14F472B6</Color>
+      <Color x:Key="Color.Heat.Low">#1E2233</Color>
+
+      <SolidColorBrush x:Key="Brush.Surface.App" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="Brush.Surface.Chrome" Color="{StaticResource Color.Surface.Chrome}" />
+      <SolidColorBrush x:Key="Brush.Surface.Panel" Color="{StaticResource Color.Surface.Panel}" />
+      <SolidColorBrush x:Key="Brush.Surface.Raised" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="Brush.Surface.Lane" Color="{StaticResource Color.Surface.Lane}" />
+      <SolidColorBrush x:Key="Brush.Border.Default" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="Brush.Border.Strong" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="Brush.Border.Row" Color="{StaticResource Color.Border.Row}" />
+      <SolidColorBrush x:Key="Brush.Text.Primary" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="Brush.Text.Secondary" Color="{StaticResource Color.Text.Secondary}" />
+      <SolidColorBrush x:Key="Brush.Text.Tertiary" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="Brush.Text.OnAccent" Color="{StaticResource Color.Text.OnAccent}" />
+      <SolidColorBrush x:Key="Brush.Direction.Inbound" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="Brush.Direction.Outbound" Color="{StaticResource Color.Direction.Outbound}" />
+      <SolidColorBrush x:Key="Brush.Accent.Trace" Color="{StaticResource Color.Accent.Trace}" />
+      <SolidColorBrush x:Key="Brush.Accent.TraceBand" Color="{StaticResource Color.Accent.TraceBand}" />
+      <SolidColorBrush x:Key="Brush.Split.Transport" Color="{StaticResource Color.Split.Transport}" />
+      <SolidColorBrush x:Key="Brush.Split.Nexnet" Color="{StaticResource Color.Split.Nexnet}" />
+      <SolidColorBrush x:Key="Brush.State.Selected" Color="{StaticResource Color.State.Selected}" />
+      <SolidColorBrush x:Key="Brush.Status.Ok" Color="{StaticResource Color.Status.Ok}" />
+      <SolidColorBrush x:Key="Brush.Status.Recording" Color="{StaticResource Color.Status.Recording}" />
+      <SolidColorBrush x:Key="Brush.Status.Error" Color="{StaticResource Color.Status.Error}" />
+      <SolidColorBrush x:Key="Brush.Timeline.Span" Color="{StaticResource Color.Timeline.Span}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbRest" Color="{StaticResource Color.Scroll.ThumbRest}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbNear" Color="{StaticResource Color.Scroll.ThumbNear}" />
+      <SolidColorBrush x:Key="Brush.Scroll.Rail" Color="{StaticResource Color.Scroll.Rail}" />
+      <SolidColorBrush x:Key="Brush.Overlay.Scrim" Color="{StaticResource Color.Overlay.Scrim}" />
+      <SolidColorBrush x:Key="Brush.Hex.OtherFrame" Color="{StaticResource Color.Hex.OtherFrame}" />
+      <SolidColorBrush x:Key="Brush.Hex.Type" Color="{StaticResource Color.Hex.Type}" />
+      <SolidColorBrush x:Key="Brush.Hex.Length" Color="{StaticResource Color.Hex.Length}" />
+      <SolidColorBrush x:Key="Brush.Hex.PostHeader" Color="{StaticResource Color.Hex.PostHeader}" />
+      <SolidColorBrush x:Key="Brush.Hex.Preamble" Color="{StaticResource Color.Hex.Preamble}" />
+      <SolidColorBrush x:Key="Brush.Hex.Body" Color="{StaticResource Color.Hex.Body}" />
+      <SolidColorBrush x:Key="Brush.Hex.BodySelected" Color="{StaticResource Color.Hex.BodySelected}" />
+      <SolidColorBrush x:Key="Brush.Warning.Surface" Color="{StaticResource Color.Warning.Surface}" />
+      <SolidColorBrush x:Key="Brush.Warning.Border" Color="{StaticResource Color.Warning.Border}" />
+      <SolidColorBrush x:Key="Brush.Warning.Icon" Color="{StaticResource Color.Warning.Icon}" />
+      <SolidColorBrush x:Key="Brush.Diff.Band" Color="{StaticResource Color.Diff.Band}" />
+      <SolidColorBrush x:Key="Brush.Heat.Low" Color="{StaticResource Color.Heat.Low}" />
+
+      <!-- Added (no design token): the scroll-rail thumb under the pointer and while dragged (OQ7), and the red the
+           close caption button turns on hover (controls/button README; Windows' own value, the same in both themes). -->
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbHover" Color="{StaticResource Color.Text.Secondary}" />
+      <SolidColorBrush x:Key="Brush.Scroll.ThumbDrag" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="Brush.Caption.CloseHover" Color="#C42B1C" />
+      <!-- Added for the button theme (I14): the close glyph on that red (white in both themes, as Windows draws it),
+           and the primary button's hover and pressed fills: button.html's filter brightness(1.08) and (.92) applied to
+           direction.inbound, so the brighter/darker primary needs no colour outside the tokens. -->
+      <SolidColorBrush x:Key="Brush.Caption.CloseGlyphHover" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryHover" Color="#7C90FF" />
+      <SolidColorBrush x:Key="Brush.Button.PrimaryPressed" Color="#6A7AEB" />
+
+      <!-- The CSS stripes (color.timeline.gap, color.hex.redacted: repeating-linear-gradient(135deg, a 0 w, b w 2w)) as a
+           tile of two vertical bands turned 45 degrees, so the tile itself stays a whole number of pixels and seamless. -->
+      <DrawingBrush x:Key="Brush.Timeline.Gap" TileMode="Tile" DestinationRect="0,0,8,8">
+        <DrawingBrush.Transform>
+          <RotateTransform Angle="45" />
+        </DrawingBrush.Transform>
+        <DrawingBrush.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="#2A2E37" Geometry="M0,0 H4 V8 H0 Z" />
+            <GeometryDrawing Brush="#171A21" Geometry="M4,0 H8 V8 H4 Z" />
+          </DrawingGroup>
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+      <DrawingBrush x:Key="Brush.Hex.Redacted" TileMode="Tile" DestinationRect="0,0,6,6">
+        <DrawingBrush.Transform>
+          <RotateTransform Angle="45" />
+        </DrawingBrush.Transform>
+        <DrawingBrush.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="#3A2A33" Geometry="M0,0 H3 V6 H0 Z" />
+            <GeometryDrawing Brush="#2A2128" Geometry="M3,0 H6 V6 H3 Z" />
+          </DrawingGroup>
+        </DrawingBrush.Drawing>
+      </DrawingBrush>
+
+      <!-- Shadows (tokens.json shadow.*: x y blur rgba) as x y blur spread #AARRGGBB. -->
+      <BoxShadows x:Key="Shadow.Menu">0 12 32 0 #47000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Popover">0 12 32 0 #47000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Dialog">0 18 48 0 #59000000</BoxShadows>
+      <BoxShadows x:Key="Shadow.Palette">0 18 48 0 #73000000</BoxShadows>
+
+      <!-- The dialog scrim's opacity differs per theme (opacity.scrim.dialog); the scrim colour is color.overlay.scrim. -->
+      <x:Double x:Key="Opacity.Scrim.Dialog">0.72</x:Double>
+
+      <!-- Fluent re-keyed, so stock controls and the window take the tokens without a control theme of their own. Fluent's
+           brushes resolve their palette colours inside FluentTheme, so overriding a System*Color here does not reach them:
+           the app-wide brushes are overridden by key. The accent colours are for DynamicResource users outside Fluent; every
+           shade takes direction.inbound so no colour outside the tokens appears. Control-specific keys (TextControl*)
+           follow at the end of this dictionary. -->
+      <Color x:Key="SystemAccentColor">#7385FF</Color>
+      <Color x:Key="SystemAccentColorLight1">#7385FF</Color>
+      <Color x:Key="SystemAccentColorLight2">#7385FF</Color>
+      <Color x:Key="SystemAccentColorLight3">#7385FF</Color>
+      <Color x:Key="SystemAccentColorDark1">#7385FF</Color>
+      <Color x:Key="SystemAccentColorDark2">#7385FF</Color>
+      <Color x:Key="SystemAccentColorDark3">#7385FF</Color>
+      <Color x:Key="SystemErrorTextColor">#FF6B61</Color>
+      <!-- Window and page backgrounds, default text. -->
+      <SolidColorBrush x:Key="SystemRegionBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlPageBackgroundAltHighBrush" Color="{StaticResource Color.Surface.App}" />
+      <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="{StaticResource Color.Text.Primary}" />
+      <!-- Accent highlights, links and the keyboard focus outline (controls/button README: direction.inbound). -->
+      <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlBackgroundAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlForegroundAccentBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlHyperlinkTextBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="{StaticResource Color.Direction.Inbound}" />
+      <!-- A selected list item. -->
+      <SolidColorBrush x:Key="SystemControlHighlightListAccentLowBrush" Color="{StaticResource Color.State.Selected}" />
+      <SolidColorBrush x:Key="SystemControlErrorTextForegroundBrush" Color="{StaticResource Color.Status.Error}" />
+      <!-- Fluent's inner focus ring is translucent by default; opaque here, so no colour outside the tokens shows. -->
+      <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="{StaticResource Color.Surface.App}" />
+      <!-- Fluent's TextBox (controls/text-input, I14; sizes and the 1.5 px borders are in Themes/TextInput.axaml). These
+           sit here rather than in the control's own file because only a theme dictionary beside the colours can take
+           each theme's Color.* statically. -->
+      <SolidColorBrush x:Key="TextControlBackground" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="{StaticResource Color.Surface.Raised}" />
+      <SolidColorBrush x:Key="TextControlBorderBrush" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="{StaticResource Color.Border.Strong}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{StaticResource Color.Direction.Inbound}" />
+      <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="{StaticResource Color.Border.Default}" />
+      <SolidColorBrush x:Key="TextControlForeground" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{StaticResource Color.Text.Primary}" />
+      <SolidColorBrush x:Key="TextControlForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled" Color="{StaticResource Color.Text.Tertiary}" />
+      <SolidColorBrush x:Key="TextControlSelectionHighlightColor" Color="{StaticResource Color.State.Selected}" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

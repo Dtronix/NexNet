@@ -1,0 +1,119 @@
+<!--
+  The open-recording dialog (open-recording screen): 720 px, the frame's body unpadded so the info strip, the section
+  header and the session list run edge to edge.
+  - Info strip: 12 px secondary segments 16 px apart, padded 8 14, bold primary for who recorded it, mono for the start
+    and span; a bottom border.
+  - "Pick a session to view" on chrome, 26 px, then the session list (data-table session-list variant: 26 px rows, a
+    radio per row, the inbound selection bar), up to eight rows before it scrolls.
+  - Below it, padded 14 with 14 between groups: the damaged-file card (OQ3), the schema card and, on a mismatch, the
+    three radio rows 4 px apart; or, for a file that could not be read, the red status line.
+  - Footer: "Compare two sessions…" on the left, Cancel and the primary "Open session 0x3A21" on the right.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:dt="using:NexNet.Inspector.App.Controls.DataTable"
+             xmlns:p="using:NexNet.Inspector.App.Controls.Primitives"
+             x:Class="NexNet.Inspector.App.Views.OpenRecording.OpenRecordingDialog"
+             x:DataType="vm:OpenRecordingDialogViewModel">
+  <UserControl.Styles>
+    <Style Selector="WrapPanel#InfoStrip > TextBlock">
+      <Setter Property="LineHeight" Value="20" />
+    </Style>
+    <Style Selector="Run.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
+    </Style>
+    <Style Selector="Run.strong">
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <c:DialogFrame x:Name="Frame" Width="720" Padding="0"
+                 Title="{Binding Title}"
+                 Subtitle="{Binding FileName}"
+                 PrimaryCommand="{Binding OpenCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.FooterLead>
+      <Button x:Name="CompareButton" Classes="md" Content="Compare two sessions…"
+              Command="{Binding CompareCommand}" IsVisible="{Binding !IsFailed}" />
+    </c:DialogFrame.FooterLead>
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="{Binding CancelLabel}" Command="{Binding CancelCommand}" />
+        <Button x:Name="OpenButton" Classes="md primary" Content="{Binding PrimaryLabel}" Command="{Binding OpenCommand}"
+                IsVisible="{Binding !IsFailed}" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <StackPanel>
+      <StackPanel IsVisible="{Binding !IsFailed}">
+        <Border Padding="14,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Default}">
+          <WrapPanel x:Name="InfoStrip" ItemSpacing="16" TextElement.Foreground="{DynamicResource Brush.Text.Secondary}">
+            <TextBlock ToolTip.Tip="{Binding Producer}">
+              <Run Text="Recorded by " /><Run Classes="strong" Text="{Binding RecordedBy}" /><Run Text="{Binding HostText}" />
+            </TextBlock>
+            <TextBlock>
+              <Run Classes="mono" Text="{Binding Started}" /><Run Text=" · " /><Run Classes="mono" Text="{Binding Span}" />
+            </TextBlock>
+            <TextBlock>
+              <Run Text="{Binding Size}" /><Run Text=" · " /><Run Text="{Binding SessionCount}" />
+            </TextBlock>
+            <TextBlock>
+              <Run Classes="mono" Text="{Binding Gaps}" /><Run Text="{Binding GapsNoun}" />
+            </TextBlock>
+          </WrapPanel>
+        </Border>
+
+        <Border Height="26" Padding="14,0" Background="{DynamicResource Brush.Surface.Chrome}"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Brush.Border.Default}">
+          <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}">
+            <Run Classes="strong" Text="Pick a session to view" /><Run Text="  one at a time · switch later from the Session menu" />
+          </TextBlock>
+        </Border>
+
+        <dt:DataTableControl x:Name="Sessions"
+                             ItemsSource="{Binding Source}"
+                             Columns="{Binding Columns}"
+                             SelectedIndex="{Binding SelectedIndex}"
+                             ActivateCommand="{Binding OpenCommand}"
+                             Height="{Binding TableHeight}"
+                             RowHeight="26"
+                             HeaderHeight="20"
+                             Focusable="True"
+                             CellPadding="14,0,20,0"
+                             SelectionBar="DirectionInbound"
+                             EmptyText="This recording holds no session"
+                             BorderThickness="0,0,0,1"
+                             BorderBrush="{DynamicResource Brush.Border.Default}"
+                             c:DialogHost.InitialFocus="True"
+                             AutomationProperties.Name="Sessions" />
+      </StackPanel>
+
+      <StackPanel x:Name="Body" Margin="14" Spacing="14" IsVisible="{Binding HasBody}">
+        <c:Banner x:Name="FailureStatus" Kind="Status" Tone="Error" Content="{Binding FailureText}" IsVisible="{Binding IsFailed}" />
+
+        <c:Banner x:Name="DamageBanner" Kind="SchemaMismatch" Title="{Binding DamageTitle}" IsVisible="{Binding HasDamage}">
+          <TextBlock x:Name="DamageText" TextWrapping="Wrap" />
+        </c:Banner>
+
+        <c:Banner x:Name="SchemaBanner" Kind="SchemaMismatch" Title="{Binding SchemaTitle}" IsVisible="{Binding HasSchemaBanner}">
+          <TextBlock x:Name="SchemaText" TextWrapping="Wrap" />
+        </c:Banner>
+
+        <StackPanel x:Name="SchemaChoice" Spacing="4" IsVisible="{Binding ShowsSchemaChoice}">
+          <RadioButton x:Name="EmbeddedRow" Theme="{StaticResource RadioRow}" GroupName="schema-choice"
+                       Content="Use the embedded schema" p:ControlHint.Text="matches what was on the wire"
+                       IsChecked="{Binding UsesEmbedded}" />
+          <RadioButton x:Name="WorkspaceRow" Theme="{StaticResource RadioRow}" GroupName="schema-choice"
+                       Content="Use the workspace schema" p:ControlHint.Text="unknown method ids show as raw"
+                       IsChecked="{Binding UsesWorkspace}" />
+          <RadioButton x:Name="RawRow" Theme="{StaticResource RadioRow}" GroupName="schema-choice"
+                       Content="Raw bytes only" p:ControlHint.Text="framing still decoded, bodies as hex"
+                       IsChecked="{Binding UsesRaw}" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </c:DialogFrame>
+</UserControl>

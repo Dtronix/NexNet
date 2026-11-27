@@ -347,6 +347,14 @@ public abstract class ConfigBase
     public RemoteExceptionDetail RemoteExceptionDetail { get; set; } = RemoteExceptionDetail.None;
 
     /// <summary>
+    /// Opt-in observer of the raw transport bytes of every session created with this configuration (after TLS, from
+    /// the protocol preamble on). Null by default: sessions then read and write the transport directly, at no cost.
+    /// Read when each session is created, so a change applies to later sessions only. See
+    /// <see cref="NexNet.Diagnostics.INexusTap"/>.
+    /// </summary>
+    public NexNet.Diagnostics.INexusTap? Tap { get; set; }
+
+    /// <summary>
     /// Throws if <see cref="SessionBudget"/> can't hold the fixed reservations:
     /// <c>MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB</c>.
     /// </summary>

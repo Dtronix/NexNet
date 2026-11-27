@@ -1,0 +1,39 @@
+@0x26D53EA44 server tcp 127.0.0.1:60698 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.180Z
++0.1 >f1 Preamble v1 8B
++0.2 <f2 Preamble v1 8B
++0.2 <f3 ClientGreeting token 0B 23B
++0.3 >f4 ServerGreeting id=10424150596 27B
++0.4 <f5 Invocation #1 Work 9B
++0.5 >f6 InvocationResult #1 Work ok 7B
++0.7 <f7 Invocation #2 Work 9B
++0.7 >f8 InvocationResult #2 Work ok 7B
++0.8 <f9 Invocation #3 Work 9B
++0.8 >f10 InvocationResult #3 Work ok 7B
++1.0 <f11 Invocation #4 Work 9B
++1.0 >f12 InvocationResult #4 Work ok 7B
++1.2 <f13 Invocation #5 Work 9B
++1.2 >f14 InvocationResult #5 Work ok 7B
++1.3 <f15 Invocation #6 Work 9B
++1.3 >f16 InvocationResult #6 Work ok 7B
++1.4 <f17 Invocation #7 Work 9B
++1.5 >f18 InvocationResult #7 Work ok 7B
++1.6 <f19 Invocation #8 Work 9B
++1.6 >f20 InvocationResult #8 Work ok 7B
++1.7 <f21 Invocation #9 Work 9B
++1.7 >f22 InvocationResult #9 Work ok 7B
++1.8 <f23 Invocation #10 Work 9B
++1.9 >f24 InvocationResult #10 Work ok 7B
++2.0 <f25 Invocation #11 Work 9B
++2.0 >f26 InvocationResult #11 Work ok 7B
++2.1 <f27 Invocation #12 Work 9B
++2.2 >f28 InvocationResult #12 Work ok 7B
++2.2 <f29 Invocation #13 Work 10B
++208.8 >f30 InvocationResult #13 Work ok 8B
++209.1 <f31 Invocation #14 Work 9B
++209.2 >f32 InvocationResult #14 Work ok 7B
++209.3 <f33 Invocation #15 Work 9B
++209.3 >f34 InvocationResult #15 Work ok 7B
++209.4 <f35 Invocation #16 Work 9B
++209.5 >f36 InvocationResult #16 Work ok 7B
++209.6 <f37 DisconnectGraceful 1B
++210.0 END Graceful from client

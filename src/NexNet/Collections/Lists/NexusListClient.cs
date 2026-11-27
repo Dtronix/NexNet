@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Internals.Threading;
 using NexNet.Logging;
@@ -13,7 +14,7 @@ using NexNet.Internals;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMessage>, INexusList<T>
+internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMessage>, INexusList<T>, INexusCollectionSnapshotSource
 {
     private readonly VersionedList<T> _itemList;
     private List<T>? _resettingList;
@@ -123,7 +124,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 
-                var values = valuesMessage.DeserializeValue<T[]>();
+                var values = valuesMessage.DeserializeValues<T>();
                 if (values != null)
                 {
                     if (values.Length > _resettingTotalValues - _resettingList.Count)
@@ -269,6 +270,13 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         if (Mode != NexusCollectionMode.BiDirectional)
             throw new InvalidOperationException(
                 $"The collection is read-only (mode {Mode}): only a BiDirectional collection accepts changes from a client.");
+    }
+
+    NexusCollectionSnapshot INexusCollectionSnapshotSource.GetSnapshot(INexusSession session)
+    {
+        // One read of the immutable state, so the count and version belong together.
+        var state = Volatile.Read(ref _itemList.State);
+        return CreateSnapshot(session, NexusCollectionKind.List, state.List.Count, state.Version);
     }
 
     public bool Contains(T item) => _itemList.Contains(item);

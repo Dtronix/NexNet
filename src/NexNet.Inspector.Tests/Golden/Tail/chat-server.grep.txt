@@ -1,0 +1,4 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
++2.0 <#2 SendMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++2.0 >#0.2 ReceiveMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++282.6 END Graceful from client

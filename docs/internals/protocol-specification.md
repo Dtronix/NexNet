@@ -974,7 +974,8 @@ A reset is `ResetStart(version, totalValues)`, then zero or more `ResetValues`, 
 (`NexusListServer.cs:236-262`).
 - The snapshot is one immutable list state, so `version` and the values are consistent with each other.
 - C# servers put up to 40 values in each ResetValues item. The `values` together hold `totalValues` items in list
-  order.
+  order. Each `values` is the item type's `T[]` form (§10.4): ext 78 for the primitive item types, otherwise an array
+  of items, so a list of a `[NexusObject]` type or of strings resets like any other.
 - The client checks the count (`NexusListClient.cs:75-79`, `:96-101`, `:125-130`). A negative `totalValues`, more
   values than `totalValues`, or a different count at ResetComplete is a protocol error (§12.8). The value count
   comes from the wire, so do not size a buffer from `totalValues` alone; C# caps the initial capacity at 1024.

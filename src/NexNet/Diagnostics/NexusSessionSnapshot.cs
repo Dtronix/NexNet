@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using NexNet.Collections;
 using NexNet.RateLimiting;
 
 namespace NexNet.Diagnostics;
@@ -82,6 +83,17 @@ public sealed record NexusSessionSnapshot
 
     /// <summary>Bytes read from the transport.</summary>
     public long BytesReceived { get; init; }
+
+    /// <summary>
+    /// Synchronized collections of the session's nexus, by ID. On a server they are shared by every session, so the
+    /// item count and version are the same in each session's snapshot; <see cref="NexusCollectionSnapshot.State"/> and
+    /// <see cref="NexusCollectionSnapshot.PipeIds"/> are this session's. Empty when the nexus declares no collection.
+    /// </summary>
+    /// <remarks>
+    /// C# only: the Java and JavaScript client snapshots have no counterpart, so it is left out of
+    /// <c>tests/golden/snapshot-fields.json</c>.
+    /// </remarks>
+    public IReadOnlyList<NexusCollectionSnapshot> Collections { get; init; } = [];
 }
 
 /// <summary>
@@ -208,6 +220,52 @@ public sealed record NexusPipeSnapshot
 
     /// <summary>Bytes the writer still has to send while it waits for credit; 0 if it is not waiting.</summary>
     public long WaitingBytes { get; init; }
+}
+
+/// <summary>
+/// One synchronized collection, as seen from one session.
+/// </summary>
+/// <remarks>
+/// The item count and version are read together from the collection's current state, so they match each other; the
+/// session link (<see cref="State"/>, <see cref="PipeIds"/>) is read separately and may be a moment apart.
+/// </remarks>
+public sealed record NexusCollectionSnapshot
+{
+    /// <summary>
+    /// Collection ID, as on the wire: the method ID of the invocation that opens the collection's pipe.
+    /// </summary>
+    public ushort Id { get; init; }
+
+    /// <summary>What kind of collection it is.</summary>
+    public NexusCollectionKind Kind { get; init; }
+
+    /// <summary>
+    /// Synchronization mode, as declared by <c>[NexusCollection]</c> on the server nexus. The server owns every
+    /// collection; with <see cref="NexusCollectionMode.Relay"/> the server mirrors a collection of another server.
+    /// </summary>
+    public NexusCollectionMode Mode { get; init; }
+
+    /// <summary>
+    /// Whether the collection is synchronized over this session. On a client: Connected once the initial reset was
+    /// applied, Disconnected before that and after the pipe closed. On a server: Connected once this session's client
+    /// was sent the snapshot and registered for changes.
+    /// </summary>
+    public NexusCollectionState State { get; init; }
+
+    /// <summary>Items in the collection.</summary>
+    public int Count { get; init; }
+
+    /// <summary>
+    /// Version of the collection: the version the next change is based on, as carried in the collection messages.
+    /// </summary>
+    public int Version { get; init; }
+
+    /// <summary>
+    /// IDs of the pipes carrying the collection on this session, as in <see cref="NexusPipeSnapshot.Id"/>; empty when
+    /// the collection is not enabled over it. A client has at most one; a server lists every pipe the session opened
+    /// for it, including one still closing.
+    /// </summary>
+    public IReadOnlyList<ushort> PipeIds { get; init; } = [];
 }
 
 /// <summary>

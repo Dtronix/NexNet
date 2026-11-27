@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Exe</OutputType>
+    <!-- The schema decoder tests read the generated InspectorSchema of their own test nexus. The generator is a
+         ProjectReference analyzer, so its props are not imported: the property is made compiler visible here. -->
+    <NexNetEmitInspectorSchema>true</NexNetEmitInspectorSchema>
+  </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="NexNetEmitInspectorSchema" />
+    <!-- Test-only server certificate shared with the integration tests (see NexNet.IntegrationTests/certs/README.md). -->
+    <None Include="..\NexNet.IntegrationTests\certs\server.pfx" Link="certs\server.pfx" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Checked-in recordings; the Sample's "fixtures" command regenerates them (see FixtureTests). -->
+    <None Include="Fixtures\*.nntl" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Core\NexNet.Inspector.Core.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Tap\NexNet.Inspector.Tap.csproj" />
+    <ProjectReference Include="..\NexNet.Inspector.Cli\NexNet.Inspector.Cli.csproj" />
+    <!-- The test helper (InspectorCapture), demonstrated by Testing/InspectorCaptureTests. -->
+    <ProjectReference Include="..\NexNet.Inspector.Testing\NexNet.Inspector.Testing.csproj" />
+    <!-- The Chat sample: its nexus schema, scenario checks and fixture generator. -->
+    <ProjectReference Include="..\NexNet.Inspector.Sample\NexNet.Inspector.Sample.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+</Project>

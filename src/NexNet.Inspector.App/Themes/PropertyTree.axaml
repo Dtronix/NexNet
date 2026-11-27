@@ -1,0 +1,94 @@
+<!--
+  The property tree (controls/property-tree): a virtualized list of 21 px rows on surface.panel. Section rows (class
+  "section") sit 4 px below the previous row on surface.raised: "▾ Title" in 600 weight and a secondary summary in the
+  UI font, padded 10 px. Field rows are two columns (name 42 % with a 110 px floor, secondary, ellipsis; value mono 11 px,
+  ellipsis with the full value as its tooltip), 8 px apart, padded 22 px left and 14 px right, indented 12 px per level;
+  transport ranges take split.transport, NexNet splits and redacted values split.nexnet, raw values tertiary. Hover is
+  the raised fill (and the hex view lights the field's bytes); the selected row, which follows the hex selection, is
+  state.selected.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:pt="using:NexNet.Inspector.App.Controls.PropertyTree">
+
+  <ControlTheme x:Key="PropertyTreeItem" TargetType="ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="Height" Value="{DynamicResource Size.PropertyRow}" />
+    <Setter Property="Padding" Value="22,0,14,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="PART_ContentPresenter"
+                          Background="{TemplateBinding Background}"
+                          Padding="{TemplateBinding Padding}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          HorizontalContentAlignment="Stretch"
+                          VerticalContentAlignment="Center" />
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <!-- Hovered in the hex view: the same fill as the pointer's (property-tree hover: "syncs hex hover"). -->
+    <Style Selector="^.linked">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <Style Selector="^:selected">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^.section">
+      <Setter Property="Margin" Value="0,4,0,0" />
+      <Setter Property="Padding" Value="10,0,14,0" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="{x:Type pt:PropertyTreeView}" TargetType="pt:PropertyTreeView">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0,0,0,4" />
+    <Setter Property="SelectionMode" Value="Single" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ItemContainerTheme" Value="{StaticResource PropertyTreeItem}" />
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+    <Setter Property="AutomationProperties.Name" Value="Decoded fields" />
+    <Setter Property="ItemTemplate">
+      <DataTemplate x:DataType="pt:PropertyRow">
+        <Grid Classes.section="{Binding IsSection}" Classes.transport="{Binding IsTransport}"
+              Classes.nexnet="{Binding IsNexNet}" Classes.muted="{Binding IsMuted}">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="42*" MinWidth="110" />
+            <ColumnDefinition Width="58*" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Orientation="Horizontal" Margin="{Binding IndentMargin}" ClipToBounds="False">
+            <TextBlock Classes="glyph" Text="{Binding Glyph}" Width="12" Margin="-12,0,0,0" VerticalAlignment="Center"
+                       FontSize="{DynamicResource FontSize.Meta}" />
+            <TextBlock Classes="name" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <Border Classes="badge" IsVisible="{Binding HasBadge}" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Badge}" />
+            </Border>
+          </StackPanel>
+          <TextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" Margin="8,0,0,0" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}" />
+        </Grid>
+      </DataTemplate>
+    </Setter>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+          <ScrollViewer Name="PART_ScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <ItemsPresenter Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+          </ScrollViewer>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+
+  </ControlTheme>
+</ResourceDictionary>

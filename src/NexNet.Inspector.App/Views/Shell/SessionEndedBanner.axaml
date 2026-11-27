@@ -1,0 +1,34 @@
+<!--
+  The session-ended strip (screens/session-ended; controls/banner SessionEnded): full width under the title bar, 34 px,
+  warning surface with its bottom warning border. 8 px tertiary dot, the bold "Session 0x3A21 ended", the secondary
+  detail (trimmed when the window is narrow), then at the right the reminder (or a failed save in status.error) and the
+  sm actions: Save .nntl… (primary), Attach to another session ▾, Discard. Announced once, assertively, when it appears.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             x:Class="NexNet.Inspector.App.Views.Shell.SessionEndedBanner"
+             x:DataType="vm:SessionEndedViewModel"
+             IsVisible="{Binding IsShown}">
+  <c:Banner x:Name="Strip" Kind="SessionEnded"
+            Title="{Binding Title}"
+            Content="{Binding Detail}"
+            AutomationProperties.Name="{Binding Title}">
+    <c:Banner.Actions>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock x:Name="HintText" Text="{Binding Hint}" VerticalAlignment="Center" Margin="0,0,6,0"
+                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                   Classes.error="{Binding HasError}" />
+        <Button x:Name="SaveButton" Classes="primary" Content="Save .nntl…" Command="{Binding SaveCommand}" />
+        <Button x:Name="AttachButton" Content="Attach to another session ▾" Command="{Binding AttachElsewhereCommand}" />
+        <Button x:Name="DiscardButton" Content="Discard" Command="{Binding DiscardCommand}" />
+      </StackPanel>
+    </c:Banner.Actions>
+  </c:Banner>
+  <UserControl.Styles>
+    <Style Selector="TextBlock#HintText.error">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Status.Error}" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

@@ -1,0 +1,12 @@
+{"k":"hdr","id":"@0x1","v":"client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z"}
+{"k":"call","t":1.9,"d":">","id":"#2","n":"SendMessage","v":"{\"general\" \"ada\" \"hello everyone\" 2026-11-22T12:04:00.0000000Z}","r":"ok","rv":"true","ms":0.1,"b":38,"f":13}
+{"k":"fld","n":"method","v":"SendMessage (method 1) client → server"}
+{"k":"fld","n":"state","v":"ok 0.1ms"}
+{"k":"fld","n":"args"}
+{"k":"fld","n":"message","v":"ChatMessage","dp":1}
+{"k":"fld","n":"Room","v":"\"general\"","dp":2}
+{"k":"fld","n":"Author","v":"\"ada\"","dp":2}
+{"k":"fld","n":"Text","v":"\"hello everyone\"","dp":2}
+{"k":"fld","n":"SentUtc","v":"2026-11-22T12:04:00.0000000Z","dp":2}
+{"k":"fld","n":"result","v":"true"}
+{"k":"fld","n":"frames","v":"f13 f15"}

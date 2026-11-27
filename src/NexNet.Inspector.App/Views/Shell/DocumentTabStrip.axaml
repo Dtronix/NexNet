@@ -1,0 +1,53 @@
+<!--
+  The open documents as title-bar tabs (controls/document-tab): a 7 px marker (a recording-red circle for a live session,
+  a 2 px-radius square in its file colour), the title, and a close glyph. In Compare each tab leads with its inclusion
+  checkbox; only two can be ticked (OQ11), so the others disable once two are. Click selects (the documents' Activate);
+  the close glyph or a middle-click closes, through DocumentsViewModel.CloseDocumentCommand, which asks the unsaved-close
+  prompt first (OQ5). Ctrl+Tab is the window's (MainWindow). The strip carries the User role: the title bar around it is a
+  drag area, and without a role Windows would take a click on a tab as a caption drag.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:shell="using:NexNet.Inspector.App.Views.Shell"
+             x:Class="NexNet.Inspector.App.Views.Shell.DocumentTabStrip"
+             x:DataType="vm:ShellChromeViewModel"
+             WindowDecorationProperties.ElementRole="User"
+             ClipToBounds="False">
+  <UserControl.Styles>
+    <Style Selector="Border.marker">
+      <Setter Property="Width" Value="7" />
+      <Setter Property="Height" Value="7" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Xs}" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Direction.Inbound}" />
+    </Style>
+    <Style Selector="Border.marker.outbound">
+      <Setter Property="Background" Value="{DynamicResource Brush.Direction.Outbound}" />
+    </Style>
+    <Style Selector="Border.marker.live">
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Status.Recording}" />
+    </Style>
+  </UserControl.Styles>
+  <shell:DocumentTabList Name="Tabs" Theme="{StaticResource DocumentTabs}"
+            ItemsSource="{Binding Documents.Documents}"
+            SelectedItem="{Binding Documents.Active, Mode=OneWay}"
+            AutomationProperties.Name="Documents">
+    <shell:DocumentTabList.ItemTemplate>
+      <DataTemplate x:DataType="vm:DocumentViewModel">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <CheckBox Name="CompareBox" MinHeight="0" VerticalAlignment="Center"
+                    IsVisible="{Binding $parent[shell:DocumentTabStrip].IsCompare}"
+                    IsChecked="{Binding IsIncludedInCompare}"
+                    IsEnabled="{Binding CanIncludeInCompare}"
+                    AutomationProperties.Name="Include in Compare" />
+          <Border Classes="marker" Classes.live="{Binding IsLive}" Classes.outbound="{Binding HasOutboundMarker}" />
+          <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+          <Button Name="CloseButton" Theme="{StaticResource ChromeButton}" Classes="tabClose" Content="✕"
+                  Click="OnCloseClick" AutomationProperties.Name="{Binding CloseLabel}" />
+        </StackPanel>
+      </DataTemplate>
+    </shell:DocumentTabList.ItemTemplate>
+  </shell:DocumentTabList>
+</UserControl>

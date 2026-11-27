@@ -23,6 +23,14 @@ internal abstract class NexusCollectionValueMessage<TMessage, TUnion> : NexusCol
     }
 
     /// <summary>
+    /// Deserializes the embedded run of list values (a ResetValues body).
+    /// </summary>
+    public TValue[]? DeserializeValues<TValue>()
+    {
+        return PayloadSerializer.DeserializeValues<TValue>(ValueCore, _options);
+    }
+
+    /// <summary>
     /// Reads the embedded value into a pooled buffer that is returned with the message.
     /// </summary>
     protected void ReadValueCore(ref MsgPackReader reader)

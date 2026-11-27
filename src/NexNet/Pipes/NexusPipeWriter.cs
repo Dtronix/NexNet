@@ -34,8 +34,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 {
     private readonly IPipeStateManager _stateManager;
 
-    private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 64);
-    private bool _isCanceled;
+    private readonly BufferWriter _bufferWriter;
+    // Set by CancelPendingFlush from any thread; consumed by the flush it cancels (PipeWriter contract).
+    private volatile bool _isCanceled;
     // Read by the session under its write lock while another thread completes the writer.
     private volatile bool _isCompleted;
     private CancellationTokenSource? _flushCts;
@@ -159,8 +160,10 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         ISessionMessenger sessionMessenger, 
         bool isServer, int chunkSize,
         TimeProvider? time = null,
-        MetricsTagSet? metricsTags = null)
+        MetricsTagSet? metricsTags = null,
+        ArrayPool<byte>? bufferPool = null)
     {
+        _bufferWriter = BufferWriter.Create(bufferPool ?? ArrayPool<byte>.Shared, 1024 * 64);
         _stateManager = stateManager;
         _time = time ?? TimeProvider.System;
         _metricsTags = metricsTags;
@@ -319,7 +322,14 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             return new FlushResult(_isCanceled, _isCompleted);
 
         if (_flushCts?.IsCancellationRequested == true)
-            return new FlushResult(_isCanceled, _isCompleted);
+        {
+            // CancelPendingFlush ran between flushes: it cancels this one only, and the data stays buffered for the
+            // next flush.
+            if (!_flushCts.TryReset())
+                _flushCts = null;
+            _isCanceled = false;
+            return new FlushResult(true, _isCompleted);
+        }
 
         _flushCts ??= new CancellationTokenSource();
 
@@ -327,7 +337,11 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
         // Shortcut for empty buffer.
         if (bufferLength == 0)
-            return new FlushResult(_isCanceled, _isCompleted);
+        {
+            var canceled = _isCanceled;
+            _isCanceled = false;
+            return new FlushResult(canceled, _isCompleted);
+        }
 
         // ReSharper disable once UseAwaitUsing
         // TODO: Review only calling when the token can be canceled.
@@ -367,6 +381,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         // Cancels this flush only; unlike CancelPendingFlush it does not cancel later ones.
         var canceledWhileWaiting = false;
 
+        // The session failed (it is being disconnected): what was not sent can never be, so it is dropped.
+        var discardUnsent = false;
+
         if (_messenger == null)
         {
             if (cancellationTokenRegistration != null)
@@ -379,6 +396,13 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         {
             if (_isCanceled || _isCompleted)
                 break;
+
+            // The session drops a chunk whose token is already canceled; stop before handing it one.
+            if (_flushCts.IsCancellationRequested)
+            {
+                canceledWhileWaiting = true;
+                break;
+            }
 
             // Wait for credit. This is the writer's own task; the session's read loop never waits here.
             var credit = Volatile.Read(ref _credit);
@@ -441,8 +465,12 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
                 SetComplete();
                 break;
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
+                // The session gave the chunk up before writing it (canceled while it waited for the write lock): it
+                // stays buffered for the next flush, and so does its credit.
+                Interlocked.Add(ref _credit, chunkLength);
+                canceledWhileWaiting = cancellationToken.IsCancellationRequested;
                 break;
             }
             catch (Exception e) when (_isCompleted)
@@ -455,6 +483,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             {
                 _logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_stateManager.Id}.");
                 await _messenger.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
+                discardUnsent = true;
                 break;
             }
 
@@ -462,9 +491,20 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             flushPosition += chunkLength;
         }
 
-        _bufferWriter.Deallocate(buffer);
+        // Only what was sent is released. A canceled flush leaves the rest buffered, as the PipeWriter contract
+        // requires: dropping it would tear the stream, since part of it may already be on the wire. Once the writer
+        // completed (or the session failed) nothing more can be sent, so everything goes.
+        if (bufferLength == 0 || _isCompleted || discardUnsent)
+            _bufferWriter.Deallocate(buffer);
+        else if (flushPosition > 0)
+            _bufferWriter.Deallocate(buffer.Slice(0, flushPosition));
+
         if (_creditWaitSince != 0)
             EndCreditWait();
+
+        // Disposed before the CTS is reset, so a token canceled late cannot cancel the next flush.
+        if (cancellationTokenRegistration != null)
+            await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
 
         // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
         if (!_flushCts.TryReset())
@@ -476,10 +516,12 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
                 await _stateManager.NotifyState().ConfigureAwait(false);
         }
 
-        if(cancellationTokenRegistration != null)
-            await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
+        // CancelPendingFlush cancels one flush: this one reports it, the next one runs.
+        var isCanceled = _isCanceled || canceledWhileWaiting;
+        if (isCanceled)
+            _isCanceled = false;
 
-        return new FlushResult(_isCanceled || canceledWhileWaiting, _isCompleted);
+        return new FlushResult(isCanceled, _isCompleted);
     }
 
     /// <summary>

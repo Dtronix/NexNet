@@ -1,0 +1,144 @@
+<!--
+  The app's one Button theme (controls/button): every Button takes it, so a plain <Button> is the secondary button.
+  Classes pick the variant: primary, record (red outline and dot), caption / caption-close (title-bar window buttons),
+  split (the 20 px pane-header toggle); md is the 28 px dialog-footer size (sm, 24 px, is the default).
+  States follow OQ1: hover = surface.raised, pressed = state.selected, keyboard focus = a 2 px direction.inbound ring
+  1 px outside the button, disabled = tertiary text on surface.raised at 70 %. Colour changes are instant: a brush
+  transition would pass through Transparent, which Avalonia draws as white (tokens.json).
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Caption glyphs (10 x 10, 1 px lines drawn as fills so a PathIcon takes the button's Foreground). -->
+  <StreamGeometry x:Key="Glyph.Caption.Minimize">M0,4.5 H10 V5.5 H0 Z</StreamGeometry>
+  <StreamGeometry x:Key="Glyph.Caption.Maximize">M0,0 H10 V10 H0 Z M1,1 V9 H9 V1 Z</StreamGeometry>
+  <StreamGeometry x:Key="Glyph.Caption.Restore">M0,2 H8 V10 H0 Z M1,3 V9 H7 V3 Z M2,0 H10 V8 H9 V1 H2 Z</StreamGeometry>
+  <StreamGeometry x:Key="Glyph.Caption.Close">F1 M0,0.707 L0.707,0 L10,9.293 L9.293,10 Z M9.293,0 L10,0.707 L0.707,10 L0,9.293 Z</StreamGeometry>
+
+  <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
+    <Setter Property="Background" Value="{DynamicResource Brush.Surface.Panel}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Md}" />
+    <Setter Property="Height" Value="{DynamicResource Size.ButtonSm}" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="FontFamily" Value="{DynamicResource Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource FontSize.Body}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+    <!-- The template draws its own ring; Fluent's adorner would add a second one. -->
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <!-- The focus ring is drawn 1-3 px outside the button. -->
+    <Setter Property="ClipToBounds" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <!-- Margin -3 with a 2 px border: the ring sits 1 px outside the button (outline-offset: 1px). -->
+          <Border Name="PART_FocusRing" Margin="-3" BorderThickness="2" CornerRadius="8"
+                  BorderBrush="{DynamicResource Brush.Direction.Inbound}" IsVisible="False" />
+          <Border Name="PART_Background"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <StackPanel Orientation="Horizontal" Spacing="6"
+                        HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+              <Ellipse Name="PART_RecordDot" Width="7" Height="7" VerticalAlignment="Center"
+                       Fill="{DynamicResource Brush.Status.Recording}" IsVisible="False" />
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+            </StackPanel>
+          </Border>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Variants. -->
+    <Style Selector="^.md">
+      <Setter Property="Height" Value="{DynamicResource Size.ButtonMd}" />
+      <Setter Property="Padding" Value="14,0" />
+    </Style>
+    <Style Selector="^.primary">
+      <Setter Property="Background" Value="{DynamicResource Brush.Direction.Inbound}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Direction.Inbound}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.OnAccent}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="^.record">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Chrome}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Status.Recording}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Status.Recording}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="8,0" />
+    </Style>
+    <Style Selector="^.record /template/ Ellipse#PART_RecordDot">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="^.caption">
+      <Setter Property="Width" Value="{DynamicResource Size.CaptionButton}" />
+      <Setter Property="Height" Value="{DynamicResource Size.TitleBar}" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Chrome}" />
+    </Style>
+    <Style Selector="^.caption /template/ Border#PART_FocusRing">
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="^.split">
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Radius.Sm}" />
+      <Setter Property="FontSize" Value="{DynamicResource FontSize.Small}" />
+    </Style>
+    <Style Selector="^.split /template/ Border#PART_FocusRing">
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <!-- Hover: raised fill; the primary button brightens, the close caption turns red with a white glyph. -->
+    <Style Selector="^:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+    </Style>
+    <Style Selector="^.primary:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.PrimaryHover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.PrimaryHover}" />
+    </Style>
+    <Style Selector="^.caption-close:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Brush.Caption.CloseHover}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Caption.CloseGlyphHover}" />
+    </Style>
+
+    <!-- Pressed or toggled on: the selected fill; the primary button darkens. -->
+    <Style Selector="^:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.State.Selected}" />
+    </Style>
+    <Style Selector="^.primary:pressed">
+      <Setter Property="Background" Value="{DynamicResource Brush.Button.PrimaryPressed}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Button.PrimaryPressed}" />
+    </Style>
+
+    <Style Selector="^:focus-visible /template/ Border#PART_FocusRing">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- Last, so it wins over every variant and state above. -->
+    <Style Selector="^:disabled">
+      <Setter Property="Background" Value="{DynamicResource Brush.Surface.Raised}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border.Default}" />
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+    <Style Selector="^.caption:disabled">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>
