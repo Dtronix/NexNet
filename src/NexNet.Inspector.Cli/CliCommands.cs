@@ -36,6 +36,8 @@ internal static class CliCommands
             static (cli, args, _) => Task.FromResult(InfoCommand.Run(cli, args))),
         new(CliCommand.Repair, "repair", CliOption.Force, 1, TapCli.RepairUsage,
             static (cli, args, _) => Task.FromResult(RepairCommand.Run(cli, args))),
+        new(CliCommand.Tail, "tail", CliArguments.TailOptions, 1, TapCli.TailUsage,
+            static (cli, args, ct) => new TailCommand(cli).RunAsync(args, ct)),
         new(CliCommand.Help, "help", CliOption.None, 0, null,
             static (cli, args, _) => Task.FromResult(cli.WriteUsage(args.HelpTopic))),
         new(CliCommand.Version, "version", CliOption.None, 0, null,

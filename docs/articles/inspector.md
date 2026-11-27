@@ -7,7 +7,7 @@ It has three parts:
 | Part | Package / project | What it does |
 |------|-------------------|--------------|
 | Tap | `NexNet.Inspector.Tap` | Opt-in capture in your server or client: a recorder and an inspector endpoint that viewers connect to. |
-| `nexnet-tap` | `NexNet.Inspector.Cli` | Command line: list live sessions, record them to `.nntl` files, summarise and repair recordings. |
+| `nexnet-tap` | `NexNet.Inspector.Cli` | Command line: list live sessions, record them to `.nntl` files, summarise, repair and tail recordings (condensed text for people and LLMs). |
 | NexNet Inspector | `NexNet.Inspector.App` (`nexnet-inspector`) | Desktop app: attach to a live session or open a recording, inspect it, compare two sessions. |
 
 Captures are stored as `.nntl` recordings (format: [Inspector Recording Format](../internals/nntl-format.md)). Both binaries are published with Native AOT for Windows (win-x64) and Linux (linux-x64).
@@ -149,15 +149,32 @@ $ nexnet-tap repair crashed.nntl
 
 Rebuilds the index footer of a recording that ended without one, in place. A file whose footer is intact is left untouched unless `--force` is given.
 
+### tail
+
+```
+$ nexnet-tap tail server.nntl --method 'Send*' --max-lines 200
+$ nexnet-tap tail tcp://127.0.0.1:7712 --token dev-token --session first --only errors,slow --slow 50ms
+$ nexnet-tap tail server.nntl --until 'state=exception|gap' --context 20
+```
+
+Prints a recording or a live session as condensed text, one line per message (the [text format](../internals/inspector-text-format.md) the LLM tooling shares): a header per session, then calls with their arguments, outcome and duration, channel items, collection messages, pipe events, gaps and the end, with pings and repeated lines collapsed and values cut to a width. Lines are written and flushed one at a time, so the output can be piped.
+
+- **Source.** A file is replayed session by session in file order (`--session <id|first>` picks one) and the command ends. `--follow` reads a file that is still being written, like `tail -f`, until its index footer arrives. An endpoint (`tcp://`, `tls://`, `uds:`, as the argument or `--endpoint`, with `record`'s connection options) needs `--session <id|first|all>` and is followed until Ctrl+C, `--duration`, or the session closes. `all` records every session (so the server must allow recording) and prefixes each line with its session ID.
+- **Output.** `--level summary|messages|frames|bytes`, `--format text|ndjson`, `--collapse on|off`, `--value-width`, `--depth`.
+- **Filters.** `--method` (comma-separated globs), `--pipe` (`4.4`, `≋4·4`, or `4` for either side's ID), `--dir in|out`, `--only errors,slow,cancel,gaps`, `--slow <duration>` (threshold, default 100 ms; given alone it keeps slow calls only), `--grep <text>` (case-insensitive). Header and END lines always pass.
+- **Budgets.** `--max-lines`, `--max-tokens` (characters / 4), `--sample 1/N` (one line in N), `--duration`. A budget ends with `… budget hit, N withheld, --after <cursor>`; run the same command with `--after <cursor>` for the next page, with no line repeated or lost.
+- **`--until <expr>`** prints nothing until a line meets the expression, then the `--context` lines before it (default 10, after the session header) and that line, and stops. Terms: `method=<glob>`, `state=ok|exception|canceled|unauthorized|refused|pending|oneway`, `error`, `gap`, `end`, `type=<line kind or frame type>`; `,` means and, `|` means or. It exits 4 when the condition never held.
+- **Stopping.** Ctrl+C or `--duration` ends with `… stopped: interrupted, N lines, --after <cursor>`. Files only: a live attach has no position to resume, so its stop lines carry no cursor; record it and tail the file to page through it.
+
 ### Exit codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success. For `record`, also when stopped by Ctrl+C or `--duration`, or when the session closed. |
 | 1 | Failure: endpoint unreachable, token or TLS refused, I/O error, unreadable file, recording without footer. |
-| 2 | Invalid command line. |
+| 2 | Invalid command line, or a `tail --after` cursor of another session, level or filters. |
 | 3 | Refused by the server configuration (recording disabled, secrets not included). |
-| 4 | Session not found, or none appeared within `--wait`. |
+| 4 | Session not found, or none appeared within `--wait`. `tail --until`: the condition never held. |
 | 130 | Interrupted by Ctrl+C before recording started. |
 
 ## The app

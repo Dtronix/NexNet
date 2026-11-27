@@ -16,6 +16,9 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
     /// <summary>Called once <c>record</c> has its stream and the output file is open; tests wait on it.</summary>
     public Action? RecordingStarted { get; init; }
 
+    /// <summary>Called once a live &lt;c&gt;tail&lt;/c&gt; has its stream; tests wait on it.</summary>
+    public Action? TailStarted { get; init; }
+
     /// <summary>
     /// How long <c>record</c> waits, after it asked the endpoint to stop, for the close blocks and the index footer.
     /// </summary>
@@ -86,6 +89,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           nexnet-tap record --endpoint <addr> --session <id|first|all> --out <file.nntl> [options]
           nexnet-tap info   <file.nntl> [--json] [--messages]
           nexnet-tap repair <file.nntl> [--force]
+          nexnet-tap tail   <file.nntl | endpoint> [--session <id|first|all>] [options]
           nexnet-tap help [command]
           nexnet-tap --version
 
@@ -96,6 +100,8 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           info     Summarise a recording: header, index, damage, and per session times, ops, bytes, frames, gaps,
                    schema and close reason.
           repair   Rebuild the index footer of a crashed or truncated recording, in place.
+          tail     Print a recording or a live session as condensed text, one line per message, with filters,
+                   budgets and --until.
 
         """ + ExitCodes;
 
@@ -142,6 +148,56 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
                                    bytes in memory
 
         """ + ExitCodes;
+
+    internal static readonly string TailUsage = """
+        Usage: nexnet-tap tail <file.nntl> [options]
+               nexnet-tap tail <endpoint> --session <id|first|all> [connection options] [options]
+
+        Prints a capture as token-condensed text (docs/internals/inspector-text-format.md): a header per session, then
+        one line per message, pings and repeats collapsed, values cut. A file is replayed and the command ends; a live
+        endpoint (tcp://, tls://, uds:, or --endpoint) is followed until Ctrl+C, --duration, --until, a budget, or the
+        session closes. Lines are flushed one by one. Ctrl+C ends with a stop line and, for a file, its resume cursor.
+
+        Output:
+              --level <l>          summary, messages (default), frames or bytes
+              --format <f>         text (default) or ndjson
+              --collapse on|off    Collapse pings, credits, windows, item runs and repeated lines (default on)
+              --value-width <n>    Longest value text before it is cut with … (default 32)
+              --depth <n>          Nesting shown inside a value (default 2)
+        Filters (header and END lines always pass):
+              --method <globs>     Calls of these methods, comma separated (Send*,Join)
+              --pipe <ids>         Lines of these pipes: 4.4, ≋4·4, or 4 (either side's ID)
+              --dir in|out         One direction, seen from the tapped side
+              --only <what>        errors, slow, cancel, gaps (comma separated: any of them)
+              --slow <d>           Slow-call threshold (default 100ms); alone, it also keeps slow calls only
+              --grep <text>        Lines containing this text (case-insensitive)
+        Budgets:
+              --max-lines <n>      Stop after n lines with '… budget hit, N withheld, --after <cursor>'
+              --max-tokens <n>     The same for approximate tokens (characters / 4)
+              --sample 1/N         Keep one line in N (header and END lines always kept)
+          -d, --duration <d>       Stop after this long
+        Stopping and resuming:
+              --until <expr>       Print nothing until a line meets <expr>, then the --context lines before it and that
+                                   line, and stop. Terms: method=<glob>, state=ok|exception|canceled|unauthorized|
+                                   refused|pending|oneway, error, gap, end, type=<line kind or frame type>; ',' = and,
+                                   '|' = or (method=Send*,state=exception|gap). Exit 4 when it never held.
+              --context <n>        Lines printed before the --until line (default 10)
+              --follow             Keep reading a recording as it grows (a file being recorded), like tail -f
+              --after <cursor>     Resume a file where a budget or stop line said (same --level and filters)
+          -s, --session <sel>      A session ID, 'first' or 'all' (live: required; all needs recording allowed. File:
+                                   default all, in file order)
+              --wait <d>           How long --session first waits for a session (default 30s)
+
+        """ + ConnectHelp + Durations + """
+        Exit codes:
+          0    success: the source ended, Ctrl+C, --duration, a budget, or --until met
+          1    failure: endpoint unreachable or token refused, I/O error, unreadable file
+          2    invalid command line, or an --after cursor of another session, level or filters
+          3    refused by the server configuration (--session all needs recording allowed)
+          4    session not found, or the --until condition never held
+          130  interrupted by Ctrl+C before the tail started
+
+        """;
 
     internal static readonly string RepairUsage = """
         Usage: nexnet-tap repair <file.nntl> [--force]

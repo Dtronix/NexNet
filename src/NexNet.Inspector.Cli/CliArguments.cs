@@ -5,7 +5,7 @@ using NexNet.Inspector.Tap;
 namespace NexNet.Inspector.Cli;
 
 /// <summary>A parsed <c>nexnet-tap</c> command line.</summary>
-internal sealed class CliArguments
+internal sealed partial class CliArguments
 {
     /// <summary>Environment variable read when <c>--token</c> is absent, so the token stays out of shell history.</summary>
     public const string TokenVariable = "NEXNET_TAP_TOKEN";
@@ -279,12 +279,31 @@ internal sealed class CliArguments
         "--json" => CliOption.Json,
         "--messages" => CliOption.Messages,
         "--help" or "-h" or "-?" => CliOption.Help,
+        "--level" => CliOption.Level,
+        "--format" => CliOption.Format,
+        "--collapse" => CliOption.Collapse,
+        "--value-width" => CliOption.ValueWidth,
+        "--depth" => CliOption.Depth,
+        "--max-lines" => CliOption.MaxLines,
+        "--max-tokens" => CliOption.MaxTokens,
+        "--after" => CliOption.After,
+        "--method" => CliOption.Method,
+        "--pipe" => CliOption.Pipe,
+        "--dir" => CliOption.Dir,
+        "--only" => CliOption.Only,
+        "--slow" => CliOption.Slow,
+        "--grep" => CliOption.Grep,
+        "--sample" => CliOption.Sample,
+        "--until" => CliOption.Until,
+        "--context" => CliOption.Context,
+        "--follow" => CliOption.Follow,
         _ => CliOption.None,
     };
 
     private static bool TakesValue(CliOption option) => option is CliOption.Endpoint or CliOption.Token
         or CliOption.ServerName or CliOption.ConnectTimeout or CliOption.Session or CliOption.Duration or CliOption.Out
-        or CliOption.Overflow or CliOption.Wait;
+        or CliOption.Overflow or CliOption.Wait
+        || (option & TailValueOptions) != 0;
 
     private bool TrySetValue(CliOption option, string value, [NotNullWhen(false)] out string? error)
     {
@@ -313,6 +332,24 @@ internal sealed class CliArguments
                 return true;
             case CliOption.Session:
                 return TrySetSession(value, out error);
+            case CliOption.Level:
+            case CliOption.Format:
+            case CliOption.Collapse:
+            case CliOption.ValueWidth:
+            case CliOption.Depth:
+            case CliOption.MaxLines:
+            case CliOption.MaxTokens:
+            case CliOption.After:
+            case CliOption.Method:
+            case CliOption.Pipe:
+            case CliOption.Dir:
+            case CliOption.Only:
+            case CliOption.Slow:
+            case CliOption.Grep:
+            case CliOption.Sample:
+            case CliOption.Until:
+            case CliOption.Context:
+                return TrySetTailValue(option, value, out error);
             case CliOption.Overflow:
                 switch (value)
                 {
@@ -421,6 +458,8 @@ internal sealed class CliArguments
                 }
 
                 return true;
+            case CliCommand.Tail:
+                return TryValidateTail(environmentToken, out error);
             case CliCommand.Info:
             case CliCommand.Repair:
                 if (File is null)

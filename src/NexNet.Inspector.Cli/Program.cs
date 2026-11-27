@@ -15,6 +15,16 @@ internal static class Program
             interrupt.Cancel();
         };
 
+        try
+        {
+            // tail prints the text format's glyphs (≋ ☰ ⇄ · × …); the Windows console default code page would turn them into '?'.
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+        }
+        catch (IOException)
+        {
+            // No console to configure.
+        }
+
         var cli = new TapCli(Console.Out, Console.Error);
         return await cli.RunAsync(args, Environment.GetEnvironmentVariable(CliArguments.TokenVariable), interrupt.Token)
             .ConfigureAwait(false);

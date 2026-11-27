@@ -129,7 +129,12 @@ the width, with its length).
 | `sp` | span of a collapsed run in ms |
 | `b` | bytes covered |
 | `f` | frame number of the first frame (as in `f18`) |
-| `after` | the cursor (`k` = `budget`, `x` = lines withheld) |
+| `after` | the cursor (`k` = `budget`, `x` = lines withheld; `k` = `stop`, `x` = lines written) |
+| `s` | the session ID (`@0x1BCB`) when one output interleaves several sessions (`nexnet-tap tail --session all`); text lines then start with it |
+
+`nexnet-tap tail` ends a stopped run with `… stopped: <reason>, N lines[, --after <cursor>]` (ndjson `k` = `stop`, `v` =
+reason): Ctrl+C (`interrupted`), `duration reached`, `until <expr> matched` / `not met`. A live attach prints no
+cursor (its frame positions exist only in that attach).
 
 The JSON is written by System.Text.Json source generation with relaxed escaping, so glyphs stay literal.
 

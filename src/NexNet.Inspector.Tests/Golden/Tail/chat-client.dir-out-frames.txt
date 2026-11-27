@@ -1,0 +1,41 @@
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
++0.1 >f2 Preamble v1 8B
++0.1 >f3 ClientGreeting token redacted 119B R
++0.4 >f5 Invocation #0 Users 9B
++0.5 >window ☰1·1
++1.7 >f10 Invocation #1 Join 12B
++1.9 >f13 Invocation #2 SendMessage 45B
++2.1 >f16 Invocation #3 SendMessage 46B
++10.2 ping ×2 (span 15.6ms)
++25.9 >f20 InvocationCancellation #3 SendMessage 5B X
++26.0 >f21 Invocation #0.3 UploadFile 20B
++26.3 >window ⇄2·2
++26.3 >f26 DuplexPipeWrite ⇄2·2 2.0KB
++26.3 >f27 DuplexPipeUpdateState ⇄2·2 client done 9B
++26.8 >f29 DuplexPipeUpdateState ⇄2·2 complete 9B
++26.8 >f30 Invocation #0.4 UploadFile 19B
++26.9 >window ⇄3·3
++27.0 >f33 DuplexPipeWrite ⇄3·3 4.0KB
++27.5 >f34 MessageStart #4 SendAttachment arg 293.0KB 12B N
++27.5 >f35 MessageChunk #4 SendAttachment 64.0KB N
++32.6 >f36 DuplexPipeWrite ⇄3·3 4.0KB
++32.7 >f37 MessageChunk #4 SendAttachment 64.0KB N
++37.8 >f38 DuplexPipeWrite ⇄3·3 4.0KB
++37.8 >f39 MessageChunk #4 SendAttachment 64.0KB N
++42.9 >f40 DuplexPipeWrite ⇄3·3 4.0KB
++42.9 >ping
++43.0 >f42 MessageChunk #4 SendAttachment 64.0KB N
++48.0 >f44 DuplexPipeWrite ⇄3·3 4.0KB
++48.1 >f45 MessageChunk #4 SendAttachment 37.0KB N
++53.1 >f46 DuplexPipeWrite ⇄3·3 4.0KB
++53.1 >f47 DuplexPipeUpdateState ⇄3·3 client done 9B
++53.3 >f49 DuplexPipeUpdateState ⇄3·3 complete 9B
++53.6 >f51 Invocation #5 SendMessage 44B
++53.8 >f54 Invocation #0.6 TailLogs 11B
++53.9 >window ≋4·4
++54.0 >f71 DuplexPipeUpdateState ≋4·4 LogLine complete 9B
++54.0 >f72 Invocation #0.7 TailLogs 13B
++54.1 >window ≋5·5
++56.2 >f845 DuplexPipeUpdateState ≋5·5 LogLine complete 9B
++56.2 ping ×15 (span 225.3ms)
+… budget hit, 3 withheld, --after AQIBAQAAAAAAAABqAwAAAAAAAAAAAACn-N12y60Vxg

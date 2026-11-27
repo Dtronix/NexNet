@@ -33,6 +33,12 @@ public sealed class TextRecordWriter
         _options = options;
     }
 
+    /// <summary>
+    /// A session's ID (`@0x1BCB`) put before every line but the header (text) or as `s` (ndjson), for an output that
+    /// interleaves several sessions (`nexnet-tap tail` of every session); null for none (the default).
+    /// </summary>
+    public string? SessionTag { get; set; }
+
     /// <summary>The line last formatted by <see cref="Measure"/>.</summary>
     public string Current => _options.Format == TextFormat.Ndjson ? new string(_chars, 0, _charCount) : _line.ToString();
 
@@ -48,6 +54,8 @@ public sealed class TextRecordWriter
             return TextBudget.Estimate(_chars.AsSpan(0, _charCount));
         }
 
+        if (SessionTag is { } tag && record.Kind != TextRecordKind.Header)
+            _line.Append(tag).Append(' ');
         AppendText(_line, record);
         return TextBudget.Estimate(_line);
     }
@@ -81,6 +89,7 @@ public sealed class TextRecordWriter
         {
             _object.Clear();
             _object.K = "budget";
+            _object.S = SessionTag;
             _object.X = withheld;
             _object.After = cursor.Encode();
             SerializeJson();
@@ -89,7 +98,42 @@ public sealed class TextRecordWriter
             return;
         }
 
+        if (SessionTag is { } tag)
+            output.Write(tag + " ");
         output.Write(string.Create(Invariant, $"… budget hit, {withheld} withheld, --after {cursor.Encode()}\n"));
+    }
+
+    /// <summary>
+    /// Writes the line that ends a stopped rendering (`nexnet-tap tail`): `… stopped: &lt;reason&gt;, N lines[, --after
+    /// &lt;cursor&gt;]` (ndjson: `k` = `stop`, `v` = reason, `x` = lines, `after`).
+    /// </summary>
+    /// <param name="output">The output.</param>
+    /// <param name="reason">Why it stopped (`interrupted`, `duration reached`, `until … matched`, …).</param>
+    /// <param name="lines">Lines written before it.</param>
+    /// <param name="cursor">Where to resume; null when the source cannot be resumed (a live attach).</param>
+    public void WriteStop(TextWriter output, string reason, int lines, TextCursor? cursor)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(reason);
+        if (_options.Format == TextFormat.Ndjson)
+        {
+            _object.Clear();
+            _object.K = "stop";
+            _object.S = SessionTag;
+            _object.V = reason;
+            _object.X = lines;
+            _object.After = cursor?.Encode();
+            SerializeJson();
+            output.Write(_chars.AsSpan(0, _charCount));
+            output.Write('\n');
+            return;
+        }
+
+        if (SessionTag is { } tag)
+            output.Write(tag + " ");
+        output.Write(cursor is { } at
+            ? string.Create(Invariant, $"… stopped: {reason}, {lines} lines, --after {at.Encode()}\n")
+            : string.Create(Invariant, $"… stopped: {reason}, {lines} lines\n"));
     }
 
     /// <summary>The text form of a record (docs/internals/inspector-text-format.md §3).</summary>
@@ -256,6 +300,7 @@ public sealed class TextRecordWriter
         var o = _object;
         o.Clear();
         o.K = Code(record.Kind);
+        o.S = record.Kind != TextRecordKind.Header ? SessionTag : null;
         if (record.Kind is not (TextRecordKind.Header or TextRecordKind.Stat or TextRecordKind.Bytes))
             o.T = Math.Round(record.TimeMs, 1);
         o.D = record.Direction switch
@@ -304,6 +349,9 @@ internal sealed class TextJsonLine
     [JsonPropertyName("k")]
     public string K { get; set; } = "";
 
+    [JsonPropertyName("s")]
+    public string? S { get; set; }
+
     [JsonPropertyName("t")]
     public double? T { get; set; }
 
@@ -349,6 +397,7 @@ internal sealed class TextJsonLine
     public void Clear()
     {
         K = "";
+        S = null;
         T = null;
         D = null;
         Id = null;

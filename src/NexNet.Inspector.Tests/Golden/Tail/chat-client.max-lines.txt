@@ -1,0 +1,11 @@
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=9063827708
++0.4 >#0 Users(pipe:1) (oneway)
++0.5 <☰1·1 open Users by #0
++0.5 >window ☰1·1
++0.7 <☰1·1 Users ResetStart v0 n=0
++1.6 <☰1·1 Users ResetComplete
++1.7 >#1 Join("ada") -> ok 9063827708 "ada" Online 0.2ms
++1.9 <☰1·1 Users Insert v1 @0 9063827708
++1.9 >#2 SendMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
+… budget hit, 855 withheld, --after AQEBAQAAAAAAAAANAAAAAAAAAAAAAACGru5rwuYapw
