@@ -104,6 +104,20 @@ jobs:
         ./publish/nexnet-tap/${{ matrix.exe }} expect src/NexNet.Inspector.Tests/Fixtures/chat-client.nntl \
           --no-gaps --no-errors --max-findings high=0 --p99 '*<5s'
 
+    - name: Golden output (the AOT nexnet-tap prints what the tests' goldens hold)
+      # Inspector.Tests compares the JIT build's text and ndjson with Golden/Queries; this checks the published binary
+      # (source-generated JSON, invariant culture, UTF-8 console) against the same files. Goldens check out with either
+      # line ending, so carriage returns are ignored.
+      shell: bash
+      run: |
+        T=./publish/nexnet-tap/${{ matrix.exe }}
+        F=src/NexNet.Inspector.Tests/Fixtures
+        G=src/NexNet.Inspector.Tests/Golden/Queries
+        "$T" summary $F/chat-client.nntl | diff --strip-trailing-cr - $G/chat-client.summary.txt
+        "$T" summary $F/server-all.nntl | diff --strip-trailing-cr - $G/server-all.summary.txt
+        "$T" show $F/chat-client.nntl '#2' --format ndjson | diff --strip-trailing-cr - $G/chat-client.show-2-ndjson.txt
+        "$T" trace $F/chat-client.nntl 4 | diff --strip-trailing-cr - $G/chat-client.trace-4.txt
+
     - name: Upload nexnet-tap
       uses: actions/upload-artifact@v7
       with:

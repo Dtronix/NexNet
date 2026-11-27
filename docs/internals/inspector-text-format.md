@@ -71,6 +71,8 @@ into counts, every value cut to a width, and budgets that stop at a resumable cu
 | fragment (`frag`) | `+27.5 >f35 MessageChunk msg 0+64.0KB op 19 N` | `trace`: a frame that carried part of a message, the message bytes it carried, its transport op(s) and split flags |
 | delta (`delta`) | `+1.9 medium #2 SendMessage content, bytes 52B → 53B` | `diff`: severity, the entity's ID (`A#3 B#4` when the sides differ, `B#3` when only B holds it), its name, what differs; time is compare time |
 | finding (`find`) | `+2.2 ! warn slow #13 Work took 206.5ms; its other 12 calls: median <0.1ms, p99 0.1ms` | a finding of the findings detectors (§11): severity, kind, the IDs it cites, message |
+| budget (`budget`) | `… budget hit, 41 withheld, --after AQEC…` | a budget stopped the rendering (§5); ndjson `x` = lines withheld, `after` = the cursor |
+| stop (`stop`) | `… stopped: interrupted, 120 lines, --after AQEC…` | `nexnet-tap tail` stopped before the end (§8); ndjson `v` = reason, `x` = lines written, `after` only for files |
 
 At the messages level a preamble, greetings (folded into the handshake line), message chunks and aborts (folded into
 their call), result frames of calls already shown, and disconnect frames (the end line) produce no line of their own.
@@ -151,7 +153,7 @@ The JSON is written by System.Text.Json source generation with relaxed escaping,
 ## 10. Queries
 
 `TextQuery` (Core) answers drill-down questions over one session with the same records, IDs and values; `nexnet-tap`
-prints them (see the user guide). Every query starts with the header line; sessions are separated by a blank line.
+prints them (see [Queries](../articles/inspector.md#queries) in the user guide). Every query starts with the header line; sessions are separated by a blank line.
 
 | Query | Lines |
 |---|---|
@@ -186,7 +188,7 @@ same writer, as record kind `find`:
   session's start or end.
 - Severity: `error`, `warn` or `info`. A report ranks findings by severity, then time.
 - Kind: `protocol`, `disconnect`, `schema`, `gap`, `orphan`, `cancel-race`, `pending`, `pipe-open`, `window-stall`,
-  `credit-stall`, `slow`, `ping-rtt`, `large`, `chunk-storm`, `reconnect-loop` (docs/articles/inspector.md lists what each
+  `credit-stall`, `slow`, `ping-rtt`, `large`, `chunk-storm`, `reconnect-loop` ([findings](../articles/inspector.md#findings) in the user guide lists what each
   means and its thresholds).
 - IDs: the stable IDs of §1 the finding is about, most relevant first (none for some session-wide findings: then the
   session `@0x…`). The message follows and never repeats them.

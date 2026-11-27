@@ -392,7 +392,7 @@ public sealed class TextRecordWriter
     }
 }
 
-/// <summary>One ndjson line; the short keys are documented in docs/internals/inspector-text-format.md §4.</summary>
+/// <summary>One ndjson line; the short keys are documented in docs/internals/inspector-text-format.md §8.</summary>
 internal sealed class TextJsonLine
 {
     [JsonPropertyName("k")]

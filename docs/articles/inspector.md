@@ -7,7 +7,7 @@ It has three parts:
 | Part | Package / project | What it does |
 |------|-------------------|--------------|
 | Tap | `NexNet.Inspector.Tap` | Opt-in capture in your server or client: a recorder and an inspector endpoint that viewers connect to. |
-| `nexnet-tap` | `NexNet.Inspector.Cli` | Command line: list live sessions, record them to `.nntl` files, summarise, repair and tail recordings (condensed text for people and LLMs). |
+| `nexnet-tap` | `NexNet.Inspector.Cli` | Command line: list live sessions, record them to `.nntl` files, summarise and repair recordings; tail, query, check and serve them to LLM agents as condensed text ([LLM & automation](#llm--automation)). |
 | NexNet Inspector | `NexNet.Inspector.App` (`nexnet-inspector`) | Desktop app: attach to a live session or open a recording, inspect it, compare two sessions. |
 
 Captures are stored as `.nntl` recordings (format: [Inspector Recording Format](../internals/nntl-format.md)). Both binaries are published with Native AOT for Windows (win-x64) and Linux (linux-x64).
@@ -72,19 +72,7 @@ await recording.StopAsync();   // writes the index footer
 
 A recording that stops without its footer (a crash, a killed process) can still be read: the reader scans it. `nexnet-tap repair` rebuilds the footer.
 
-### In tests
-
-The `NexNet.Inspector.Testing` project (not packaged; reference it from a test project) records a test's traffic in memory and reads it back as the text format:
-
-```csharp
-await using var capture = InspectorCapture.Start<MyServerNexus>(serverConfig, new() { Output = Console.Out });
-// ... create the server and clients from serverConfig, run the test ...
-await capture.StopAsync();
-Console.WriteLine(capture.Summary());          // what nexnet-tap summary prints, per session (about 4k tokens at most)
-Assert.That(capture.FindingList()).IsEmpty();  // what nexnet-tap findings reports
-```
-
-`Start` takes a `ServerConfig` or a `ClientConfig` (generic with a nexus built with `NexNetEmitInspectorSchema=true` to decode values, or without); call it before the server or client is created. It records with `Block` overflow, so nothing is dropped. `Summary()`, `Findings()`, `FindingList()` and `Text()` work on demand while recording (sessions still connected read as cut off, `END truncated`) and after `StopAsync`; disposing stops the recording and writes the summary and findings to `Output` when set, and the `.nntl` to `SavePath` when set (open it in the app or with `nexnet-tap`).
+To record a test's traffic and assert on it, use the test helper ([In tests](#in-tests)).
 
 ### Overflow
 
@@ -126,6 +114,8 @@ nexnet-tap --version
 ```
 
 Endpoint addresses are `tcp://host:port`, `tls://host:port` or `uds:/path`. For TLS, `--insecure` accepts a self-signed certificate and `--server-name` sets the name the certificate must carry. `--connect-timeout` defaults to 10 s.
+
+The commands that read captures as condensed text (`tail`, the queries, `findings`, `expect`, `mcp`) are described in [LLM & automation](#llm--automation).
 
 ### list
 
@@ -173,6 +163,123 @@ $ nexnet-tap repair crashed.nntl
 
 Rebuilds the index footer of a recording that ended without one, in place. A file whose footer is intact is left untouched unless `--force` is given.
 
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success. For `record`, also when stopped by Ctrl+C or `--duration`, or when the session closed. |
+| 1 | Failure: endpoint unreachable, token or TLS refused, I/O error, unreadable file, recording without footer. |
+| 2 | Invalid command line, or an `--after` cursor of another session, level, filters or query. |
+| 3 | Refused by the server configuration (recording disabled, secrets not included). |
+| 4 | Session not found, or none appeared within `--wait` (`findings`: the file has no such session). `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
+| 5 | `expect`: an expectation failed. |
+| 130 | Interrupted by Ctrl+C before recording started. |
+
+## The app
+
+Start `nexnet-inspector`. The empty window offers **Connect to inspector** (Ctrl+K), **Open recording** (Ctrl+O), your recent endpoints and recordings, and accepts a `.nntl` file dropped on it. Each attached session and each opened recording is a document tab. Ctrl+Tab and Ctrl+Shift+Tab switch tabs in most-recently-used order.
+
+### Connecting
+
+The Connect dialog takes the endpoint address and token, whether it is a server or a client endpoint, the overflow mode (Drop or Block), and whether to request a state snapshot on attach. Once the address is typed, the dialog probes the endpoint and reports its recording policy and schema. After connecting to a server with one session, the dialog attaches to it; with several, the status line asks you to pick one in the title bar's session popover (Esc or Cancel leaves the pick). A session that ended before the attach shows in red, and Connect lists the sessions again.
+
+In a live tab, the title bar shows the endpoint, the session and a REC timer with the time attached. The session popover lists the server's sessions, switches to another one, and runs **Record all sessions** (Ctrl+Shift+R), which writes every session into one `.nntl` file under *Documents/NexNet Inspector/Recordings*. Record all needs `AllowRecording` on the server; otherwise the button is disabled and says why.
+
+A live tab keeps only what arrived since the attach. When the session ends, a strip under the title bar says why and offers **Save .nntl…**, **Attach to another session** and **Discard**; the data stays navigable until you close the tab. Closing a tab, or the window, with unsaved live data asks first: Save .nntl…, Discard or Cancel. **File › Save timeline as .nntl…** (Ctrl+S) saves the active tab at any time.
+
+### Opening a recording
+
+A recording with one session opens directly. Otherwise the open-recording dialog lists its sessions (remote address, transport, start, duration, events); pick one, or use **Compare two sessions…**. When the recording's embedded schema differs from the workspace schema (**Session › Schema › Load workspace schema…**), the dialog shows both hashes and lets you decode with the embedded schema, the workspace schema, or as raw bytes only. Large files open at once and index in the background; views fill in as indexing proceeds.
+
+### Inspect workspace
+
+- **Timeline** (top): transport reads and writes, frames per direction, the handshake, invocations packed into rows, pipes and channels, collections and session control, on a shared time axis. Ctrl+Wheel zooms around the pointer, Wheel pans, Shift+Wheel scrolls the lanes; the overview strip and the ruler above the lanes pick a time range ([Timeline: range, scope and bookmarks](#timeline-range-scope-and-bookmarks)). Click a mark to select it; the selection is traced (see below) in every view. Capture gaps are hatched. Right-click a lane to pin it (P), hide it, or trace the frames in view.
+- **Stream panes** (bottom left, one or two side by side with **Single** / split): **Events** (every frame in capture order, with flags; **Filter ▾** shows one direction only, **Follow live** keeps the newest frame in view), **Ladder** (client and server lifelines with an arrow per frame, compact 18 px rows or time-scaled), and **Hex stream** (the transport bytes, 16 per row, with read boundaries, frame annotations, header fields tinted and redacted bytes striped; ▼ IN / ▲ OUT filter the directions). Selecting bytes in the hex view opens a menu to copy them as hex, a C# array or Base64, decode them as MessagePack, UTF-8 or a length-prefixed item, go to an offset (Ctrl+G), bookmark the offset (Ctrl+B, marked with a diamond in the offset gutter) or export them.
+- **Inspector** (right): **Decoded** shows the selected frame's header, its transport ops and the decoded message as a tree; hovering a field highlights its bytes in the hex view and the other way round. A message split into chunks shows an assembly bar with one segment per chunk. **Message trace** lists every frame of the traced invocation or pipe in wire order; **Handshake** shows the preambles and greetings.
+- Every view follows one selection, one time window and one playhead.
+
+The command palette (Ctrl+Shift+P) searches entities, frames, commands and open documents. Prefixes pick a scope: `>` commands, `#` frames, `@` sessions, `:` time (`:1262.4` jumps to 1,262.4 ms; Ctrl+G opens it with `:`). Tab moves between scopes. **Help & shortcuts** (F1) lists every command with its shortcut and the gestures the views handle. **View › Legend & symbols** (F2, also in the palette) explains every chip, fill and mark the views draw; [Reading the views](#reading-the-views) below has the same legend. Every content menu and the timeline menu also have **Copy for LLM ▸** ([Copy for LLM](#copy-for-llm)).
+
+The theme follows the operating system by default; **View › Theme** switches between Dark, Light and System.
+
+### Timeline: range, scope and bookmarks
+
+Three timeline tools help with long captures: pick a range to look at, narrow the whole document to a scope, and keep views to come back to.
+
+**Range.** The overview strip above the ruler shows the whole session (or the scope) with the visible window boxed. Drag the box's left or right edge handle to move the window's start or end, drag its middle to pan, press outside it to centre the window there, and double-click the strip to fit the whole session. Drag across the ruler to select a time range; releasing zooms to it (a plain click on the ruler still moves the playhead). The same ruler drag works in Compare. Esc cancels any drag and restores the window. The window never gets narrower than 10 µs and never leaves the session, or its scope.
+
+**Scope.** A long capture can be narrowed to a *scope*: **View › Filter to time range…** (Ctrl+Shift+F, also in the palette) sets it from the current view (the default), the selected or traced message, or a start and end typed in ms from the capture's start; **Filter to view** (View menu, palette) and the timeline menu's **Filter to this range** take the current window at once. While a document is scoped, the overview strip and the ruler span only the scope (so it zooms like a short capture), the window cannot leave it, Events and Ladder list only its frames (each keeps its capture number), the Hex stream shows only the transport ops in it, the Message trace dims the steps outside it and marks them ⊘, the palette searches only its entities and frames, **Export section as .nntl…** starts on it, and Compare keeps its aligned axis inside it. Scopes nest: filtering again inside a scope narrows it further. The title bar shows a chip beside the time window, *Scope 1,240.0–1,290.0 ms ✕*, with *‹2* when two scopes are nested: click it (or press Alt+Left, **View › Back to previous scope**) to return to the previous scope and the view you had before it, or click ✕ to clear every scope. Each document keeps its own scopes while you switch tabs; scopes are not saved with a recording. On a live session a scope stays where it is while data keeps arriving after it, and following the live edge is paused until the scope is cleared.
+
+**Bookmarks.** A bookmark keeps a view to come back to: its time window and, when the document is scoped, its scope.
+
+- **Add**: **Ctrl+Shift+B** (**View › Bookmark current view** in the palette) adds the current view and opens the title bar's ★ list with the new name selected for editing. It defaults to the range (*1,240.0 – 1,290.0 ms*): type a name and press Enter, or Esc to keep the default. (Ctrl+B stays the hex view's *bookmark offset*.)
+- **List**: the ★ button beside the time window shows how many the recording has and opens the list. Each row shows its Alt+n key, name, range and a *scope* badge when it carries a scope. Click a row (or press Enter on it) to jump there; **F2** renames the focused row in place (Enter keeps, Esc cancels), **Delete** or the row's ✕ deletes it.
+- **Jump**: **Alt+1…9** jump to the first nine from anywhere. A jump restores the window and pushes the bookmark's scope again (nested when it lies inside the current scope, otherwise replacing the scopes); a bookmark without a scope keeps the current scope when its window fits inside it, and clears it otherwise. A jump stops following the live edge.
+- **Storage**: bookmarks are kept per recording in the app's settings, not in the .nntl file. The key is the file's header block (a fingerprint taken when the capture started), the session and its extent, so a renamed or moved file keeps its bookmarks and every session of a multi-session file has its own. A live session keeps its bookmarks in memory until you save it; saving copies them to the saved file (and the tab that becomes the file shows them). **Export section as .nntl…** offers *Include bookmarks in range*, which copies the bookmarks whose window lies inside the exported range to the new file. A recording keeps at most 50 bookmarks and the app 500 in all; past that, the recordings used least recently lose theirs first.
+
+### Compare workspace
+
+Compare shows two documents side by side: two sessions of one recording, two recordings, or a client-side and a server-side capture of the same connection. Switch the title bar to **Compare** and tick the two tabs to compare, or use **Open in Compare** from the palette (it opens on the entity you selected) or **Compare two sessions…** in the open-recording dialog.
+
+- **Entities** (left): the union of both documents' invocations, pipes and channels, collections, control frames and handshake, grouped by method or pipe, with a Δ where the two differ. Tick a group to give it a row of its own.
+- **Aligned sessions**: both documents on one time axis, aligned by **Relative** start, **Wall-clock** time, or **On event** (session ready, or an entity you pick). Drag across the ruler to zoom both documents to a time range, as in the timeline (Esc cancels; a click moves the playhead). Rows show frame density (**Heat**) or entity spans (**Packed**); **Only differences** hides the rows that match. The Δ strip above the rows marks every difference; the selected entity is pinned under its category in both documents.
+- **Field diff** and **Hex · A ⇄ B** (bottom): the selected entity's decoded fields side by side, differing rows tinted, and both documents' bytes interleaved row by row with the selected field ringed.
+
+Entities are matched by their wire flow, so a client-side capture and a server-side capture of one connection line up entity for entity. Double-click a region to open that place in the Inspect workspace.
+
+### Reading the views
+
+The app's **Legend & symbols** dialog (logo menu › View, or F2) draws each of these with the views' own colours.
+
+**Frame flags** (chips on events, ladder rows and the inspector):
+
+| Chip | Meaning |
+|---|---|
+| **T** Transport split | The frame arrived over (or was written by) more than one socket op. |
+| **N** NexNet split | NexNet split the message across frames: MessageStart / MessageChunk / Abort, pipe writes, channel items crossing frames. |
+| **X** Cancelled | An InvocationCancellation, a Canceled result or an aborted message. |
+| **R** Redacted | Bytes replaced by the redaction marker before capture (e.g. the auth token). |
+| **…** Incomplete | The frame is still arriving, or the capture cut it off. |
+
+**Direction and transport ops**: ▼ inbound is what the tapped endpoint read, ▲ outbound what it wrote, each in its own colour. In the ladder each frame is an arrow between the lifelines (the remote peer on the left, the tapped endpoint on the right). Op chips name socket ops: `#n` is read *n*, `wN` write *N*, `#a–#b` a frame spanning reads *a* to *b*; a chip outlined in the T colour is an op the frame was split across.
+
+**Badges**: a count badge on a timeline group header (`3 rows · 9`); the Compare difference count; **synced** in a pane header (the pane follows the timeline's window, playhead and selection; *unsynced* when detached); the title bar's **REC** timer (time since attach) and **ALL · n** (Record all, *n* sessions so far); the **scope chip** (violet, *‹n Scope a–b ms ✕*): every view is limited to that time range, ‹n counts nested scopes, a click or Alt+Left goes back and ✕ clears; the **★ bookmarks** button (*★ 3 ▾*, the star violet once the recording has one): the saved views, Ctrl+Shift+B adds, Alt+1…9 jump, the list renames (F2) and deletes.
+
+**Timeline**: the overview strip shows the whole session (or the scope, labelled *scope a – b ms*) with the visible window boxed, a handle on each edge of the box (the one under the pointer turns blue); the ruler shows time in the window, and a drag across it draws the selection band (violet, solid edges) it will zoom to. Lane groups are TRANSPORT, FRAMES, HANDSHAKE, INVOCATIONS, PIPES · CHANNELS, COLLECTIONS and SESSION CONTROL (click a header to fold it). Blocks are reads, writes and frames in their direction's colour, red when cancelled; thin T / N lines mark split frames. Invocation spans run from call to result: the traced span is violet, a cancelled span has a red right edge. A pipe or channel lane shows its lifetime as a line from a green open mark to a red close mark. The trace band (dashed edges) spans the traced message; a hatched gap marks events lost to Drop-mode overflow; the playhead is the current time every view follows. A pinned lane (◆) stays in view at 24 px; lanes never change height on hover.
+
+**Ladder**: a solid trace bracket marks the traced message's frames; a dotted bracket and a dimmed row mark another message's frame interleaved inside the trace. In time-scaled mode the gap above a row grows with the time since the row before.
+
+**Hex stream** fills: preamble (or ping), type byte, body length, post-header (the pipe id, or a chunk's invocation id), body, the selected frame's body, other frames, and no fill where no frame covers the byte yet. A `read #n → …` rule starts each new transport op and `▸ Type #seq` annotates frames starting in the next row. Striped `··` cells are redacted, a violet ring is the selected field, a blue ring the hovered one, and a diamond in the offset gutter a bookmark.
+
+**Inspector assembly bar**: `S` is the MessageStart, `1 … n` the chunks sized by their bytes (the selected frame's is filled), `A` a MessageAbort; a tick in a wider gap means other messages' frames arrived in between. For the handshake, `Pre` and `Greet` with ▼ ▲ are the preambles and greetings. In the Message trace a dimmed step marked ⊘ lies outside the document's scope.
+
+**Channels and pipes**: a typed channel (`Channel<T>`) or a synchronized collection is not a wire concept of its own: its items travel as length-prefixed bytes in `DuplexPipeWrite` frames on a duplex pipe. The views name what rides on the pipe first and the pipe second. ≋ marks a channel, ☰ a collection and ⇄ a raw byte pipe, on timeline lanes ("≋ Channel<LogLine> 36·36 · TailLogs"), ladder targets, hex frame annotations ("▸ DuplexPipeWrite #15,734 ≋ LogLine @EB6BA") and Compare's entities. Events, ladder, Message trace and palette rows keep the true wire type and add a **CH** (channel) or **CO** (collection) chip beside it, and the target counts the items the frame carried ("chan 36·36 LogLine ×2", or "LogLine (part)" for an item that crosses frames). Selecting such a frame opens the inspector on its items, decoded, then the frame header and transport, then a "Channel<LogLine> 36·36" section badged CHANNEL whose first row says which duplex pipe carries it.
+
+**Compare**: file A is blue and file B orange. Heat is frame density of a collapsed group, a packed span an entity's lifetime in an expanded group; a pink mark means the entity differs from its match. The Δ strip marks where matched entities differ, the diff band is the selected match's time range in both files, and the pinned entity gets a row of its own per file.
+
+## LLM & automation
+
+The inspector's machine-facing outputs share one token-condensed text format, specified in [Inspector text format](../internals/inspector-text-format.md) (`nexnet-tap help format` prints a 20-line legend). It has one line per message rather than per byte, stable IDs that every query accepts (`@0x1BCB` a session, `#5` or `#5.2` an invocation, `≋4·4` a pipe, `f18` a frame), repeated traffic folded into counts, and values cut to a width. The same capture always renders the same bytes. `--format ndjson` writes the same records as one JSON object per line with short keys.
+
+| To | Use |
+|---|---|
+| Read a recording or watch a live session line by line | [`nexnet-tap tail`](#tail) |
+| See the shape of a session in about 30 lines | [`summary`](#queries) |
+| Ask about one call, pipe or frame, a moment, or a category | [`show`, `trace`, `around`, `errors`, `slow`, `pipes`, `collections`, `schema`](#queries) |
+| Compare two recordings, or cut a section out | [`diff`, `export`](#queries) |
+| Have detectors list what looks wrong | [`findings`](#findings), `tail --findings` |
+| Fail a CI job on traffic | [`expect`](#expect) (exit 5) |
+| Let an agent read captures and attach to live sessions | [`nexnet-tap mcp`](#mcp-server) |
+| Paste what the app shows into a chat | [Copy for LLM](#copy-for-llm) |
+| Assert on a unit test's traffic | [`NexNet.Inspector.Testing`](#in-tests) |
+
+### Token budgets
+
+- **Estimate.** Budgets count tokens as characters (with the newline) over 4, rounded up, and count each character outside ASCII (the glyphs `≋ ☰ ⇄ … ±`) as 3. The estimate is deliberately pessimistic, so a budget is biased low: output tends to stop short of *n* real tokens rather than past it. It is an estimate, not a tokenizer; leave headroom under a hard context limit.
+- **Defaults.** On the command line nothing is budgeted unless you ask (`--max-tokens`, `--max-lines`); `summary` stays about 30 lines per session anyway. The MCP query tools default to 8,000 tokens when a call gives neither `max_tokens` nor `max_lines`, `read` returns 200 lines (at most 1,000), and no MCP result exceeds 100,000 characters. Copy for LLM and the test helper's `Summary()` stop at 4,000 tokens.
+- **Cursors.** Output cut by a budget ends with `… budget hit, N withheld, --after <cursor>`. Run the same command with `--after <cursor>` (over MCP, the same call with `after`) for the next page: pages never repeat or lose a line, and a cursor made by another session, level, filter or query is refused (exit 2). A live attach has no position to resume from, so its output carries no cursor: record the session and page through the file. An MCP `attach` stream is read by line number instead (`read` with `after=N`).
+- **Spending a budget.** Start with `summary` and `findings`, then follow the IDs they cite with `show` and `trace`, or a moment with `around`. Narrow a `tail` before widening it: `--only errors,slow`, `--method`, `--pipe`, `--grep`, `--level summary`; `--sample 1/N` thins a busy session, and `--value-width` and `--depth` shorten values. Keep `--level frames` and `bytes` (one line per frame) for a short `around` window. Prefer `--max-tokens` to `--max-lines` when the reader is a model: lines vary a lot in length.
+
 ### tail
 
 ```
@@ -186,7 +293,7 @@ Prints a recording or a live session as condensed text, one line per message (th
 - **Source.** A file is replayed session by session in file order (`--session <id|first>` picks one) and the command ends. `--follow` reads a file that is still being written, like `tail -f`, until its index footer arrives. An endpoint (`tcp://`, `tls://`, `uds:`, as the argument or `--endpoint`, with `record`'s connection options) needs `--session <id|first|all>` and is followed until Ctrl+C, `--duration`, or the session closes. `all` records every session (so the server must allow recording) and prefixes each line with its session ID.
 - **Output.** `--level summary|messages|frames|bytes`, `--format text|ndjson`, `--collapse on|off`, `--value-width`, `--depth`.
 - **Filters.** `--method` (comma-separated globs), `--pipe` (`4.4`, `≋4·4`, or `4` for either side's ID), `--dir in|out`, `--only errors,slow,cancel,gaps`, `--slow <duration>` (threshold, default 100 ms; given alone it keeps slow calls only), `--grep <text>` (case-insensitive). Header and END lines always pass.
-- **Budgets.** `--max-lines`, `--max-tokens` (characters / 4), `--sample 1/N` (one line in N), `--duration`. A budget ends with `… budget hit, N withheld, --after <cursor>`; run the same command with `--after <cursor>` for the next page, with no line repeated or lost.
+- **Budgets.** `--max-lines`, `--max-tokens`, `--sample 1/N` (one line in N), `--duration`. A budget ends with a cursor to resume from ([Token budgets](#token-budgets)).
 - **`--until <expr>`** prints nothing until a line meets the expression, then the `--context` lines before it (default 10, after the session header) and that line, and stops. Terms: `method=<glob>`, `state=ok|exception|canceled|unauthorized|refused|pending|oneway`, `error`, `gap`, `end`, `type=<line kind or frame type>`; `,` means and, `|` means or. It exits 4 when the condition never held.
 - **Stopping.** Ctrl+C or `--duration` ends with `… stopped: interrupted, N lines, --after <cursor>`. Files only: a live attach has no position to resume, so its stop lines carry no cursor; record it and tail the file to page through it.
 
@@ -218,7 +325,7 @@ $ nexnet-tap export chat.nntl --from +20 --to +60 --out section.nntl
 | `diff a b` | Two recordings compared as the Compare workspace does, worst difference first, then the field diffs of the `--top` (default 5) worst entities. |
 | `export a` | A time section (`--from`, `--to`) of one session as a recording that opens on its own. A live export needs the server to allow recording. |
 
-IDs are the ones the lines show: `#5` (or `5`; quote `'#5'` in a shell, where `#` starts a comment), `5.2` (the second invocation that reused wire ID 5), `≋4·4` or `p4` (a pipe), `f18` (a frame). `--format ndjson` writes one JSON object per line. `--max-lines` and `--max-tokens` bound the output: a query that hits a budget ends with `… budget hit, N withheld, --after <cursor>`, and the same command with `--after <cursor>` prints the rest. `--value-width` and `--depth` change how much of each value shows.
+IDs are the ones the lines show: `#5` (or `5`; quote `'#5'` in a shell, where `#` starts a comment), `5.2` (the second invocation that reused wire ID 5), `≋4·4` or `p4` (a pipe), `f18` (a frame). `--format ndjson` writes one JSON object per line. `--max-lines`, `--max-tokens` and `--after` page the output ([Token budgets](#token-budgets)). `--value-width` and `--depth` change how much of each value shows.
 
 ### findings
 
@@ -277,7 +384,7 @@ An assertion mode for CI: it checks a recording (every session, or `--session`'s
 
 `--slow` sets the findings' slow-call threshold as for `findings`.
 
-### Using with LLM agents
+### MCP server
 
 `nexnet-tap mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io) server on stdin and stdout, so an agent such as Claude Code can read captures and watch live sessions itself. It is the same Native AOT binary, with tools only (no resources or prompts), and it targets MCP revision **2026-07-28**, the current stable one at the time of writing (`server/discover`; every request names its revision in `_meta`). Clients of the earlier initialize-based revisions (2025-11-25, 2025-06-18, 2025-03-26) are served too: `initialize` negotiates one of them, and `ping` works. Messages are newline-delimited JSON-RPC 2.0, one per line; diagnostics go to stderr only. The server runs until stdin closes; it then answers the calls still running, detaches open streams and stops recordings (each gets its index footer).
 
@@ -312,90 +419,23 @@ The endpoint token comes from the `token` argument of a call, or else from `NEXN
 
 Each tool has a JSON Schema for its arguments and returns the text the matching command prints. Queries get a default budget of 8,000 tokens when the call gives neither `max_lines` nor `max_tokens`; a budget line ends with `--after <cursor>`, and the same call with `after` set to that cursor returns the next page. A result is never longer than 100,000 characters. Arguments that do not fit the schema, a missing token, a refused recording or an unknown ID come back as a tool result with `isError: true` and a message that says what to change; protocol mistakes (an unknown tool or method, a line that is not JSON) are JSON-RPC errors. A `notifications/cancelled` for a running call stops it, and the call then gets no response. The file tools read and write only the paths a call names; relative paths resolve against the server's working directory.
 
-### Exit codes
+### Copy for LLM
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success. For `record`, also when stopped by Ctrl+C or `--duration`, or when the session closed. |
-| 1 | Failure: endpoint unreachable, token or TLS refused, I/O error, unreadable file, recording without footer. |
-| 2 | Invalid command line, or a `tail --after` cursor of another session, level or filters. |
-| 3 | Refused by the server configuration (recording disabled, secrets not included). |
-| 4 | Session not found, or none appeared within `--wait` (`findings`: the file has no such session). `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
-| 5 | `expect`: an expectation failed. |
-| 130 | Interrupted by Ctrl+C before recording started. |
+The content menus (Events, Ladder, Message trace, the trees) and the timeline's menu have **Copy for LLM ▸** with **Selection** (the selected invocation, pipe or frame, decoded, as `nexnet-tap show` prints it), **Traced message** (the frames and transport ops that carried it, as `trace`), **Current view** (the lines of the time window) and **Scope** (the lines of the document's scope, when it has one). **File › Copy for LLM** (also in the palette) copies the selection, else the traced message, else the current view. Each copies the inspector's text format, the session's header line first, at most about 4,000 tokens; when it is cut, the last line says how many lines were withheld. Paste it into a chat with a model.
 
-## The app
+### In tests
 
-Start `nexnet-inspector`. The empty window offers **Connect to inspector** (Ctrl+K), **Open recording** (Ctrl+O), your recent endpoints and recordings, and accepts a `.nntl` file dropped on it. Each attached session and each opened recording is a document tab. Ctrl+Tab and Ctrl+Shift+Tab switch tabs in most-recently-used order.
+The `NexNet.Inspector.Testing` project (not packaged; reference it from a test project) records a test's traffic in memory and reads it back as the text format:
 
-### Connecting
+```csharp
+await using var capture = InspectorCapture.Start<MyServerNexus>(serverConfig, new() { Output = Console.Out });
+// ... create the server and clients from serverConfig, run the test ...
+await capture.StopAsync();
+Console.WriteLine(capture.Summary());          // what nexnet-tap summary prints, per session (about 4k tokens at most)
+Assert.That(capture.FindingList()).IsEmpty();  // what nexnet-tap findings reports
+```
 
-The Connect dialog takes the endpoint address and token, whether it is a server or a client endpoint, the overflow mode (Drop or Block), and whether to request a state snapshot on attach. Once the address is typed, the dialog probes the endpoint and reports its recording policy and schema. After connecting to a server with one session, the dialog attaches to it; with several, the status line asks you to pick one in the title bar's session popover (Esc or Cancel leaves the pick). A session that ended before the attach shows in red, and Connect lists the sessions again.
-
-In a live tab, the title bar shows the endpoint, the session and a REC timer with the time attached. The session popover lists the server's sessions, switches to another one, and runs **Record all sessions** (Ctrl+Shift+R), which writes every session into one `.nntl` file under *Documents/NexNet Inspector/Recordings*. Record all needs `AllowRecording` on the server; otherwise the button is disabled and says why.
-
-A live tab keeps only what arrived since the attach. When the session ends, a strip under the title bar says why and offers **Save .nntl…**, **Attach to another session** and **Discard**; the data stays navigable until you close the tab. Closing a tab, or the window, with unsaved live data asks first: Save .nntl…, Discard or Cancel. **File › Save timeline as .nntl…** (Ctrl+S) saves the active tab at any time.
-
-### Opening a recording
-
-A recording with one session opens directly. Otherwise the open-recording dialog lists its sessions (remote address, transport, start, duration, events); pick one, or use **Compare two sessions…**. When the recording's embedded schema differs from the workspace schema (**Session › Schema › Load workspace schema…**), the dialog shows both hashes and lets you decode with the embedded schema, the workspace schema, or as raw bytes only. Large files open at once and index in the background; views fill in as indexing proceeds.
-
-### Inspect workspace
-
-- **Timeline** (top): transport reads and writes, frames per direction, the handshake, invocations packed into rows, pipes and channels, collections and session control, on a shared time axis. Ctrl+Wheel zooms around the pointer, Wheel pans, Shift+Wheel scrolls the lanes. The overview strip above the ruler shows the whole session with the visible window boxed: drag the box's left or right edge handle to move the window's start or end, drag its middle to pan, press outside it to centre the window there, and double-click the strip to fit the whole session. Drag across the ruler to select a time range; releasing zooms to it (a plain click on the ruler still moves the playhead). Esc cancels any drag. The window never gets narrower than 10 µs and never leaves the session (or its scope, below). Click a mark to select it; the selection is traced (see below) in every view. Capture gaps are hatched. Right-click a lane to pin it (P), hide it, or trace the frames in view.
-- **Stream panes** (bottom left, one or two side by side with **Single** / split): **Events** (every frame in capture order, with flags; **Filter ▾** shows one direction only, **Follow live** keeps the newest frame in view), **Ladder** (client and server lifelines with an arrow per frame, compact 18 px rows or time-scaled), and **Hex stream** (the transport bytes, 16 per row, with read boundaries, frame annotations, header fields tinted and redacted bytes striped; ▼ IN / ▲ OUT filter the directions). Selecting bytes in the hex view opens a menu to copy them as hex, a C# array or Base64, decode them as MessagePack, UTF-8 or a length-prefixed item, go to an offset (Ctrl+G), bookmark the offset (Ctrl+B, marked with a diamond in the offset gutter) or export them.
-- **Inspector** (right): **Decoded** shows the selected frame's header, its transport ops and the decoded message as a tree; hovering a field highlights its bytes in the hex view and the other way round. A message split into chunks shows an assembly bar with one segment per chunk. **Message trace** lists every frame of the traced invocation or pipe in wire order; **Handshake** shows the preambles and greetings.
-- Every view follows one selection, one time window and one playhead.
-
-**Filter to time range (scope).** A long capture can be narrowed to a *scope*: **View › Filter to time range…** (Ctrl+Shift+F, also in the palette) sets it from the current view (the default), the selected or traced message, or a start and end typed in ms from the capture's start; **Filter to view** (View menu, palette) and the timeline menu's **Filter to this range** take the current window at once. While a document is scoped, the overview strip and the ruler span only the scope (so it zooms like a short capture), the window cannot leave it, Events and Ladder list only its frames (each keeps its capture number), the Hex stream shows only the transport ops in it, the Message trace dims the steps outside it and marks them ⊘, the palette searches only its entities and frames, **Export section as .nntl…** starts on it, and Compare keeps its aligned axis inside it. Scopes nest: filtering again inside a scope narrows it further. The title bar shows a chip beside the time window, *Scope 1,240.0–1,290.0 ms ✕*, with *‹2* when two scopes are nested: click it (or press Alt+Left, **View › Back to previous scope**) to return to the previous scope and the view you had before it, or click ✕ to clear every scope. Each document keeps its own scopes while you switch tabs; scopes are not saved with a recording. On a live session a scope stays where it is while data keeps arriving after it, and following the live edge is paused until the scope is cleared.
-
-**Bookmarks.** A bookmark keeps a view to come back to: its time window and, when the document is scoped, its scope. **Ctrl+Shift+B** (**View › Bookmark current view** in the palette) adds the current view and opens the title bar's ★ list with the new name selected for editing; it defaults to the range (*1,240.0 – 1,290.0 ms*): type a name and press Enter, or Esc to keep the default. The ★ button beside the time window shows how many the recording has and opens the list: each row shows its Alt+n key, name, range and a *scope* badge when it carries a scope. Click a row (or press Enter on it) to jump there; **F2** renames the focused row in place (Enter keeps, Esc cancels), **Delete** or the row's ✕ deletes it. **Alt+1…9** jump to the first nine from anywhere. A jump restores the window and pushes the bookmark's scope again (nested when it lies inside the current scope, otherwise replacing the scopes); a bookmark without a scope keeps the current scope when its window fits inside it, and clears it otherwise. A jump stops following the live edge. Bookmarks are kept per recording in the app's settings, not in the .nntl file: the key is the file's header block (a fingerprint taken when the capture started), the session and its extent, so a renamed or moved file keeps its bookmarks and every session of a multi-session file has its own. A live session keeps its bookmarks in memory until you save it; saving copies them to the saved file (and the tab that becomes the file shows them). **Export section as .nntl…** offers *Include bookmarks in range*, which copies the bookmarks whose window lies inside the exported range to the new file. A recording keeps at most 50 bookmarks and the app 500 in all; past that, the recordings used least recently lose theirs first.
-
-**Copy for LLM.** The content menus (Events, Ladder, Message trace, the trees) and the timeline's menu have **Copy for LLM ▸** with **Selection** (the selected invocation, pipe or frame, decoded, as `nexnet-tap show` prints it), **Traced message** (the frames and transport ops that carried it, as `trace`), **Current view** (the lines of the time window) and **Scope** (the lines of the document's scope, when it has one). **File › Copy for LLM** (also in the palette) copies the selection, else the traced message, else the current view. Each copies the inspector's text format, the session's header line first, at most about 4,000 tokens; when it is cut, the last line says how many lines were withheld. Paste it into a chat with a model.
-
-The command palette (Ctrl+Shift+P) searches entities, frames, commands and open documents. Prefixes pick a scope: `>` commands, `#` frames, `@` sessions, `:` time (`:1262.4` jumps to 1,262.4 ms; Ctrl+G opens it with `:`). Tab moves between scopes. **Help & shortcuts** (F1) lists every command with its shortcut and the gestures the views handle. **View › Legend & symbols** (F2, also in the palette) explains every chip, fill and mark the views draw; [Reading the views](#reading-the-views) below has the same legend.
-
-The theme follows the operating system by default; **View › Theme** switches between Dark, Light and System.
-
-### Compare workspace
-
-Compare shows two documents side by side: two sessions of one recording, two recordings, or a client-side and a server-side capture of the same connection. Switch the title bar to **Compare** and tick the two tabs to compare, or use **Open in Compare** from the palette (it opens on the entity you selected) or **Compare two sessions…** in the open-recording dialog.
-
-- **Entities** (left): the union of both documents' invocations, pipes and channels, collections, control frames and handshake, grouped by method or pipe, with a Δ where the two differ. Tick a group to give it a row of its own.
-- **Aligned sessions**: both documents on one time axis, aligned by **Relative** start, **Wall-clock** time, or **On event** (session ready, or an entity you pick). Drag across the ruler to zoom both documents to a time range, as in the timeline (Esc cancels; a click moves the playhead). Rows show frame density (**Heat**) or entity spans (**Packed**); **Only differences** hides the rows that match. The Δ strip above the rows marks every difference; the selected entity is pinned under its category in both documents.
-- **Field diff** and **Hex · A ⇄ B** (bottom): the selected entity's decoded fields side by side, differing rows tinted, and both documents' bytes interleaved row by row with the selected field ringed.
-
-Entities are matched by their wire flow, so a client-side capture and a server-side capture of one connection line up entity for entity. Double-click a region to open that place in the Inspect workspace.
-
-### Reading the views
-
-The app's **Legend & symbols** dialog (logo menu › View, or F2) draws each of these with the views' own colours.
-
-**Frame flags** (chips on events, ladder rows and the inspector):
-
-| Chip | Meaning |
-|---|---|
-| **T** Transport split | The frame arrived over (or was written by) more than one socket op. |
-| **N** NexNet split | NexNet split the message across frames: MessageStart / MessageChunk / Abort, pipe writes, channel items crossing frames. |
-| **X** Cancelled | An InvocationCancellation, a Canceled result or an aborted message. |
-| **R** Redacted | Bytes replaced by the redaction marker before capture (e.g. the auth token). |
-| **…** Incomplete | The frame is still arriving, or the capture cut it off. |
-
-**Direction and transport ops**: ▼ inbound is what the tapped endpoint read, ▲ outbound what it wrote, each in its own colour. In the ladder each frame is an arrow between the lifelines (the remote peer on the left, the tapped endpoint on the right). Op chips name socket ops: `#n` is read *n*, `wN` write *N*, `#a–#b` a frame spanning reads *a* to *b*; a chip outlined in the T colour is an op the frame was split across.
-
-**Badges**: a count badge on a timeline group header (`3 rows · 9`); the Compare difference count; **synced** in a pane header (the pane follows the timeline's window, playhead and selection; *unsynced* when detached); the title bar's **REC** timer (time since attach) and **ALL · n** (Record all, *n* sessions so far); the **scope chip** (violet, *‹n Scope a–b ms ✕*): every view is limited to that time range, ‹n counts nested scopes, a click or Alt+Left goes back and ✕ clears; the **★ bookmarks** button (*★ 3 ▾*, the star violet once the recording has one): the saved views, Ctrl+Shift+B adds, Alt+1…9 jump, the list renames (F2) and deletes.
-
-**Timeline**: the overview strip shows the whole session (or the scope, labelled *scope a – b ms*) with the visible window boxed, a handle on each edge of the box (the one under the pointer turns blue); the ruler shows time in the window, and a drag across it draws the selection band (violet, solid edges) it will zoom to. Lane groups are TRANSPORT, FRAMES, HANDSHAKE, INVOCATIONS, PIPES · CHANNELS, COLLECTIONS and SESSION CONTROL (click a header to fold it). Blocks are reads, writes and frames in their direction's colour, red when cancelled; thin T / N lines mark split frames. Invocation spans run from call to result: the traced span is violet, a cancelled span has a red right edge. A pipe or channel lane shows its lifetime as a line from a green open mark to a red close mark. The trace band (dashed edges) spans the traced message; a hatched gap marks events lost to Drop-mode overflow; the playhead is the current time every view follows. A pinned lane (◆) stays in view at 24 px; lanes never change height on hover.
-
-**Ladder**: a solid trace bracket marks the traced message's frames; a dotted bracket and a dimmed row mark another message's frame interleaved inside the trace. In time-scaled mode the gap above a row grows with the time since the row before.
-
-**Hex stream** fills: preamble (or ping), type byte, body length, post-header (the pipe id, or a chunk's invocation id), body, the selected frame's body, other frames, and no fill where no frame covers the byte yet. A `read #n → …` rule starts each new transport op and `▸ Type #seq` annotates frames starting in the next row. Striped `··` cells are redacted, a violet ring is the selected field, a blue ring the hovered one, and a diamond in the offset gutter a bookmark.
-
-**Inspector assembly bar**: `S` is the MessageStart, `1 … n` the chunks sized by their bytes (the selected frame's is filled), `A` a MessageAbort; a tick in a wider gap means other messages' frames arrived in between. For the handshake, `Pre` and `Greet` with ▼ ▲ are the preambles and greetings. In the Message trace a dimmed step marked ⊘ lies outside the document's scope.
-
-**Channels and pipes**: a typed channel (`Channel<T>`) or a synchronized collection is not a wire concept of its own: its items travel as length-prefixed bytes in `DuplexPipeWrite` frames on a duplex pipe. The views name what rides on the pipe first and the pipe second. ≋ marks a channel, ☰ a collection and ⇄ a raw byte pipe, on timeline lanes ("≋ Channel<LogLine> 36·36 · TailLogs"), ladder targets, hex frame annotations ("▸ DuplexPipeWrite #15,734 ≋ LogLine @EB6BA") and Compare's entities. Events, ladder, Message trace and palette rows keep the true wire type and add a **CH** (channel) or **CO** (collection) chip beside it, and the target counts the items the frame carried ("chan 36·36 LogLine ×2", or "LogLine (part)" for an item that crosses frames). Selecting such a frame opens the inspector on its items, decoded, then the frame header and transport, then a "Channel<LogLine> 36·36" section badged CHANNEL whose first row says which duplex pipe carries it.
-
-**Compare**: file A is blue and file B orange. Heat is frame density of a collapsed group, a packed span an entity's lifetime in an expanded group; a pink mark means the entity differs from its match. The Δ strip marks where matched entities differ, the diff band is the selected match's time range in both files, and the pinned entity gets a row of its own per file.
+`Start` takes a `ServerConfig` or a `ClientConfig` (generic with a nexus built with `NexNetEmitInspectorSchema=true` to decode values, or without); call it before the server or client is created. It records with `Block` overflow, so nothing is dropped. `Summary()`, `Findings()`, `FindingList()` and `Text()` work on demand while recording (sessions still connected read as cut off, `END truncated`) and after `StopAsync`; disposing stops the recording and writes the summary and findings to `Output` when set, and the `.nntl` to `SavePath` when set (open it in the app or with `nexnet-tap`).
 
 ## Recordings and schemas
 
