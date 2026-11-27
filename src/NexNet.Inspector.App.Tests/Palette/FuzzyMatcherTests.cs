@@ -59,16 +59,26 @@ public sealed class FuzzyMatcherTests
     {
         const string text = "#18201 MessageChunk inv 812 SendAttachment";
         FuzzyMatcher.Score("msgch 812", text);
-        long before = GC.GetAllocatedBytesForCurrentThread();
         int sum = 0;
-        for (int i = 0; i < 1_000; i++)
+
+        // The best of a few runs of 3,000 calls. A run can count a few hundred bytes to a few KB that are not
+        // Score's: seen only in the full suite while it JITs thousands of methods elsewhere, on several threads at the
+        // same instant, with no GC and no JIT on this thread, and not in the next run on the same thread (I48b). An
+        // allocation in Score would count at least 24 bytes on every call of every run.
+        long allocated = long.MaxValue;
+        for (int attempt = 0; attempt < 5 && allocated != 0; attempt++)
         {
-            sum += FuzzyMatcher.Score("812", text) & 1;
-            sum += FuzzyMatcher.Score("msgch 812", text) & 1;
-            sum += FuzzyMatcher.Score("zz", text) & 1;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1_000; i++)
+            {
+                sum += FuzzyMatcher.Score("812", text) & 1;
+                sum += FuzzyMatcher.Score("msgch 812", text) & 1;
+                sum += FuzzyMatcher.Score("zz", text) & 1;
+            }
+
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         await Assert.That(allocated).IsEqualTo(0L);
         await Assert.That(sum).IsGreaterThanOrEqualTo(0);
     }

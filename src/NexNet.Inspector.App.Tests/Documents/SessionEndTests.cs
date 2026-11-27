@@ -8,6 +8,7 @@ using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Session;
 using NexNet.Inspector.Sample;
 using NexNet.Inspector.Tap;
+using NexNet.Messages;
 
 namespace NexNet.Inspector.App.Tests.Documents;
 
@@ -70,7 +71,7 @@ public class SessionEndTests
         await client.Proxy.Join("ada");
         await client.Proxy.SendMessage(new ChatMessage { Room = "general", Author = "ada", Text = "hello" }, CancellationToken.None);
         await client.Proxy.SendAttachment(new Attachment { Room = "general", FileName = "a.bin", Data = new byte[18_000] });
-        await Wait.UntilAsync(() => document.Session is { } s && Invocations(s) >= 4 && document.IsDirty, "the conversation");
+        await Wait.UntilAsync(() => document.Session is { } s && Invocations(s) >= 4 && Answered(s) && document.IsDirty, "the conversation");
     }
 
     [Test]
@@ -364,5 +365,24 @@ public class SessionEndTests
     {
         lock (session.Gate)
             return session.Assembler.Invocations.Length;
+    }
+
+    /// <summary>
+    /// True once every call that has a result shows it. The stream reaches the document after the client has its
+    /// replies, so a request can be in while its result is still on the way: saving then leaves the result to arrive
+    /// after the save, and the document dirty again.
+    /// </summary>
+    private static bool Answered(CaptureSession session)
+    {
+        lock (session.Gate)
+        {
+            foreach (var invocation in session.Assembler.Invocations)
+            {
+                if ((invocation.Flags & InvocationFlags.IgnoreReturn) == 0 && invocation.ResultState == InvocationResultState.Unset)
+                    return false;
+            }
+
+            return true;
+        }
     }
 }

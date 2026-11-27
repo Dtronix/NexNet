@@ -118,14 +118,25 @@ public class TapRecordingTests
 
     private static async Task WaitForBlocksAsync(SnapshotStream file, long sessionId)
     {
+        NntlFormatException? unreadable = null;
         for (var i = 0; i < 500; i++)
         {
-            using var reader = NntlReader.Open(new MemoryStream(file.Copy()), NntlOpenMode.Scan);
-            if (reader.Index.FindGroup(NntlBlockKind.TransportOp, sessionId)?.Entries.Length > 4)
-                return;
+            try
+            {
+                using var reader = NntlReader.Open(new MemoryStream(file.Copy()), NntlOpenMode.Scan);
+                if (reader.Index.FindGroup(NntlBlockKind.TransportOp, sessionId)?.Entries.Length > 4)
+                    return;
+                unreadable = null;
+            }
+            catch (NntlFormatException e)
+            {
+                // The recorder writes the header block from its own task: until it has, the stream holds none (or part of one).
+                unreadable = e;
+            }
+
             await Task.Delay(10);
         }
 
-        throw new TimeoutException("The recording did not catch up.");
+        throw new TimeoutException("The recording did not catch up.", unreadable);
     }
 }

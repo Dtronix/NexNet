@@ -161,7 +161,11 @@ public class CliEndToEndTests
             var s = info.Sessions[0];
             await Assert.That(s.Id).IsEqualTo(session.Id);
             await Assert.That(s.Role).IsEqualTo(NntlSessionRole.Server);
-            await Assert.That(s.Snapshot).IsTrue();
+            // "first" takes the first listed session, which can still be handshaking (sessions are listed from their
+            // first byte): that attach has no state to snapshot (the server registers the session once the handshake
+            // completes) and the stream carries the handshake's greetings instead. Attached later, the snapshot is there.
+            if (!s.Snapshot)
+                await Assert.That(s.Messages!.Value.Greetings).IsGreaterThan(0);
             await Assert.That(s.Close?.Kind).IsEqualTo(NntlCloseKind.Disconnected);
             await Assert.That(s.SchemaEmbedded).IsTrue();
             await Assert.That(s.SchemaHash).IsEqualTo(Convert.ToHexStringLower(SchemaHashOf()));

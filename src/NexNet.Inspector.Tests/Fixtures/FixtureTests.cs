@@ -277,7 +277,17 @@ public class FixtureGeneratorTests
     public async Task Generator_produces_valid_fixtures()
     {
         var log = new StringWriter();
-        var files = await FixtureGenerator.GenerateAsync(log).WaitAsync(TimeSpan.FromMinutes(3));
+        Dictionary<FixtureKind, byte[]> files;
+        try
+        {
+            files = await FixtureGenerator.GenerateAsync(log).WaitAsync(TimeSpan.FromMinutes(3));
+        }
+        catch (InvalidOperationException e)
+        {
+            // Which checks the attempts missed.
+            throw new InvalidOperationException($"{e.Message} log: {log}", e);
+        }
+
         foreach (var kind in Sample.Fixtures.All)
         {
             var problems = Sample.Fixtures.Check(kind, RecordingAnalysis.Read(files[kind]));

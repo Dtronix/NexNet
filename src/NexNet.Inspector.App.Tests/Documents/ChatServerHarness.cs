@@ -40,12 +40,12 @@ internal sealed class ChatServerHarness : IAsyncDisposable
         var inspector = config.UseInspector<ChatServerNexus>(new InspectorOptions { AllowRecording = allowRecording });
         var server = ChatServerNexus.CreateServer(config, static () => new ChatServerNexus());
         inspector.UseSnapshotsOf(server);
-        var harness = new ChatServerHarness(address, inspector, server);
         await server.StartAsync();
+        var harness = new ChatServerHarness(address.BoundTo(server), inspector, server);
 
         var endpointAddress = SampleAddress.Loopback(SampleTransport.Tcp);
         harness.Endpoint = await inspector.StartEndpointAsync(endpointAddress.CreateServerConfig(), "app-test-endpoint-token"u8.ToArray());
-        harness.EndpointAddress = endpointAddress.ToString();
+        harness.EndpointAddress = endpointAddress.BoundTo(harness.Endpoint.Server).ToString();
         return harness;
     }
 

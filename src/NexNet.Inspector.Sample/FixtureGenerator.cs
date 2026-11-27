@@ -175,6 +175,7 @@ public static class FixtureGenerator
         try
         {
             await server.StartAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            address.BoundTo(server).Apply(clientConfig);
             await client.ConnectAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
             await ChatScenario.RunAsync(client, pacer, new ChatScenarioOptions
             {
@@ -233,8 +234,10 @@ public static class FixtureGenerator
         try
         {
             await server.StartAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            address = address.BoundTo(server);
             endpoint = await inspector.StartEndpointAsync(endpointAddress.CreateServerConfig(), EndpointToken, cancellationToken)
                 .WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            endpointAddress = endpointAddress.BoundTo(endpoint.Server);
 
             var first = await ConnectAsync(address, clients, cancellationToken).ConfigureAwait(false);
             await first.Proxy.Users.EnableAsync(cancellationToken).AsTask().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
@@ -294,6 +297,7 @@ public static class FixtureGenerator
         try
         {
             await server.StartAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            address = address.BoundTo(server);
             for (var i = 0; i < 2; i++)
             {
                 var config = CreateClientConfig(address);
@@ -349,7 +353,7 @@ public static class FixtureGenerator
         try
         {
             await server.StartAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
-            var config = address.CreateClientConfig();
+            var config = address.BoundTo(server).CreateClientConfig();
             config.PipeWindow = Fixtures.FindingsPipeWindow;
             await using var client = FindingsClientNexus.CreateClient(config, new FindingsClientNexus());
             await client.ConnectAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);

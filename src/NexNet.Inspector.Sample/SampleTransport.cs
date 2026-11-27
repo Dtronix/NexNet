@@ -24,9 +24,12 @@ public enum SampleTransport : byte
 /// <param name="Path">Socket path (UDS).</param>
 public readonly record struct SampleAddress(SampleTransport Transport, IPAddress Host, int Port, string? Path)
 {
-    /// <summary>A loopback address on a free TCP port.</summary>
+    /// <summary>
+    /// A loopback address: TCP and TLS ask for port 0, so the operating system picks a free port when the server binds
+    /// (see <see cref="BoundTo"/>); a port probed free beforehand could be taken by another process before the bind.
+    /// </summary>
     public static SampleAddress Loopback(SampleTransport transport) =>
-        new(transport, IPAddress.Loopback, transport == SampleTransport.Uds ? 0 : FreePort(),
+        new(transport, IPAddress.Loopback, 0,
             transport == SampleTransport.Uds ? System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"nnchat-{Guid.NewGuid():N}.sock") : null);
 
     /// <summary>
@@ -126,11 +129,24 @@ public readonly record struct SampleAddress(SampleTransport Transport, IPAddress
         }
     }
 
-    private static int FreePort()
+    /// <summary>This address with the port <paramref name="server"/> is bound to (the picked one for port 0); a client connects there.</summary>
+    /// <param name="server">The started server listening on this address.</param>
+    public SampleAddress BoundTo(INexusServer server)
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
+        ArgumentNullException.ThrowIfNull(server);
+        if (Transport == SampleTransport.Uds)
+            return this;
+        return server.Endpoints[0].BoundEndPoint is IPEndPoint bound
+            ? this with { Port = bound.Port }
+            : throw new InvalidOperationException("The server reported no bound TCP end point.");
+    }
+
+    /// <summary>Points a TCP or TLS client configuration at this address (UDS: unchanged).</summary>
+    /// <param name="config">A configuration made by <see cref="CreateClientConfig"/>.</param>
+    public void Apply(ClientConfig config)
+    {
+        if (config is TcpClientConfig tcp)
+            tcp.EndPoint = new IPEndPoint(Host, Port);
     }
 }
 

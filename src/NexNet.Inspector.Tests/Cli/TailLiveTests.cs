@@ -18,11 +18,25 @@ public class TailLiveTests
 
         public TailRun(TapHarness h, CancellationToken cancellationToken, params string[] args)
         {
-            var cli = new TapCli(Output, Error) { TailStarted = () => _started.TrySetResult() };
+            _output = TextWriter.Synchronized(_text);
+            var cli = new TapCli(_output, Error) { TailStarted = () => _started.TrySetResult() };
             Completion = Task.Run(() => cli.RunAsync(["tail", h.EndpointAddress!, "--token", Token, .. args], null, cancellationToken));
         }
 
-        public StringWriter Output { get; } = new() { NewLine = "\n" };
+        // The tail writes from its own task while the test reads: every access goes through the synchronized writer.
+        private readonly StringWriter _text = new() { NewLine = "\n" };
+        private readonly TextWriter _output;
+
+        /// <summary>What the tail has printed so far.</summary>
+        public string Output
+        {
+            get
+            {
+                // TextWriter.Synchronized locks on the wrapper itself for every call.
+                lock (_output)
+                    return _text.ToString();
+            }
+        }
 
         public StringWriter Error { get; } = new();
 
@@ -35,7 +49,7 @@ public class TailLiveTests
                 throw new InvalidOperationException($"nexnet-tap exited {Completion.Result}: {Error}{Output}");
         }
 
-        public string[] Lines => Output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        public string[] Lines => Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         public async Task WaitForAsync(Func<string, bool> line)
         {
@@ -132,7 +146,7 @@ public class TailLiveTests
         await Assert.That(echoes.Length).IsEqualTo(2);
         // Interleaved sessions: every line but a header names its session.
         foreach (var line in lines)
-            await Assert.That(line).StartsWith("@0x").Because(run.Output.ToString());
+            await Assert.That(line).StartsWith("@0x").Because(run.Output);
         await Assert.That(echoes[0].Split(' ')[0]).IsNotEqualTo(echoes[1].Split(' ')[0]);
         await Assert.That(lines.Count(l => l.Contains("… stopped: interrupted", StringComparison.Ordinal))).IsEqualTo(2);
         await Assert.That(lines.Any(l => l.Contains("--after", StringComparison.Ordinal))).IsFalse();

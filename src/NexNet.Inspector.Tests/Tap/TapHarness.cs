@@ -56,7 +56,12 @@ internal sealed class TapHarness : IAsyncDisposable
 
     public InspectorEndpoint? Endpoint { get; private set; }
 
-    public Task StartAsync() => Server.StartAsync();
+    public async Task StartAsync()
+    {
+        await Server.StartAsync();
+        if (_transport != TapTransport.Uds)
+            _port = BoundPort(Server);
+    }
 
     /// <summary>The endpoint's address in nexnet-tap form (tcp://, tls:// or uds:).</summary>
     public string? EndpointAddress { get; private set; }
@@ -74,24 +79,22 @@ internal sealed class TapHarness : IAsyncDisposable
                 EndpointAddress = "uds:" + _endpointPath;
                 break;
             case TapTransport.Tcp:
-                var port = FreePort();
-                config = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, port) };
-                EndpointAddress = $"tcp://127.0.0.1:{port}";
+                config = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0) };
                 break;
             default:
-                var tlsPort = FreePort();
                 config = new TcpTlsServerConfig
                 {
-                    EndPoint = new IPEndPoint(IPAddress.Loopback, tlsPort),
+                    EndPoint = new IPEndPoint(IPAddress.Loopback, 0),
                     SslServerAuthenticationOptions = ServerTlsOptions(),
                 };
-                EndpointAddress = $"tls://127.0.0.1:{tlsPort}";
                 break;
         }
 
         if (pipeWindow is { } window)
             config.PipeWindow = window;
         Endpoint = await Inspector.StartEndpointAsync(config, EndpointToken);
+        if (transport != TapTransport.Uds)
+            EndpointAddress = $"{(transport == TapTransport.Tcp ? "tcp" : "tls")}://127.0.0.1:{BoundPort(Endpoint.Server)}";
         return Endpoint;
     }
 
@@ -197,15 +200,15 @@ internal sealed class TapHarness : IAsyncDisposable
                 _udsPath = NewSocketPath();
                 config = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(_udsPath) };
                 break;
+            // Port 0: the operating system picks a free port at bind time, read back once started (a port probed
+            // free beforehand can be taken by another process before the bind).
             case TapTransport.Tcp:
-                _port = FreePort();
-                config = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, _port), TcpNoDelay = true };
+                config = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0), TcpNoDelay = true };
                 break;
             default:
-                _port = FreePort();
                 config = new TcpTlsServerConfig
                 {
-                    EndPoint = new IPEndPoint(IPAddress.Loopback, _port),
+                    EndPoint = new IPEndPoint(IPAddress.Loopback, 0),
                     TcpNoDelay = true,
                     SslServerAuthenticationOptions = ServerTlsOptions(),
                 };
@@ -232,10 +235,9 @@ internal sealed class TapHarness : IAsyncDisposable
         return path;
     }
 
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
+    /// <summary>The port the started server's primary endpoint is bound to.</summary>
+    private static int BoundPort(INexusServer server) =>
+        server.Endpoints[0].BoundEndPoint is IPEndPoint bound
+            ? bound.Port
+            : throw new InvalidOperationException("The server reported no bound TCP end point.");
 }

@@ -227,10 +227,24 @@ public class TailFileTests
         {
             await File.WriteAllBytesAsync(path, bytes.AsSpan(0, bytes.Length / 2).ToArray());
             using var interrupt = new CancellationTokenSource();
-            var run = Task.Run(() => RunAsync(["tail", path, "--follow"], interrupt.Token));
-            await Task.Delay(600);
+            var text = new StringWriter { NewLine = "\n" };
+            var printed = TextWriter.Synchronized(text);
+            var cli = new TapCli(printed, new StringWriter());
+            var run = Task.Run(() => cli.RunAsync(["tail", path, "--follow"], null, interrupt.Token));
+
+            // Ctrl+C once the tail has printed some of the calls (it waits at the end of the half file then), so the
+            // cursor stands behind them.
+            string Printed()
+            {
+                lock (printed)
+                    return text.ToString();
+            }
+
+            for (var i = 0; i < 3000 && !run.IsCompleted && !Printed().Contains("\n+", StringComparison.Ordinal); i++)
+                await Task.Delay(10);
             await interrupt.CancelAsync();
-            var (code, output, _) = await run.WaitAsync(Wait);
+            var code = await run.WaitAsync(Wait);
+            var output = Printed();
             await Assert.That(code).IsEqualTo((int)ExitCode.Ok);
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             await Assert.That(lines[0]).StartsWith("@0x");
