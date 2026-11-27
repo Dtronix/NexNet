@@ -1,0 +1,10 @@
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
++1.9 >f13 Invocation #2 SendMessage 45B
+type: Invocation
+direction: > sent
+stream: @157+45 (header 3, body 42)
+ops: 5
+entity: #2 SendMessage
+bytes:
+  0000 6e2a00940201009194a767656e6572616ca3616461ae68656c6c6f2065766572
+  0020 796f6e65cf48df4890b17ab800

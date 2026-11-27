@@ -60,6 +60,15 @@ public readonly record struct TextRecord
     /// <summary>Index of its invocation, pipe or channel item in the assembler; -1 for none.</summary>
     public int Entity { get; init; }
 
+    /// <summary>Nesting of a &lt;see cref="TextRecordKind.Field"/&gt; line: 0 for a top-level property (indented two spaces per level).</summary>
+    public int Depth { get; init; }
+
+    /// <summary>
+    /// Offset of the bytes a &lt;see cref="TextRecordKind.Field"/&gt; or &lt;see cref="TextRecordKind.Fragment"/&gt; covers, in the
+    /// message's own coordinates; shown with &lt;see cref="Bytes"/&gt; when that is not negative.
+    /// </summary>
+    public long Offset { get; init; }
+
     // Collapse key: records with equal keys merge into one ×N line.
     internal string? Key { get; init; }
 

@@ -67,6 +67,9 @@ into counts, every value cut to a width, and budgets that stop at a resumable cu
 | hex (`hex`) | `  6e0600940005039101` | bytes level: the frame's first bytes, `…+87B` when cut |
 | stat (`stat`) | `calls 14 ok 5 cancel 1 oneway 8`, `  <SendMessage ×4 ok 3 cancel 1 p50 0.1ms max 24.1ms` | summary level |
 | problem (`prob`) | `+3.0 ! f12 malformed 40B` | a frame that could not be framed, was cut off (`incomplete`), or whose body does not read (`body malformed`) |
+| field (`fld`) | `    Text: "hello" @12+7`, `  - 42`, `args:` | queries (§10): one property or decoded field, indented two spaces per level (`dp`); an element without a name starts with `- `; a parent has no value; ` @offset+size` is its byte range in the message (`show --bytes`) |
+| fragment (`frag`) | `+27.5 >f35 MessageChunk msg 0+64.0KB op 19 N` | `trace`: a frame that carried part of a message, the message bytes it carried, its transport op(s) and split flags |
+| delta (`delta`) | `+1.9 medium #2 SendMessage content, bytes 52B → 53B` | `diff`: severity, the entity's ID (`A#3 B#4` when the sides differ, `B#3` when only B holds it), its name, what differs; time is compare time |
 
 At the messages level a preamble, greetings (folded into the handshake line), message chunks and aborts (folded into
 their call), result frames of calls already shown, and disconnect frames (the end line) produce no line of their own.
@@ -129,6 +132,8 @@ the width, with its length).
 | `sp` | span of a collapsed run in ms |
 | `b` | bytes covered |
 | `f` | frame number of the first frame (as in `f18`) |
+| `dp` | a field's depth (absent at 0) |
+| `o` | a field's or fragment's offset in its message (with `b`) |
 | `after` | the cursor (`k` = `budget`, `x` = lines withheld; `k` = `stop`, `x` = lines written) |
 | `s` | the session ID (`@0x1BCB`) when one output interleaves several sessions (`nexnet-tap tail --session all`); text lines then start with it |
 
@@ -141,3 +146,24 @@ The JSON is written by System.Text.Json source generation with relaxed escaping,
 ## 9. Legend
 
 `nexnet-tap help format` prints `TextLegend.Text` (Core), at most 20 lines summarising §1–§5.
+
+## 10. Queries
+
+`TextQuery` (Core) answers drill-down questions over one session with the same records, IDs and values; `nexnet-tap`
+prints them (see the user guide). Every query starts with the header line; sessions are separated by a blank line.
+
+| Query | Lines |
+|---|---|
+| `summary` | the summary level's lines, the ten busiest methods (`…+n methods`), and `stat` lines `errors N: <ids>`, `cancels N: <ids>`, `pipes N (raw a channel b collection c) open n`, `largest <id> <what> <size>, …` (top 3), `stalls window N (longest d on <pipe>)` (a pipe writer whose sent bytes reached the credit granted, until the next grant), `open at end <ids>` (`open now` live), then the end line |
+| `show <id>` | the entity's line, then `fld` lines: `method`, `state`, `args`/`result`/`exception` trees (objects show their type name, sequences `[n]`, at most 16 elements then `- …+n`), `frames`, `pipe`; for a pipe its `pipes` line and its message-level lines; for a frame `type`, `direction`, `stream @offset+length`, `ops`, `entity`, `message`, and with bytes its hex in 32-byte `hex` lines |
+| `trace <id>` | per message `request\|result\|run\|message of …: n fragments size, k interleaved`, its `frag` lines, `ops n (reads r writes w)` with one `fld` line per transport op (`>op 19: +27.5 64.0KB @6496`), and `interleaved` with the frames-level lines of the other frames between its first and last fragment |
+| `around <t> [±w]` | the rendering (messages level by default) with a time window filter |
+| `errors` | calls and results with outcome `exception`, `unauthorized` or `refused`, problem lines, refused pipes, an end that is not `Graceful`, `stopped` or `truncated`; `errors none` otherwise |
+| `slow` | `slow N over d`, then the calls at or over the threshold, slowest first, uncollapsed |
+| `pipes` | `pipes N`, then one `pipe` line each: label, opener, state, `out size ×runs in size ×runs window out g in g`, items, `from snapshot`, how long it was open |
+| `collections` | `collections N`, then one `coll` line each (`v`, messages, items rebuilt from the server's messages); `--contents` adds `[i]: value` fields |
+| `schema` | `schema <export> <status> hash <hex>`, `server\|client <interface> hash … methods n`, one signature per method (`#1 SendMessage(ChatMessage message, CancellationToken cancellationToken) -> bool`, `(oneway)`, `-> ok`, `[auth]`), collections (`☰5 Users INexusList<long> ServerToClient`), then `types` with each declared type's members, cases or values |
+| `diff` | `A <header>`, `B <header>`, `deltas N high a medium b low c info d; entities M differing K; aligned <mode>`, the `delta` lines worst first (then by time), then for the top entities that both sides hold with content, outcome or item differences `fields <id> <name> (n differ)` and up to 8 `fld` lines `~ path: a → b`, `+ path: b`, `- path: a` (`args`, `result`, `item[i]`, `message[i]`, `data[i]`, `greeting` then the field path) |
+
+Budgets apply to the whole query (`TextQueryWriter`): its cursor is a `TextCursor` whose skip counts the lines of that
+session already written and whose filter fingerprint is the query's text, so `--after` resumes only the same query.

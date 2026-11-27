@@ -158,6 +158,9 @@ public sealed class TextRecordWriter
             case TextRecordKind.Bytes:
                 sb.Append("  ").Append(record.Value);
                 return;
+            case TextRecordKind.Field:
+                AppendField(sb, record);
+                return;
         }
 
         TextValues.AppendTime(sb, record.TimeMs).Append(' ');
@@ -235,6 +238,22 @@ public sealed class TextRecordWriter
             case TextRecordKind.Problem:
                 sb.Append("! ").Append(record.Id).Append(' ').Append(record.Value);
                 return;
+            case TextRecordKind.Fragment:
+                Arrow(sb, record).Append(record.Id).Append(' ').Append(record.Name);
+                if (record.Bytes >= 0)
+                    TextValues.AppendSize(sb.Append(Invariant, $" msg {record.Offset}+"), record.Bytes);
+                if (record.Value is { Length: > 0 })
+                    sb.Append(' ').Append(record.Value);
+                return;
+            case TextRecordKind.Delta:
+                sb.Append(record.Outcome);
+                if (record.Id is not null)
+                    sb.Append(' ').Append(record.Id);
+                if (record.Name is not null)
+                    sb.Append(' ').Append(record.Name);
+                if (record.Value is { Length: > 0 })
+                    sb.Append(' ').Append(record.Value);
+                return;
             default:
                 sb.Append(record.Value);
                 return;
@@ -259,6 +278,9 @@ public sealed class TextRecordWriter
         TextRecordKind.Frame => "frame",
         TextRecordKind.Bytes => "hex",
         TextRecordKind.Stat => "stat",
+        TextRecordKind.Field => "fld",
+        TextRecordKind.Fragment => "frag",
+        TextRecordKind.Delta => "delta",
         _ => "prob",
     };
 
@@ -286,6 +308,20 @@ public sealed class TextRecordWriter
             TextValues.AppendDuration(sb.Append(' '), duration);
     }
 
+    // A field line: "  name: value", "  - value" for an unnamed element, "  name:" for a parent; " @offset+size" with bytes.
+    private static void AppendField(StringBuilder sb, in TextRecord record)
+    {
+        sb.Append(' ', Math.Max(0, record.Depth) * 2);
+        if (record.Name is null)
+            sb.Append("- ").Append(record.Value);
+        else if (record.Value is null)
+            sb.Append(record.Name).Append(':');
+        else
+            sb.Append(record.Name).Append(": ").Append(record.Value);
+        if (record.Bytes >= 0)
+            sb.Append(Invariant, $" @{record.Offset}+{record.Bytes}");
+    }
+
     private static void Collapsed(StringBuilder sb, in TextRecord record, bool count = true)
     {
         if (record.Count <= 1)
@@ -301,7 +337,7 @@ public sealed class TextRecordWriter
         o.Clear();
         o.K = Code(record.Kind);
         o.S = record.Kind != TextRecordKind.Header ? SessionTag : null;
-        if (record.Kind is not (TextRecordKind.Header or TextRecordKind.Stat or TextRecordKind.Bytes))
+        if (record.Kind is not (TextRecordKind.Header or TextRecordKind.Stat or TextRecordKind.Bytes or TextRecordKind.Field))
             o.T = Math.Round(record.TimeMs, 1);
         o.D = record.Direction switch
         {
@@ -324,6 +360,8 @@ public sealed class TextRecordWriter
 
         o.B = record.Bytes >= 0 ? record.Bytes : null;
         o.F = record.Frame >= 0 ? record.Frame + 1 : null;
+        o.Dp = record.Kind == TextRecordKind.Field && record.Depth > 0 ? record.Depth : null;
+        o.O = record.Kind is TextRecordKind.Field or TextRecordKind.Fragment && record.Bytes >= 0 ? record.Offset : null;
     }
 
     private void SerializeJson()
@@ -394,6 +432,12 @@ internal sealed class TextJsonLine
     [JsonPropertyName("after")]
     public string? After { get; set; }
 
+    [JsonPropertyName("dp")]
+    public int? Dp { get; set; }
+
+    [JsonPropertyName("o")]
+    public long? O { get; set; }
+
     public void Clear()
     {
         K = "";
@@ -412,6 +456,8 @@ internal sealed class TextJsonLine
         B = null;
         F = null;
         After = null;
+        Dp = null;
+        O = null;
     }
 }
 

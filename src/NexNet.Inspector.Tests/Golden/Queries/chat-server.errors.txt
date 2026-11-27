@@ -1,0 +1,2 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
+errors none

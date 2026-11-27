@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using NexNet.Inspector.Core.Text;
 using NexNet.Inspector.Tap;
 
 namespace NexNet.Inspector.Cli;
@@ -56,6 +57,24 @@ internal sealed partial class CliArguments
     public bool Json => Has(CliOption.Json);
 
     public bool Messages => Has(CliOption.Messages);
+
+    /// <summary>`show --bytes`: byte ranges and hex.</summary>
+    public bool Bytes => Has(CliOption.Bytes);
+
+    /// <summary>`slow --over`: the threshold; null for the default.</summary>
+    public TimeSpan? Over { get; private set; }
+
+    /// <summary>`collections --contents`: list the items.</summary>
+    public bool Contents => Has(CliOption.Contents);
+
+    /// <summary>`export --from`: a time since the session's start, as typed.</summary>
+    public string? From { get; private set; }
+
+    /// <summary>`export --to`: a time since the session's start, as typed.</summary>
+    public string? To { get; private set; }
+
+    /// <summary>`diff --top`: entities whose field diffs are listed.</summary>
+    public int Top { get; private set; } = 5;
 
     /// <summary>The recording file of <c>info</c> and <c>repair</c>: the first bare argument.</summary>
     public string? File => Positionals.Count > 0 ? Positionals[0] : null;
@@ -297,12 +316,19 @@ internal sealed partial class CliArguments
         "--until" => CliOption.Until,
         "--context" => CliOption.Context,
         "--follow" => CliOption.Follow,
+        "--bytes" => CliOption.Bytes,
+        "--over" => CliOption.Over,
+        "--contents" => CliOption.Contents,
+        "--from" => CliOption.From,
+        "--to" => CliOption.To,
+        "--top" => CliOption.Top,
         _ => CliOption.None,
     };
 
     private static bool TakesValue(CliOption option) => option is CliOption.Endpoint or CliOption.Token
         or CliOption.ServerName or CliOption.ConnectTimeout or CliOption.Session or CliOption.Duration or CliOption.Out
         or CliOption.Overflow or CliOption.Wait
+        or CliOption.Over or CliOption.From or CliOption.To or CliOption.Top
         || (option & TailValueOptions) != 0;
 
     private bool TrySetValue(CliOption option, string value, [NotNullWhen(false)] out string? error)
@@ -379,10 +405,48 @@ internal sealed partial class CliArguments
                 else
                     ConnectTimeout = duration;
                 return true;
+            case CliOption.Over:
+            case CliOption.From:
+            case CliOption.To:
+            case CliOption.Top:
+                return TrySetQueryValue(option, value, out error);
             default:
                 error = $"Option {option} takes no value.";
                 return false;
         }
+    }
+
+    // The query commands' options (QueryCommand).
+    private bool TrySetQueryValue(CliOption option, string value, [NotNullWhen(false)] out string? error)
+    {
+        error = null;
+        switch (option)
+        {
+            case CliOption.Over:
+                if (!TryParseDuration(value, out var over))
+                {
+                    error = $"'{value}' is not a duration (examples: 30s, 250ms).";
+                    return false;
+                }
+
+                Over = over;
+                return true;
+            case CliOption.From:
+                From = value;
+                return true;
+            case CliOption.To:
+                To = value;
+                return true;
+        }
+
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var top) || top <= 0)
+        {
+            error = $"--top must be a positive whole number, not '{value}'.";
+            return false;
+        }
+
+        Top = top;
+        return true;
     }
 
     private bool TrySetSession(string value, [NotNullWhen(false)] out string? error)
@@ -396,6 +460,18 @@ internal sealed partial class CliArguments
             case "all":
                 Selector = SessionSelectorKind.All;
                 return true;
+        }
+
+        // The text format's session ID: @0x1BCB (hex).
+        var hex = value.AsSpan();
+        if (hex.StartsWith("@"))
+            hex = hex[1..];
+        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            && long.TryParse(hex[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var hexId) && hexId != 0)
+        {
+            Selector = SessionSelectorKind.Id;
+            SessionId = hexId;
+            return true;
         }
 
         if (!long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var id) || id == 0)
@@ -460,6 +536,34 @@ internal sealed partial class CliArguments
                 return true;
             case CliCommand.Tail:
                 return TryValidateTail(environmentToken, out error);
+            case CliCommand.Summary:
+            case CliCommand.Show:
+            case CliCommand.Trace:
+            case CliCommand.Around:
+            case CliCommand.Errors:
+            case CliCommand.Slow:
+            case CliCommand.Pipes:
+            case CliCommand.Collections:
+            case CliCommand.Schema:
+            case CliCommand.Diff:
+            case CliCommand.Export:
+                if (Has(CliOption.Endpoint))
+                {
+                    if (Endpoint.Scheme != EndpointScheme.Tls && Has(CliOption.Insecure | CliOption.ServerName))
+                    {
+                        error = "--insecure and --server-name apply to tls:// endpoints only.";
+                        return false;
+                    }
+
+                    Token ??= string.IsNullOrEmpty(environmentToken) ? null : environmentToken;
+                    if (Token is null)
+                    {
+                        error = $"No endpoint token: pass --token or set {TokenVariable}.";
+                        return false;
+                    }
+                }
+
+                return QueryCommand.TryValidate(this, out error);
             case CliCommand.Info:
             case CliCommand.Repair:
                 if (File is null)

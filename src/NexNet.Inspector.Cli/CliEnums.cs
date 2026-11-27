@@ -11,6 +11,18 @@ internal enum CliCommand : byte
     Help = 5,
     Version = 6,
     Tail = 7,
+    Summary = 8,
+    Show = 9,
+    Trace = 10,
+    Around = 11,
+    Errors = 12,
+    Slow = 13,
+    Pipes = 14,
+    Collections = 15,
+    Schema = 16,
+    Diff = 17,
+    Export = 18,
+    Format = 19,
 }
 
 /// <summary>Named options. A flag set, so each command can declare which ones it accepts and which it requires.</summary>
@@ -52,6 +64,12 @@ internal enum CliOption : ulong
     Until = 1UL << 31,
     Context = 1UL << 32,
     Follow = 1UL << 33,
+    Bytes = 1UL << 34,
+    Over = 1UL << 35,
+    Contents = 1UL << 36,
+    From = 1UL << 37,
+    To = 1UL << 38,
+    Top = 1UL << 39,
 }
 
 /// <summary>What <c>record --session</c> names.</summary>

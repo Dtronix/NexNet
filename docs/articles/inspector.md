@@ -97,7 +97,14 @@ nexnet-tap list   --endpoint <addr> [connection options]
 nexnet-tap record --endpoint <addr> --session <id|first|all> --out <file.nntl> [options]
 nexnet-tap info   <file.nntl> [--json] [--messages]
 nexnet-tap repair <file.nntl> [--force]
+nexnet-tap summary|errors|pipes|collections|schema <file.nntl> [options]
+nexnet-tap show|trace <file.nntl> <id> [options]
+nexnet-tap around <file.nntl> <t> [±w] [options]
+nexnet-tap slow <file.nntl> [--over <d>] [options]
+nexnet-tap diff <a.nntl> <b.nntl> [--top <n>]
+nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
 nexnet-tap help [command]
+nexnet-tap help format
 nexnet-tap --version
 ```
 
@@ -166,6 +173,36 @@ Prints a recording or a live session as condensed text, one line per message (th
 - **`--until <expr>`** prints nothing until a line meets the expression, then the `--context` lines before it (default 10, after the session header) and that line, and stops. Terms: `method=<glob>`, `state=ok|exception|canceled|unauthorized|refused|pending|oneway`, `error`, `gap`, `end`, `type=<line kind or frame type>`; `,` means and, `|` means or. It exits 4 when the condition never held.
 - **Stopping.** Ctrl+C or `--duration` ends with `… stopped: interrupted, N lines, --after <cursor>`. Files only: a live attach has no position to resume, so its stop lines carry no cursor; record it and tail the file to page through it.
 
+### Queries
+
+The query commands answer one question about a session in a few token-condensed lines, in the text format the inspector's LLM tooling shares (`nexnet-tap help format` prints its legend; the full spec is [inspector-text-format](../internals/inspector-text-format.md)). Each reads a recording (every session, or `--session <id>`; the header's `@0x1BCB` form works too), or a live session: give `--endpoint` and `--session <id|first>` instead of a file, and the command attaches for `--duration` (default 2s) and queries what arrived.
+
+```
+$ nexnet-tap summary chat.nntl
+$ nexnet-tap show chat.nntl 4 --bytes
+$ nexnet-tap trace chat.nntl 4
+$ nexnet-tap around chat.nntl +27.5 ±5
+$ nexnet-tap summary --endpoint tcp://127.0.0.1:7712 --session first --duration 5s
+$ nexnet-tap diff before.nntl after.nntl
+$ nexnet-tap export chat.nntl --from +20 --to +60 --out section.nntl
+```
+
+| Command | What it prints |
+|---------|----------------|
+| `summary` | About 30 lines per session: totals, handshake, calls per method with p50/p99/max, errors, cancellations, pipes, the largest messages, window stalls, gaps, what was still open at the end, and the disconnect reason. |
+| `show <id>` | One invocation, pipe or frame: its line, then a YAML-like tree (an invocation's arguments and result decoded field by field, its frames and pipe). `--bytes` adds each field's byte range in its message, and a frame's hex. |
+| `trace <id>` | The frames that carried each of the entity's messages and the bytes each carried, the transport reads or writes they arrived in, and the frames interleaved with them. |
+| `around <t> [±w]` | What happened within `w` (default ±25ms) of `t`, in ms since the session's start as the lines show it. `--level frames` shows frames. |
+| `errors` | Calls that ended in an exception, unauthorized or refused, refused pipes, bad frames, and a disconnect that was not graceful. |
+| `slow --over <d>` | Calls that took at least `--over` (default 100ms), slowest first. |
+| `pipes` | One line per pipe: what it carries, the call that opened it, state, bytes and runs per direction, windows, items. |
+| `collections [--contents]` | Each synchronized collection's version and messages; `--contents` lists its items as of the end of the capture. |
+| `schema` | Method signatures with their wire IDs, collections, and the declared types they use. |
+| `diff a b` | Two recordings compared as the Compare workspace does, worst difference first, then the field diffs of the `--top` (default 5) worst entities. |
+| `export a` | A time section (`--from`, `--to`) of one session as a recording that opens on its own. A live export needs the server to allow recording. |
+
+IDs are the ones the lines show: `#5` (or `5`; quote `'#5'` in a shell, where `#` starts a comment), `5.2` (the second invocation that reused wire ID 5), `≋4·4` or `p4` (a pipe), `f18` (a frame). `--format ndjson` writes one JSON object per line. `--max-lines` and `--max-tokens` bound the output: a query that hits a budget ends with `… budget hit, N withheld, --after <cursor>`, and the same command with `--after <cursor>` prints the rest. `--value-width` and `--depth` change how much of each value shows.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -174,7 +211,7 @@ Prints a recording or a live session as condensed text, one line per message (th
 | 1 | Failure: endpoint unreachable, token or TLS refused, I/O error, unreadable file, recording without footer. |
 | 2 | Invalid command line, or a `tail --after` cursor of another session, level or filters. |
 | 3 | Refused by the server configuration (recording disabled, secrets not included). |
-| 4 | Session not found, or none appeared within `--wait`. `tail --until`: the condition never held. |
+| 4 | Session not found, or none appeared within `--wait`. `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
 | 130 | Interrupted by Ctrl+C before recording started. |
 
 ## The app

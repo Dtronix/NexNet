@@ -1,0 +1,14 @@
+@0x3B52AC651 server tcp 127.0.0.1:49947 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.420Z
+collections 1
++0.0 ☰1·1 Users v1 messages 0 items 0 (no reset seen: items since attach)
+
+@0x42F6FD6BC server tcp 127.0.0.1:49949 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.431Z
+collections 1
++1.1 >☰1·1 Users v4 messages 6 items 2
+  [0]: 17975727804
+  [1]: 21982814004
+
+@0x51E471F34 server tcp 127.0.0.1:49950 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:52.432Z
+collections 1
++32.6 >☰1·1 Users v5 messages 6 items 1
+  [0]: 21982814004

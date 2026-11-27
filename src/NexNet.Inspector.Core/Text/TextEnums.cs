@@ -93,4 +93,13 @@ public enum TextRecordKind : byte
 
     /// <summary>`! f12 malformed 40B`: a frame that could not be framed or completed (`prob`).</summary>
     Problem = 15,
+
+    /// <summary>`  Text: "hello" @12+7`: one field of a decoded tree or a named property, queries (`fld`).</summary>
+    Field = 16,
+
+    /// <summary>`+27.5 >f34 MessageChunk msg 0+65.5KB op 17`: which frame carried which bytes of a message, `trace` (`frag`).</summary>
+    Fragment = 17,
+
+    /// <summary>`+53.6 high #5 SendMessage content`: one difference between two sessions, `diff` (`delta`).</summary>
+    Delta = 18,
 }

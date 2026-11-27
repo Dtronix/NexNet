@@ -90,7 +90,14 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           nexnet-tap info   <file.nntl> [--json] [--messages]
           nexnet-tap repair <file.nntl> [--force]
           nexnet-tap tail   <file.nntl | endpoint> [--session <id|first|all>] [options]
+          nexnet-tap summary|errors|pipes|collections|schema <file.nntl> [options]
+          nexnet-tap show|trace <file.nntl> <id> [options]
+          nexnet-tap around <file.nntl> <t> [±w] [options]
+          nexnet-tap slow <file.nntl> [--over <d>] [options]
+          nexnet-tap diff <a.nntl> <b.nntl> [options]
+          nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
           nexnet-tap help [command]
+          nexnet-tap help format
           nexnet-tap --version
 
         Commands:
@@ -102,6 +109,19 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           repair   Rebuild the index footer of a crashed or truncated recording, in place.
           tail     Print a recording or a live session as condensed text, one line per message, with filters,
                    budgets and --until.
+
+        Queries (a recording, or a live session with --endpoint; text or ndjson, budgets with --max-lines/--max-tokens):
+          summary      About 30 lines: calls per method with p50/p99, errors, cancellations, pipes, largest
+                       messages, window stalls, gaps, what was open at the end, the disconnect.
+          show         One invocation, pipe or frame as a decoded tree (--bytes adds byte ranges).
+          trace        The frames, bytes and transport ops that carried an entity's messages, and what interleaved.
+          around       What happened near a time.        errors   Failed calls, bad frames, abnormal disconnects.
+          slow         Calls slower than --over.          pipes    One line per pipe.
+          collections  Synchronized collections (--contents lists their items).
+          schema       Method signatures with wire IDs, collections and types.
+          diff         Two sessions compared, worst difference first, with field diffs.
+          export       A time section of a session as its own .nntl.
+          format       The text format's legend (also 'help format').
 
         """ + ExitCodes;
 

@@ -1,0 +1,15 @@
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
++25.8 >ping
++26.0 >#0.3 UploadFile("avatar.png", pipe:2) (oneway)
++26.2 <ping
++26.2 <⇄2·2 open by #0.3
++26.3 >window ⇄2·2
++26.3 >⇄2·2 data 2.0KB
++26.3 >⇄2·2 client done
++26.7 <⇄2·2 complete
++26.8 >⇄2·2 complete
++26.8 >#0.4 UploadFile("trace.bin", pipe:3) (oneway)
++26.9 <⇄3·3 open by #0.4
++26.9 >window ⇄3·3
++27.0 >⇄3·3 data 4.0KB
++27.5 >#4 SendAttachment(293.0KB, 5 chunks) -> ok 300000 3109464606 "chat://general/screenshot.png" 26.1ms
