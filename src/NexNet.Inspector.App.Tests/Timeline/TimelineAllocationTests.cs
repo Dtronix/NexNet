@@ -38,9 +38,19 @@ public sealed class TimelineAllocationTests
                 // Twice to fill every cache (shaped labels, pens, the overview's buckets) and the renderer's pools.
                 p.Timeline.Render(context);
                 p.Timeline.Render(context);
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                p.Timeline.Render(context);
-                long after = GC.GetAllocatedBytesForCurrentThread();
+
+                // The best of a few renders. A render costs the same bytes every time (1,504 B in each of 5 renders of 62
+                // runs under load), yet one render in the full suite counted 3,296 B: the same transient, not the
+                // timeline's, as in FuzzyMatcherTests (I48b). A render that allocated per mark or label would do it
+                // every time.
+                long allocated = long.MaxValue;
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    p.Timeline.Render(context);
+                    long one = GC.GetAllocatedBytesForCurrentThread() - before;
+                    allocated = Math.Min(allocated, one);
+                }
 
                 // Skia's cost of one cached label, drawn the same way on the same context.
                 ThemePalette palette = ThemeBrushes.For(p.Timeline);
@@ -49,7 +59,7 @@ public sealed class TimelineAllocationTests
                 long calibrate = GC.GetAllocatedBytesForCurrentThread();
                 for (int i = 0; i < 100; i++) label.Draw(context, default);
                 long text = (GC.GetAllocatedBytesForCurrentThread() - calibrate) / 100;
-                return (after - before, text, p.Timeline.TextDraws, p.Timeline.MarksDrawn, p.Model.Lanes.Sum(l => l.Count));
+                return (allocated, text, p.Timeline.TextDraws, p.Timeline.MarksDrawn, p.Model.Lanes.Sum(l => l.Count));
             }, height: 700);
 
         await Assert.That(marks).IsGreaterThan(100_000);

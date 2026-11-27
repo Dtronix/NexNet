@@ -85,7 +85,9 @@ public class TailLiveTests
         var lines = run.Lines;
         await Assert.That(lines[0]).StartsWith("@0x");
         await Assert.That(lines[0]).Contains("server tcp");
-        await Assert.That(lines.Count(l => l.Contains("Echo(", StringComparison.Ordinal) && l.Contains("-> ok", StringComparison.Ordinal))).IsEqualTo(3);
+        // Each call's outcome once: on its call line, or on a later res line when the call line was printed before the
+        // result arrived (`-> …`, text format §6), as a slow viewer under load can.
+        await Assert.That(lines.Count(l => l.Contains(" Echo", StringComparison.Ordinal) && l.Contains("-> ok", StringComparison.Ordinal))).IsEqualTo(3);
         await Assert.That(lines[^1]).Contains("END ");
         await Assert.That(run.Error.ToString()).Contains("Tailing session");
     }
