@@ -205,6 +205,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
                                    '|' = or (method=Send*,state=exception|gap). Exit 4 when it never held.
               --context <n>        Lines printed before the --until line (default 10)
               --follow             Keep reading a recording as it grows (a file being recorded), like tail -f
+              --findings           Also print the findings detectors' '!' lines as they are detected (see 'help findings')
               --after <cursor>     Resume a file where a budget or stop line said (same --level and filters)
           -s, --session <sel>      A session ID, 'first' or 'all' (live: required; all needs recording allowed. File:
                                    default all, in file order)

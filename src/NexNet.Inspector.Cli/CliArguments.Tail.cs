@@ -21,7 +21,8 @@ internal sealed partial class CliArguments
 
     /// <summary>Every option <c>tail</c> accepts.</summary>
     public const CliOption TailOptions = CliCommands.ConnectOptions | CliOption.Session | CliOption.Duration | CliOption.Wait
-                                         | CliOption.Follow | TailValueOptions;
+                                         | CliOption.Follow | TailValueOptions
+                                         | CliOption.Findings;
 
     public TextLevel Level { get; private set; } = TextLevel.Messages;
 

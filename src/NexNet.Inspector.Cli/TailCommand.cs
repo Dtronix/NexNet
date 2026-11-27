@@ -20,6 +20,9 @@ internal sealed class TailCommand(TapCli cli)
     /// <summary>How often a streamed tail renders what arrived.</summary>
     internal static readonly TimeSpan RenderInterval = TimeSpan.FromMilliseconds(100);
 
+    // tail --findings: the findings detectors' lines, inline; null without the option.
+    private TailFindings? _findings;
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan DetachTimeout = TimeSpan.FromSeconds(5);
 
@@ -47,6 +50,7 @@ internal sealed class TailCommand(TapCli cli)
             stop.CancelAfter(duration);
 
         var printer = new TailPrinter(cli.Output, options, args, resumable: !args.IsLiveTail);
+        _findings = args.TailFindings ? new TailFindings(cli.Output, options, args) : null;
         if (args.IsLiveTail)
             return await LiveAsync(args, options, printer, cancellationToken, stop.Token).ConfigureAwait(false);
         if (args.Follow)
@@ -143,6 +147,7 @@ internal sealed class TailCommand(TapCli cli)
                 renderer.Collect(records);
                 if (!printer.Write(records, renderer, null, stop))
                     break;
+                _findings?.Write(session, null);
             }
 
             return Finish(printer, args, user, stop, printer.CancelledAt ?? last?.Position, null);
@@ -260,6 +265,8 @@ internal sealed class TailCommand(TapCli cli)
                         stopped = true;
                         break;
                     }
+
+                    _findings?.Write(renderer.Session, tag);
                 }
             }
 

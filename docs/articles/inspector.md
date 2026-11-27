@@ -234,7 +234,7 @@ Runs rule-based detectors over each session and prints its header line, one `!` 
 | `ping-rtt` | warn | A ping answered after 500 ms, or 10× the session's median round trip (at least 50 ms). |
 | `reconnect-loop` | warn | Across the sessions of a file: three or more reconnections from one peer (a session starting within 10 s of a failed one, or with a reconnection greeting). |
 
-Each kind lists at most 20 findings per session; one more `info` line counts the rest. The detectors are in the core library (`FindingsEngine`), and run incrementally on a live session too: each update returns what was detected since the last.
+Each kind lists at most 20 findings per session; one more `info` line counts the rest. The detectors are in the core library (`FindingsEngine`), and run incrementally on a live session too: each update returns what was detected since the last. `nexnet-tap tail --findings` prints them inline, as they are detected, after the lines that revealed them (with the session tag when tailing every session); these lines are extra and do not count against `--max-lines` or `--max-tokens`.
 
 ### Exit codes
 

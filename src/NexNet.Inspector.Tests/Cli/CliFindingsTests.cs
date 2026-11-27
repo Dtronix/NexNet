@@ -63,6 +63,17 @@ public class CliFindingsTests
     }
 
     [Test]
+    public async Task Tail_findings_writes_inline_bang_lines()
+    {
+        var (code, output, error) = await RunAsync("tail", SessionFixtures.Path(FixtureKind.FindingsStall), "--findings");
+        await Assert.That(code).IsEqualTo(0).Because(error);
+        var lines = Lines(output);
+        await Assert.That(lines.Count(l => l.Contains(" ! warn window-stall ⇄1·1"))).IsEqualTo(2).Because(output);
+        var (_, plain, _) = await RunAsync("tail", SessionFixtures.Path(FixtureKind.FindingsStall));
+        await Assert.That(plain).DoesNotContain(" ! warn ");
+    }
+
+    [Test]
     public async Task Findings_needs_a_readable_file()
     {
         var (usage, _, usageError) = await RunAsync("findings");

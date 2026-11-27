@@ -322,6 +322,7 @@ internal sealed partial class CliArguments
         "--from" => CliOption.From,
         "--to" => CliOption.To,
         "--top" => CliOption.Top,
+        "--findings" => CliOption.Findings,
         _ => CliOption.None,
     };
 

@@ -71,6 +71,7 @@ internal enum CliOption : ulong
     From = 1UL << 37,
     To = 1UL << 38,
     Top = 1UL << 39,
+    Findings = 1UL << 40,
 }
 
 /// <summary>What <c>record --session</c> names.</summary>
