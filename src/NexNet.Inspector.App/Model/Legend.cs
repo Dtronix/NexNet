@@ -64,6 +64,7 @@ public enum LegendSymbol : byte
     RecordingPill,
     RecordAllPill,
     ScopeChip,
+    Bookmarks,
 
     Overview,
     RangeHandles,
@@ -163,6 +164,8 @@ public static class Legend
         new(LegendSymbol.RecordAllPill, LegendSection.Badges, "ALL · n  Record all", "Recording every session of the server; n sessions so far."),
         new(LegendSymbol.ScopeChip, LegendSection.Badges, "Scope chip",
             "Every view is limited to this time range (Filter to time range…, Ctrl+Shift+F). ‹n: scopes nested; click or Alt+Left goes back, ✕ clears."),
+        new(LegendSymbol.Bookmarks, LegendSection.Badges, "★  Bookmarks",
+            "Saved views of this recording, n of them (accent once there is one): Ctrl+Shift+B adds the current view and its scope, Alt+1…9 jump back; the list renames (F2) and deletes."),
 
         new(LegendSymbol.Overview, LegendSection.Timeline, "Overview", "The whole session's frames; the box is the visible window. Double-click to fit all."),
         new(LegendSymbol.RangeHandles, LegendSection.Timeline, "Range handles",

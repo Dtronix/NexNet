@@ -564,6 +564,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.ScopeBack, () => Documents.PopScope(), () => Dialog is null && Documents.Active is { IsScoped: true });
         Commands.Bind(AppCommand.ClearScope, () => Documents.ClearScope(), () => Dialog is null && Documents.Active is { IsScoped: true });
         session.DetachCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
+        BookmarksViewModel bookmarks = Chrome.Bookmarks;
+        Commands.Bind(AppCommand.AddBookmark, bookmarks.Add, () => Dialog is null && Documents.CanBookmark);
+        for (int n = 1; n <= 9; n++)
+        {
+            int index = n - 1;
+            Commands.Bind(CommandRegistry.JumpBookmark(n), () => Documents.JumpToBookmark(index),
+                () => Dialog is null && Documents.ActiveBookmarks.Count > index);
+        }
+
+        Documents.Bookmarks.Changed += _ => Commands.Refresh();
     }
 
     partial void OnDialogChanged(object? value)

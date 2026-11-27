@@ -3,7 +3,8 @@
   apart on surface.chrome with a border.default bottom line: the logo button (the application menu, I28), the
   Inspect | Compare switch, a 1 x 18 divider, the document tabs and + (or "No documents open"), the drag gap, the session
   area (I28 fills it with the connection group, session and record button; empty, it offers Connect…), the time window
-  (I19/I28; empty, "— no timeline —"), and the 46 x 36 caption buttons.
+  (I19/I28; empty, "— no timeline —") with the scope chip before it (I43) and the ★ bookmarks button after it (I44), and
+  the 46 x 36 caption buttons.
   The whole bar is the TitleBar element: dragging moves the window, a double-click maximizes. Every interactive element in
   it carries the User role (or its caption role, which gives Windows the hit-test codes and Snap Layouts on Maximize):
   without one Windows takes a click on it as a caption drag. The caption buttons act through Click handlers.
@@ -16,6 +17,15 @@
              x:Class="NexNet.Inspector.App.Views.Shell.TitleBar"
              x:DataType="vm:ShellChromeViewModel"
              AutomationProperties.Name="Title bar">
+  <UserControl.Styles>
+    <!-- The ★ is secondary text, and takes the trace accent once the recording has bookmarks. -->
+    <Style Selector="TextBlock#BookmarksStar">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+    </Style>
+    <Style Selector="TextBlock#BookmarksStar.marked">
+      <Setter Property="Foreground" Value="{DynamicResource Brush.Accent.Trace}" />
+    </Style>
+  </UserControl.Styles>
   <Border Name="Bar"
           Height="{DynamicResource Size.TitleBar}"
           Background="{DynamicResource Brush.Surface.Chrome}"
@@ -98,6 +108,24 @@
               </StackPanel>
             </Border>
           </Panel>
+          <!-- The bookmarks (I44): ★, the active recording's count, ▾; opens the dropdown (Ctrl+Shift+B adds, Alt+1…9 jump). -->
+          <Border Name="BookmarksGroup" Height="{DynamicResource Size.HeaderControl}" ClipToBounds="True"
+                  BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1" CornerRadius="{DynamicResource Radius.Md}"
+                  IsVisible="{Binding Bookmarks.HasDocument}"
+                  TextElement.FontFamily="{DynamicResource Font.Mono}" TextElement.FontSize="{DynamicResource FontSize.Data}">
+            <Button Name="BookmarksButton" Theme="{StaticResource ChromeButton}" Height="22" CornerRadius="0" Padding="7,0"
+                    WindowDecorationProperties.ElementRole="User" Foreground="{DynamicResource Brush.Text.Primary}"
+                    Command="{Binding Bookmarks.ToggleCommand}"
+                    ToolTip.Tip="Bookmarks · Ctrl+Shift+B adds the current view · Alt+1…9 jump"
+                    AutomationProperties.Name="Bookmarks">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Name="BookmarksStar" Text="★" VerticalAlignment="Center" Classes.marked="{Binding Bookmarks.HasItems}" />
+                <TextBlock Name="BookmarksCount" Text="{Binding Bookmarks.CountText}" VerticalAlignment="Center"
+                           IsVisible="{Binding Bookmarks.HasItems}" />
+                <TextBlock Text="▾" FontSize="9" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Border>
         </StackPanel>
       </Border>
 

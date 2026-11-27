@@ -40,7 +40,20 @@ public sealed class CommandRegistry
         new(AppCommand.FilterToView, "Filter to view", CommandGroup.View, CommandGlyph.Scope),
         new(AppCommand.ScopeBack, "Back to previous scope", CommandGroup.View, CommandGlyph.Scope, Gesture(Key.Left, KeyModifiers.Alt)),
         new(AppCommand.ClearScope, "Clear scope", CommandGroup.View, CommandGlyph.Scope),
+        new(AppCommand.AddBookmark, "Bookmark current view", CommandGroup.View, CommandGlyph.Bookmark,
+            Gesture(Key.B, KeyModifiers.Control | KeyModifiers.Shift), "★ window and scope"),
+        Jump(1, Key.D1), Jump(2, Key.D2), Jump(3, Key.D3), Jump(4, Key.D4), Jump(5, Key.D5), Jump(6, Key.D6), Jump(7, Key.D7), Jump(8, Key.D8),
+        Jump(9, Key.D9),
     ];
+
+    /// <summary>The command that jumps to bookmark <paramref name="number"/> (1–9: Alt+1…9).</summary>
+    public static AppCommand JumpBookmark(int number) =>
+        number is >= 1 and <= 9 ? (AppCommand)((int)AppCommand.JumpBookmark1 + number - 1) : throw new ArgumentOutOfRangeException(nameof(number), number, "bookmarks 1 to 9 have a jump");
+
+    // "Jump to bookmark n" on Alt+n; the gesture prints as "Alt+n".
+    private static CommandDefinition Jump(int number, Key key) =>
+        new(JumpBookmark(number), "Jump to bookmark " + number.ToString(System.Globalization.CultureInfo.InvariantCulture), CommandGroup.View,
+            CommandGlyph.Bookmark, Gesture(key, KeyModifiers.Alt), InPalette: false);
 
     // The commands the palette offers when a query matches no command title (the package's "812" list), in its order.
     private static readonly AppCommand[] SuggestionOrder =

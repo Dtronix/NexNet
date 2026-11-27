@@ -2,7 +2,8 @@
   Export section as .nntl… (Ctrl+Shift+S): 460 px. RANGE: the document's scope (only while it has one, I43, and then
   the default), then four radio rows (the time window, the selected message's span,
   the traced message's frames, a typed start–end in ms with two mono fields under it), each with its span as the hint;
-  OPTIONS: include the handshake, embed the schema, keep redaction (checked and disabled: always on). The summary line,
+  OPTIONS: include the handshake, embed the schema, keep redaction (checked and disabled: always on), and, while the
+  document has bookmarks, include the bookmarks in range (I44: copied to the exported file's key in the settings). The summary line,
   the error line, then the footer hint, Cancel and the primary Export….
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
@@ -55,6 +56,8 @@
         <CheckBox x:Name="SchemaBox" Content="Include the embedded schema" IsChecked="{Binding IncludeSchema}" />
         <CheckBox x:Name="RedactionBox" Content="Keep redaction (always: secrets stay redacted)" IsChecked="{Binding KeepRedaction, Mode=OneWay}"
                   IsEnabled="False" />
+        <CheckBox x:Name="BookmarksBox" Content="{Binding BookmarksText}" IsChecked="{Binding IncludeBookmarks}" IsVisible="{Binding HasBookmarks}"
+                  ToolTip.Tip="Kept in this app's settings for the exported file; the file itself carries no bookmarks" />
       </StackPanel>
 
       <StackPanel Spacing="4">

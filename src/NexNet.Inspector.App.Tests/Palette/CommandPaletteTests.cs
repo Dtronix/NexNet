@@ -231,7 +231,8 @@ public sealed class CommandPaletteTests
         s.Palette.Open();
 
         await Assert.That(Groups(s.Palette)).IsEquivalentTo(new[] { PaletteGroup.Commands });
-        await Assert.That(Items(s.Palette, PaletteGroup.Commands).Length).IsEqualTo(CommandRegistry.Definitions.Count - 1);
+        // Every command but the palette itself and the shortcut-only ones (Alt+1…9 bookmark jumps).
+        await Assert.That(Items(s.Palette, PaletteGroup.Commands).Length).IsEqualTo(CommandRegistry.Definitions.Count(d => d.InPalette) - 1);
 
         s.Palette.Scope.Value = PaletteScope.Entities;
         int entities;

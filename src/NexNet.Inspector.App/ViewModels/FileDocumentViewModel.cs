@@ -17,6 +17,7 @@ public sealed partial class FileDocumentViewModel : DocumentViewModel
     private int _indexed;
     private int _total;
     private int _state;
+    private readonly RecordingKey _key;
 
     internal FileDocumentViewModel(RecordingFile recording, CaptureSession session, IUiDispatcher ui)
         : base(DocumentKind.File, ui)
@@ -25,9 +26,22 @@ public sealed partial class FileDocumentViewModel : DocumentViewModel
         Session = session;
         Warnings = recording.Warnings;
         Title = recording.Path is { } path ? System.IO.Path.GetFileName(path) : "Recording";
+        try
+        {
+            _key = RecordingKey.Of(recording, session.SessionId);
+        }
+        catch (Exception e) when (e is IOException or NntlFormatException or ArgumentException or ObjectDisposedException)
+        {
+            // An unreadable header cannot key the file: its bookmarks are kept for this run only.
+            _key = RecordingKey.Live(Id, session.SessionId);
+        }
+
         if (recording.Sessions.Count > 1)
             Title += " › " + LiveDocumentViewModel.SessionHex(session.SessionId);
     }
+
+    /// <summary>The recording's key: SHA-256 over its header block, the session and its extent (<see cref="RecordingKey"/>).</summary>
+    public override RecordingKey BookmarkKey => _key;
 
     /// <summary>The recording.</summary>
     public RecordingFile Recording { get; }

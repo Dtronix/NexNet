@@ -248,7 +248,7 @@ public sealed class PaletteSearch
         for (int i = 0; i < definitions.Count; i++)
         {
             CommandDefinition definition = definitions[i];
-            if (definition.Command == AppCommand.CommandPalette) continue;
+            if (definition.Command == AppCommand.CommandPalette || !definition.InPalette) continue;
             Offer(query, Key().Text(definition.Title), i);
         }
 

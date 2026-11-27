@@ -99,7 +99,8 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
 
     /// <summary>Which range is exported.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWindow), nameof(IsMessage), nameof(IsTrace), nameof(IsTyped), nameof(IsScope), nameof(Summary), nameof(SuggestedName))]
+    [NotifyPropertyChangedFor(nameof(IsWindow), nameof(IsMessage), nameof(IsTrace), nameof(IsTyped), nameof(IsScope), nameof(Summary), nameof(SuggestedName),
+        nameof(BookmarksText))]
     public partial ExportRangeKind Range { get; set; }
 
     /// <summary>The time window radio.</summary>
@@ -175,13 +176,43 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
 
     /// <summary>The typed range's start, in ms from the capture's start.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Summary), nameof(SuggestedName))]
+    [NotifyPropertyChangedFor(nameof(Summary), nameof(SuggestedName), nameof(BookmarksText))]
     public partial string FromText { get; set; }
 
     /// <summary>The typed range's end, in ms from the capture's start.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Summary), nameof(SuggestedName))]
+    [NotifyPropertyChangedFor(nameof(Summary), nameof(SuggestedName), nameof(BookmarksText))]
     public partial string ToText { get; set; }
+
+    /// <summary>
+    /// Copy the document's bookmarks that lie in the range to the exported file's recording key (I44). They stay in the
+    /// app's settings: the file carries nothing new (no format change).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IncludeBookmarks { get; set; } = true;
+
+    /// <summary>True when the document has bookmarks (the option shows).</summary>
+    public bool HasBookmarks => _documents.Bookmarks.Get(_document.BookmarkKey).Count > 0;
+
+    /// <summary>"Include bookmarks in range · 2 of 5".</summary>
+    public string BookmarksText
+    {
+        get
+        {
+            var all = _documents.Bookmarks.Get(_document.BookmarkKey);
+            var inRange = 0;
+            if (TryGetRange(out var from, out var to, out _))
+            {
+                foreach (var bookmark in all)
+                {
+                    if (bookmark.Window.Start >= from && bookmark.Window.End <= to)
+                        inRange++;
+                }
+            }
+
+            return "Include bookmarks in range · " + inRange.ToString(CultureInfo.InvariantCulture) + " of " + all.Count.ToString(CultureInfo.InvariantCulture);
+        }
+    }
 
     /// <summary>Write the preamble and greetings too, so the file decodes on its own.</summary>
     [ObservableProperty]
@@ -368,6 +399,8 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
             }
         }).ConfigureAwait(true);
         _documents.AddRecentRecording(full, 1);
+        if (IncludeBookmarks)
+            await _documents.CopyBookmarksToRecordingAsync(_document, full, session.SessionId, new TimeWindow(range.FromTicks, range.ToTicks)).ConfigureAwait(true);
         return result;
     }
 

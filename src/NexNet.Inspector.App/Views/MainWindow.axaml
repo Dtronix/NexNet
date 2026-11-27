@@ -91,6 +91,13 @@
       <shell:SessionPopover x:Name="SessionPopover" />
     </Popup>
 
+    <!-- The bookmarks dropdown under the title bar's ★ (I44). -->
+    <Popup x:Name="BookmarksPopup" DataContext="{Binding Chrome.Bookmarks}" x:DataType="vm:BookmarksViewModel"
+           IsOpen="{Binding IsOpen, Mode=TwoWay}" Placement="BottomEdgeAlignedRight"
+           VerticalOffset="6" IsLightDismissEnabled="True" ShouldUseOverlayLayer="True" WindowManagerAddShadowHint="False">
+      <shell:BookmarksPopover x:Name="BookmarksPopover" />
+    </Popup>
+
     <!-- The command palette over the whole window, title bar included (56 px from the window top). -->
     <Panel Grid.RowSpan="2" IsVisible="{Binding Palette.IsOpen}">
       <palette:CommandPalette x:Name="Palette" DataContext="{Binding Palette}" />

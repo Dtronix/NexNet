@@ -58,6 +58,9 @@ public sealed partial class MainWindow : Window
             if (DataContext is MainWindowViewModel { Chrome.Session.IsChoosing: true })
                 Avalonia.Threading.Dispatcher.UIThread.Post(SessionPopover.FocusFirstRow, Avalonia.Threading.DispatcherPriority.Loaded);
         };
+        BookmarksPopup.PlacementTarget = TitleBar.BookmarksAnchor;
+        BookmarksPopup.Opened += (_, _) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(BookmarksPopover.FocusInitial, Avalonia.Threading.DispatcherPriority.Loaded);
         SessionPopup.Closed += (_, _) =>
         {
             // Closed over an open dialog (a pick, Esc): the keyboard goes back into the dialog.

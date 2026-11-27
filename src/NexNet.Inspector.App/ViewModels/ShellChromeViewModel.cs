@@ -20,6 +20,7 @@ public sealed partial class ShellChromeViewModel : ObservableObject
         Workspace = new EnumChoice<Workspace>([(Model.Workspace.Inspect, "Inspect"), (Model.Workspace.Compare, "Compare")], Model.Workspace.Inspect);
         Session = new SessionAreaViewModel(documents);
         TimeWindow = new TimeWindowReadoutViewModel(documents);
+        Bookmarks = new BookmarksViewModel(documents);
         Workspace.ValueChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(IsCompare));
@@ -32,6 +33,9 @@ public sealed partial class ShellChromeViewModel : ObservableObject
 
     /// <summary>The − range + readout.</summary>
     public TimeWindowReadoutViewModel TimeWindow { get; }
+
+    /// <summary>The ★ button and its bookmarks dropdown (I44).</summary>
+    public BookmarksViewModel Bookmarks { get; }
 
     /// <summary>The open documents, the active one and Ctrl+Tab order.</summary>
     public DocumentsViewModel Documents { get; }

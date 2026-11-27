@@ -69,6 +69,23 @@ public abstract partial class DocumentViewModel : ObservableObject, IAsyncDispos
     /// <returns>False when the document was not scoped.</returns>
     public bool ClearScopes() => Scopes.Clear();
 
+    private RecordingKey _liveKey;
+
+    /// <summary>
+    /// The recording key its bookmarks are kept under (I44): a file session's persistent key, or for a live document an
+    /// in-memory key of this tab and its attached session (empty while nothing is attached).
+    /// </summary>
+    public virtual RecordingKey BookmarkKey
+    {
+        get
+        {
+            if (Session is not { } session) return default;
+            RecordingKey key = RecordingKey.Live(Id, session.SessionId);
+            if (key != _liveKey) _liveKey = key;
+            return _liveKey;
+        }
+    }
+
     /// <summary>Raised on the UI thread after a refresh that saw new data or a new state.</summary>
     public event Action<DocumentViewModel>? DataChanged;
 

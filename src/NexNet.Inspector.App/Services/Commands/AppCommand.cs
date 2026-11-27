@@ -74,6 +74,36 @@ public enum AppCommand : byte
 
     /// <summary>Clears every scope of the active document (the chip's ✕).</summary>
     ClearScope,
+
+    /// <summary>Bookmarks the current view, its window and scope, and opens the ★ list to name it (Ctrl+Shift+B).</summary>
+    AddBookmark,
+
+    /// <summary>Jumps to the first bookmark: its window and scope (Alt+1).</summary>
+    JumpBookmark1,
+
+    /// <summary>Jumps to the second bookmark (Alt+2).</summary>
+    JumpBookmark2,
+
+    /// <summary>Jumps to the third bookmark (Alt+3).</summary>
+    JumpBookmark3,
+
+    /// <summary>Jumps to the fourth bookmark (Alt+4).</summary>
+    JumpBookmark4,
+
+    /// <summary>Jumps to the fifth bookmark (Alt+5).</summary>
+    JumpBookmark5,
+
+    /// <summary>Jumps to the sixth bookmark (Alt+6).</summary>
+    JumpBookmark6,
+
+    /// <summary>Jumps to the seventh bookmark (Alt+7).</summary>
+    JumpBookmark7,
+
+    /// <summary>Jumps to the eighth bookmark (Alt+8).</summary>
+    JumpBookmark8,
+
+    /// <summary>Jumps to the ninth bookmark (Alt+9).</summary>
+    JumpBookmark9,
 }
 
 /// <summary>The app menu's section a command belongs to (inspect-app-menu: FILE, SESSION, VIEW, then help).</summary>
@@ -133,4 +163,7 @@ public enum CommandGlyph : byte
 
     /// <summary>A document scope (filter to a time range).</summary>
     Scope,
+
+    /// <summary>A bookmark (★).</summary>
+    Bookmark,
 }

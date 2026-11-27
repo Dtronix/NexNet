@@ -181,6 +181,17 @@ public sealed class LegendSwatch : Decorator
             case LegendSymbol.RecordAllPill:
                 Pill(context, palette, "ALL · 3");
                 break;
+            case LegendSymbol.Bookmarks:
+            {
+                // As the title bar draws its ★ group: border.default edge, the accent ★, the count, ▾.
+                TextLayout star = Layout(palette, "★", 10, ThemeBrush.AccentTrace, FontWeight.Normal, mono: true);
+                TextLayout count = Layout(palette, "3 ▾", 10, ThemeBrush.TextPrimary, FontWeight.Normal, mono: true);
+                double width = 12 + star.Width + 4 + count.Width;
+                context.DrawRectangle(null, palette.Pen(ThemeBrush.BorderDefault, 1), new RoundedRect(new Rect(0.5, 1.5, width, H - 3), 4));
+                star.Draw(context, new Point(6, (H - star.Height) / 2));
+                count.Draw(context, new Point(10 + star.Width, (H - count.Height) / 2));
+                break;
+            }
             case LegendSymbol.ScopeChip:
             {
                 // As the title bar draws it: accent.trace-band fill and accent.trace edge, the depth, the range, ✕.

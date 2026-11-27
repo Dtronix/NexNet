@@ -43,7 +43,11 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         _store = store;
         _time = time ?? TimeProvider.System;
         Sync = new SyncBus(ui) { TraceResolver = ResolveTrace };
+        Bookmarks = new BookmarkStore(store, _time);
     }
+
+    /// <summary>Every recording's bookmarks (I44): the ★ list, Ctrl+Shift+B and Alt+1…9 read the active document's.</summary>
+    public BookmarkStore Bookmarks { get; }
 
     /// <summary>The clock of recents, the probe debounce and the live REC timer.</summary>
     internal TimeProvider Time => _time;
@@ -366,6 +370,84 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         if (document is LiveDocumentViewModel live)
             live.MarkSaved(full, version);
         _store?.Update(s => s.WithRecentFile(full, 1, _time.GetUtcNow()));
+        await CopyBookmarksToRecordingAsync(document, full, session.SessionId).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Re-keys a document's bookmarks to a recording written from it (Save, Export section): the written file's key is
+    /// read from the file (<see cref="RecordingKey.Of(string, long)"/>) and the bookmarks are copied there, only those
+    /// inside <paramref name="within"/> when it is set. The recording carries nothing new: no format change (D3).
+    /// </summary>
+    /// <returns>How many were copied; 0 when there were none, or the file could not be keyed.</returns>
+    public async Task<int> CopyBookmarksToRecordingAsync(DocumentViewModel document, string path, long sessionId, TimeWindow within = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        RecordingKey from = document.BookmarkKey;
+        if (Bookmarks.Get(from).Count == 0)
+            return 0;
+
+        RecordingKey to;
+        try
+        {
+            to = await Task.Run(() => RecordingKey.Of(path, sessionId)).ConfigureAwait(true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NntlFormatException or ArgumentException)
+        {
+            // The file was written; only its bookmarks are lost.
+            return 0;
+        }
+
+        return Bookmarks.CopyTo(from, to, within);
+    }
+
+    /// <summary>True when the active document can be bookmarked: it holds a session and a window shows.</summary>
+    public bool CanBookmark => Active is { Session: not null } document && !Sync.Window.IsEmpty && Bookmarks.CanAdd(document.BookmarkKey);
+
+    /// <summary>The active document's bookmarks, in the ★ list's order (Alt+1…9 jump to the first nine).</summary>
+    public IReadOnlyList<ViewBookmark> ActiveBookmarks => Active is { } document ? Bookmarks.Get(document.BookmarkKey) : [];
+
+    /// <summary>
+    /// Ctrl+Shift+B: bookmarks the active document's current view, its window and scope, named
+    /// <paramref name="name"/> or, by default, the formatted range ("1,240.0 – 1,290.0 ms").
+    /// </summary>
+    /// <returns>The bookmark; null when there is nothing to bookmark or the recording keeps the most it can.</returns>
+    public ViewBookmark? AddBookmark(string? name = null)
+    {
+        if (!CanBookmark || Active is not { Session: { } session } document)
+            return null;
+        var window = Sync.Window;
+        var bookmark = new ViewBookmark(ViewBookmark.CleanName(name) ?? TimeWindowReadoutViewModel.Format(window, session.StartTicks, document.Frequency),
+            window, document.Scope, _time.GetUtcNow());
+        return Bookmarks.Add(document.BookmarkKey, bookmark) ? bookmark : null;
+    }
+
+    /// <summary>
+    /// Alt+1…9 and a click in the ★ list: shows bookmark <paramref name="index"/> of the active document again. Its scope,
+    /// if it has one, is pushed (nested when it lies inside the current scope, else after clearing the scopes); a bookmark
+    /// without a scope keeps the current scope when its window fits inside it, else clears it. Then the window is restored
+    /// and following the live edge stops.
+    /// </summary>
+    /// <returns>False when the active document has no such bookmark.</returns>
+    public bool JumpToBookmark(int index)
+    {
+        if (Active is not { Session: not null } document)
+            return false;
+        var list = Bookmarks.Get(document.BookmarkKey);
+        if ((uint)index >= (uint)list.Count)
+            return false;
+
+        var bookmark = list[index];
+        var outer = bookmark.Scope?.Window ?? bookmark.Window;
+        if (document.Scope is { } current && (outer.Start < current.Start || outer.End > current.End))
+            document.ClearScopes();
+        if (bookmark.Scope is { } scope && (document.Scope is not { } now || now.Start != scope.Start || now.End != scope.End))
+            PushScope(scope);
+
+        if (Sync.FollowLive)
+            Sync.SetFollowLive(false);
+        Sync.SetWindow(bookmark.Window);
+        return true;
     }
 
     /// <summary>"server-0x3A21-20261123-120400.nntl": the side, the session and when it was saved.</summary>
@@ -423,6 +505,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         document.SavedPlayhead = live.SavedPlayhead;
 
         document.Scopes.CopyFrom(live.Scopes);
+        Bookmarks.CopyTo(live.BookmarkKey, document.BookmarkKey);
         document.DataChanged += OnDocumentChanged;
         Documents.Insert(index, document);
         OnDocumentAdded(document);
@@ -474,6 +557,8 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     // Takes a document out of the tabs; the next most recent becomes active when it was.
     private void Remove(DocumentViewModel document)
     {
+        // A live tab's bookmarks live in memory: they go with it (a save copied them to its file).
+        Bookmarks.Forget(document.BookmarkKey);
         Documents.Remove(document);
         _recent.Remove(document);
         document.DataChanged -= OnDocumentChanged;

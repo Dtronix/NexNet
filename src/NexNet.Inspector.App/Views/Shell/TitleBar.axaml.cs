@@ -26,6 +26,9 @@ public sealed partial class TitleBar : UserControl
     /// <summary>Where the application menu opens: under the logo button.</summary>
     public Control AppMenuAnchor => LogoButton;
 
+    /// <summary>Where the bookmarks dropdown opens: under the ★ button.</summary>
+    public Control BookmarksAnchor => BookmarksGroup;
+
     /// <summary>Where the session popover opens: under the connection group.</summary>
     public Control SessionAnchor => ConnectionGroup;
 
