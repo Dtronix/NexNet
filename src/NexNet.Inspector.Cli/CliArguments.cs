@@ -13,9 +13,6 @@ internal sealed class CliArguments
     public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan DefaultWait = TimeSpan.FromSeconds(30);
 
-    private const CliOption ConnectOptions =
-        CliOption.Endpoint | CliOption.Token | CliOption.Insecure | CliOption.ServerName | CliOption.ConnectTimeout;
-
     public CliCommand Command { get; private set; }
 
     /// <summary>The command <c>help</c> asks about; <see cref="CliCommand.None"/> for the overview.</summary>
@@ -60,8 +57,11 @@ internal sealed class CliArguments
 
     public bool Messages => Has(CliOption.Messages);
 
-    /// <summary>The recording file of <c>info</c> and <c>repair</c>.</summary>
-    public string? File { get; private set; }
+    /// <summary>The recording file of <c>info</c> and <c>repair</c>: the first bare argument.</summary>
+    public string? File => Positionals.Count > 0 ? Positionals[0] : null;
+
+    /// <summary>Bare arguments after the verb, up to the command's <see cref="CliCommandSpec.Positionals"/>.</summary>
+    public List<string> Positionals { get; } = [];
 
     public bool Has(CliOption option) => (Given & option) != 0;
 
@@ -111,9 +111,9 @@ internal sealed class CliArguments
             var arg = args[i];
             if (arg.Length < 2 || arg[0] != '-')
             {
-                if (command is CliCommand.Info or CliCommand.Repair && parsed.File is null)
+                if (parsed.Positionals.Count < (CliCommands.Get(command)?.Positionals ?? 0))
                 {
-                    parsed.File = arg;
+                    parsed.Positionals.Add(arg);
                     continue;
                 }
 
@@ -254,42 +254,12 @@ internal sealed class CliArguments
         return true;
     }
 
-    public static string Name(CliCommand command) => command switch
-    {
-        CliCommand.List => "list",
-        CliCommand.Record => "record",
-        CliCommand.Info => "info",
-        CliCommand.Repair => "repair",
-        CliCommand.Help => "help",
-        CliCommand.Version => "version",
-        _ => "",
-    };
+    public static string Name(CliCommand command) => CliCommands.Get(command)?.Name ?? "";
 
-    /// <summary>Options each command accepts.</summary>
-    public static CliOption Allowed(CliCommand command) => command switch
-    {
-        CliCommand.List => ConnectOptions,
-        CliCommand.Record => ConnectOptions | CliOption.Session | CliOption.Duration | CliOption.Out | CliOption.Overflow
-                             | CliOption.IncludeSecrets | CliOption.NoSnapshot | CliOption.Wait | CliOption.Force,
-        CliCommand.Info => CliOption.Json | CliOption.Messages,
-        CliCommand.Repair => CliOption.Force,
-        _ => CliOption.None,
-    };
+    /// <summary>Options each command accepts (<see cref="CliCommands.All"/>).</summary>
+    public static CliOption Allowed(CliCommand command) => CliCommands.Get(command)?.Allowed ?? CliOption.None;
 
-    private static bool TryParseCommand(string text, out CliCommand command)
-    {
-        command = text switch
-        {
-            "list" => CliCommand.List,
-            "record" => CliCommand.Record,
-            "info" => CliCommand.Info,
-            "repair" => CliCommand.Repair,
-            "help" => CliCommand.Help,
-            "version" => CliCommand.Version,
-            _ => CliCommand.None,
-        };
-        return command != CliCommand.None;
-    }
+    private static bool TryParseCommand(string text, out CliCommand command) => CliCommands.TryParse(text, out command);
 
     private static CliOption ParseOptionName(ReadOnlySpan<char> name) => name switch
     {

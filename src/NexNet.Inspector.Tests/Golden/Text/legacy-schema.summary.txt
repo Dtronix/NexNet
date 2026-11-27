@@ -1,0 +1,29 @@
+@0x19F580318 server tcp 127.0.0.1:49952 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.313Z
+frames 24 ops 23 in 268B out 186B duration 6.5ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=6968312600
+calls 6 ok 2 oneway 4
+  <SendMessage ×2 ok 2 p50 0.0ms max 1.1ms
+  >ReceiveMessage ×2 oneway 2
+  <UploadFile ×1 oneway 1
+  <Users ×1 oneway 1
+pipes 2
+  ☰1·1 Users by #0 open in 0B out 29B items 3 v1
+  ⇄2·2 by #0.3 closed in 13B out 0B
+gaps 0
+noise ping ×0 credit ×0 window ×2
++6.5 END Graceful from client
+
+@0x275064278 server tcp 127.0.0.1:49953 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.527Z
+frames 24 ops 23 in 268B out 194B duration 2.0ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=10553279096
+calls 6 ok 2 oneway 4
+  <SendMessage ×2 ok 2 p50 0.0ms max 0.1ms
+  >ReceiveMessage ×2 oneway 2
+  <UploadFile ×1 oneway 1
+  <Users ×1 oneway 1
+pipes 2
+  ☰1·1 Users by #0 open in 0B out 37B items 3 v2
+  ⇄2·2 by #0.3 closed in 13B out 0B
+gaps 0
+noise ping ×0 credit ×0 window ×2
++2.0 END Graceful from client

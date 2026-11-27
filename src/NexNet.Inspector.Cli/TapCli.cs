@@ -35,33 +35,19 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
             return (int)ExitCode.Usage;
         }
 
-        var code = parsed.Command switch
-        {
-            CliCommand.List => await new ListCommand(this).RunAsync(parsed, cancellationToken).ConfigureAwait(false),
-            CliCommand.Record => await new RecordCommand(this).RunAsync(parsed, cancellationToken).ConfigureAwait(false),
-            CliCommand.Info => InfoCommand.Run(this, parsed),
-            CliCommand.Repair => RepairCommand.Run(this, parsed),
-            CliCommand.Version => WriteVersion(),
-            _ => WriteUsage(parsed.HelpTopic),
-        };
+        var spec = CliCommands.Get(parsed.Command) ?? CliCommands.Get(CliCommand.Help)!;
+        var code = await spec.Run(this, parsed, cancellationToken).ConfigureAwait(false);
         return (int)code;
     }
 
     /// <summary>Writes the usage text: the overview, or one command's options.</summary>
     public ExitCode WriteUsage(CliCommand topic)
     {
-        Output.Write(topic switch
-        {
-            CliCommand.List => ListUsage,
-            CliCommand.Record => RecordUsage,
-            CliCommand.Info => InfoUsage,
-            CliCommand.Repair => RepairUsage,
-            _ => Overview,
-        });
+        Output.Write(CliCommands.Get(topic)?.Usage ?? Overview);
         return ExitCode.Ok;
     }
 
-    private ExitCode WriteVersion()
+    public ExitCode WriteVersion()
     {
         Output.WriteLine($"nexnet-tap: inspector API v{NexusInspector.ApiVersion}, .nntl format v{NntlFormat.Version}");
         return ExitCode.Ok;
@@ -113,7 +99,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
 
         """ + ExitCodes;
 
-    private static readonly string ListUsage = """
+    internal static readonly string ListUsage = """
         Usage: nexnet-tap list --endpoint <addr> [options]
 
         Shows the endpoint's role, recording policy and schema hash, then one line per live session.
@@ -122,7 +108,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
 
         """ + ConnectHelp + Durations + ExitCodes;
 
-    private static readonly string RecordUsage = """
+    internal static readonly string RecordUsage = """
         Usage: nexnet-tap record --endpoint <addr> --session <id|first|all> --out <file.nntl> [options]
 
         Records until Ctrl+C, --duration, or the recorded session closes, then waits for the endpoint's close blocks
@@ -143,7 +129,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
 
         """ + ConnectHelp + Durations + ExitCodes;
 
-    private static readonly string InfoUsage = """
+    internal static readonly string InfoUsage = """
         Usage: nexnet-tap info <file.nntl> [--json] [--messages]
 
         Summarises a recording: format version, wall-clock anchor, producer, where the index came from (footer or scan)
@@ -157,7 +143,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
 
         """ + ExitCodes;
 
-    private static readonly string RepairUsage = """
+    internal static readonly string RepairUsage = """
         Usage: nexnet-tap repair <file.nntl> [--force]
 
         Rebuilds the index footer in place: cuts off a torn tail and any old footer, then writes a fresh index. A file

@@ -1,0 +1,20 @@
+@0x21C3F08FC server tcp 127.0.0.1:49944 schema ChatServerNexus#df237d00 t0=2026-11-23T21:41:51.833Z
+frames 541 ops 594 in 319.6KB out 75.2KB duration 282.6ms
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=9063827708
+calls 14 ok 5 cancel 1 oneway 8
+  <SendMessage ×4 ok 3 cancel 1 p50 0.1ms max 24.1ms
+  >ReceiveMessage ×3 oneway 3
+  <TailLogs ×2 oneway 2
+  <UploadFile ×2 oneway 2
+  <Join ×1 ok 1 p50 0.1ms max 0.1ms
+  <SendAttachment ×1 ok 1 p50 26.0ms max 26.0ms
+  <Users ×1 oneway 1
+pipes 5
+  ☰1·1 Users by #0 open in 0B out 28B items 3 v1
+  ⇄2·2 by #0.3 closed in 2.0KB out 0B
+  ⇄3·3 by #0.4 closed in 24.0KB out 0B
+  ≋4·4 LogLine by #0.6 closed in 0B out 1.9KB items 12
+  ≋5·5 LogLine by #0.7 open in 0B out 70.6KB items 449
+gaps 4 in 2 ops 10B out 322 ops 52.1KB (Drop)
+noise ping ×20 credit ×0 window ×5
++282.6 END Graceful from client

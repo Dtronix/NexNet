@@ -1,0 +1,53 @@
+@0x1 client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=9063827708
++0.4 >#0 Users(pipe:1) (oneway)
++0.5 <☰1·1 open Users by #0
++0.5 >window ☰1·1
++0.7 <☰1·1 Users ResetStart v0 n=0
++1.6 <☰1·1 Users ResetComplete
++1.7 >#1 Join("ada") -> ok 9063827708 "ada" Online 0.2ms
++1.9 <☰1·1 Users Insert v1 @0 9063827708
++1.9 >#2 SendMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++2.1 <#0.2 ReceiveMessage({"general" "ada" "hello everyone" 2026-11-22T12:04:00.0000000Z}) (oneway)
++2.1 >#3 SendMessage({"general" "ada" "/slow typing…" 2026-11-22T12:04:00.0000000Z}) -> canceled 24.2ms
++10.2 ping ×3 (span 15.6ms)
++26.0 >#0.3 UploadFile("avatar.png", pipe:2) (oneway)
++26.2 <ping
++26.2 <⇄2·2 open by #0.3
++26.3 >window ⇄2·2
++26.3 >⇄2·2 data 2.0KB
++26.3 >⇄2·2 client done
++26.7 <⇄2·2 complete
++26.8 >⇄2·2 complete
++26.8 >#0.4 UploadFile("trace.bin", pipe:3) (oneway)
++26.9 <⇄3·3 open by #0.4
++26.9 >window ⇄3·3
++27.0 >⇄3·3 data 4.0KB
++27.5 >#4 SendAttachment(293.0KB, 5 chunks) -> ok 300000 3109464606 "chat://general/screenshot.png" 26.1ms
++32.6 >⇄3·3 data ×3 12.0KB (span 10.3ms)
++42.9 ping ×2 (span 0.1ms)
++48.0 >⇄3·3 data ×2 8.0KB (span 5.0ms)
++53.1 >⇄3·3 client done
++53.3 <⇄3·3 complete
++53.3 >⇄3·3 complete
++53.6 >#5 SendMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++53.7 <#0.5 ReceiveMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++53.8 >#0.6 TailLogs(Info, 12, pipe:4) (oneway)
++53.9 <≋4·4 open LogLine by #0.6
++53.9 >window ≋4·4
++53.9 <≋4·4 LogLine ×12 0 Info "chat.rooms" "chat.rooms event 0: room genera…" (…11 more)
++53.9 <≋4·4 server done
++54.0 <≋4·4 complete
++54.0 >≋4·4 complete
++54.0 >#0.7 TailLogs(Trace, 768, pipe:5) (oneway)
++54.1 <≋5·5 open LogLine by #0.7
++54.1 >window ≋5·5
++54.2 <≋5·5 LogLine ×768 0 Trace "chat.rooms" "chat.rooms event 0: room genera…" (…767 more)
++56.2 <≋5·5 server done
++56.2 <≋5·5 complete
++56.2 >≋5·5 complete
++56.2 ping ×29 (span 225.3ms)
++281.7 >#6 SendMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.5ms
++281.7 <ping
++282.1 <#0.8 ReceiveMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++487.7 END Graceful from client

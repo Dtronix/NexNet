@@ -1,0 +1,53 @@
+{"k":"hdr","id":"@0x1","v":"client tcp 127.0.0.1:49943 schema ChatClientNexus#9a68b8ec t0=2026-11-23T21:41:51.833Z"}
+{"k":"hs","t":0.3,"v":"v1 token=redacted(sha256:f6c4b35f…) id=9063827708","r":"ok"}
+{"k":"call","t":0.4,"d":">","id":"#0","n":"Users","v":"pipe:1","r":"oneway","b":2,"f":5}
+{"k":"pipe","t":0.5,"d":"<","id":"☰1·1","v":"open Users by #0","f":6}
+{"k":"noise","t":0.5,"d":">","n":"window","v":"window ☰1·1","f":7}
+{"k":"coll","t":0.7,"d":"<","id":"☰1·1","n":"Users","v":"ResetStart v0 n=0","b":7,"f":8}
+{"k":"coll","t":1.6,"d":"<","id":"☰1·1","n":"Users","v":"ResetComplete","b":5,"f":9}
+{"k":"call","t":1.7,"d":">","id":"#1","n":"Join","v":"\"ada\"","r":"ok","rv":"9063827708 \"ada\" Online","ms":0.2,"b":5,"f":10}
+{"k":"coll","t":1.9,"d":"<","id":"☰1·1","n":"Users","v":"Insert v1 @0 9063827708","b":16,"f":12}
+{"k":"call","t":1.9,"d":">","id":"#2","n":"SendMessage","v":"{\"general\" \"ada\" \"hello everyone\" 2026-11-22T12:04:00.0000000Z}","r":"ok","rv":"true","ms":0.1,"b":38,"f":13}
+{"k":"call","t":2.1,"d":"<","id":"#0.2","n":"ReceiveMessage","v":"{\"general\" \"ada\" \"hello everyone\" 2026-11-22T12:04:00.0000000Z}","r":"oneway","b":38,"f":14}
+{"k":"call","t":2.1,"d":">","id":"#3","n":"SendMessage","v":"{\"general\" \"ada\" \"/slow typing…\" 2026-11-22T12:04:00.0000000Z}","r":"canceled","ms":24.2,"b":39,"f":16}
+{"k":"noise","t":10.2,"v":"ping ×3","x":3,"sp":15.6,"f":17}
+{"k":"call","t":26,"d":">","id":"#0.3","n":"UploadFile","v":"\"avatar.png\", pipe:2","r":"oneway","b":13,"f":21}
+{"k":"noise","t":26.2,"d":"<","n":"ping","v":"ping","f":22}
+{"k":"pipe","t":26.2,"d":"<","id":"⇄2·2","v":"open by #0.3","f":23}
+{"k":"noise","t":26.3,"d":">","n":"window","v":"window ⇄2·2","f":25}
+{"k":"data","t":26.3,"d":">","id":"⇄2·2","b":2048,"f":26}
+{"k":"pipe","t":26.3,"d":">","id":"⇄2·2","v":"client done","f":27}
+{"k":"pipe","t":26.7,"d":"<","id":"⇄2·2","v":"complete","f":28}
+{"k":"pipe","t":26.8,"d":">","id":"⇄2·2","v":"complete","f":29}
+{"k":"call","t":26.8,"d":">","id":"#0.4","n":"UploadFile","v":"\"trace.bin\", pipe:3","r":"oneway","b":12,"f":30}
+{"k":"pipe","t":26.9,"d":"<","id":"⇄3·3","v":"open by #0.4","f":31}
+{"k":"noise","t":26.9,"d":">","n":"window","v":"window ⇄3·3","f":32}
+{"k":"data","t":27,"d":">","id":"⇄3·3","b":4096,"f":33}
+{"k":"call","t":27.5,"d":">","id":"#4","n":"SendAttachment","v":"293.0KB, 5 chunks","r":"ok","rv":"300000 3109464606 \"chat://general/screenshot.png\"","ms":26.1,"b":300044,"f":34}
+{"k":"data","t":32.6,"d":">","id":"⇄3·3","to":"⇄3·3","x":3,"sp":10.3,"b":12288,"f":36}
+{"k":"noise","t":42.9,"v":"ping ×2","x":2,"sp":0.1,"f":41}
+{"k":"data","t":48,"d":">","id":"⇄3·3","to":"⇄3·3","x":2,"sp":5,"b":8192,"f":44}
+{"k":"pipe","t":53.1,"d":">","id":"⇄3·3","v":"client done","f":47}
+{"k":"pipe","t":53.3,"d":"<","id":"⇄3·3","v":"complete","f":48}
+{"k":"pipe","t":53.3,"d":">","id":"⇄3·3","v":"complete","f":49}
+{"k":"call","t":53.6,"d":">","id":"#5","n":"SendMessage","v":"{\"general\" \"ada\" \"logs, anyone?\" 2026-11-22T12:04:00.0000000Z}","r":"ok","rv":"true","ms":0.1,"b":37,"f":51}
+{"k":"call","t":53.7,"d":"<","id":"#0.5","n":"ReceiveMessage","v":"{\"general\" \"ada\" \"logs, anyone?\" 2026-11-22T12:04:00.0000000Z}","r":"oneway","b":37,"f":52}
+{"k":"call","t":53.8,"d":">","id":"#0.6","n":"TailLogs","v":"Info, 12, pipe:4","r":"oneway","b":4,"f":54}
+{"k":"pipe","t":53.9,"d":"<","id":"≋4·4","v":"open LogLine by #0.6","f":55}
+{"k":"noise","t":53.9,"d":">","n":"window","v":"window ≋4·4","f":56}
+{"k":"item","t":53.9,"d":"<","id":"≋4·4","to":"≋4·4","n":"LogLine","v":"0 Info \"chat.rooms\" \"chat.rooms event 0: room genera…\"","x":12,"sp":0,"b":1900,"f":57}
+{"k":"pipe","t":53.9,"d":"<","id":"≋4·4","v":"server done","f":69}
+{"k":"pipe","t":54,"d":"<","id":"≋4·4","v":"complete","f":70}
+{"k":"pipe","t":54,"d":">","id":"≋4·4","v":"complete","f":71}
+{"k":"call","t":54,"d":">","id":"#0.7","n":"TailLogs","v":"Trace, 768, pipe:5","r":"oneway","b":6,"f":72}
+{"k":"pipe","t":54.1,"d":"<","id":"≋5·5","v":"open LogLine by #0.7","f":73}
+{"k":"noise","t":54.1,"d":">","n":"window","v":"window ≋5·5","f":74}
+{"k":"item","t":54.2,"d":"<","id":"≋5·5","to":"≋5·5","n":"LogLine","v":"0 Trace \"chat.rooms\" \"chat.rooms event 0: room genera…\"","x":768,"sp":2,"b":124099,"f":75}
+{"k":"pipe","t":56.2,"d":"<","id":"≋5·5","v":"server done","f":843}
+{"k":"pipe","t":56.2,"d":"<","id":"≋5·5","v":"complete","f":844}
+{"k":"pipe","t":56.2,"d":">","id":"≋5·5","v":"complete","f":845}
+{"k":"noise","t":56.2,"v":"ping ×29","x":29,"sp":225.3,"f":846}
+{"k":"call","t":281.7,"d":">","id":"#6","n":"SendMessage","v":"{\"general\" \"ada\" \"bye\" 2026-11-22T12:04:00.0000000Z}","r":"ok","rv":"true","ms":0.5,"b":27,"f":875}
+{"k":"noise","t":281.7,"d":"<","n":"ping","v":"ping","f":876}
+{"k":"call","t":282.1,"d":"<","id":"#0.8","n":"ReceiveMessage","v":"{\"general\" \"ada\" \"bye\" 2026-11-22T12:04:00.0000000Z}","r":"oneway","b":27,"f":877}
+{"k":"end","t":487.7,"n":"client","r":"Graceful"}

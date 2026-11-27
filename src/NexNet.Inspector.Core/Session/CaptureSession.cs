@@ -15,7 +15,11 @@ public readonly record struct FrameKey(TapDirection Direction, long Seq);
 /// <summary>Where a gap block sits: its capture-order key and the stream offset of the first byte it lost.</summary>
 /// <param name="Source">The gap's capture-order key (see <see cref="CaptureSession.AddOp"/>).</param>
 /// <param name="Offset">The direction's stream offset when the gap arrived.</param>
-public readonly record struct GapMark(long Source, long Offset);
+/// <param name="FrameIndex">
+/// How many frames <see cref="CaptureSession.FrameOrder"/> held once the gap was applied (the frame it cut included):
+/// the gap sits before the frame at this index in capture order.
+/// </param>
+public readonly record struct GapMark(long Source, long Offset, int FrameIndex = 0);
 
 /// <summary>
 /// One captured session as the viewer holds it: the op stores of both directions, a frame parser per direction, the
@@ -213,7 +217,7 @@ public sealed class CaptureSession
 
         _gaps.Add(gap);
         var store = GetStore(gap.Direction);
-        _gapMarks.Add(new GapMark(source, store.EndOffset));
+        var offset = store.EndOffset;
         var parser = GetParser(gap.Direction);
         if (parser is null)
         {
@@ -227,6 +231,7 @@ public sealed class CaptureSession
             parser.Gap(gap.DroppedBytes, new Sink(this));
         }
 
+        _gapMarks.Add(new GapMark(source, offset, _order.Count));
         Assembler.Gap(gap.Direction);
         Touch(gap.ToTicks);
     }

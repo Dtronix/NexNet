@@ -1,0 +1,53 @@
+@0x19F580318 server tcp 127.0.0.1:49952 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.313Z
++0.1 >f1 Preamble v1 8B
++0.1 <f2 Preamble v1 8B
++0.2 <f3 ClientGreeting token redacted 119B R
++0.9 >f4 ServerGreeting id=6968312600 27B
++1.7 <f5 Invocation #0 Users 9B
++3.0 >f6 DuplexPipeUpdateState ☰1·1 Users ready 13B
++3.2 <window ☰1·1
++3.2 >f8 DuplexPipeWrite ☰1·1 Users 12B
++3.3 >f9 DuplexPipeWrite ☰1·1 Users 22B
++3.3 >f10 DuplexPipeWrite ☰1·1 Users 10B
++3.8 <f11 Invocation #1 SendMessage 30B
++4.7 >f12 Invocation #0.2 ReceiveMessage 30B
++4.9 >f13 InvocationResult #1 SendMessage ok 7B
++5.2 <f14 Invocation #0.3 UploadFile 19B
++5.4 >f15 DuplexPipeUpdateState ⇄2·2 ready 13B
++5.5 <window ⇄2·2
++5.5 <f17 DuplexPipeWrite ⇄2·2 18B
++5.7 <f18 DuplexPipeUpdateState ⇄2·2 client done 9B
++5.9 >f19 DuplexPipeUpdateState ⇄2·2 complete 9B
++6.0 <f20 DuplexPipeUpdateState ⇄2·2 complete 9B
++6.0 <f21 Invocation #2 SendMessage 28B
++6.1 >f22 Invocation #0.4 ReceiveMessage 28B
++6.1 >f23 InvocationResult #2 SendMessage ok 7B
++6.2 <f24 DisconnectGraceful 1B
++6.5 END Graceful from client
+
+@0x275064278 server tcp 127.0.0.1:49953 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.527Z
++0.0 >f1 Preamble v1 8B
++0.1 <f2 Preamble v1 8B
++0.1 <f3 ClientGreeting token redacted 119B R
++0.2 >f4 ServerGreeting id=10553279096 27B
++0.4 <f5 Invocation #0 Users 9B
++0.4 >f6 DuplexPipeUpdateState ☰1·1 Users ready 13B
++0.5 <window ☰1·1
++0.5 >f8 DuplexPipeWrite ☰1·1 Users 12B
++0.6 >f9 DuplexPipeWrite ☰1·1 Users 30B
++0.6 >f10 DuplexPipeWrite ☰1·1 Users 10B
++0.8 <f11 Invocation #1 SendMessage 30B
++0.8 >f12 Invocation #0.2 ReceiveMessage 30B
++0.8 >f13 InvocationResult #1 SendMessage ok 7B
++0.9 <f14 Invocation #0.3 UploadFile 19B
++0.9 >f15 DuplexPipeUpdateState ⇄2·2 ready 13B
++1.1 <window ⇄2·2
++1.1 <f17 DuplexPipeWrite ⇄2·2 18B
++1.1 <f18 DuplexPipeUpdateState ⇄2·2 client done 9B
++1.7 >f19 DuplexPipeUpdateState ⇄2·2 complete 9B
++1.8 <f20 DuplexPipeUpdateState ⇄2·2 complete 9B
++1.8 <f21 Invocation #2 SendMessage 28B
++1.9 >f22 Invocation #0.4 ReceiveMessage 28B
++1.9 >f23 InvocationResult #2 SendMessage ok 7B
++2.0 <f24 DisconnectGraceful 1B
++2.0 END Graceful from client

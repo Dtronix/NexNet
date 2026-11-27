@@ -1,0 +1,59 @@
+@0x1 client tcp 127.0.0.1:54368 schema ChatClientNexus#9a68b8ec t0=2026-11-23T22:54:21.822Z
+hs ok v1 token=redacted(sha256:f6c4b35f…) id=8944158243
++0.5 >#0 Users(pipe:1) (oneway)
++0.7 <☰1·1 open Users by #0
++0.7 >window ☰1·1
++0.8 <☰1·1 Users ResetStart v0 n=0
++1.6 <☰1·1 Users ResetComplete
++1.7 >#1 Join("ada") -> ok 8944158243 "ada" Online 0.2ms
++2.0 <☰1·1 Users Insert v1 @0 8944158243
++2.0 >#2 SendMessage({"general" "ada" "hello everyone!" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.2ms
++2.2 <#0.2 ReceiveMessage({"general" "ada" "hello everyone!" 2026-11-22T12:04:00.0000000Z}) (oneway)
++2.2 >#3 SendMessage({"general" "ada" "one more thing" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.1ms
++2.3 <#0.3 ReceiveMessage({"general" "ada" "one more thing" 2026-11-22T12:04:00.0000000Z}) (oneway)
++2.4 >#4 SendMessage({"general" "ada" "/slow typing…" 2026-11-22T12:04:00.0000000Z}) -> canceled 8.8ms
++10.8 >ping
++10.9 >#0.4 UploadFile("avatar.png", pipe:2) (oneway)
++11.1 <ping
++11.1 <⇄2·2 open by #0.4
++11.2 >window ⇄2·2
++11.2 >⇄2·2 data 2.0KB
++11.2 >⇄2·2 client done
++11.6 <⇄2·2 complete
++11.6 >⇄2·2 complete
++11.7 >#0.5 UploadFile("trace.bin", pipe:3) (oneway)
++11.8 <⇄3·3 open by #0.5
++11.8 >window ⇄3·3
++11.8 >⇄3·3 data 4.0KB
++12.3 >#5 SendAttachment(293.0KB, 5 chunks) -> ok 300000 3109464606 "chat://general/screenshot.png" 26.4ms
++17.5 >⇄3·3 data ×3 12.0KB (span 10.3ms)
++27.9 ping ×2 (span 0.1ms)
++33.0 >⇄3·3 data ×2 8.0KB (span 5.0ms)
++38.1 >⇄3·3 client done
++38.4 <⇄3·3 complete
++38.4 >⇄3·3 complete
++38.8 >#6 SendMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.2ms
++38.9 <#0.6 ReceiveMessage({"general" "ada" "logs, anyone?" 2026-11-22T12:04:00.0000000Z}) (oneway)
++39.0 >#0.7 TailLogs(Info, 12, pipe:4) (oneway)
++39.1 <≋4·4 open LogLine by #0.7
++39.2 >window ≋4·4
++39.3 <≋4·4 LogLine ×12 0 Info "chat.rooms" "chat.rooms event 0: room genera…" (…11 more)
++39.3 <≋4·4 server done
++39.3 <≋4·4 complete
++39.4 >≋4·4 complete
++39.4 >#0.8 TailLogs(Trace, 768, pipe:5) (oneway)
++39.5 <≋5·5 open LogLine by #0.8
++39.5 >window ≋5·5
++39.6 <≋5·5 LogLine ×723 0 Trace "chat.rooms" "chat.rooms event 0: room genera…" (…722 more)
++42.3 >ping
++42.3 <≋5·5 LogLine ×7 723 Warning "chat.presence" "chat.presence event 723: room g…" (…6 more)
++42.4 <ping
++42.4 <≋5·5 LogLine ×38 730 Trace "chat.storage" "chat.storage event 730: room ge…" (…37 more)
++42.6 <≋5·5 server done
++42.6 <≋5·5 complete
++42.6 >≋5·5 complete
++58.6 ping ×27 (span 204.7ms)
++263.3 >#7 SendMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) -> ok true 0.3ms
++263.4 <ping
++263.6 <#0.9 ReceiveMessage({"general" "ada" "bye" 2026-11-22T12:04:00.0000000Z}) (oneway)
++468.3 END Graceful from client

@@ -1,0 +1,97 @@
+@0x19F580318 server tcp 127.0.0.1:49952 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.313Z
++0.1 >f1 Preamble v1 8B
+  4e6e501400000001
++0.1 <f2 Preamble v1 8B
+  4e6e501400000001
++0.2 <f3 ClientGreeting token redacted 119B R
+  64740096c0ce21cfd69fce59bb8c4bc460663663346233356639636662613532…+87B
++0.9 >f4 ServerGreeting id=6968312600 27B
+  69180095ce59bb8c4bcf000000019f580318ce0040000020cd7530
++1.7 <f5 Invocation #0 Users 9B
+  6e0600940002039101
++3.0 >f6 DuplexPipeUpdateState ☰1·1 Users ready 13B
+  780a0093cd010104ce00040000
++3.2 <window ☰1·1
++3.2 >f8 DuplexPipeWrite ☰1·1 Users 12B
+  320700010106920093000101
++3.3 >f9 DuplexPipeWrite ☰1·1 Users 22B
+  32110001011092019200c7094e061803589f01000000
++3.3 >f10 DuplexPipeWrite ☰1·1 Users 10B
+  32050001010492029100
++3.8 <f11 Invocation #1 SendMessage 30B
+  6e1b009401000092a767656e6572616cad68656c6c6f2066726f6d207631
++4.7 >f12 Invocation #0.2 ReceiveMessage 30B
+  6e1b009400000192a767656e6572616cad68656c6c6f2066726f6d207631
++4.9 >f13 InvocationResult #1 SendMessage ok 7B
+  700400930101c3
++5.2 <f14 Invocation #0.3 UploadFile 19B
+  6e10009400010392a96e6f7465732e74787402
++5.4 >f15 DuplexPipeUpdateState ⇄2·2 ready 13B
+  780a0093cd020204ce00040000
++5.5 <window ⇄2·2
++5.5 <f17 DuplexPipeWrite ⇄2·2 18B
+  320d0002026c65676163792075706c6f6164
++5.7 <f18 DuplexPipeUpdateState ⇄2·2 client done 9B
+  78060093cd02020500
++5.9 >f19 DuplexPipeUpdateState ⇄2·2 complete 9B
+  78060093cd02020700
++6.0 <f20 DuplexPipeUpdateState ⇄2·2 complete 9B
+  78060093cd02020700
++6.0 <f21 Invocation #2 SendMessage 28B
+  6e19009402000092a767656e6572616cab6279652066726f6d207631
++6.1 >f22 Invocation #0.4 ReceiveMessage 28B
+  6e19009400000192a767656e6572616cab6279652066726f6d207631
++6.1 >f23 InvocationResult #2 SendMessage ok 7B
+  700400930201c3
++6.2 <f24 DisconnectGraceful 1B
+  15
++6.5 END Graceful from client
+
+@0x275064278 server tcp 127.0.0.1:49953 schema LegacyChatServerNexus#42292225 t0=2026-11-23T21:41:53.527Z
++0.0 >f1 Preamble v1 8B
+  4e6e501400000001
++0.1 <f2 Preamble v1 8B
+  4e6e501400000001
++0.1 <f3 ClientGreeting token redacted 119B R
+  64740096c0ce21cfd69fce59bb8c4bc460663663346233356639636662613532…+87B
++0.2 >f4 ServerGreeting id=10553279096 27B
+  69180095ce59bb8c4bcf0000000275064278ce0040000020cd7530
++0.4 <f5 Invocation #0 Users 9B
+  6e0600940002039101
++0.4 >f6 DuplexPipeUpdateState ☰1·1 Users ready 13B
+  780a0093cd010104ce00040000
++0.5 <window ☰1·1
++0.5 >f8 DuplexPipeWrite ☰1·1 Users 12B
+  320700010106920093000202
++0.6 >f9 DuplexPipeWrite ☰1·1 Users 30B
+  32190001011892019200c7114e061803589f010000007842067502000000
++0.6 >f10 DuplexPipeWrite ☰1·1 Users 10B
+  32050001010492029100
++0.8 <f11 Invocation #1 SendMessage 30B
+  6e1b009401000092a767656e6572616cad68656c6c6f2066726f6d207631
++0.8 >f12 Invocation #0.2 ReceiveMessage 30B
+  6e1b009400000192a767656e6572616cad68656c6c6f2066726f6d207631
++0.8 >f13 InvocationResult #1 SendMessage ok 7B
+  700400930101c3
++0.9 <f14 Invocation #0.3 UploadFile 19B
+  6e10009400010392a96e6f7465732e74787402
++0.9 >f15 DuplexPipeUpdateState ⇄2·2 ready 13B
+  780a0093cd020204ce00040000
++1.1 <window ⇄2·2
++1.1 <f17 DuplexPipeWrite ⇄2·2 18B
+  320d0002026c65676163792075706c6f6164
++1.1 <f18 DuplexPipeUpdateState ⇄2·2 client done 9B
+  78060093cd02020500
++1.7 >f19 DuplexPipeUpdateState ⇄2·2 complete 9B
+  78060093cd02020700
++1.8 <f20 DuplexPipeUpdateState ⇄2·2 complete 9B
+  78060093cd02020700
++1.8 <f21 Invocation #2 SendMessage 28B
+  6e19009402000092a767656e6572616cab6279652066726f6d207631
++1.9 >f22 Invocation #0.4 ReceiveMessage 28B
+  6e19009400000192a767656e6572616cab6279652066726f6d207631
++1.9 >f23 InvocationResult #2 SendMessage ok 7B
+  700400930201c3
++2.0 <f24 DisconnectGraceful 1B
+  15
++2.0 END Graceful from client
