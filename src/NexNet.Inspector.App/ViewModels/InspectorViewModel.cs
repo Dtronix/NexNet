@@ -6,6 +6,7 @@ using NexNet.Inspector.App.Controls.PropertyTree;
 using NexNet.Inspector.App.Model;
 using NexNet.Inspector.App.Services;
 using NexNet.Inspector.Core.Assembly;
+using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Session;
 
 namespace NexNet.Inspector.App.ViewModels;
@@ -28,6 +29,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     private readonly DocumentsViewModel? _documents;
     private DocumentViewModel? _document;
     private MessageTrace _trace = MessageTrace.None;
+    private TimeWindow _traceScope;
     private CaptureSession? _handshakeSession;
     private long _handshakeVersion = -1;
     private bool _publishing;
@@ -273,7 +275,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     {
         if ((changes & SyncChanges.Decode) != 0) Refresh(force: true);
         else if ((changes & SyncChanges.Selection) != 0) Refresh(force: false);
-        if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
+        if ((changes & (SyncChanges.Selection | SyncChanges.Trace | SyncChanges.Scope)) != 0) RefreshTrace();
         if ((changes & (SyncChanges.Selection | SyncChanges.Hover)) != 0) RefreshLinked();
     }
 
@@ -296,9 +298,10 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
     private void RefreshTrace()
     {
         MessageTrace trace = Sync.Trace;
-        if (!ReferenceEquals(trace, _trace))
+        if (!ReferenceEquals(trace, _trace) || Sync.Scope != _traceScope)
         {
             _trace = trace;
+            _traceScope = Sync.Scope;
             OnPropertyChanged(nameof(Trace));
             TraceStepRow[] rows = [];
             string summary = "";
@@ -310,14 +313,18 @@ public sealed partial class InspectorViewModel : ObservableObject, IDisposable
                 lock (session.Gate)
                 {
                     long origin = session.StartTicks;
-                    for (int i = 0; i < steps.Length; i++) rows[i] = new TraceStepRow(steps[i], origin, frequency, TraceStepRow.PipeKindOf(session, steps[i]));
+                    for (int i = 0; i < steps.Length; i++)
+                        rows[i] = new TraceStepRow(steps[i], origin, frequency, TraceStepRow.PipeKindOf(session, steps[i]), _traceScope);
                 }
                 CultureInfo invariant = CultureInfo.InvariantCulture;
                 int members = trace.MemberCount;
                 int interleaved = trace.InterleavedCount;
                 double ms = (trace.End - trace.Start) * 1000.0 / Math.Max(1, frequency);
+                int outside = 0;
+                foreach (TraceStepRow row in rows) outside += row.IsOutOfScope ? 1 : 0;
                 summary = members.ToString(invariant) + (members == 1 ? " frame" : " frames") + " · " + ms.ToString("N1", invariant) + " ms"
-                          + (interleaved > 0 ? " · " + interleaved.ToString(invariant) + " interleaved" : "");
+                          + (interleaved > 0 ? " · " + interleaved.ToString(invariant) + " interleaved" : "")
+                          + (outside > 0 ? " · " + outside.ToString(invariant) + " outside the scope" : "");
             }
 
             _publishing = true;

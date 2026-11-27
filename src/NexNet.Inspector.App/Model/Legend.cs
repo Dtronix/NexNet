@@ -63,6 +63,7 @@ public enum LegendSymbol : byte
     SyncedBadge,
     RecordingPill,
     RecordAllPill,
+    ScopeChip,
 
     Overview,
     RangeHandles,
@@ -104,6 +105,7 @@ public enum LegendSymbol : byte
     AssemblyAbort,
     AssemblyInterleaved,
     AssemblyHandshake,
+    OutOfScopeStep,
 
     FileA,
     FileB,
@@ -159,6 +161,8 @@ public static class Legend
         new(LegendSymbol.SyncedBadge, LegendSection.Badges, "synced", "The pane follows the timeline's window, playhead and selection; unsynced: detached."),
         new(LegendSymbol.RecordingPill, LegendSection.Badges, "REC  Recording", "Recording the attached session; time since attach."),
         new(LegendSymbol.RecordAllPill, LegendSection.Badges, "ALL · n  Record all", "Recording every session of the server; n sessions so far."),
+        new(LegendSymbol.ScopeChip, LegendSection.Badges, "Scope chip",
+            "Every view is limited to this time range (Filter to time range…, Ctrl+Shift+F). ‹n: scopes nested; click or Alt+Left goes back, ✕ clears."),
 
         new(LegendSymbol.Overview, LegendSection.Timeline, "Overview", "The whole session's frames; the box is the visible window. Double-click to fit all."),
         new(LegendSymbol.RangeHandles, LegendSection.Timeline, "Range handles",
@@ -202,6 +206,7 @@ public static class Legend
         new(LegendSymbol.AssemblyAbort, LegendSection.Inspector, "A", "MessageAbort: the sender gave the message up."),
         new(LegendSymbol.AssemblyInterleaved, LegendSection.Inspector, "Interleaved tick", "Other messages' frames arrived between two fragments."),
         new(LegendSymbol.AssemblyHandshake, LegendSection.Inspector, "Pre / Greet", "The handshake's preamble and greetings, ▼ ▲ by direction."),
+        new(LegendSymbol.OutOfScopeStep, LegendSection.Inspector, "⊘  Outside the scope", "Message trace: a step outside the document's scope, dimmed."),
 
         new(LegendSymbol.FileA, LegendSection.Compare, "File A", "The first compared recording."),
         new(LegendSymbol.FileB, LegendSection.Compare, "File B", "The second compared recording."),

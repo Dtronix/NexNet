@@ -27,6 +27,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly SettingsStore? _store;
     private readonly TimeProvider _time;
     private readonly bool _ready;
+    private bool _hadWindow;
 
     /// <param name="themes">Applies the theme choice.</param>
     /// <param name="store">Persists the choice; null keeps it for this run only (self-check, tests).</param>
@@ -54,6 +55,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Home = new HomeViewModel(() => _store?.Current ?? new AppSettings(), _time, recent => ShowConnect(recent), OpenRecordingAsync);
         Palette = new CommandPaletteViewModel(Documents, Commands);
         BindCommands();
+        Documents.Sync.Changed += changes =>
+        {
+            // The scope commands follow the active document's scope and whether it has a window to scope to.
+            bool hasWindow = !Documents.Sync.Window.IsEmpty;
+            if ((changes & SyncChanges.Scope) != 0 || hasWindow != _hadWindow) Commands.Refresh();
+            _hadWindow = hasWindow;
+        };
         Documents.PropertyChanged += (_, e) =>
         {
             // Document-dependent commands (go to time, next document) change state with the documents.
@@ -233,12 +241,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// Ctrl+Shift+S, File › Export section as .nntl…, and the timeline, hex and row menus: the export dialog over the
     /// active document (unless a dialog is already open); it closes itself.
     /// </summary>
-    /// <param name="initial">The range the dialog starts on (the time window by default).</param>
+    /// <param name="initial">The range the dialog starts on; null: the document's scope when it has one, else the time window.</param>
     /// <returns>The dialog; null when another dialog was open or the active document holds nothing.</returns>
-    public ExportSectionDialogViewModel? ShowExportSection(ExportRangeKind initial = ExportRangeKind.Window)
+    public ExportSectionDialogViewModel? ShowExportSection(ExportRangeKind? initial = null)
     {
         if (Dialog is not null || Documents.Active is not { Session: not null } document) return null;
         ExportSectionDialogViewModel dialog = new(Documents, document, initial);
+        dialog.Closed += d =>
+        {
+            if (ReferenceEquals(Dialog, d)) Dialog = null;
+        };
+        Dialog = dialog;
+        return dialog;
+    }
+
+    /// <summary>
+    /// Ctrl+Shift+F, View › Filter to time range…, the palette: the scope dialog over the active document (unless a dialog
+    /// is already open); it closes itself.
+    /// </summary>
+    /// <returns>The dialog; null when another dialog was open or the active document holds nothing to scope.</returns>
+    public ScopeDialogViewModel? ShowScopeDialog()
+    {
+        if (Dialog is not null || !Documents.CanScope || Documents.Active is not { } document) return null;
+        ScopeDialogViewModel dialog = new(Documents, document);
         dialog.Closed += d =>
         {
             if (ReferenceEquals(Dialog, d)) Dialog = null;
@@ -534,6 +559,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Commands.Bind(AppCommand.ExportSelection, () => ShowExportSection(),
             () => Dialog is null && Documents.Active?.Session is not null && Documents.SavePicker is not null);
         Commands.Bind(AppCommand.Detach, () => session.DetachCommand.Execute(null), () => session.DetachCommand.CanExecute(null));
+        Commands.Bind(AppCommand.FilterToRange, () => ShowScopeDialog(), () => Dialog is null && Documents.CanScope);
+        Commands.Bind(AppCommand.FilterToView, () => Documents.FilterToView(), () => Dialog is null && Documents.CanScope && !Documents.Sync.Window.IsEmpty);
+        Commands.Bind(AppCommand.ScopeBack, () => Documents.PopScope(), () => Dialog is null && Documents.Active is { IsScoped: true });
+        Commands.Bind(AppCommand.ClearScope, () => Documents.ClearScope(), () => Dialog is null && Documents.Active is { IsScoped: true });
         session.DetachCommand.CanExecuteChanged += (_, _) => Commands.Refresh();
     }
 

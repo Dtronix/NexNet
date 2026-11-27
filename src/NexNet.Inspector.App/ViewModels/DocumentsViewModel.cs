@@ -422,6 +422,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         document.SavedSelection = live.SavedSelection;
         document.SavedPlayhead = live.SavedPlayhead;
 
+        document.Scopes.CopyFrom(live.Scopes);
         document.DataChanged += OnDocumentChanged;
         Documents.Insert(index, document);
         OnDocumentAdded(document);
@@ -435,6 +436,39 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         document.StartIndexing();
         await live.DisposeAsync().ConfigureAwait(true);
         return document;
+    }
+
+    /// <summary>True when the active document can be scoped: it holds a session with data.</summary>
+    public bool CanScope => Active is { Session: not null, TimeRange.IsEmpty: false };
+
+    /// <summary>
+    /// Filter to time range: limits the active document to <paramref name="scope"/>, nested in its current scope, and
+    /// shows the whole scope. Back (<see cref="PopScope"/>) returns to the view shown now.
+    /// </summary>
+    /// <returns>False when there is no active document, or the scope covers no time inside the current one.</returns>
+    public bool PushScope(TimeScope scope) => Active is { } document && document.PushScope(scope, Sync.Window);
+
+    /// <summary>"Filter to view": the active document's scope becomes the time window shown now.</summary>
+    /// <returns>False when there is nothing to scope.</returns>
+    public bool FilterToView() => CanScope && !Sync.Window.IsEmpty && PushScope(TimeScope.Of(Sync.Window, ScopeLabels.View));
+
+    /// <summary>Back (Alt+Left, the chip): the active document's previous scope, and the view shown before this one.</summary>
+    /// <returns>False when the active document is not scoped.</returns>
+    public bool PopScope() => Active?.PopScope() ?? false;
+
+    /// <summary>✕: clears the active document's scopes and returns to the view shown before the first.</summary>
+    /// <returns>False when the active document is not scoped.</returns>
+    public bool ClearScope() => Active?.ClearScopes() ?? false;
+
+    // A document's scope moved: the active one's views follow (a push shows the whole scope, Back the view before it).
+    private void OnScopeChanged(DocumentViewModel document, ScopeChange change)
+    {
+        if (document != Active)
+            return;
+
+        Sync.SetScope(document.Scope?.Window ?? default);
+        if (!change.Window.IsEmpty)
+            Sync.SetWindow(change.Window, byUser: false);
     }
 
     // Takes a document out of the tabs; the next most recent becomes active when it was.
@@ -500,7 +534,8 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
         {
             // A detach dropped everything: no window, playhead or selection carries into the next attach, which starts
             // on its own live edge.
-            if (!Sync.Window.IsEmpty || !Sync.Selection.IsNone || Sync.Playhead != 0)
+            document.ClearScopes();
+            if (!Sync.Window.IsEmpty || !Sync.Selection.IsNone || Sync.Playhead != 0 || Sync.IsScoped)
                 Sync.Restore(default, default, 0, Selection.None, followLive: true);
             return;
         }
@@ -522,7 +557,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
             if (!range.IsEmpty)
                 Sync.OnLiveData(range.End);
         }
-        else if (!range.IsEmpty && (Sync.Window.IsEmpty || Sync.Window == document.FittedWindow))
+        else if (!range.IsEmpty && !document.IsScoped && (Sync.Window.IsEmpty || Sync.Window == document.FittedWindow))
         {
             // A file being indexed grows; the view keeps fitting it until the user zooms or pans.
             document.FittedWindow = range;
@@ -534,7 +569,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
     {
         document.SavedPlayhead = Sync.Playhead;
         document.SavedSelection = Sync.Selection;
-        document.SavedFollowLive = Sync.FollowLive;
+        document.SavedFollowLive = Sync.ResumesFollowLive;
     }
 
     private void RestoreViewState(DocumentViewModel document, DocumentViewModel? previous)
@@ -550,7 +585,7 @@ public sealed partial class DocumentsViewModel : ObservableObject, IAsyncDisposa
             window = window.Clamp(bounds.Start, Math.Max(bounds.End, bounds.Start + window.Duration));
 
         var follow = document.Kind == DocumentKind.Live && document.SavedFollowLive;
-        Sync.Restore(window, bounds, document.SavedPlayhead, document.SavedSelection, follow);
+        Sync.Restore(window, bounds, document.SavedPlayhead, document.SavedSelection, follow, document.Scope?.Window ?? default);
         if (window.IsEmpty)
             OnDocumentChanged(document);
     }

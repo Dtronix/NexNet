@@ -2,7 +2,8 @@
   The application menu under the logo (screens/inspect-app-menu, controls/menu "app" variant: 280 px, grouped, no icon
   column). File: Open recording… Ctrl+O, Save timeline as .nntl… Ctrl+S, Export section as .nntl… Ctrl+Shift+S (I40),
   Recent ▸. Session: Connect to inspector… Ctrl+K, Detach from session (I40), Switch session ▸, Schema · <what decodes> ▸, Overflow mode · <mode> ▸. View: the Theme segmented row (Dark | Light |
-  System, OQ15), Command palette Ctrl+Shift+P, Legend & symbols F2. Then Help & shortcuts F1. Session also offers Record all sessions
+  System, OQ15), Filter to time range… Ctrl+Shift+F, Filter to view, Back to previous scope Alt+Left (I43), Command
+  palette Ctrl+Shift+P, Legend & symbols F2. Then Help & shortcuts F1. Session also offers Record all sessions
   (Ctrl+Shift+R). The command items take their title, shortcut and enabled state from the command registry
   (AppMenu.axaml.cs), as the palette does. The submenus list MenuChoice items; a pick-one
   list (Switch session, Overflow mode) shows its current choice checked. The menu is hosted in the window's popup (so it
@@ -62,6 +63,9 @@
       </Grid>
     </MenuItem.Header>
   </MenuItem>
+  <MenuItem Name="FilterRangeItem" />
+  <MenuItem Name="FilterViewItem" />
+  <MenuItem Name="ScopeBackItem" />
   <MenuItem Name="PaletteItem" />
   <MenuItem Name="LegendItem" />
   <Separator />

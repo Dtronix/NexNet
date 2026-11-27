@@ -28,7 +28,46 @@ public abstract partial class DocumentViewModel : ObservableObject, IAsyncDispos
         Kind = kind;
         Ui = ui;
         _changes = new ChangeCoalescer(ui, RefreshNow);
+        Scopes.Changed += change =>
+        {
+            OnPropertyChanged(nameof(Scope));
+            OnPropertyChanged(nameof(ScopeDepth));
+            OnPropertyChanged(nameof(IsScoped));
+            ScopeChanged?.Invoke(this, change);
+        };
     }
+
+    /// <summary>Raised after the document's scope was pushed, popped or cleared (the documents move the views with it).</summary>
+    public event Action<DocumentViewModel, ScopeChange>? ScopeChanged;
+
+    /// <summary>
+    /// The document's nested scopes (D2, "Filter to time range"): every view of the document is limited to the current
+    /// one. Not persisted; a bookmark (I44) can push one again.
+    /// </summary>
+    public ScopeStack Scopes { get; } = new();
+
+    /// <summary>The active scope; null when the document is not scoped.</summary>
+    public TimeScope? Scope => Scopes.Current;
+
+    /// <summary>How many scopes are nested (the chip's "‹2").</summary>
+    public int ScopeDepth => Scopes.Depth;
+
+    /// <summary>True while a scope is set.</summary>
+    public bool IsScoped => !Scopes.IsEmpty;
+
+    /// <summary>Limits the document to <paramref name="scope"/> (cut to the current scope, nested inside it).</summary>
+    /// <param name="scope">The scope.</param>
+    /// <param name="before">The window shown now, which Back returns to; empty when not known.</param>
+    /// <returns>False when the scope covers no time inside the current one.</returns>
+    public bool PushScope(TimeScope scope, TimeWindow before = default) => Scopes.Push(scope, before);
+
+    /// <summary>Back: returns to the previous scope (or none).</summary>
+    /// <returns>False when the document was not scoped.</returns>
+    public bool PopScope() => Scopes.Pop();
+
+    /// <summary>✕: clears every scope.</summary>
+    /// <returns>False when the document was not scoped.</returns>
+    public bool ClearScopes() => Scopes.Clear();
 
     /// <summary>Raised on the UI thread after a refresh that saw new data or a new state.</summary>
     public event Action<DocumentViewModel>? DataChanged;

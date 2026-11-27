@@ -5,6 +5,7 @@ using NexNet.Inspector.App.Model.Palette;
 using NexNet.Inspector.App.Services.Commands;
 using NexNet.Inspector.Core.Assembly;
 using NexNet.Inspector.Core.Framing;
+using NexNet.Inspector.Core.Model;
 using NexNet.Inspector.Core.Schema;
 using NexNet.Inspector.Core.Session;
 using NexNet.Messages;
@@ -46,14 +47,18 @@ public sealed class PaletteSearch
     private readonly List<TraceFragment> _fragments = [];
     // The best entity hit when it is an invocation: what "Open … in Compare" opens on.
     private PaletteTarget _subjectTarget = PaletteTarget.None;
+    private TimeWindow _scope;
 
     /// <summary>Runs <paramref name="query"/> and returns its rows, group headings included.</summary>
     /// <param name="query">The parsed query.</param>
     /// <param name="session">The active document's session; null when none is open.</param>
     /// <param name="documents">The open documents, in tab order.</param>
     /// <param name="commands">The commands and their enabled state.</param>
-    public List<PaletteRow> Run(in PaletteQuery query, CaptureSession? session, IReadOnlyList<PaletteDocument> documents, CommandRegistry commands)
+    /// <param name="scope">The active document's scope (D2): only entities and frames in it are searched; empty for all.</param>
+    public List<PaletteRow> Run(in PaletteQuery query, CaptureSession? session, IReadOnlyList<PaletteDocument> documents, CommandRegistry commands,
+        TimeWindow scope = default)
     {
+        _scope = scope;
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(commands);
         List<PaletteRow> rows = [];
@@ -98,12 +103,14 @@ public sealed class PaletteSearch
         MessageAssembler assembler = session.Assembler;
         best = FrameLink.None;
         _hits.Reset(limit);
-        if (assembler.Greetings.Length > 0) Offer(query, Key().Text("Handshake preamble greeting"), Id(Handshake, 0));
+        if (assembler.Greetings.Length > 0 && InScope(session, Selection.OfEntity(EntityKind.Greeting, 0)))
+            Offer(query, Key().Text("Handshake preamble greeting"), Id(Handshake, 0));
 
         ReadOnlySpan<InvocationRow> invocations = assembler.Invocations;
         for (int i = 0; i < invocations.Length; i++)
         {
             ref readonly InvocationRow row = ref invocations[i];
+            if (!InScope(assembler, row)) continue;
             KeyBuilder key = Key().Text("Invocation #").Number(row.InvocationId);
             if (row.RequestParsed && session.Decoder.TryGetMethod(row, out SchemaMethod? method)) key = key.Text(" ").Text(method.Name);
             Offer(query, key, Id(Invocation, i));
@@ -113,6 +120,7 @@ public sealed class PaletteSearch
         for (int i = 0; i < pipes.Length; i++)
         {
             ref readonly PipeRow row = ref pipes[i];
+            if (!InScope(session, Selection.OfEntity(EntityKind.Pipe, i))) continue;
             KeyBuilder key = Key();
             if (row.Content == PipeContent.Collection && row.Collection >= 0
                 && session.Decoder.TryGetCollection(assembler.Collections[row.Collection].CollectionId, out SchemaCollection? collection))
@@ -202,6 +210,7 @@ public sealed class PaletteSearch
         {
             FrameKey frameKey = order[i];
             if (!assembler.TryGetFrame(frameKey.Direction, frameKey.Seq, out FrameRecord frame)) continue;
+            if (!_scope.IsEmpty && !_scope.Contains(frame.StartTicks)) continue;
             KeyBuilder key = Key().Text("#").Number(i + 1L).Text(" ").Text(TypeName(frame));
             FrameLink link = assembler.GetLink(frameKey.Direction, frameKey.Seq);
             key = AppendTarget(key, session, frame, link, withMethod: true);
@@ -303,6 +312,26 @@ public sealed class PaletteSearch
         long ticks = session.StartTicks + Core.Model.TimeWindow.TicksFromMilliseconds(ms, frequency);
         rows.Add(PaletteRow.Item(PaletteGroup.Time, "Go to " + ms.ToString("N3", Invariant) + " ms", "moves the playhead and the window",
             PaletteGlyph.Command, PaletteTarget.OfTime(ticks) with { Command = AppCommand.GoToTime }));
+    }
+
+    // An invocation is in scope when its request or its result started in it (no scope: every one).
+    private bool InScope(MessageAssembler assembler, in InvocationRow row)
+    {
+        if (_scope.IsEmpty) return true;
+        long start = long.MaxValue, end = long.MinValue;
+        if (!row.Request.IsNone && assembler.TryGetFrame(row.Request.Direction, row.Request.Seq, out FrameRecord request))
+            (start, end) = (request.StartTicks, request.StartTicks);
+        if (!row.Result.IsNone && assembler.TryGetFrame(row.Result.Direction, row.Result.Seq, out FrameRecord result))
+            (start, end) = (Math.Min(start, result.StartTicks), Math.Max(end, result.StartTicks));
+        return start != long.MaxValue && _scope.Overlaps(start, end);
+    }
+
+    // A pipe or the handshake is in scope when its traced frames reach into it. Few of them: their traces are resolved.
+    private bool InScope(CaptureSession session, in Selection entity)
+    {
+        if (_scope.IsEmpty) return true;
+        MessageTrace trace = MessageTrace.Resolve(session, entity);
+        return trace.IsActive && _scope.Overlaps(trace.Start, trace.End);
     }
 
     private void Offer(string query, in KeyBuilder key, int id, int bonus = 0)

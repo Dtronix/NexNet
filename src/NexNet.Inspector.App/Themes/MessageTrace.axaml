@@ -58,7 +58,7 @@
     <Setter Property="ItemTemplate">
       <DataTemplate x:DataType="m:TraceStepRow">
         <Grid Classes="trace-step" Classes.inbound="{Binding IsInbound}" Opacity="{Binding RowOpacity}"
-              ColumnDefinitions="14,*,Auto,Auto,72,52" ToolTip.Tip="{Binding Detail}">
+              ColumnDefinitions="14,*,Auto,Auto,Auto,72,52" ToolTip.Tip="{Binding Detail}">
           <TextBlock Classes="glyph" Text="{Binding Glyph}" VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Meta}" />
           <TextBlock Grid.Column="1" Classes="step" Text="{Binding Label}" Margin="{Binding LabelMargin}" VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
@@ -66,8 +66,10 @@
                       VerticalAlignment="Center" />
           <c:FlagChip Grid.Column="3" Flag="TransportSplit" IsVisible="{Binding IsTransportSplit}" Margin="4,0,0,0"
                       VerticalAlignment="Center" />
-          <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Time}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="5" Classes="mono" Text="{Binding Bytes}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="4" Classes="out-of-scope" Text="⊘" IsVisible="{Binding IsOutOfScope}" Margin="4,0,0,0"
+                     VerticalAlignment="Center" FontSize="{DynamicResource FontSize.Meta}" />
+          <TextBlock Grid.Column="5" Classes="mono" Text="{Binding Time}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="6" Classes="mono" Text="{Binding Bytes}" HorizontalAlignment="Right" VerticalAlignment="Center" />
         </Grid>
       </DataTemplate>
     </Setter>

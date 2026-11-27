@@ -110,10 +110,10 @@ public sealed class ContextMenuWindowTests
             await Assert.That(result.described).Matches(
                 "^⇄  Pipe \\S+  \\S+.* \\| — \\| ✓Pin lane \\| Expand lane \\| Hide lane \\| — \\| Trace frames in view \\| Select all frames \\(off\\) "
                 + "\\| Show in Ladder \\| Show in Hex stream \\| — \\| Compare this pipe across files… \\(off\\) \\| Copy name \\| — \\| Close pipe in view "
-                + "\\| — \\| Export this range…$");
+                + "\\| — \\| Filter to this range \\| Export this range…$");
             await Assert.That(result.expanded).IsTrue();
             await Assert.That(result.closed).IsTrue();
-            await Assert.That(result.groupMenu).IsEqualTo("PIPES · CHANNELS | — | Collapse group | Show hidden lanes (off) | — | Export this range…");
+            await Assert.That(result.groupMenu).IsEqualTo("PIPES · CHANNELS | — | Collapse group | Show hidden lanes (off) | — | Filter to this range | Export this range…");
         }
         finally
         {

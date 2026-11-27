@@ -32,6 +32,8 @@ public sealed partial class LadderViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(sync);
         Sync = sync;
         _projection = new LadderProjection(Model);
+        Model.SetScope(sync.Scope);
+        sync.Changed += OnSyncChanged;
         Mode = new EnumChoice<LadderMode>([(LadderMode.Compact, "18 px rows"), (LadderMode.TimeScaled, "Time-scaled")], LadderMode.Compact);
     }
 
@@ -64,7 +66,14 @@ public sealed partial class LadderViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (_documents is not null) _documents.PropertyChanged -= OnDocumentsChanged;
+        Sync.Changed -= OnSyncChanged;
         Document = null;
+    }
+
+    // The document's scope limits the rows (an index range of them).
+    private void OnSyncChanged(SyncChanges changes)
+    {
+        if ((changes & SyncChanges.Scope) != 0) Model.SetScope(Sync.Scope);
     }
 
     partial void OnDocumentChanged(DocumentViewModel? oldValue, DocumentViewModel? newValue)

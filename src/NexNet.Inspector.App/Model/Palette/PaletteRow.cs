@@ -244,6 +244,7 @@ public sealed partial class PaletteRow : ObservableObject
         CommandGlyph.Documents => "⧉",
         CommandGlyph.Theme => "◐",
         CommandGlyph.Help => "?",
+        CommandGlyph.Scope => "⊡",
         _ => "",
     };
 }

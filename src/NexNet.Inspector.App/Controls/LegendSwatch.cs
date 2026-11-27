@@ -181,6 +181,18 @@ public sealed class LegendSwatch : Decorator
             case LegendSymbol.RecordAllPill:
                 Pill(context, palette, "ALL · 3");
                 break;
+            case LegendSymbol.ScopeChip:
+            {
+                // As the title bar draws it: accent.trace-band fill and accent.trace edge, the depth, the range, ✕.
+                TextLayout depth = Layout(palette, "‹2", 10, ThemeBrush.AccentTrace, FontWeight.SemiBold, mono: true);
+                TextLayout label = Layout(palette, "Scope", 10, ThemeBrush.TextPrimary, FontWeight.Normal, mono: true);
+                TextLayout clear = Layout(palette, "✕", 9, ThemeBrush.TextSecondary, FontWeight.Normal, mono: false);
+                context.DrawRectangle(palette[ThemeBrush.AccentTraceBand], palette.Pen(ThemeBrush.AccentTrace, 1), new RoundedRect(new Rect(0.5, 1.5, W - 1, H - 3), 4));
+                depth.Draw(context, new Point(5, (H - depth.Height) / 2));
+                label.Draw(context, new Point(9 + depth.Width, (H - label.Height) / 2));
+                clear.Draw(context, new Point(W - 6 - clear.Width, (H - clear.Height) / 2));
+                break;
+            }
             case LegendSymbol.Overview:
             {
                 context.FillRectangle(palette[ThemeBrush.SurfaceChrome], new Rect(0, 2, W, 16));
@@ -304,6 +316,19 @@ public sealed class LegendSwatch : Decorator
 
                 context.DrawGeometry(palette[ThemeBrush.AccentTrace], null, diamond);
                 Text(context, palette, "0040", 10, ThemeBrush.TextTertiary, 14, mono: true);
+                break;
+            }
+
+            case LegendSymbol.OutOfScopeStep:
+            {
+                // As the Message trace draws such a step: the row at 40 %, the ⊘ mark in text.tertiary.
+                using (context.PushOpacity(0.4))
+                {
+                    Text(context, palette, "▲", 9, ThemeBrush.DirectionOutbound, 0);
+                    Text(context, palette, "Chunk 4", 10, ThemeBrush.TextPrimary, 12);
+                }
+
+                Text(context, palette, TraceStepRow.OutOfScopeMark, 10, ThemeBrush.TextTertiary, W - 12);
                 break;
             }
 

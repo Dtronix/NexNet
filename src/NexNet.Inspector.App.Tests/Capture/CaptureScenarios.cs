@@ -52,6 +52,9 @@ public enum CaptureScenario
 
     /// <summary>export-section: inspect-live with its panes resized by the splitters and Export section as .nntl… open.</summary>
     ExportSection,
+
+    /// <summary>scoped: inspect-live filtered to its view and then to a nested scope; the chip, the re-spanned overview, scoped panes.</summary>
+    Scoped,
 }
 
 /// <summary>What a scenario's setup is given: the theme in effect and the service that applied it.</summary>
@@ -88,6 +91,7 @@ public static class CaptureScenarios
         [CaptureScenario.Compare] = new("compare", CompareScreen.Create),
         [CaptureScenario.Legend] = new("legend", LegendScreen.Create),
         [CaptureScenario.ExportSection] = new("export-section", ExportSectionScreen.Create),
+        [CaptureScenario.Scoped] = new("scoped", ScopedScreen.Create),
     };
 
     public static IReadOnlyCollection<CaptureScenario> Registered => Registry.Keys;

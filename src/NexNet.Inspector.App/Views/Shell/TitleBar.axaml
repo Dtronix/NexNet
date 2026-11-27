@@ -44,33 +44,61 @@
         </Button>
       </StackPanel>
 
-      <!-- The time window: − · the shared visible range · +; with nothing to show, "— no timeline —". -->
+      <!-- The time window: − · the shared visible range · +; with nothing to show, "— no timeline —". Before it, while the
+           active document is scoped (I43), the scope chip: "‹2" when nested and "Scope 1,240.0–1,290.0 ms" (a click is
+           Back, as Alt+Left), then ✕, which clears every scope. -->
       <Border Name="TimeWindowArea" DockPanel.Dock="Right" Margin="6,0,0,0" VerticalAlignment="Center"
               AutomationProperties.Name="Time window">
-        <Panel>
-          <Border Name="NoTimeline" Height="{DynamicResource Size.HeaderControl}" Padding="8,0"
-                  BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
-                  CornerRadius="{DynamicResource Radius.Md}"
-                  IsVisible="{Binding !TimeWindow.HasWindow}">
-            <TextBlock Text="— no timeline —" VerticalAlignment="Center"
-                       FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
-                       Foreground="{DynamicResource Brush.Text.Tertiary}" />
-          </Border>
-          <Border Name="TimeWindowGroup" Height="{DynamicResource Size.HeaderControl}"
-                  BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
-                  CornerRadius="{DynamicResource Radius.Md}" IsVisible="{Binding TimeWindow.HasWindow}"
-                  TextElement.FontFamily="{DynamicResource Font.Mono}" TextElement.FontSize="{DynamicResource FontSize.Data}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Border Name="ScopeChip" Height="{DynamicResource Size.HeaderControl}" ClipToBounds="True"
+                  BorderBrush="{DynamicResource Brush.Accent.Trace}" BorderThickness="1"
+                  Background="{DynamicResource Brush.Accent.TraceBand}" CornerRadius="{DynamicResource Radius.Md}"
+                  IsVisible="{Binding TimeWindow.HasScope}"
+                  TextElement.FontFamily="{DynamicResource Font.Mono}" TextElement.FontSize="{DynamicResource FontSize.Data}"
+                  AutomationProperties.Name="Scope">
             <StackPanel Orientation="Horizontal">
-              <Button Name="ZoomOutButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
-                      WindowDecorationProperties.ElementRole="User" Content="−" Foreground="{DynamicResource Brush.Text.Primary}"
-                      Command="{Binding TimeWindow.ZoomOutCommand}" AutomationProperties.Name="Zoom out" />
-              <TextBlock Name="TimeWindowText" Text="{Binding TimeWindow.Text}" VerticalAlignment="Center" Margin="2,0" />
-              <Button Name="ZoomInButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
-                      WindowDecorationProperties.ElementRole="User" Content="+" Foreground="{DynamicResource Brush.Text.Primary}"
-                      Command="{Binding TimeWindow.ZoomInCommand}" AutomationProperties.Name="Zoom in" />
+              <Button Name="ScopeBackButton" Theme="{StaticResource ChromeButton}" Height="22" CornerRadius="0" Padding="8,0,6,0"
+                      WindowDecorationProperties.ElementRole="User" Foreground="{DynamicResource Brush.Text.Primary}"
+                      Command="{Binding TimeWindow.BackCommand}" ToolTip.Tip="{Binding TimeWindow.ScopeTip}"
+                      AutomationProperties.Name="Back to the previous scope (Alt+Left)">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Name="ScopeDepthText" Text="{Binding TimeWindow.ScopeDepthText}" IsVisible="{Binding TimeWindow.IsNested}"
+                             VerticalAlignment="Center" Foreground="{DynamicResource Brush.Accent.Trace}"
+                             FontWeight="{DynamicResource FontWeight.SemiBold}" />
+                  <TextBlock Name="ScopeText" Text="{Binding TimeWindow.ScopeText}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Name="ScopeClearButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0" CornerRadius="0"
+                      WindowDecorationProperties.ElementRole="User" Content="✕" Foreground="{DynamicResource Brush.Text.Secondary}"
+                      Command="{Binding TimeWindow.ClearScopeCommand}" ToolTip.Tip="Clear the scope"
+                      AutomationProperties.Name="Clear the scope" />
             </StackPanel>
           </Border>
-        </Panel>
+          <Panel>
+            <Border Name="NoTimeline" Height="{DynamicResource Size.HeaderControl}" Padding="8,0"
+                    BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
+                    CornerRadius="{DynamicResource Radius.Md}"
+                    IsVisible="{Binding !TimeWindow.HasWindow}">
+              <TextBlock Text="— no timeline —" VerticalAlignment="Center"
+                         FontFamily="{DynamicResource Font.Mono}" FontSize="{DynamicResource FontSize.Data}"
+                         Foreground="{DynamicResource Brush.Text.Tertiary}" />
+            </Border>
+            <Border Name="TimeWindowGroup" Height="{DynamicResource Size.HeaderControl}"
+                    BorderBrush="{DynamicResource Brush.Border.Default}" BorderThickness="1"
+                    CornerRadius="{DynamicResource Radius.Md}" IsVisible="{Binding TimeWindow.HasWindow}"
+                    TextElement.FontFamily="{DynamicResource Font.Mono}" TextElement.FontSize="{DynamicResource FontSize.Data}">
+              <StackPanel Orientation="Horizontal">
+                <Button Name="ZoomOutButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
+                        WindowDecorationProperties.ElementRole="User" Content="−" Foreground="{DynamicResource Brush.Text.Primary}"
+                        Command="{Binding TimeWindow.ZoomOutCommand}" AutomationProperties.Name="Zoom out" />
+                <TextBlock Name="TimeWindowText" Text="{Binding TimeWindow.Text}" VerticalAlignment="Center" Margin="2,0" />
+                <Button Name="ZoomInButton" Theme="{StaticResource ChromeButton}" Height="22" Width="22" Padding="0"
+                        WindowDecorationProperties.ElementRole="User" Content="+" Foreground="{DynamicResource Brush.Text.Primary}"
+                        Command="{Binding TimeWindow.ZoomInCommand}" AutomationProperties.Name="Zoom in" />
+              </StackPanel>
+            </Border>
+          </Panel>
+        </StackPanel>
       </Border>
 
       <!-- The session area: the connection group (status · endpoint · Session ▾, which opens the session popover) and the

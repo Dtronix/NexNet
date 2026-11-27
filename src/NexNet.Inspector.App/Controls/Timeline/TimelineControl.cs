@@ -137,6 +137,8 @@ public sealed class TimelineControl : Control
     private int[] _bucketAll = [];
     private string? _rangeLabel;
     private long _rangeTicks = -1;
+    private long _rangeStart;
+    private bool _rangeScoped;
     private bool _instant = true;
     private bool _frameRequested;
     private double _scroll;
@@ -237,10 +239,10 @@ public sealed class TimelineControl : Control
         _sync is { Window.IsEmpty: false } sync ? sync.Window : _model?.Bounds ?? default;
 
     /// <summary>
-    /// The time range the overview spans and every range drag stays in: the capture's. The one place the clamp bounds
-    /// are read, so a document scope (I43) replaces them here.
+    /// The time range the overview spans and every range drag stays in: the active document's scope (I43) while it has
+    /// one, else the capture's. The one place the clamp bounds are read.
     /// </summary>
-    public TimeWindow RangeBounds => _model?.Bounds ?? default;
+    public TimeWindow RangeBounds => _sync is { IsScoped: true } sync ? sync.Scope : _model?.Bounds ?? default;
 
     /// <summary>The overview handle under the pointer or being dragged (drawn in the hover colour); None otherwise.</summary>
     public OverviewPart HotHandle => _hot;
@@ -778,7 +780,8 @@ public sealed class TimelineControl : Control
             case Key.T when HoveredLane is { } lane:
                 e.Handled = TraceLane(lane);
                 break;
-            case Key.Left or Key.Right:
+            // Unmodified only: Alt+Left is Back (the scope), bound on the window.
+            case Key.Left or Key.Right when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = Step(e.Key == Key.Right ? 1 : -1);
                 break;
             case Key.Escape:
@@ -962,7 +965,7 @@ public sealed class TimelineControl : Control
     private void OnSyncChanged(SyncChanges changes)
     {
         if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) RefreshTrace();
-        if ((changes & (SyncChanges.Bounds | SyncChanges.Selection)) != 0)
+        if ((changes & (SyncChanges.Bounds | SyncChanges.Scope | SyncChanges.Selection)) != 0)
         {
             InvalidateMeasure();
         }
@@ -1005,10 +1008,13 @@ public sealed class TimelineControl : Control
         TimeWindow bounds = RangeBounds;
         if (bounds.IsEmpty) return;
 
-        if (_rangeTicks != bounds.Duration || _rangeLabel is null)
+        bool scoped = _sync?.IsScoped == true;
+        if (_rangeTicks != bounds.Duration || _rangeStart != bounds.Start || _rangeScoped != scoped || _rangeLabel is null)
         {
             _rangeTicks = bounds.Duration;
-            _rangeLabel = "0 – " + (bounds.Duration / (double)Math.Max(1, model.Frequency)).ToString("0.0", CultureInfo.InvariantCulture) + " s";
+            _rangeStart = bounds.Start;
+            _rangeScoped = scoped;
+            _rangeLabel = OverviewLabel(bounds, model.Bounds.Start, model.Frequency, scoped);
         }
 
         TextLayout range = _text.Get(palette, _rangeLabel, TimelineTextStyle.OverviewRange, GutterWidth - 12);
@@ -1049,6 +1055,20 @@ public sealed class TimelineControl : Control
         context.DrawRectangle(null, palette.Pen(ThemeBrush.TextPrimary, 1.5), new Rect(x0, 0.75, x1 - x0, h - 1.5));
         DrawRangeHandle(context, palette, x0, 0, h, _hot == OverviewPart.StartHandle);
         DrawRangeHandle(context, palette, x1, 0, h, _hot == OverviewPart.EndHandle);
+    }
+
+    /// <summary>
+    /// The overview's range label: "0 – 42.1 s" for the whole capture, "scope 1,240.0 – 1,290.0 ms" for a scope (from the
+    /// capture's start; in seconds once it reaches 10 s, as the title bar's chip).
+    /// </summary>
+    public static string OverviewLabel(TimeWindow bounds, long origin, long frequency, bool scoped)
+    {
+        double f = Math.Max(1, frequency);
+        if (!scoped) return "0 – " + (bounds.Duration / f).ToString("0.0", CultureInfo.InvariantCulture) + " s";
+        double from = (bounds.Start - origin) * 1000.0 / f, to = (bounds.End - origin) * 1000.0 / f;
+        return to >= 10_000
+            ? "scope " + (from / 1000).ToString("N1", CultureInfo.InvariantCulture) + " – " + (to / 1000).ToString("N1", CultureInfo.InvariantCulture) + " s"
+            : "scope " + from.ToString("N1", CultureInfo.InvariantCulture) + " – " + to.ToString("N1", CultureInfo.InvariantCulture) + " ms";
     }
 
     /// <summary>

@@ -107,7 +107,8 @@ public sealed class PropertyTreeView : ListBox
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (SelectedItem is PropertyRow { HasChildren: true } row && e.Key is Key.Left or Key.Right)
+        // Unmodified only: Alt+Left is the window's Back (the scope).
+        if (SelectedItem is PropertyRow { HasChildren: true } row && e.Key is Key.Left or Key.Right && e.KeyModifiers == KeyModifiers.None)
         {
             row.Model.SetExpanded(row.Node, e.Key == Key.Right);
             e.Handled = true;

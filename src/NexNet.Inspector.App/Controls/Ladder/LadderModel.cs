@@ -20,6 +20,10 @@ public sealed class LadderModel
     private readonly Dictionary<string, int> _labelIds = new(StringComparer.Ordinal);
     private readonly List<int> _chunkTotals = [];
     private readonly List<MessageRef> _messages = [];
+    // While scoped, the rows shown are [_first, _end) of every row.
+    private TimeWindow _scope;
+    private int _first;
+    private int _end;
 
     /// <summary>Raised by <see cref="NotifyChanged"/>.</summary>
     public event Action? Changed;
@@ -42,16 +46,46 @@ public sealed class LadderModel
     /// <summary>Increments on every <see cref="Clear"/>: rows laid out before it are gone.</summary>
     public int Generation { get; private set; }
 
-    /// <summary>The rows, in display order.</summary>
-    public ReadOnlySpan<LadderRow> Rows => CollectionsMarshal.AsSpan(_rows);
+    /// <summary>The rows shown, in display order: the scope's while one is set (<see cref="Scope"/>).</summary>
+    public ReadOnlySpan<LadderRow> Rows => CollectionsMarshal.AsSpan(_rows)[First..End];
 
-    /// <summary>The number of rows.</summary>
-    public int Count => _rows.Count;
+    /// <summary>The number of rows shown.</summary>
+    public int Count => End - First;
 
-    /// <summary>The row at <paramref name="index"/>.</summary>
-    public ref readonly LadderRow this[int index] => ref CollectionsMarshal.AsSpan(_rows)[index];
+    /// <summary>The row shown at <paramref name="index"/>.</summary>
+    public ref readonly LadderRow this[int index] => ref CollectionsMarshal.AsSpan(_rows)[First + index];
 
-    /// <summary>Appends a row; frames of one direction must come in sequence order. Returns its index.</summary>
+    /// <summary>Every row of the capture, scoped or not.</summary>
+    public int TotalCount => _rows.Count;
+
+    /// <summary>
+    /// The document's scope (D2): only rows whose frames start in it show, as one range of every row (no copy); empty
+    /// shows all. Indexes (<see cref="this[int]"/>, <see cref="IndexOf"/>, a trace's first and last) count from the
+    /// scope's first row. Set it with <see cref="SetScope"/>.
+    /// </summary>
+    public TimeWindow Scope => _scope;
+
+    /// <summary>The first row shown, as an index into every row.</summary>
+    public int First => _scope.IsEmpty ? 0 : _first;
+
+    private int End => _scope.IsEmpty ? _rows.Count : _end;
+
+    /// <summary>Limits the rows shown to <paramref name="scope"/> (empty: all) and tells the views.</summary>
+    public void SetScope(TimeWindow scope)
+    {
+        if (scope.IsEmpty) scope = default;
+        if (scope == _scope) return;
+        _scope = scope;
+        UpdateRange();
+        // The rows laid out before are not the ones shown now.
+        Generation++;
+        NotifyChanged();
+    }
+
+    /// <summary>The row at <paramref name="index"/> of every row (the projection's own index, scoped or not).</summary>
+    public ref readonly LadderRow RowAt(int index) => ref CollectionsMarshal.AsSpan(_rows)[index];
+
+    /// <summary>Appends a row; frames of one direction must come in sequence order. Returns its index among every row.</summary>
     public int Add(in LadderRow row)
     {
         List<int> own = _byDirection[(int)row.Direction];
@@ -65,7 +99,10 @@ public sealed class LadderModel
         return index;
     }
 
-    /// <summary>Replaces a row's values (assembly added flags to a frame after it was projected); its frame stays.</summary>
+    /// <summary>
+    /// Replaces a row's values (assembly added flags to a frame after it was projected); its frame stays.
+    /// <paramref name="index"/> is among every row (<see cref="Add"/>'s), scoped or not.
+    /// </summary>
     public void Replace(int index, in LadderRow row)
     {
         if (_rows[index].Frame != row.Frame)
@@ -102,7 +139,7 @@ public sealed class LadderModel
     /// <summary>The reference of an assembled message; <see cref="MessageRef.None"/> when unknown.</summary>
     public MessageRef MessageOf(int message) => (uint)message < (uint)_messages.Count ? _messages[message] : MessageRef.None;
 
-    /// <summary>The row of <paramref name="frame"/>; -1 when it has none.</summary>
+    /// <summary>The row shown for <paramref name="frame"/>; -1 when it has none, or it is outside the scope.</summary>
     public int IndexOf(FrameKey frame)
     {
         List<int> own = _byDirection[(int)frame.Direction];
@@ -111,7 +148,7 @@ public sealed class LadderModel
         {
             int mid = (lo + hi) >>> 1;
             long seq = _rows[own[mid]].Frame.Seq;
-            if (seq == frame.Seq) return own[mid];
+            if (seq == frame.Seq) return own[mid] >= First && own[mid] < End ? own[mid] - First : -1;
             if (seq < frame.Seq) lo = mid + 1;
             else hi = mid - 1;
         }
@@ -124,7 +161,10 @@ public sealed class LadderModel
     /// which is time order but for a frame of one direction finishing while the other's is still arriving; the search
     /// treats the order as monotonic, which lands on the right row or one beside it.
     /// </summary>
-    public int IndexAtOrAfter(long ticks)
+    public int IndexAtOrAfter(long ticks) => Math.Clamp(LowerBound(ticks), First, End) - First;
+
+    // The first of every row at or after ticks.
+    private int LowerBound(long ticks)
     {
         int lo = 0, hi = _rows.Count;
         while (lo < hi)
@@ -135,6 +175,20 @@ public sealed class LadderModel
         }
 
         return lo;
+    }
+
+    // The scope's rows: from the first at or after its start to the first at or after its end (a live scope's end
+    // stays put while rows arrive after it).
+    private void UpdateRange()
+    {
+        if (_scope.IsEmpty)
+        {
+            _first = _end = 0;
+            return;
+        }
+
+        _first = LowerBound(_scope.Start);
+        _end = Math.Max(_first, LowerBound(_scope.End));
     }
 
     /// <summary>The row the selection names (a frame, or the frame a message was picked from); -1 for none.</summary>
@@ -197,6 +251,7 @@ public sealed class LadderModel
         _labelIds.Clear();
         _chunkTotals.Clear();
         _messages.Clear();
+        _first = _end = 0;
         Origin = 0;
         Generation++;
     }
@@ -204,6 +259,10 @@ public sealed class LadderModel
     /// <summary>Tells the views the model changed.</summary>
     public void NotifyChanged()
     {
+        int first = _first;
+        UpdateRange();
+        // Rows came before the scope's first (a live scope set ahead of its data): the layout starts over.
+        if (_first != first) Generation++;
         Version++;
         Changed?.Invoke();
     }

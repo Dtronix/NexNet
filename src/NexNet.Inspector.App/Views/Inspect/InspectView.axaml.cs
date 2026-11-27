@@ -79,11 +79,13 @@ public sealed partial class InspectView : UserControl
         else if (Timeline.ContextGroup is { } group)
             menu = InspectMenus.Group(model.Timeline.Model, group);
         if (menu is null) return null;
-        if (model.ShowExport is { } export && model.Session is not null)
+        if (model.Session is not null)
         {
             menu.Items.Add(new Separator());
-            menu.Items.Add(InspectMenus.Item(menu, "Export this range…", new KeyGesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift),
-                () => export(ExportRangeKind.Window)));
+            menu.Items.Add(InspectMenus.Item(menu, "Filter to this range", null, () => model.FilterToView(), icon: "⊡", enabled: model.CanFilterToView));
+            if (model.ShowExport is { } export)
+                menu.Items.Add(InspectMenus.Item(menu, "Export this range…", new KeyGesture(Key.S, KeyModifiers.Control | KeyModifiers.Shift),
+                    () => export(ExportRangeKind.Window)));
         }
 
         if (frame is { } key && model.Session is { } session && ContentItems.ForFrame(session, key) is { } item)

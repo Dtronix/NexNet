@@ -11,6 +11,9 @@
   <Style Selector="Grid.trace-step.inbound TextBlock.glyph">
     <Setter Property="Foreground" Value="{DynamicResource Brush.Direction.Inbound}" />
   </Style>
+  <Style Selector="Grid.trace-step TextBlock.out-of-scope">
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Tertiary}" />
+  </Style>
   <Style Selector="Grid.trace-step TextBlock.mono">
     <Setter Property="FontFamily" Value="{DynamicResource Font.Mono}" />
     <Setter Property="FontSize" Value="{DynamicResource FontSize.Data}" />

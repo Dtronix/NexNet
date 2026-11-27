@@ -44,6 +44,7 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(sync);
         Sync = sync;
+        Rows.Scope = sync.Scope;
         sync.Changed += OnSyncChanged;
         Filter = new EnumChoice<EventsFilter>(
             [(EventsFilter.All, "Filter"), (EventsFilter.Inbound, "▼ IN only"), (EventsFilter.Outbound, "▲ OUT only")], EventsFilter.All);
@@ -178,6 +179,13 @@ public sealed partial class EventsViewModel : ObservableObject, IDisposable
 
     private void OnSyncChanged(SyncChanges changes)
     {
+        if ((changes & SyncChanges.Scope) != 0 && Rows.Scope != Sync.Scope)
+        {
+            // The rows are the scope's now: the selection finds its row again, or none when its frame is outside.
+            Rows.Scope = Sync.Scope;
+            changes |= SyncChanges.Selection;
+        }
+
         if ((changes & SyncChanges.Selection) != 0) ApplySelection(Sync.Selection);
         if ((changes & (SyncChanges.Selection | SyncChanges.Trace)) != 0) ApplyTrace();
         if ((changes & SyncChanges.FollowLive) != 0) OnPropertyChanged(nameof(FollowLive));

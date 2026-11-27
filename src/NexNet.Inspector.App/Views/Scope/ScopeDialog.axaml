@@ -1,0 +1,51 @@
+<!--
+  Filter to time range… (Ctrl+Shift+F, D2): 420 px. SCOPE TO: three radio rows (the current view, the default; the
+  selected or traced message's span, disabled when there is none; a typed start–end in ms with two mono fields under it),
+  each with its span as the hint. The summary line (what every view will show, "inside the current scope" when the
+  document is scoped already), the error line, then the footer hint, Cancel and the primary Filter.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NexNet.Inspector.App.ViewModels"
+             xmlns:c="using:NexNet.Inspector.App.Controls"
+             xmlns:p="using:NexNet.Inspector.App.Controls.Primitives"
+             x:Class="NexNet.Inspector.App.Views.Scope.ScopeDialog"
+             x:DataType="vm:ScopeDialogViewModel">
+  <c:DialogFrame x:Name="Frame" Width="420"
+                 Title="{Binding Title}"
+                 Hint="{Binding Hint}"
+                 PrimaryCommand="{Binding ApplyCommand}"
+                 CancelCommand="{Binding CancelCommand}">
+    <c:DialogFrame.Footer>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="CancelButton" Classes="md" Content="Cancel" Command="{Binding CancelCommand}" />
+        <Button x:Name="FilterButton" Classes="md primary" Content="Filter" Command="{Binding ApplyCommand}"
+                c:DialogHost.InitialFocus="True" />
+      </StackPanel>
+    </c:DialogFrame.Footer>
+
+    <StackPanel Spacing="14">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="field-label" Text="Scope to" />
+        <RadioButton x:Name="ViewRow" Theme="{StaticResource RadioRow}" GroupName="scope-range"
+                     Content="Current view" p:ControlHint.Text="{Binding ViewText}" IsChecked="{Binding IsView}" />
+        <RadioButton x:Name="SelectionRow" Theme="{StaticResource RadioRow}" GroupName="scope-range"
+                     Content="Selected or traced message" p:ControlHint.Text="{Binding SelectionText}" IsChecked="{Binding IsSelection}"
+                     IsEnabled="{Binding HasSelection}" />
+        <RadioButton x:Name="TypedRow" Theme="{StaticResource RadioRow}" GroupName="scope-range"
+                     Content="From – to (ms)" IsChecked="{Binding IsTyped}" />
+        <Grid ColumnDefinitions="*,Auto,*" Margin="20,4,0,0" IsEnabled="{Binding IsTyped}">
+          <TextBox x:Name="FromBox" Classes="mono" Text="{Binding FromText}" AutomationProperties.Name="From (ms)" />
+          <TextBlock Grid.Column="1" Text="–" Margin="8,0" VerticalAlignment="Center" Foreground="{DynamicResource Brush.Text.Secondary}" />
+          <TextBox x:Name="ToBox" Grid.Column="2" Classes="mono" Text="{Binding ToText}" AutomationProperties.Name="To (ms)" />
+        </Grid>
+      </StackPanel>
+
+      <StackPanel Spacing="4">
+        <TextBlock x:Name="SummaryText" Text="{Binding Summary}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text.Secondary}" />
+        <TextBlock x:Name="ErrorText" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Brush.Status.Error}" FontSize="{DynamicResource FontSize.Meta}" />
+      </StackPanel>
+    </StackPanel>
+  </c:DialogFrame>
+</UserControl>

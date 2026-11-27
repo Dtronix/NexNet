@@ -33,6 +33,7 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(sync);
         Sync = sync;
+        sync.Changed += OnSyncChanged;
     }
 
     /// <summary>The selection, hovered field, playhead and window every view follows.</summary>
@@ -94,7 +95,7 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
         else
         {
             lock (session.Gate)
-                Layout.Update(session, Directions);
+                Layout.Update(session, Directions, Sync.Scope);
         }
 
         IsEmpty = Layout.LineCount == 0;
@@ -165,7 +166,14 @@ public sealed partial class HexViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (_documents is not null) _documents.PropertyChanged -= OnDocumentsChanged;
+        Sync.Changed -= OnSyncChanged;
         Document = null;
+    }
+
+    // The document's scope: only the lines of ops in it show.
+    private void OnSyncChanged(SyncChanges changes)
+    {
+        if ((changes & SyncChanges.Scope) != 0) Refresh();
     }
 
     partial void OnDocumentChanged(DocumentViewModel? oldValue, DocumentViewModel? newValue)

@@ -35,6 +35,11 @@ public sealed class CommandRegistry
         new(AppCommand.HelpShortcuts, "Help & shortcuts", CommandGroup.Help, CommandGlyph.Help, Gesture(Key.F1, KeyModifiers.None)),
         new(AppCommand.Legend, "Legend & symbols", CommandGroup.View, CommandGlyph.Help, Gesture(Key.F2, KeyModifiers.None)),
         new(AppCommand.Detach, "Detach from session", CommandGroup.Session, CommandGlyph.Connect),
+        new(AppCommand.FilterToRange, "Filter to time range…", CommandGroup.View, CommandGlyph.Scope,
+            Gesture(Key.F, KeyModifiers.Control | KeyModifiers.Shift), "scope every view"),
+        new(AppCommand.FilterToView, "Filter to view", CommandGroup.View, CommandGlyph.Scope),
+        new(AppCommand.ScopeBack, "Back to previous scope", CommandGroup.View, CommandGlyph.Scope, Gesture(Key.Left, KeyModifiers.Alt)),
+        new(AppCommand.ClearScope, "Clear scope", CommandGroup.View, CommandGlyph.Scope),
     ];
 
     // The commands the palette offers when a query matches no command title (the package's "812" list), in its order.

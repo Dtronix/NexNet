@@ -98,6 +98,7 @@ public sealed class AppMenuTests
             await Assert.That(gestures).IsEquivalentTo(new[]
             {
                 "Open recording…=Ctrl+O", "Save timeline as .nntl…=Ctrl+S", "Export section as .nntl…=Ctrl+Shift+S", "Connect to inspector…=Ctrl+K", "Record all sessions=Ctrl+Shift+R",
+                "Filter to time range…=Ctrl+Shift+F", "Back to previous scope=Alt+Left",
                 "Command palette=Ctrl+Shift+P", "Legend & symbols=F2", "Help & shortcuts=F1",
             });
             await Assert.That(shown.Items.Where(i => i.Sub).Select(i => i.Header).ToArray())

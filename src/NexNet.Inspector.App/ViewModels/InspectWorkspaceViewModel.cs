@@ -116,6 +116,12 @@ public sealed partial class InspectWorkspaceViewModel : ObservableObject, IDispo
     /// </summary>
     public Func<ExportRangeKind, bool>? ShowExport { get; set; }
 
+    /// <summary>True when the timeline's "Filter to this range" can scope the active document to the window.</summary>
+    public bool CanFilterToView => _documents.CanScope && !_documents.Sync.Window.IsEmpty;
+
+    /// <summary>The timeline menu's "Filter to this range": the active document's scope becomes the window shown.</summary>
+    public bool FilterToView() => _documents.FilterToView();
+
     /// <summary>
     /// Brings a view into a lower pane (the lane menu's "Show in Ladder" / "Show in Hex stream"): a pane that shows it
     /// already keeps it; otherwise the Hex stream takes the right pane when it shows, anything else the left.

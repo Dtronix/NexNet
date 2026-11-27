@@ -167,14 +167,14 @@ public sealed class LadderProjection
         for (int i = 0; i < _open.Count; i++)
         {
             int index = _open[i];
-            ref readonly LadderRow row = ref _model[index];
+            ref readonly LadderRow row = ref _model.RowAt(index);
             if (session.TryGetFrame(row.Frame, out FrameRecord frame))
             {
                 LadderRow fresh = Project(session, frame, row.Part);
                 if (fresh != row) _model.Replace(index, fresh);
             }
 
-            if (IsAssembling(session, _model[index].Message)) _open[kept++] = index;
+            if (IsAssembling(session, _model.RowAt(index).Message)) _open[kept++] = index;
         }
 
         _open.RemoveRange(kept, _open.Count - kept);

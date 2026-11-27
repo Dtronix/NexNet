@@ -62,6 +62,18 @@ public enum AppCommand : byte
 
     /// <summary>Stops viewing the attached session; the captured data stays in the tab.</summary>
     Detach,
+
+    /// <summary>"Filter to time range…": the scope dialog (current view, selection or traced message, typed ms) (Ctrl+Shift+F).</summary>
+    FilterToRange,
+
+    /// <summary>"Filter to view": the active document's scope becomes the time window shown.</summary>
+    FilterToView,
+
+    /// <summary>Back: the previous scope, and the view shown before this one (Alt+Left).</summary>
+    ScopeBack,
+
+    /// <summary>Clears every scope of the active document (the chip's ✕).</summary>
+    ClearScope,
 }
 
 /// <summary>The app menu's section a command belongs to (inspect-app-menu: FILE, SESSION, VIEW, then help).</summary>
@@ -118,4 +130,7 @@ public enum CommandGlyph : byte
 
     /// <summary>Help.</summary>
     Help,
+
+    /// <summary>A document scope (filter to a time range).</summary>
+    Scope,
 }

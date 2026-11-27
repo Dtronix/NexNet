@@ -99,7 +99,8 @@ public sealed partial class CommandPaletteViewModel : ObservableObject
     {
         PaletteQuery query = PaletteQuery.Parse(Query, Scope.Value);
         CaptureSession? session = _documents.Active?.Session;
-        List<PaletteRow> rows = _search.Run(query, session, Documents(), _commands);
+        // The active document's scope limits the entities and frames searched (D2).
+        List<PaletteRow> rows = _search.Run(query, session, Documents(), _commands, _documents.Sync.Scope);
         if (SelectedIndex >= 0 && SelectedIndex < Rows.Count) Rows[SelectedIndex].IsSelected = false;
         SelectedIndex = -1;
         Rows = rows;

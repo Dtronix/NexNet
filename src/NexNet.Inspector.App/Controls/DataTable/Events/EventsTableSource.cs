@@ -24,7 +24,11 @@ public sealed class EventsTableSource : DataTableSource
     private readonly List<int> _filtered = [];
     private CaptureSession? _session;
     private EventsFilter _filter;
+    // Rows of the whole capture (under the filter); while scoped, rows [_lo, _hi) of them show.
     private int _count;
+    private TimeWindow _scope;
+    private int _lo;
+    private int _hi;
     private int _scanned;
     private long _version = -1;
     private MessageRef _trace = MessageRef.None;
@@ -33,7 +37,28 @@ public sealed class EventsTableSource : DataTableSource
     /// <summary>The session shown; null shows no rows.</summary>
     public CaptureSession? Session => _session;
 
-    public override int Count => _count;
+    public override int Count => _scope.IsEmpty ? _count : _hi - _lo;
+
+    /// <summary>
+    /// The document's scope (D2): only frames that start in it get rows, as one range of the capture's rows (no copy),
+    /// each keeping its capture number. Empty shows every row.
+    /// </summary>
+    public TimeWindow Scope
+    {
+        get => _scope;
+        set
+        {
+            if (value.IsEmpty) value = default;
+            if (value == _scope) return;
+            _scope = value;
+            if (_session is { } session)
+            {
+                lock (session.Gate) UpdateRange(session);
+            }
+
+            NotifyReset();
+        }
+    }
 
     /// <summary>
     /// The traced message: its frames get the trace tint. Set from the selection for now (the selected frame's message);
@@ -93,6 +118,7 @@ public sealed class EventsTableSource : DataTableSource
     private void Reset()
     {
         _count = 0;
+        _lo = _hi = 0;
         _scanned = 0;
         _version = -1;
         _filtered.Clear();
@@ -111,7 +137,8 @@ public sealed class EventsTableSource : DataTableSource
         if (version == _version) return 0;
         _version = version;
 
-        int start = _count;
+        int start = Count;
+        int lo = _lo;
         lock (session.Gate)
         {
             ReadOnlySpan<FrameKey> order = session.FrameOrder;
@@ -131,28 +158,73 @@ public sealed class EventsTableSource : DataTableSource
 
             _scanned = order.Length;
             _count = _filter == EventsFilter.All ? order.Length : _filtered.Count;
+            if (!_scope.IsEmpty) UpdateRange(session);
         }
 
-        NotifyAdded(start, _count - start);
+        if (_lo != lo)
+        {
+            // The scope's first row arrived only now (a live scope set before its data): the rows start over.
+            NotifyReset();
+            return Count;
+        }
+
+        NotifyAdded(start, Count - start);
         // Frames already shown gain flags as assembly goes on (N, X), and an incomplete one completes.
         NotifyRowsChanged();
-        return _count - start;
+        return Count - start;
     }
 
-    /// <summary>The row of <paramref name="frame"/>; -1 when the session has no such frame.</summary>
+    /// <summary>The row of <paramref name="frame"/>; -1 when the session has no such frame, or it is outside the scope.</summary>
     public int IndexOf(FrameKey frame)
     {
         int d = (int)frame.Direction;
         long offset = frame.Seq - _firstSeq[d];
         List<int> rows = _rowBySeq[d];
-        return _firstSeq[d] >= 0 && offset >= 0 && offset < rows.Count ? rows[(int)offset] : -1;
+        int row = _firstSeq[d] >= 0 && offset >= 0 && offset < rows.Count ? rows[(int)offset] : -1;
+        if (row < 0 || _scope.IsEmpty) return row;
+        return row >= _lo && row < _hi ? row - _lo : -1;
+    }
+
+    // The scope's rows: from the first that starts at or after its start to the first at or after its end. Frames are
+    // in completion order, which is time order but for a frame of one direction finishing while the other's arrives;
+    // the search treats it as monotonic, which lands on the right row or one beside it.
+    private void UpdateRange(CaptureSession session)
+    {
+        if (_scope.IsEmpty)
+        {
+            _lo = _hi = 0;
+            return;
+        }
+
+        _lo = LowerBound(session, _scope.Start);
+        _hi = Math.Max(_lo, LowerBound(session, _scope.End));
+    }
+
+    private int LowerBound(CaptureSession session, long ticks)
+    {
+        int lo = 0, hi = _count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            if (TicksOf(session, mid) < ticks) lo = mid + 1;
+            else hi = mid;
+        }
+
+        return lo;
+    }
+
+    // The start tick of a capture row (under the filter, ignoring the scope).
+    private long TicksOf(CaptureSession session, int row)
+    {
+        FrameKey key = session.FrameOrder[_filter == EventsFilter.All ? row : _filtered[row]];
+        return session.Assembler.TryGetFrame(key.Direction, key.Seq, out FrameRecord frame) ? frame.StartTicks : long.MinValue;
     }
 
     /// <summary>The frame shown at <paramref name="index"/>.</summary>
     public bool TryGetFrame(int index, out FrameKey frame)
     {
         frame = default;
-        if (_session is not { } session || (uint)index >= (uint)_count) return false;
+        if (_session is not { } session || (uint)index >= (uint)Count) return false;
         lock (session.Gate) frame = session.FrameOrder[OrderIndex(index)];
         return true;
     }
@@ -161,7 +233,7 @@ public sealed class EventsTableSource : DataTableSource
     public bool TryGetRow(int index, out EventRow row)
     {
         row = default;
-        if (_session is not { } session || (uint)index >= (uint)_count) return false;
+        if (_session is not { } session || (uint)index >= (uint)Count) return false;
         lock (session.Gate)
             return TryRead(session, index, out row);
     }
@@ -188,8 +260,12 @@ public sealed class EventsTableSource : DataTableSource
         else rows[(int)offset] = index;
     }
 
-    // A row's index in the session's frame order.
-    private int OrderIndex(int row) => _filter == EventsFilter.All ? row : _filtered[row];
+    // A row's index in the session's frame order (a scoped row counts from the scope's first).
+    private int OrderIndex(int row)
+    {
+        if (!_scope.IsEmpty) row += _lo;
+        return _filter == EventsFilter.All ? row : _filtered[row];
+    }
 
     private bool TryRead(CaptureSession session, int index, out EventRow row)
     {

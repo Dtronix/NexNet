@@ -19,8 +19,10 @@ public sealed class TraceStepRow
     /// <param name="origin">The capture's first tick (the time column counts from it).</param>
     /// <param name="frequency">Ticks per second.</param>
     /// <param name="pipe">What the step's pipe carries (the CH / CO chip); <see cref="PipeContent.Raw"/> for none.</param>
-    public TraceStepRow(in TraceStep step, long origin, long frequency, PipeContent pipe = PipeContent.Raw)
+    /// <param name="scope">The document's scope: a step outside it is marked (⊘, dimmed); empty for none.</param>
+    public TraceStepRow(in TraceStep step, long origin, long frequency, PipeContent pipe = PipeContent.Raw, TimeWindow scope = default)
     {
+        IsOutOfScope = !scope.IsEmpty && !scope.Contains(step.Ticks);
         PipeKind = step.IsInterleaved ? PipeContent.Raw : pipe;
         Step = step;
         Label = step.Label;
@@ -30,8 +32,14 @@ public sealed class TraceStepRow
         IsInbound = step.Frame.Direction == TapDirection.Inbound;
         Glyph = step.IsInterleaved ? "" : IsInbound ? "▼" : "▲";
         IsTransportSplit = !step.IsInterleaved && (step.Flags & FrameFlags.TransportSplit) != 0;
-        Detail = DetailOf(step);
+        Detail = IsOutOfScope ? DetailOf(step) + " · outside the scope" : DetailOf(step);
     }
+
+    /// <summary>True when the step lies outside the document's scope: dimmed, with the ⊘ mark.</summary>
+    public bool IsOutOfScope { get; }
+
+    /// <summary>The mark an out-of-scope step shows.</summary>
+    public const string OutOfScopeMark = "⊘";
 
     /// <summary>The step.</summary>
     public TraceStep Step { get; }
@@ -66,8 +74,8 @@ public sealed class TraceStepRow
     /// <summary>The tooltip: frame, offset in the message, stream offset, length, transport ops.</summary>
     public string Detail { get; }
 
-    /// <summary>The row's opacity: 60 % for interleaved frames.</summary>
-    public double RowOpacity => IsInterleaved ? 0.6 : 1;
+    /// <summary>The row's opacity: 40 % outside the scope, 60 % for interleaved frames.</summary>
+    public double RowOpacity => IsOutOfScope ? 0.4 : IsInterleaved ? 0.6 : 1;
 
     /// <summary>The label's indent: 12 px for interleaved frames.</summary>
     public Avalonia.Thickness LabelMargin => new(IsInterleaved ? 12 : 0, 0, 0, 0);

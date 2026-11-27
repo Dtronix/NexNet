@@ -69,6 +69,9 @@ public sealed class HexLayout
     /// <summary>The directions shown.</summary>
     public HexDirections Directions { get; private set; } = HexDirections.Both;
 
+    /// <summary>The document's scope (D2): only ops whose ticks fall in it are laid out; empty for all.</summary>
+    public TimeWindow Scope { get; private set; }
+
     /// <summary>Lines of every kind.</summary>
     public long LineCount => _lineCount;
 
@@ -110,16 +113,20 @@ public sealed class HexLayout
     /// </summary>
     /// <param name="session">The session; null clears.</param>
     /// <param name="directions">The directions to show; <see cref="HexDirections.None"/> is read as both.</param>
+    /// <param name="scope">The document's scope: only the lines of ops in it show; empty for every op.</param>
     /// <returns>True when the lines changed.</returns>
-    public bool Update(CaptureSession? session, HexDirections directions)
+    public bool Update(CaptureSession? session, HexDirections directions, TimeWindow scope = default)
     {
         if (directions == HexDirections.None)
             directions = HexDirections.Both;
+        if (scope.IsEmpty)
+            scope = default;
         bool reset = false;
-        if (!ReferenceEquals(session, Session) || directions != Directions)
+        if (!ReferenceEquals(session, Session) || directions != Directions || scope != Scope)
         {
             Session = session;
             Directions = directions;
+            Scope = scope;
             Clear();
             Version++;
             reset = true;
@@ -363,6 +370,10 @@ public sealed class HexLayout
             return;
 
         _merged[(int)direction] = op.End;
+        // Outside the scope: not shown, and the next shown op of this direction starts a new run (its offset no longer
+        // continues the last shown one's).
+        if (!Scope.IsEmpty && !Scope.Contains(op.Ticks))
+            return;
         if (_count == _entries.Length)
             Array.Resize(ref _entries, _count * 2);
 

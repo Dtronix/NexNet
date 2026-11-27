@@ -43,6 +43,7 @@ public sealed partial class DocumentsViewModel
     private void OnDocumentAdded(DocumentViewModel document)
     {
         document.AttachTo(this, NextMarker(document));
+        document.ScopeChanged += OnScopeChanged;
         RefreshCompareGates();
     }
 
@@ -54,6 +55,7 @@ public sealed partial class DocumentsViewModel
             ComparedCount--;
         }
 
+        document.ScopeChanged -= OnScopeChanged;
         document.DetachFromOwner();
         RefreshCompareGates();
     }

@@ -10,6 +10,7 @@
         xmlns:palette="using:NexNet.Inspector.App.Views.Palette"
         xmlns:compare="using:NexNet.Inspector.App.Views.Compare"
         xmlns:export="using:NexNet.Inspector.App.Views.Export"
+        xmlns:scope="using:NexNet.Inspector.App.Views.Scope"
         x:Class="NexNet.Inspector.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding Title}"
@@ -46,6 +47,9 @@
     </DataTemplate>
     <DataTemplate DataType="vm:ExportSectionDialogViewModel">
       <export:ExportSectionDialog />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ScopeDialogViewModel">
+      <scope:ScopeDialog />
     </DataTemplate>
   </Window.DataTemplates>
   <!-- Minimum size from OQ10; below ~1200 px the panes collapse (ShellLayoutPolicy, read from Chrome.Layout). The window

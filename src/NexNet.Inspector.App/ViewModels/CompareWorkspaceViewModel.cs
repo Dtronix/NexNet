@@ -477,6 +477,8 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     private void SetSession(CompareSession? session, CompareDensity? densityA, CompareDensity? densityB, bool keep, EntityKey? selected = null)
     {
         Rows.SetSession(session, densityA, densityB, keep);
+        // The scope's compare time depends on this compare's clock.
+        ApplyScope();
         Session = session;
         // A refreshed compare rebuilt its union (and dropped its field diffs): the panel shows the entity again.
         _shownMatch = int.MinValue;
@@ -509,6 +511,7 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     {
         session.ApplyAlignment(prepared);
         Rows.OnAligned();
+        ApplyScope();
         DeltaCount = session.Deltas.Count;
         UpdateFiles();
         if (Rows.Selected >= 0) Detail = session.Matches[Rows.Selected];
@@ -843,14 +846,55 @@ public sealed partial class CompareWorkspaceViewModel : ObservableObject, IDispo
     private void Track(DocumentViewModel? a, DocumentViewModel? b)
     {
         if (a == _a && b == _b) return;
-        if (_a is not null) _a.DataChanged -= _onDocumentData;
-        if (_b is not null) _b.DataChanged -= _onDocumentData;
+        if (_a is not null)
+        {
+            _a.DataChanged -= _onDocumentData;
+            _a.ScopeChanged -= OnScopeChanged;
+        }
+
+        if (_b is not null)
+        {
+            _b.DataChanged -= _onDocumentData;
+            _b.ScopeChanged -= OnScopeChanged;
+        }
+
         _a = a;
         _b = b;
-        if (_a is not null) _a.DataChanged += _onDocumentData;
-        if (_b is not null) _b.DataChanged += _onDocumentData;
+        if (_a is not null)
+        {
+            _a.DataChanged += _onDocumentData;
+            _a.ScopeChanged += OnScopeChanged;
+        }
+
+        if (_b is not null)
+        {
+            _b.DataChanged += _onDocumentData;
+            _b.ScopeChanged += OnScopeChanged;
+        }
         OnPropertyChanged(nameof(DocumentA));
         OnPropertyChanged(nameof(DocumentB));
+    }
+
+    private void OnScopeChanged(DocumentViewModel document, ScopeChange change) => ApplyScope();
+
+    /// <summary>
+    /// The compared documents' scope on the aligned axis (D2): file A's when it is scoped, else file B's, converted to
+    /// compare time through that file's clock. Empty when neither is scoped.
+    /// </summary>
+    public TimeWindow ScopeOnAxis()
+    {
+        if (Session is not { } session) return default;
+        (CompareSide side, TimeScope? scope) = _a?.Scope is { } a ? (CompareSide.A, (TimeScope?)a) : (CompareSide.B, _b?.Scope);
+        if (scope is not { } s) return default;
+        long start = session.Clock.ToCompare(side, s.Start);
+        long end = session.Clock.ToCompare(side, s.End);
+        return end > start ? new TimeWindow(start, end) : default;
+    }
+
+    private void ApplyScope()
+    {
+        Rows.SetScope(ScopeOnAxis());
+        UpdateSubtitle();
     }
 
     private void OnDocumentData(DocumentViewModel document)

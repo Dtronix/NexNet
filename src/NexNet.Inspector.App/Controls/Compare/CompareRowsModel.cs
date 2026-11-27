@@ -154,8 +154,37 @@ public sealed class CompareRowsModel
     /// <summary>The rows' total height.</summary>
     public double Height { get; private set; }
 
-    /// <summary>The whole compare timeline; empty without a compare.</summary>
-    public TimeWindow Bounds => Session?.Range ?? default;
+    /// <summary>
+    /// The compare timeline the window is kept in: the scope (<see cref="Scope"/>) when one is set, else the whole compare;
+    /// empty without a compare.
+    /// </summary>
+    public TimeWindow Bounds
+    {
+        get
+        {
+            TimeWindow range = Session?.Range ?? default;
+            if (range.IsEmpty || Scope.IsEmpty) return range;
+            TimeWindow scoped = new(Math.Max(range.Start, Scope.Start), Math.Min(range.End, Scope.End));
+            return scoped.IsEmpty ? range : scoped;
+        }
+    }
+
+    /// <summary>
+    /// A compared document's scope (D2) on the aligned axis, in compare time: the window stays inside it and the ruler's
+    /// drag-select clamps to it. Empty for none.
+    /// </summary>
+    public TimeWindow Scope { get; private set; }
+
+    /// <summary>Sets the scope on the aligned axis (empty clears it); a new scope shows whole, a cleared one the whole compare.</summary>
+    public void SetScope(TimeWindow scope)
+    {
+        if (scope.IsEmpty) scope = default;
+        if (scope == Scope) return;
+        Scope = scope;
+        if (Session is null) return;
+        Window = Bounds;
+        Changed?.Invoke(CompareChanges.Window);
+    }
 
     /// <summary>
     /// Shows a compare (or none). The expansion and the window carry over when the same documents are compared again
@@ -175,7 +204,7 @@ public sealed class CompareRowsModel
         if (session is null || (uint)Selected >= (uint)session.Matches.Length) Selected = -1;
         Summarize();
         if (session is null) Window = default;
-        else if (!keepWindow || Window.IsEmpty) Window = session.Range;
+        else if (!keepWindow || Window.IsEmpty) Window = Bounds;
         else Window = ClampWindow(Window);
         UpdatePinned();
         Relayout(CompareChanges.Rows | CompareChanges.Window | CompareChanges.Selection | CompareChanges.Alignment);

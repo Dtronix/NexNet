@@ -22,6 +22,9 @@ public enum ExportRangeKind : byte
 
     /// <summary>A start and end typed in milliseconds from the capture's start.</summary>
     Typed = 3,
+
+    /// <summary>The document's scope (D2); the default while one is set.</summary>
+    Scope = 4,
 }
 
 /// <summary>
@@ -43,11 +46,15 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
     private readonly long _origin;
     private readonly long _frequency;
     private readonly TimeWindow _window;
+    private readonly TimeScope? _scope;
 
     /// <param name="documents">The documents: the sync bus, the save picker and the recents.</param>
     /// <param name="document">The document to export from; it must hold a session.</param>
-    /// <param name="initial">The range chosen first; one that is not available falls back to the time window.</param>
-    public ExportSectionDialogViewModel(DocumentsViewModel documents, DocumentViewModel document, ExportRangeKind initial = ExportRangeKind.Window)
+    /// <param name="initial">
+    /// The range chosen first; one that is not available falls back to the time window. Null (Ctrl+Shift+S, the menu)
+    /// chooses the scope when the document has one, else the time window.
+    /// </param>
+    public ExportSectionDialogViewModel(DocumentsViewModel documents, DocumentViewModel document, ExportRangeKind? initial = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(document);
@@ -68,13 +75,15 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
                 _trace = (trace.Start, trace.End);
         }
 
+        _scope = document.Scope;
         FromText = Milliseconds(_window.Start);
         ToText = Milliseconds(_window.End);
-        Range = initial switch
+        Range = (initial ?? (_scope is not null ? ExportRangeKind.Scope : ExportRangeKind.Window)) switch
         {
+            ExportRangeKind.Scope when _scope is null => ExportRangeKind.Window,
             ExportRangeKind.Message when _message is null => ExportRangeKind.Window,
             ExportRangeKind.Trace when _trace is null => ExportRangeKind.Window,
-            _ => initial,
+            var chosen => chosen,
         };
     }
 
@@ -90,7 +99,7 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
 
     /// <summary>Which range is exported.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWindow), nameof(IsMessage), nameof(IsTrace), nameof(IsTyped), nameof(Summary), nameof(SuggestedName))]
+    [NotifyPropertyChangedFor(nameof(IsWindow), nameof(IsMessage), nameof(IsTrace), nameof(IsTyped), nameof(IsScope), nameof(Summary), nameof(SuggestedName))]
     public partial ExportRangeKind Range { get; set; }
 
     /// <summary>The time window radio.</summary>
@@ -122,6 +131,22 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
             if (value && HasTrace) Range = ExportRangeKind.Trace;
         }
     }
+
+    /// <summary>The scope radio (shown while the document is scoped).</summary>
+    public bool IsScope
+    {
+        get => Range == ExportRangeKind.Scope;
+        set
+        {
+            if (value && HasScope) Range = ExportRangeKind.Scope;
+        }
+    }
+
+    /// <summary>True when the document is scoped (its radio shows).</summary>
+    public bool HasScope => _scope is not null;
+
+    /// <summary>The scope radio's hint; "no scope" without one.</summary>
+    public string ScopeText => _scope is { } s ? Span(s.Start, s.End) : "no scope";
 
     /// <summary>The typed range radio.</summary>
     public bool IsTyped
@@ -241,6 +266,9 @@ public sealed partial class ExportSectionDialogViewModel : ObservableObject
                 return true;
             case ExportRangeKind.Trace when _trace is { } t:
                 (from, to) = t;
+                return true;
+            case ExportRangeKind.Scope when _scope is { } s:
+                (from, to) = (s.Start, s.End);
                 return true;
             case ExportRangeKind.Typed:
                 if (!TryParseMs(FromText, out var a) || !TryParseMs(ToText, out var b))

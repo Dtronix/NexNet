@@ -5,7 +5,7 @@ namespace NexNet.Inspector.App.Services;
 
 /// <summary>What changed on the <see cref="SyncBus"/> since its last notification.</summary>
 [Flags]
-public enum SyncChanges : byte
+public enum SyncChanges : ushort
 {
     /// <summary>Nothing.</summary>
     None = 0,
@@ -33,6 +33,9 @@ public enum SyncChanges : byte
 
     /// <summary>How the inspector reads the hex selection ("Decode selection as ▸").</summary>
     Decode = 1 << 7,
+
+    /// <summary>The active document's scope (D2): the views limit themselves to it; <see cref="Bounds"/> changes with it.</summary>
+    Scope = 1 << 8,
 }
 
 /// <summary>
@@ -49,6 +52,8 @@ public sealed class SyncBus
     private readonly ChangeCoalescer _notify;
     private Func<Selection, MessageTrace>? _resolver;
     private int _changes;
+    private TimeWindow _range;
+    private bool _resumeFollow;
 
     /// <param name="ui">Where <see cref="Changed"/> is raised.</param>
     public SyncBus(IUiDispatcher ui) => _notify = new ChangeCoalescer(ui, Flush);
@@ -59,8 +64,27 @@ public sealed class SyncBus
     /// <summary>The time window, in Stopwatch ticks of the active document.</summary>
     public TimeWindow Window { get; private set; }
 
-    /// <summary>The time range the window is kept in: the active document's capture (empty: unbounded).</summary>
-    public TimeWindow Bounds { get; private set; }
+    /// <summary>
+    /// The time range the window is kept in: the active document's scope while it has one (<see cref="Scope"/>), else
+    /// its capture (empty: unbounded, a live document).
+    /// </summary>
+    public TimeWindow Bounds => Scope.IsEmpty ? _range : Scope;
+
+    /// <summary>The active document's capture range, whatever its scope (empty for a live document).</summary>
+    public TimeWindow CaptureBounds => _range;
+
+    /// <summary>
+    /// The active document's scope (D2, "Filter to time range"); empty when it has none. The window stays inside it, the
+    /// timeline's overview and ruler span it, the panes list only what falls in it, and following the live edge is
+    /// suspended while it is set (a live scope stays fixed while data arrives after it).
+    /// </summary>
+    public TimeWindow Scope { get; private set; }
+
+    /// <summary>True while the active document is scoped.</summary>
+    public bool IsScoped => !Scope.IsEmpty;
+
+    /// <summary>True when following the live edge comes back once the scope is cleared (it was on when the scope was set).</summary>
+    public bool ResumesFollowLive => IsScoped ? _resumeFollow : FollowLive;
 
     /// <summary>The playhead tick.</summary>
     public long Playhead { get; private set; }
@@ -105,8 +129,12 @@ public sealed class SyncBus
     /// <param name="byUser">True for a user's zoom or pan, which stops following the live edge.</param>
     public void SetWindow(TimeWindow window, bool byUser = true)
     {
-        if (!Bounds.IsEmpty)
-            window = window.Clamp(Bounds.Start, Math.Max(Bounds.End, Bounds.Start + window.Duration));
+        // A scope holds the window inside it (never wider: the overview spans exactly the scope); a capture's range lets
+        // a zoom out reach past its end.
+        if (IsScoped)
+            window = window.Clamp(Scope.Start, Scope.End);
+        else if (!_range.IsEmpty)
+            window = window.Clamp(_range.Start, Math.Max(_range.End, _range.Start + window.Duration));
         if (byUser && FollowLive && window.End < Window.End)
             SetFollowLive(false);
         if (window == Window)
@@ -121,13 +149,55 @@ public sealed class SyncBus
     /// <summary>Pans the window by ticks.</summary>
     public void Pan(long delta) => SetWindow(Window.Pan(delta));
 
-    /// <summary>Sets the bounds the window is kept in.</summary>
+    /// <summary>Sets the capture range the window is kept in (a scope, while set, bounds it instead).</summary>
     public void SetBounds(TimeWindow bounds)
     {
-        if (bounds == Bounds)
+        if (bounds == _range)
             return;
-        Bounds = bounds;
-        Mark(SyncChanges.Bounds);
+        _range = bounds;
+        if (!IsScoped)
+            Mark(SyncChanges.Bounds);
+    }
+
+    /// <summary>
+    /// Sets the active document's scope (empty clears it): the window is moved inside it, and following the live edge is
+    /// suspended until the scope is cleared, when it resumes if it was on.
+    /// </summary>
+    public void SetScope(TimeWindow scope)
+    {
+        if (scope.IsEmpty)
+            scope = default;
+        if (scope == Scope)
+            return;
+
+        bool wasScoped = IsScoped;
+        SyncChanges changes = SyncChanges.Scope | SyncChanges.Bounds;
+        Scope = scope;
+        if (!scope.IsEmpty)
+        {
+            if (!wasScoped)
+                _resumeFollow = FollowLive;
+            if (FollowLive)
+            {
+                FollowLive = false;
+                changes |= SyncChanges.FollowLive;
+            }
+
+            TimeWindow window = Window.IsEmpty ? scope : Window.Clamp(scope.Start, scope.End);
+            if (window != Window)
+            {
+                Window = window;
+                changes |= SyncChanges.Window;
+            }
+        }
+        else if (_resumeFollow)
+        {
+            _resumeFollow = false;
+            FollowLive = true;
+            changes |= SyncChanges.FollowLive;
+        }
+
+        Mark(changes);
     }
 
     /// <summary>Moves the playhead.</summary>
@@ -210,6 +280,13 @@ public sealed class SyncBus
     /// <summary>Turns following the live edge on or off.</summary>
     public void SetFollowLive(bool follow)
     {
+        if (IsScoped)
+        {
+            // Suspended while scoped: the choice applies once the scope is cleared.
+            _resumeFollow = follow;
+            return;
+        }
+
         if (follow == FollowLive)
             return;
         FollowLive = follow;
@@ -222,25 +299,33 @@ public sealed class SyncBus
     /// </summary>
     public void OnLiveData(long latest)
     {
-        if (!FollowLive || latest <= Window.End)
+        if (!FollowLive || IsScoped || latest <= Window.End)
             return;
         Window = Window.Follow(latest);
         Mark(SyncChanges.Window);
     }
 
     /// <summary>Replaces every value at once, as a document switch does.</summary>
-    internal void Restore(TimeWindow window, TimeWindow bounds, long playhead, Selection selection, bool followLive)
+    /// <param name="window">The window.</param>
+    /// <param name="bounds">The document's capture range (empty for a live document).</param>
+    /// <param name="playhead">The playhead.</param>
+    /// <param name="selection">The selection.</param>
+    /// <param name="followLive">Whether the window follows the live edge (once any scope is cleared).</param>
+    /// <param name="scope">The document's scope; empty for none (following the live edge is then suspended).</param>
+    internal void Restore(TimeWindow window, TimeWindow bounds, long playhead, Selection selection, bool followLive, TimeWindow scope = default)
     {
-        Bounds = bounds;
-        Window = window;
+        _range = bounds;
+        Scope = scope.IsEmpty ? default : scope;
+        _resumeFollow = IsScoped && followLive;
+        Window = IsScoped && !window.IsEmpty ? window.Clamp(Scope.Start, Scope.End) : IsScoped ? Scope : window;
         Playhead = playhead;
         Selection = selection;
         Hover = FieldHover.None;
         Decode = SelectionDecode.Auto;
-        FollowLive = followLive;
+        FollowLive = followLive && !IsScoped;
         Trace = _resolver is { } resolve && !selection.IsNone ? resolve(selection) : MessageTrace.None;
         Mark(SyncChanges.Window | SyncChanges.Bounds | SyncChanges.Playhead | SyncChanges.Selection | SyncChanges.Hover
-             | SyncChanges.FollowLive | SyncChanges.Trace | SyncChanges.Decode);
+             | SyncChanges.FollowLive | SyncChanges.Trace | SyncChanges.Decode | SyncChanges.Scope);
     }
 
     private void Mark(SyncChanges change)
