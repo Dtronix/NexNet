@@ -566,6 +566,7 @@ internal sealed partial class CliArguments
                 return QueryCommand.TryValidate(this, out error);
             case CliCommand.Info:
             case CliCommand.Repair:
+            case CliCommand.Findings:
                 if (File is null)
                 {
                     error = $"'{name}' needs a recording file.";

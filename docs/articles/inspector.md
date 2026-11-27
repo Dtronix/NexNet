@@ -103,6 +103,7 @@ nexnet-tap around <file.nntl> <t> [±w] [options]
 nexnet-tap slow <file.nntl> [--over <d>] [options]
 nexnet-tap diff <a.nntl> <b.nntl> [--top <n>]
 nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
+nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <duration>] [--json]
 nexnet-tap help [command]
 nexnet-tap help format
 nexnet-tap --version
@@ -203,6 +204,38 @@ $ nexnet-tap export chat.nntl --from +20 --to +60 --out section.nntl
 
 IDs are the ones the lines show: `#5` (or `5`; quote `'#5'` in a shell, where `#` starts a comment), `5.2` (the second invocation that reused wire ID 5), `≋4·4` or `p4` (a pipe), `f18` (a frame). `--format ndjson` writes one JSON object per line. `--max-lines` and `--max-tokens` bound the output: a query that hits a budget ends with `… budget hit, N withheld, --after <cursor>`, and the same command with `--after <cursor>` prints the rest. `--value-width` and `--depth` change how much of each value shows.
 
+### findings
+
+```
+$ nexnet-tap findings upload.nntl
+@0x3078183DB server tcp 127.0.0.1:60700 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.597Z
++32.7 ! warn window-stall ⇄1·1 f12 < writes waited 106.8ms for a window update after using the whole 16.0KB window
++32.7 ! warn window-stall ⇄1·1 < stalled 2× waiting for window updates, 217.4ms in total, longest 110.6ms
+findings 2: error 0 warn 2 info 0
+```
+
+Runs rule-based detectors over each session and prints its header line, one `!` line per finding, most severe first (`error`, `warn`, `info`, then by time), and a tally. A line reads `<time> ! <severity> <kind> <IDs> <message>`; the IDs are the text format's stable IDs (`#5` an invocation, `≋4·4` a pipe, `f18` a frame, `@0x1BCB` a session), the same ones the inspector's other text tooling accepts. `--session` picks one session (an ID from `info`, or `first`), `--slow` sets the slow-call threshold (default 1 s), `--json` writes ndjson (`k` = `find`).
+
+| Kind | Severity | What it means |
+|------|----------|---------------|
+| `slow` | warn | A call over `--slow`, or a p99 outlier: longer than every earlier call of its method and at least 10× their median (8 calls needed; methods with too few are judged at the end against all their calls). Pipe and channel methods are not judged. |
+| `cancel-race` | warn / info | The caller canceled, but the result (ok or exception) still came: the caller discarded it. Info when the cancellation was sent after the result. |
+| `orphan` | error / info | A result, or large-message chunks, whose request was not captured. Info when the capture attached mid-stream or a gap dropped the request. |
+| `window-stall` | warn | A pipe writer used its whole credit window and waited at least 50 ms for a window update before writing more; a second line totals repeated stalls. |
+| `credit-stall` | warn | A caller used all the invocation credits its peer allows and waited at least 50 ms for credit back. |
+| `large` | info / warn | An argument, result or channel item of 1 MiB or more; warn at 80 % of the receiver's `MaxMessageSize` or when the receiver aborted it (`TooLarge`, `Busy`). |
+| `chunk-storm` | info | 128 or more MessageChunk frames within one second. |
+| `pending` | warn / info | A call with no result when the session ended (info when the capture ended first, or a gap may have dropped the result). |
+| `pipe-open` | warn / info | A pipe (not a collection's) that both sides never completed. |
+| `protocol` | error / info | Bytes that do not frame, a body that does not decode, a handshake that never completed. Info for frames cut off by a gap or by the end of the capture, and for bytes read while resynchronising. |
+| `disconnect` | error / warn / info | A close other than graceful or a shutdown (error for `ProtocolError`, `FlowControl`, `Stalled`); info when the recording was cut off. |
+| `schema` | warn / error | The recorded schema differs from the workspace schema or does not read; error when the peers disconnected over a nexus mismatch. |
+| `gap` | warn | Ops the capture dropped (Drop overflow), citing the frame before them. |
+| `ping-rtt` | warn | A ping answered after 500 ms, or 10× the session's median round trip (at least 50 ms). |
+| `reconnect-loop` | warn | Across the sessions of a file: three or more reconnections from one peer (a session starting within 10 s of a failed one, or with a reconnection greeting). |
+
+Each kind lists at most 20 findings per session; one more `info` line counts the rest. The detectors are in the core library (`FindingsEngine`), and run incrementally on a live session too: each update returns what was detected since the last.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -211,7 +244,7 @@ IDs are the ones the lines show: `#5` (or `5`; quote `'#5'` in a shell, where `#
 | 1 | Failure: endpoint unreachable, token or TLS refused, I/O error, unreadable file, recording without footer. |
 | 2 | Invalid command line, or a `tail --after` cursor of another session, level or filters. |
 | 3 | Refused by the server configuration (recording disabled, secrets not included). |
-| 4 | Session not found, or none appeared within `--wait`. `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
+| 4 | Session not found, or none appeared within `--wait` (`findings`: the file has no such session). `tail --until`: the condition never held. For `show` and `trace`, no session holds the ID. |
 | 130 | Interrupted by Ctrl+C before recording started. |
 
 ## The app

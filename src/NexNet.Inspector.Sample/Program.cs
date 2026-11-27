@@ -57,7 +57,8 @@ internal static class Program
                    --burst extra log lines), disconnects, waits --delay ms and repeats; 0 iterations repeats forever.
           fixtures [DIRECTORY] [KIND...]   (default src/NexNet.Inspector.Tests/Fixtures)
                    Records the checked-in fixture files and checks each one. KIND (ChatServer, ChatClient, ServerAll,
-                   LegacySchema, Truncated, ChatClientVariant) records only those and leaves the other files alone.
+                   LegacySchema, Truncated, ChatClientVariant, FindingsSlow, FindingsStall, FindingsOrphan) records only
+                   those and leaves the other files alone.
           check    FILE.nntl...
                    Reads recordings with the inspector core and prints what it found.
 

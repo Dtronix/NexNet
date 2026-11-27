@@ -1,0 +1,5 @@
+@0x4E66A0452 server tcp 127.0.0.1:60702 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:03.291Z
+hs none (attached mid-stream)
++189.7 >#1 ? -> ok raw 3B
++190.0 <#2..#3 Work(0) -> ok 0 0.1ms ×2 (span 0.2ms)
++190.5 END Graceful from client

@@ -21,6 +21,7 @@ public static class TextLegend
         "×N (span 1.2s)  repeated identical lines; #5..#9 = first and last call collapsed\n" +
         "GAP in 812 ops 1.2MB (Drop)   the capture dropped ops; END <reason> from <side>\n" +
         "! f12 malformed 40B    a frame that could not be framed, completed or decoded\n" +
+        "! warn slow #21 Work took 251.2ms; …   finding: error|warn|info, kind, the IDs it cites, message\n" +
         "\"text…\" {…} [n] …+3   values cut by --value-width and --depth\n" +
         "frames: >f18 Invocation #5 SendMessage 92B TNX…R   flags: T transport split, N NexNet split,\n" +
         "        X cancel, … incomplete, R redacted, ! body malformed; bytes adds the frame's first bytes in hex\n" +

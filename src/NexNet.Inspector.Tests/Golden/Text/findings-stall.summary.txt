@@ -1,0 +1,10 @@
+@0x3078183DB server tcp 127.0.0.1:60700 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.597Z
+frames 18 ops 22 in 64.1KB out 82B duration 363.6ms
+hs ok v1 token=empty id=13010830299
+calls 1 oneway 1
+  <Upload ×1 oneway 1
+pipes 1
+  ⇄1·1 by #0 closed in 64.0KB out 0B
+gaps 0
+noise ping ×0 credit ×0 window ×4
++363.6 END Graceful from client

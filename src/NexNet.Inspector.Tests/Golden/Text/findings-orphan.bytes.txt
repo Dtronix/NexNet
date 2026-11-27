@@ -1,0 +1,14 @@
+@0x4E66A0452 server tcp 127.0.0.1:60702 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:03.291Z
++189.7 >f1 InvocationResult #1 ? ok 9B
+  700600930101cd012c
++190.0 <f2 Invocation #2 Work 9B
+  6e0600940200009100
++190.0 >f3 InvocationResult #2 Work ok 7B
+  70040093020100
++190.2 <f4 Invocation #3 Work 9B
+  6e0600940300009100
++190.2 >f5 InvocationResult #3 Work ok 7B
+  70040093030100
++190.3 <f6 DisconnectGraceful 1B
+  15
++190.5 END Graceful from client

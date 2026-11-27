@@ -1,0 +1,9 @@
+@0x26D53EA44 server tcp 127.0.0.1:60698 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.180Z
+frames 37 ops 37 in 177B out 148B duration 210.0ms
+hs ok v1 token=empty id=10424150596
+calls 16 ok 16
+  <Work ×16 ok 16 p50 0.0ms p99 206.5ms max 206.5ms
+pipes 0
+gaps 0
+noise ping ×0 credit ×0 window ×0
++210.0 END Graceful from client

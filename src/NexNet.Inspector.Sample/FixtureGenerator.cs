@@ -86,6 +86,17 @@ public static class FixtureGenerator
             }).ConfigureAwait(false);
         }
 
+        foreach (var kind in Fixtures.Findings)
+        {
+            if (!kinds.Contains(kind))
+                continue;
+            files[kind] = await RetryAsync(log, Fixtures.FileName(kind), async () =>
+            {
+                var bytes = await RecordFindingsAsync(kind, cancellationToken).ConfigureAwait(false);
+                return (bytes, Problems(kind, bytes));
+            }).ConfigureAwait(false);
+        }
+
         if (variant)
         {
             files[FixtureKind.ChatClientVariant] = await RetryAsync(log, "chat-variant", async () =>
@@ -311,6 +322,77 @@ public static class FixtureGenerator
         finally
         {
             await recording.StopAsync().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            await server.StopAsync().ConfigureAwait(false);
+            await inspector.DisposeAsync().ConfigureAwait(false);
+        }
+
+        return file.ToArray();
+    }
+
+    /// <summary>
+    /// A findings scenario, recorded on the server (Block mode): the slow call, the window stall (both peers'
+    /// <see cref="Fixtures.FindingsPipeWindow"/>, a reader that waits after each read), or the orphan result (the recording
+    /// attaches while a slow call runs).
+    /// </summary>
+    /// <param name="kind">One of <see cref="Fixtures.Findings"/>.</param>
+    /// <param name="cancellationToken">Stops the run.</param>
+    public static async Task<byte[]> RecordFindingsAsync(FixtureKind kind, CancellationToken cancellationToken = default)
+    {
+        var address = SampleAddress.Loopback(SampleTransport.Tcp);
+        var serverConfig = address.CreateServerConfig();
+        serverConfig.PipeWindow = Fixtures.FindingsPipeWindow;
+        var inspector = serverConfig.UseInspector<FindingsServerNexus>(new InspectorOptions { AllowRecording = true });
+        var server = FindingsServerNexus.CreateServer(serverConfig, static () => new FindingsServerNexus());
+        var file = new GateStream();
+        var recording = kind == FixtureKind.FindingsOrphan ? null : inspector.RecordTo(file, leaveOpen: true, InspectorOverflow.Block);
+
+        try
+        {
+            await server.StartAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            var config = address.CreateClientConfig();
+            config.PipeWindow = Fixtures.FindingsPipeWindow;
+            await using var client = FindingsClientNexus.CreateClient(config, new FindingsClientNexus());
+            await client.ConnectAsync(cancellationToken).WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            switch (kind)
+            {
+                case FixtureKind.FindingsSlow:
+                    for (var i = 0; i < Fixtures.FindingsFastCalls; i++)
+                    {
+                        if (i == Fixtures.FindingsFastCalls - 3)
+                            await client.Proxy.Work(Fixtures.FindingsSlowMs).AsTask().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                        await client.Proxy.Work(0).AsTask().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    break;
+                case FixtureKind.FindingsStall:
+                    await using (var pipe = client.CreatePipe())
+                    {
+                        await client.Proxy.Upload(Fixtures.FindingsReadDelayMs, pipe).AsTask().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                        await pipe.ReadyTask.WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                        await pipe.Output.WriteAsync(new byte[Fixtures.FindingsStallBytes], cancellationToken).AsTask()
+                            .WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                        await pipe.Output.CompleteAsync().ConfigureAwait(false);
+                        await pipe.CompleteTask.WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    break;
+                default:
+                    var call = client.Proxy.Work(Fixtures.FindingsOrphanCallMs).AsTask();
+                    await Task.Delay(Fixtures.FindingsOrphanCallMs / 3, cancellationToken).ConfigureAwait(false);
+                    recording = inspector.RecordTo(file, leaveOpen: true, InspectorOverflow.Block);
+                    await call.WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                    for (var i = 0; i < 2; i++)
+                        await client.Proxy.Work(0).AsTask().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+
+            await client.DisconnectAsync().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
+            await WaitForNoSessionsAsync(inspector, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (recording != null)
+                await recording.StopAsync().WaitAsync(Wait, cancellationToken).ConfigureAwait(false);
             await server.StopAsync().ConfigureAwait(false);
             await inspector.DisposeAsync().ConfigureAwait(false);
         }

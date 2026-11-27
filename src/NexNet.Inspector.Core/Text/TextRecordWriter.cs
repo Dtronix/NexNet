@@ -254,6 +254,13 @@ public sealed class TextRecordWriter
                 if (record.Value is { Length: > 0 })
                     sb.Append(' ').Append(record.Value);
                 return;
+            case TextRecordKind.Finding:
+                sb.Append("! ").Append(record.Outcome).Append(' ').Append(record.Name);
+                if (record.Id is { Length: > 0 })
+                    sb.Append(' ').Append(record.Id);
+                if (record.Value is { Length: > 0 })
+                    sb.Append(' ').Append(record.Value);
+                return;
             default:
                 sb.Append(record.Value);
                 return;
@@ -281,6 +288,7 @@ public sealed class TextRecordWriter
         TextRecordKind.Field => "fld",
         TextRecordKind.Fragment => "frag",
         TextRecordKind.Delta => "delta",
+        TextRecordKind.Finding => "find",
         _ => "prob",
     };
 
@@ -357,6 +365,9 @@ public sealed class TextRecordWriter
             o.X = record.Count;
             o.Sp = Math.Round(record.SpanMs, 1);
         }
+
+        if (record.Kind == TextRecordKind.Finding && Math.Round(record.SpanMs, 1) > 0)
+            o.Sp = Math.Round(record.SpanMs, 1);
 
         o.B = record.Bytes >= 0 ? record.Bytes : null;
         o.F = record.Frame >= 0 ? record.Frame + 1 : null;

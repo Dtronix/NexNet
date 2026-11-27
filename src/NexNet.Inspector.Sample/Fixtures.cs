@@ -33,6 +33,24 @@ public enum FixtureKind : byte
     /// the Compare pair with real differences against <see cref="ChatClient"/>.
     /// </summary>
     ChatClientVariant = 5,
+
+    /// <summary>
+    /// Findings: one server-side session with <see cref="Fixtures.FindingsFastCalls"/> instant Work calls and one that
+    /// takes <see cref="Fixtures.FindingsSlowMs"/>: a slow-call (p99) outlier.
+    /// </summary>
+    FindingsSlow = 6,
+
+    /// <summary>
+    /// Findings: one server-side session uploading <see cref="Fixtures.FindingsStallBytes"/> through a
+    /// <see cref="Fixtures.FindingsPipeWindow"/>-byte pipe window to a reader that waits after every read: window stalls.
+    /// </summary>
+    FindingsStall = 7,
+
+    /// <summary>
+    /// Findings: one server-side session recorded from mid-call (attached while a slow Work ran): its result arrives with
+    /// no request captured, an orphan result.
+    /// </summary>
+    FindingsOrphan = 8,
 }
 
 /// <summary>Names and checks of the fixture recordings.</summary>
@@ -42,8 +60,29 @@ public static class Fixtures
     public static readonly FixtureKind[] All =
     [
         FixtureKind.ChatServer, FixtureKind.ChatClient, FixtureKind.ServerAll, FixtureKind.LegacySchema, FixtureKind.Truncated,
-        FixtureKind.ChatClientVariant,
+        FixtureKind.ChatClientVariant, FixtureKind.FindingsSlow, FixtureKind.FindingsStall, FixtureKind.FindingsOrphan,
     ];
+
+    /// <summary>The findings fixtures (targeted scenarios for the findings detectors).</summary>
+    public static readonly FixtureKind[] Findings = [FixtureKind.FindingsSlow, FixtureKind.FindingsStall, FixtureKind.FindingsOrphan];
+
+    /// <summary>Instant Work calls of the slow-call fixture (12 before the slow one, 3 after).</summary>
+    public const int FindingsFastCalls = 15;
+
+    /// <summary>How long the slow fixture's slow Work call waits.</summary>
+    public const int FindingsSlowMs = 200;
+
+    /// <summary>Pipe window of both peers in the findings fixtures.</summary>
+    public const int FindingsPipeWindow = 16 * 1024;
+
+    /// <summary>Bytes the stall fixture uploads: four windows.</summary>
+    public const int FindingsStallBytes = 64 * 1024;
+
+    /// <summary>How long the stall fixture's reader waits after each read.</summary>
+    public const int FindingsReadDelayMs = 100;
+
+    /// <summary>How long the orphan fixture's call runs; the recording attaches a third of the way in.</summary>
+    public const int FindingsOrphanCallMs = 300;
 
     /// <summary>The first message of the variant run (the Full scenario's is "hello everyone").</summary>
     public const string VariantHelloText = "hello everyone!";
@@ -91,6 +130,9 @@ public static class Fixtures
         FixtureKind.LegacySchema => "legacy-schema.nntl",
         FixtureKind.Truncated => "server-all-truncated.nntl",
         FixtureKind.ChatClientVariant => "chat-client-variant.nntl",
+        FixtureKind.FindingsSlow => "findings-slow.nntl",
+        FixtureKind.FindingsStall => "findings-stall.nntl",
+        FixtureKind.FindingsOrphan => "findings-orphan.nntl",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
 
@@ -148,6 +190,13 @@ public static class Fixtures
                     Expect(problems, session.ClientCalls("SendMessage").Length >= 1, "no SendMessage");
                 }
 
+                break;
+            case FixtureKind.FindingsSlow:
+            case FixtureKind.FindingsStall:
+            case FixtureKind.FindingsOrphan:
+                Expect(problems, recording.Sessions.Count == 1, $"{recording.Sessions.Count} sessions");
+                if (recording.Sessions.Count == 1)
+                    CheckFindings(problems, kind, recording.Sessions[0], recording.Header.StopwatchFrequency);
                 break;
         }
 
@@ -248,6 +297,61 @@ public static class Fixtures
             Expect(problems, session.Gaps.Count > 0 && session.Gaps.Sum(g => g.DroppedOps) > 0, "no gap");
         else
             Expect(problems, session.Gaps.Count == 0, "the client recording has a gap");
+    }
+
+    // The findings scenarios: what each detector needs, with timing margins over the detectors' default thresholds.
+    private static void CheckFindings(List<string> problems, FixtureKind kind, SessionAnalysis session, long frequency)
+    {
+        CheckCommon(problems, session, NntlSessionRole.Server, SchemaHashOf<FindingsServerNexus>());
+        Expect(problems, session.Close is { Kind: NntlCloseKind.Disconnected }, "the session did not close by disconnect");
+        var assembler = session.Assembler;
+        var works = session.ClientCalls("Work");
+        if (kind != FixtureKind.FindingsOrphan)
+        {
+            Expect(problems, session.InboundFromInception && session.OutboundFromInception, "not recorded from the preamble");
+            Expect(problems, assembler.Greetings.Length == 2, $"{assembler.Greetings.Length} greetings");
+        }
+
+        switch (kind)
+        {
+            case FixtureKind.FindingsSlow:
+                Expect(problems, works.Length == FindingsFastCalls + 1, $"{works.Length} Work calls");
+                var durations = works.Select(w => AttachmentMilliseconds(assembler, w, frequency)).ToArray();
+                Expect(problems, durations.Count(d => d >= FindingsSlowMs * 0.9 && d < 1000) == 1, "no single slow Work call");
+                var fast = durations.Where(d => d < FindingsSlowMs * 0.9).Order().ToArray();
+                Expect(problems, fast.Length == FindingsFastCalls && fast[^1] <= 50 && fast[fast.Length / 2] <= 5,
+                    "the fast Work calls are not fast (median over 5 ms or one over 50 ms)");
+                break;
+            case FixtureKind.FindingsStall:
+                var uploads = session.ClientCalls("Upload");
+                Expect(problems, uploads.Length == 1 && uploads[0].Pipe >= 0, "not one Upload with a pipe");
+                if (uploads.Length == 1 && uploads[0].Pipe >= 0)
+                {
+                    var pipe = uploads[0].Pipe;
+                    Expect(problems, assembler.Pipes[pipe].InboundBytes == FindingsStallBytes, $"{assembler.Pipes[pipe].InboundBytes} bytes uploaded");
+                    Expect(problems, assembler.Pipes[pipe].Lifecycle == PipeLifecycle.Closed, "the upload pipe did not complete");
+                    long previous = -1;
+                    var pauses = 0;
+                    foreach (var frame in assembler.GetFrames(TapDirection.Inbound))
+                    {
+                        if (frame.Type != MessageType.DuplexPipeWrite || assembler.GetLink(TapDirection.Inbound, frame.Seq).EntityIndex != pipe)
+                            continue;
+                        if (previous >= 0 && (frame.StartTicks - previous) * 1000.0 / frequency >= FindingsReadDelayMs * 0.6)
+                            pauses++;
+                        previous = frame.EndTicks;
+                    }
+
+                    Expect(problems, pauses >= 2, $"{pauses} writer pauses of {FindingsReadDelayMs * 0.6} ms or more");
+                }
+
+                break;
+            case FixtureKind.FindingsOrphan:
+                Expect(problems, !session.InboundFromInception && !session.OutboundFromInception, "recorded from the preamble, not attached");
+                Expect(problems, works.Length == 2, $"{works.Length} Work calls with a request");
+                var orphans = assembler.Invocations.ToArray().Count(i => i.Request.IsNone && !i.Result.IsNone && i.State == InvocationState.Completed);
+                Expect(problems, orphans == 1, $"{orphans} results without their request");
+                break;
+        }
     }
 
     // Embedded schema, parsers, decoding of every complete client call.

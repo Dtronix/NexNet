@@ -69,7 +69,7 @@ jobs:
 
     # Microsoft.Testing.Platform (global.json); raise --minimum-expected-tests when tests are added.
     - name: Execute inspector tests
-      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 377 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Inspector.Tests -c Release --no-build --minimum-expected-tests 437 --results-directory TestResults -- --report-trx
 
     # Headless Avalonia drawn by Skia: no display needed. The capture tests skip without NEXNET_INSPECTOR_CAPTURE_DIR.
     - name: Execute app tests
@@ -99,6 +99,7 @@ jobs:
       run: |
         ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/chat-server.nntl
         ./publish/nexnet-tap/${{ matrix.exe }} info src/NexNet.Inspector.Tests/Fixtures/server-all.nntl
+        ./publish/nexnet-tap/${{ matrix.exe }} findings src/NexNet.Inspector.Tests/Fixtures/findings-stall.nntl
 
     - name: Upload nexnet-tap
       uses: actions/upload-artifact@v7

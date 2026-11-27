@@ -56,6 +56,8 @@ internal static class CliCommands
             static (cli, args, _) => Task.FromResult(cli.WriteUsage(args.HelpTopic))),
         new(CliCommand.Version, "version", CliOption.None, 0, null,
             static (cli, _, _) => Task.FromResult(cli.WriteVersion())),
+        new(CliCommand.Findings, "findings", CliOption.Session | CliOption.Slow | CliOption.Json, 1, TapCli.FindingsUsage,
+            static (cli, args, _) => Task.FromResult(FindingsCommand.Run(cli, args))),
     ];
 
     /// <summary>The row of a command; null for <see cref="CliCommand.None"/> or a value without a row.</summary>

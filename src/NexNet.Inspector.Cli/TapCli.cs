@@ -96,6 +96,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           nexnet-tap slow <file.nntl> [--over <d>] [options]
           nexnet-tap diff <a.nntl> <b.nntl> [options]
           nexnet-tap export <file.nntl> --out <section.nntl> [--from <t>] [--to <t>]
+          nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <d>] [--json]
           nexnet-tap help [command]
           nexnet-tap help format
           nexnet-tap --version
@@ -109,6 +110,7 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           repair   Rebuild the index footer of a crashed or truncated recording, in place.
           tail     Print a recording or a live session as condensed text, one line per message, with filters,
                    budgets and --until.
+          findings Rank what the detectors notice in a recording: slow calls, stalls, lost results, errors, gaps.
 
         Queries (a recording, or a live session with --endpoint; text or ndjson, budgets with --max-lines/--max-tokens):
           summary      About 30 lines: calls per method with p50/p99, errors, cancellations, pipes, largest
@@ -229,4 +231,21 @@ internal sealed class TapCli(TextWriter output, TextWriter error)
           -f, --force              Rebuild even when the footer is intact
 
         """ + ExitCodes;
+
+    internal static readonly string FindingsUsage = """
+        Usage: nexnet-tap findings <file.nntl> [--session <id|first|all>] [--slow <d>] [--json]
+
+        Runs the findings detectors over each session and prints its header line, then one '!' line per finding, most
+        severe first (error, warn, info), then a tally: '+120.4 ! warn slow #21 Work took 251.2ms, …'. Each finding
+        cites the stable IDs of the text format (#5, ≋4·4, f18, @0x1BCB). Detectors: slow calls (over --slow, or far
+        above their method's p99), cancellation races, orphan results, window and invocation-credit stalls, large
+        messages and chunk storms, calls pending and pipes open at the end, protocol errors and failed disconnects,
+        schema mismatches, gaps (Drop), ping round-trip outliers; across sessions, reconnect loops.
+
+        Options:
+          -s, --session <sel>      A session ID from 'info', 'first', or 'all' (default)
+              --slow <d>           A completed call at least this long is slow (default 1s)
+              --json               Write ndjson (k = find; n kind, r severity, id IDs, v message) instead of text
+
+        """ + Durations + ExitCodes;
 }

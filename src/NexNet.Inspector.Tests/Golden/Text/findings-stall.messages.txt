@@ -1,0 +1,16 @@
+@0x3078183DB server tcp 127.0.0.1:60700 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:02.597Z
+hs ok v1 token=empty id=13010830299
++21.0 <#0 Upload(100, pipe:1) (oneway)
++24.4 >⇄1·1 open by #0
++29.5 <window ⇄1·1
++29.9 <⇄1·1 data 16.0KB
++31.8 >window ⇄1·1
++32.7 <⇄1·1 data 16.0KB
++139.5 >window ⇄1·1
++139.8 <⇄1·1 data 16.0KB
++250.4 >window ⇄1·1
++250.7 <⇄1·1 data 16.0KB
++252.1 <⇄1·1 client done
++362.2 >⇄1·1 complete
++362.5 <⇄1·1 complete
++363.6 END Graceful from client

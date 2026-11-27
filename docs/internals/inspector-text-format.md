@@ -70,6 +70,7 @@ into counts, every value cut to a width, and budgets that stop at a resumable cu
 | field (`fld`) | `    Text: "hello" @12+7`, `  - 42`, `args:` | queries (§10): one property or decoded field, indented two spaces per level (`dp`); an element without a name starts with `- `; a parent has no value; ` @offset+size` is its byte range in the message (`show --bytes`) |
 | fragment (`frag`) | `+27.5 >f35 MessageChunk msg 0+64.0KB op 19 N` | `trace`: a frame that carried part of a message, the message bytes it carried, its transport op(s) and split flags |
 | delta (`delta`) | `+1.9 medium #2 SendMessage content, bytes 52B → 53B` | `diff`: severity, the entity's ID (`A#3 B#4` when the sides differ, `B#3` when only B holds it), its name, what differs; time is compare time |
+| finding (`find`) | `+2.2 ! warn slow #13 Work took 206.5ms; its other 12 calls: median <0.1ms, p99 0.1ms` | a finding of the findings detectors (§11): severity, kind, the IDs it cites, message |
 
 At the messages level a preamble, greetings (folded into the handshake line), message chunks and aborts (folded into
 their call), result frames of calls already shown, and disconnect frames (the end line) produce no line of their own.
@@ -121,15 +122,15 @@ the width, with its length).
 | `k` | kind code (§3) |
 | `t` | time, ms since t0 (one decimal) |
 | `d` | `>` or `<` |
-| `id` | stable ID |
+| `id` | stable ID; for a finding, every ID it cites, space-separated |
 | `to` | last call ID of a collapsed run |
-| `n` | method, item type, collection, frame type, noise kind, or the end's side |
+| `n` | method, item type, collection, frame type, noise kind, the end's side, or a finding's kind |
 | `v` | the condensed words (arguments, value, pipe event, detail, header text) |
-| `r` | outcome (`ok`, `exception`, `canceled`, `unauthorized`, `refused`, `oneway`, `…`); frame flags; end reason |
+| `r` | outcome (`ok`, `exception`, `canceled`, `unauthorized`, `refused`, `oneway`, `…`); frame flags; end reason; a finding's severity |
 | `rv` | result value or exception |
 | `ms` | call duration in ms |
 | `x` | events collapsed (absent for one) |
-| `sp` | span of a collapsed run in ms |
+| `sp` | span of a collapsed run in ms; the time a finding covers |
 | `b` | bytes covered |
 | `f` | frame number of the first frame (as in `f18`) |
 | `dp` | a field's depth (absent at 0) |
@@ -167,3 +168,26 @@ prints them (see the user guide). Every query starts with the header line; sessi
 
 Budgets apply to the whole query (`TextQueryWriter`): its cursor is a `TextCursor` whose skip counts the lines of that
 session already written and whose filter fingerprint is the query's text, so `--after` resumes only the same query.
+
+## 11. Findings
+
+The findings detectors (Core `Findings/`, `FindingsEngine`; `nexnet-tap findings`) write one line per finding through the
+same writer, as record kind `find`:
+
+```
++32.7 ! warn window-stall ⇄1·1 f12 < writes waited 106.8ms for a window update after using the whole 16.0KB window
+```
+
+- The time is the start of what the finding covers (ndjson `sp` is how long it covers); a session-wide finding uses the
+  session's start or end.
+- Severity: `error`, `warn` or `info`. A report ranks findings by severity, then time.
+- Kind: `protocol`, `disconnect`, `schema`, `gap`, `orphan`, `cancel-race`, `pending`, `pipe-open`, `window-stall`,
+  `credit-stall`, `slow`, `ping-rtt`, `large`, `chunk-storm`, `reconnect-loop` (docs/articles/inspector.md lists what each
+  means and its thresholds).
+- IDs: the stable IDs of §1 the finding is about, most relevant first (none for some session-wide findings: then the
+  session `@0x…`). The message follows and never repeats them.
+- `nexnet-tap findings` writes, per session, the header line, the ranked findings and a tally stat line
+  `findings 3: error 0 warn 2 info 1` (`findings none`); findings across sessions follow a stat line `across N sessions`.
+- Live: a `FindingsEngine` kept across updates returns, on each `Update`, the findings detected since the last one, in
+  detection order (a tail writes them as they come); every event is judged once against what came before it, so a live
+  run finds what a run over the finished session finds.

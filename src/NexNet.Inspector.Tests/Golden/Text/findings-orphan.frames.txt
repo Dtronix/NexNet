@@ -1,0 +1,8 @@
+@0x4E66A0452 server tcp 127.0.0.1:60702 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:03.291Z
++189.7 >f1 InvocationResult #1 ? ok 9B
++190.0 <f2 Invocation #2 Work 9B
++190.0 >f3 InvocationResult #2 Work ok 7B
++190.2 <f4 Invocation #3 Work 9B
++190.2 >f5 InvocationResult #3 Work ok 7B
++190.3 <f6 DisconnectGraceful 1B
++190.5 END Graceful from client

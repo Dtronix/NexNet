@@ -102,4 +102,10 @@ public enum TextRecordKind : byte
 
     /// <summary>`+53.6 high #5 SendMessage content`: one difference between two sessions, `diff` (`delta`).</summary>
     Delta = 18,
+
+    /// <summary>
+    /// `! warn slow #21 Work took 251.2ms, …`: a finding of the findings detectors (`find`); see
+    /// <see cref="Findings.FindingsText"/>.
+    /// </summary>
+    Finding = 19,
 }

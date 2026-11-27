@@ -1,0 +1,10 @@
+@0x4E66A0452 server tcp 127.0.0.1:60702 schema FindingsServerNexus#60c18e57 t0=2026-11-27T01:00:03.291Z
+frames 6 ops 6 in 19B out 23B duration 190.5ms
+hs none (attached mid-stream)
+calls 3 ok 3
+  <Work ×2 ok 2 p50 0.0ms max 0.1ms
+  <? ×1 ok 1 p50 0.0ms max 0.0ms
+pipes 0
+gaps 0
+noise ping ×0 credit ×0 window ×0
++190.5 END Graceful from client
